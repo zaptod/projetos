@@ -64,6 +64,104 @@ PADRAO_CONFIG = {"resumo_a_cada": 12, "janela_conversa_s": 90,
                  "espera_conta_max_s": 10800, "resposta_timeout_s": 420,
                  "intervalo_s": 5, "headless": {}}
 
+# O turno "responda OK" que leva o resumo para a casa nova: resposta curta,
+# prazo curto (05/10 04:54Z: ele ficou os 420 s inteiros sem resposta).
+PRAZO_PROLOGO_S = 90.0
+# Resumo mais velho que isto nao entra numa casa nova (o contexto envelheceu),
+# e resumo curto ou de recusa nunca e gravado nem injetado: o
+# `gemini/casa_resumo.md` de 02/10 era so "Não fui programado para fazer
+# essas coisas." e abria toda casa nova do Gemini.
+RESUMO_VALIDADE_S = 48 * 3600.0
+RESUMO_MINIMO = 40
+# A recuperacao da imagem depois de o Chrome cair: o Gemini so carrega a
+# imagem quando ela entra na vista, entao rola e le de novo ate o prazo
+# (25 de 25 recuperacoes falharam em 04-05/10 com UMA leitura logo apos o goto).
+RECUPERAR_PRAZO_S = 60.0
+RECUPERAR_PASSO_S = 3.0
+# Pedido reservado por um processo que morreu: o carteiro marca falhou (quem
+# pediu nao vai ler), no maximo uma varredura por este intervalo.
+VARRER_ABANDONADAS_S = 60.0
+
+# Segmentos de URL que sao a RAIZ do site (chat sem conversa ainda):
+# chatgpt.com/, chatgpt.com/?model=auto, gemini.google.com/app, grok.com/.
+_SEGMENTOS_DA_RAIZ = {"app", "chat", "new", "a", "c", "s", "u", "g", "home"}
+
+
+def e_raiz(url: str) -> bool:
+    """A URL e a raiz do site (nenhuma conversa aberta)? Vazio conta como raiz.
+
+    05/10/2026: `_abrir_casa` gravava a URL ANTES do primeiro turno, quando o
+    site ainda mostra a raiz; a casa "reaberta" na entrega seguinte nao tinha
+    nenhum turno nosso e virava casa nova: geracao 71 no Gemini, 59 no
+    ChatGPT, 56 vezes "a casa abriu sem nenhum turno nosso" no log."""
+    texto = str(url or "").strip()
+    if not texto:
+        return True
+    caminho = re.sub(r"^[a-z]+://[^/?#]*", "", texto, flags=re.I)
+    caminho = re.sub(r"[?#].*$", "", caminho)
+    anterior = ""
+    for segmento in (s for s in caminho.split("/") if s):
+        baixo = segmento.lower()
+        # `u/1` e o indice da conta Google (gemini.google.com/u/1/app)
+        if baixo in _SEGMENTOS_DA_RAIZ or (anterior == "u" and baixo.isdigit()):
+            anterior = baixo
+            continue
+        return False
+    return True
+
+
+_RECUSA_RESERVA = re.compile(
+    r"n[aã]o fui (programad|criad)|sou (apenas |s[oó] )?(um modelo de linguagem|uma ia)|"
+    r"al[eé]m das minhas capacidades|n[aã]o posso (te )?ajudar com isso|"
+    r"I'?m (just )?a language model|can'?t help with that", re.I)
+
+
+def e_recusa(texto: str) -> bool:
+    """A frase enlatada de "isso eu nao faco" (a mesma lista das historias)."""
+    try:
+        from contos.llm import texto as llm_texto
+        if llm_texto.e_recusa_enlatada(texto):
+            return True
+    except Exception:                                          # noqa: BLE001
+        pass
+    limpo = " ".join(str(texto or "").split())
+    return bool(limpo) and len(limpo) <= 400 and bool(_RECUSA_RESERVA.search(limpo))
+
+
+def resumo_aceitavel(texto: str) -> bool:
+    """Resumo que vale guardar/injetar: nao curto e nao recusa."""
+    corpo = "\n".join(linha for linha in str(texto or "").splitlines()
+                      if not linha.lstrip().startswith("# Resumo da casa"))
+    limpo = " ".join(corpo.split())
+    return len(limpo) >= RESUMO_MINIMO and not e_recusa(limpo)
+
+
+_CHROME_CAIU = re.compile(r"TargetClosed|Target page, context or browser has been closed|"
+                          r"[Bb]rowser has been closed|Chrome (caiu|fechou)")
+
+
+def chrome_caiu(exc: BaseException | None) -> bool:
+    """O navegador fechou no meio (o download do Gemini, 04-05/10): olha o
+    tipo e o texto da excecao e das que ela embrulha."""
+    vistos = 0
+    while exc is not None and vistos < 6:
+        if _CHROME_CAIU.search(type(exc).__name__ + " " + str(exc)):
+            return True
+        exc = exc.__cause__ or exc.__context__
+        vistos += 1
+    return False
+
+
+def _perguntar_com_prazo(sessao, texto: str, prazo_s: float) -> str:
+    """`sessao.perguntar` com prazo proprio, se a sessao aceita `prazo_s`."""
+    perguntar = sessao.perguntar
+    try:
+        import inspect
+        aceita = "prazo_s" in inspect.signature(perguntar).parameters
+    except (TypeError, ValueError):
+        aceita = False
+    return perguntar(texto, prazo_s=prazo_s) if aceita else perguntar(texto)
+
 
 def config() -> dict:
     base = dict(PADRAO_CONFIG)
@@ -130,7 +228,7 @@ class SessaoReal:
     def novo_chat(self) -> None:
         self.cliente.abrir(novo_chat=True)
 
-    def perguntar(self, texto: str, anexos=None) -> str:
+    def perguntar(self, texto: str, anexos=None, prazo_s: float | None = None) -> str:
         c = self.cliente
         if anexos and not (c.sel.get("anexo_prova") or []):
             from contos.llm.cliente import LLMFalhou
@@ -138,6 +236,9 @@ class SessaoReal:
                 f"o cliente do {c.provedor} ainda nao sabe confirmar anexo na tela "
                 "(seletores `anexo_prova` vazios em contos/llm/seletores.py): mande sem anexo")
         self._marcar_antes(texto)
+        if prazo_s:
+            return c.perguntar(texto, timeout=float(prazo_s),
+                               anexos=list(anexos) if anexos else None)
         return c.perguntar(texto, anexos=list(anexos) if anexos else None)
 
     def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "") -> dict:
@@ -154,17 +255,67 @@ class SessaoReal:
         from . import imagem
         return imagem.baixar_da_resposta(self.cliente, prompt, log=self.log)
 
-    def recuperar_imagem(self, prompt: str, proporcao: str) -> dict:
-        """Baixa a imagem ja pronta na casa reaberta, sem novo envio a IA."""
+    # Rola cada area com rolagem propria ate o fim e poe a ULTIMA imagem gerada
+    # na vista: o Gemini so carrega a imagem que esta na vista.
+    _JS_ROLAR_PARA_A_IMAGEM = (
+        "(seletores) => {"
+        " for (const el of document.querySelectorAll('*')) {"
+        "   const st = getComputedStyle(el);"
+        "   if (/(auto|scroll)/.test(st.overflowY) && el.scrollHeight > el.clientHeight + 40)"
+        "     el.scrollTop = el.scrollHeight; }"
+        " window.scrollTo(0, document.body ? document.body.scrollHeight : 0);"
+        " let ultima = null;"
+        " for (const s of seletores) {"
+        "   try { const els = document.querySelectorAll(s);"
+        "         if (els.length) ultima = els[els.length - 1]; } catch (e) {} }"
+        " if (ultima) ultima.scrollIntoView({block: 'center'});"
+        " return !!ultima; }")
+
+    def _rolar_para_a_imagem(self) -> None:
+        c = self.cliente
+        try:
+            c.page.evaluate(self._JS_ROLAR_PARA_A_IMAGEM,
+                            list((getattr(c, "sel", None) or {}).get("imagem_gerada") or []))
+        except Exception:                                      # noqa: BLE001
+            pass
+
+    def recuperar_imagem(self, prompt: str, proporcao: str, prazo_s: float | None = None,
+                         passo_s: float | None = None) -> dict:
+        """Baixa a imagem ja pronta na conversa reaberta, sem novo envio a IA.
+
+        Le de novo, rolando ate a imagem, por ate `RECUPERAR_PRAZO_S`: uma
+        leitura so, logo depois do goto, falhava sempre (25 de 25 em
+        04-05/10) porque a imagem ainda nao tinha carregado."""
         from . import imagem
+        c = self.cliente
+        prazo = RECUPERAR_PRAZO_S if prazo_s is None else max(0.0, float(prazo_s))
+        passo = RECUPERAR_PASSO_S if passo_s is None else max(0.1, float(passo_s))
+        leituras = max(1, int(prazo // passo) + 1)
         pedido = imagem.pedido_de_imagem(prompt, proporcao)
-        achado = self.cliente.imagens_da_resposta()
-        self.cliente.imagens_na_resposta = self.cliente.imagens_prontas(achado)
-        self.cliente._srcs_antes_do_envio = set()
-        saida = imagem.baixar_da_resposta(self.cliente, pedido, proporcao, log=self.log)
-        if saida is None:
-            raise imagem.SemImagem("a imagem nao estava mais na casa reaberta")
-        return saida
+        visto = ""
+        for n in range(1, leituras + 1):
+            self._rolar_para_a_imagem()
+            achado = c.imagens_da_resposta() or {}
+            prontas = c.imagens_prontas(achado)
+            if prontas:
+                c.imagens_na_resposta = prontas
+                c._srcs_antes_do_envio = set()
+                saida = imagem.baixar_da_resposta(c, pedido, proporcao, log=self.log)
+                if saida is not None:
+                    self.log(f"[carteiro] {c.provedor}: imagem recuperada na conversa "
+                             f"reaberta (leitura {n}/{leituras})")
+                    return saida
+            estado = getattr(c, "_estado_da_imagem", None)
+            if callable(estado):
+                try:
+                    visto = estado(achado, prontas) or visto
+                except Exception:                              # noqa: BLE001
+                    pass
+            if n < leituras:
+                c.page.wait_for_timeout(int(passo * 1000))
+        raise imagem.SemImagem(
+            f"a imagem nao apareceu na conversa reaberta em {prazo:.0f}s ({leituras} "
+            f"leituras com rolagem; a ultima viu: {visto or 'nenhuma imagem na resposta'})")
 
     def url(self) -> str:
         try:
@@ -238,6 +389,9 @@ class SessaoDuble:
         self.modelo = "dublê"
         self.turnos: list = []
         self._url = ""
+        # a conversa nova so ganha endereco no primeiro turno (como no site):
+        # ate la `url()` e a raiz (05/10/2026)
+        self._url_da_conversa = ""
         self.casas_novas = 0
         from .imagem import SessaoImagemDuble
         # a imagem na casa: o mesmo dublê do PicassoIA, sem navegador
@@ -245,8 +399,15 @@ class SessaoDuble:
                                          sem_prova=imagem_sem_prova, tela=tela,
                                          demora_s=demora_s, dormir=dormir)
 
+    def _comecar_conversa(self) -> None:
+        if self._url_da_conversa:
+            self._url, self._url_da_conversa = self._url_da_conversa, ""
+        if self.turnos:
+            self.turnos[-1]["url"] = self._url      # em que conversa foi o turno
+
     def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "") -> dict:
         self.turnos.append({"texto": prompt, "anexos": [], "imagem": proporcao})
+        self._comecar_conversa()
         if self.antes_de_gerar:
             self.antes_de_gerar(prompt)          # o teste pode recusar a 1a vez
         return self._imagem.gerar_imagem(prompt, proporcao, mensagem_id)
@@ -261,15 +422,19 @@ class SessaoDuble:
     def abrir_casa(self, url: str) -> bool:
         if url and self.casa_abre:
             self._url = url
+            self._url_da_conversa = ""
             return True
         return False
 
     def novo_chat(self) -> None:
         self.casas_novas += 1
-        self._url = f"https://duble.local/{self.ia}/c/{self.casas_novas}-{int(time.time())}"
+        self._url = "https://duble.local/"
+        self._url_da_conversa = (f"https://duble.local/{self.ia}/c/"
+                                 f"{self.casas_novas}-{int(time.time())}")
 
-    def perguntar(self, texto: str, anexos=None) -> str:
-        self.turnos.append({"texto": texto, "anexos": list(anexos or [])})
+    def perguntar(self, texto: str, anexos=None, prazo_s: float | None = None) -> str:
+        self.turnos.append({"texto": texto, "anexos": list(anexos or []), "prazo_s": prazo_s})
+        self._comecar_conversa()
         if self.demora_s:
             self.dormir(self.demora_s)
         if self.falhar is not None:
@@ -399,6 +564,10 @@ class Carteiro:
         self.relogio = relogio
         self.entregues = 0
         self._ultimo_pulso = 0.0
+        # a casa da sessao aberta agora: so abre no primeiro turno de TEXTO
+        self._casa: dict | None = None
+        self._fora_da_casa = False
+        self._ultima_varredura: float | None = None
 
     # ------------------------------------------------------------ real
     def _fabrica_real(self, ia: str):
@@ -465,13 +634,28 @@ class Carteiro:
             from . import imagem
             info = imagem.gerador(caixa)
             if not info["disponivel"]:
-                atualizada = correio.atualizar(
-                    caixa, mensagem["id"], situacao="falhou", categoria="indisponivel",
-                    erro=f"{info['rotulo']} não gera imagem hoje: {info['motivo']}",
-                    falhou_em=correio.agora(), nota=None)
-                self._anunciar(caixa, atualizada)
-                return atualizada
+                return self._falhar(
+                    caixa, caixa, str(mensagem["id"]),
+                    f"{info['rotulo']} não gera imagem hoje: {info['motivo']}",
+                    "indisponivel")
         return self._com_a_conta(caixa, caixa, mensagem)
+
+    def _largou_na_espera(self, caixa: str, mensagem: dict) -> dict | None:
+        """Relida a cada volta da ESPERA pela conta: se outra entrega ja a
+        levou (respondida, falhou, entregue por outro) ou se ela ficou
+        reservada para outro processo, devolve como esta e a espera acaba.
+        05/10/2026: o 1b0e0ac6 ficou respondido pelo worker enquanto o carteiro
+        de servico esperava a trava, e o estouro de 3 h o marcaria "falhou"
+        com aviso falso no Telegram."""
+        mid = str(mensagem["id"])
+        atual = correio.uma(caixa, mid)
+        if atual is None:
+            return mensagem
+        if atual.get("situacao") == "pendente" and not correio.reservado_por_outro(atual):
+            return None
+        self.log(f"[carteiro] {caixa} {mid}: ficou {atual.get('situacao')} enquanto eu "
+                 "esperava a conta; largo a espera")
+        return atual
 
     def _com_a_conta(self, caixa: str, ia: str, mensagem: dict) -> dict:
         """Pega a trava da conta de `ia` (esperando a pipeline, nunca matando)
@@ -487,9 +671,15 @@ class Carteiro:
                          nota=f"esperando a pipeline soltar a conta ({nome})" if avisou else "")
             with self.trava(nome, esperar=PASSO_TRAVA_S) as minha:
                 if minha:
+                    atual = self._ainda_pendente(caixa, mensagem)
+                    if atual is None:
+                        return correio.uma(caixa, mid) or mensagem
                     if avisou:
                         self.log(f"[carteiro] a conta do {ia} soltou; entregando {mid}")
-                    return self._entregar_com_a_conta(caixa, ia, mensagem, desde)
+                    return self._entregar_com_a_conta(caixa, ia, atual, desde)
+            largada = self._largou_na_espera(caixa, mensagem)
+            if largada is not None:
+                return largada
             if avisou and caixa != correio.LIVRE:
                 # chegou trabalho para uma conta LIVRE: larga esta espera (a
                 # mensagem continua pendente) e vai entregar a outra
@@ -507,11 +697,7 @@ class Carteiro:
                 motivo = (f"a conta do {correio.ROTULOS.get(ia, ia)} ficou com a pipeline por "
                           f"{limite / 3600:.0f} h; não entreguei. Mande de novo mais tarde.")
                 self.log(f"[carteiro] {mid}: {motivo}")
-                atualizada = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
-                                               categoria="conta_ocupada",
-                                               falhou_em=correio.agora(), nota=None)
-                self._anunciar(caixa, atualizada)
-                return atualizada
+                return self._falhar(caixa, ia, mid, motivo, "conta_ocupada")
 
     def _entregar_livre(self, mensagem: dict) -> dict:
         """O RODIZIO ("qualquer um livre"): o primeiro gerador da lista
@@ -547,20 +733,22 @@ class Carteiro:
                 nome = self.nome_da_trava(g)
                 with self.trava(nome, esperar=0.0) as minha:
                     if minha:
+                        atual = self._ainda_pendente(caixa, mensagem)
+                        if atual is None:
+                            return correio.uma(caixa, mid) or mensagem
                         self.log(f"[carteiro] rodizio {mid}: {g} esta livre")
                         correio.atualizar(caixa, mid, gerador=g, nota=None,
                                           rodizio=f"{info['rotulo']} estava livre")
                         return self._entregar_com_a_conta(
-                            caixa, g, dict(mensagem, gerador=g), desde)
+                            caixa, g, dict(atual, gerador=g), desde)
                 ocupados.append(info["rotulo"])
+            largada = self._largou_na_espera(caixa, mensagem)
+            if largada is not None:
+                return largada
             if not ocupados:
                 motivo = ("nenhum gerador do rodízio pode gerar agora — "
                           + "; ".join(motivos))[:600]
-                atualizada = correio.atualizar(caixa, mid, situacao="falhou",
-                                               categoria="rodizio", erro=motivo,
-                                               falhou_em=correio.agora(), nota=None)
-                self._anunciar(caixa, atualizada)
-                return atualizada
+                return self._falhar(caixa, caixa, mid, motivo, "rodizio")
             if not avisou:
                 avisou = True
                 correio.atualizar(caixa, mid, nota="rodízio: todas as contas ocupadas "
@@ -570,12 +758,43 @@ class Carteiro:
             if self.relogio() - inicio >= limite:
                 motivo = (f"as contas do rodízio ({', '.join(ocupados)}) ficaram ocupadas "
                           f"por {limite / 3600:.0f} h; não gerei. Peça de novo mais tarde.")
-                atualizada = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
-                                               categoria="conta_ocupada",
-                                               falhou_em=correio.agora(), nota=None)
-                self._anunciar(caixa, atualizada)
-                return atualizada
+                return self._falhar(caixa, caixa, mid, motivo, "conta_ocupada")
             self.dormir(PASSO_TRAVA_S)
+
+    def _ainda_pendente(self, caixa: str, mensagem: dict) -> dict | None:
+        """A mensagem RELIDA depois de pegar a trava, ou None se outra entrega
+        ja a levou (respondida, falhou, entregue) ou se ela e reservada por
+        outro processo vivo. Ate 05/10/2026 a copia antiga ia ao navegador: o
+        worker das historias e o carteiro de servico entregavam o MESMO
+        pedido, e a imagem era gerada duas vezes."""
+        mid = str(mensagem["id"])
+        atual = correio.uma(caixa, mid)
+        if atual is None:
+            return None
+        reservada = correio.reservado_por_outro(atual)
+        if atual.get("situacao") == "pendente" and not reservada:
+            return atual
+        self.log(f"[carteiro] {caixa} {mid}: ja esta {atual.get('situacao')}"
+                 + (f" (reservada pelo processo {atual.get('dono')})" if reservada else "")
+                 + "; nao entrego de novo")
+        return None
+
+    def _falhar(self, caixa: str, ia: str, mid: str, motivo: str, categoria: str,
+                **campos) -> dict:
+        """Marca a falha (motivo legivel), vai ao DIARIO e avisa. Se outra
+        entrega ja respondeu, nao desfaz: devolve a respondida (05/10: o
+        607b37d6 e o debadd26 respondidos viraram "falhou" e um aviso falso)."""
+        atual = correio.uma(caixa, mid)
+        if atual is not None and atual.get("situacao") == "respondida":
+            self.log(f"[carteiro] {ia} {mid}: falhou aqui, mas ja estava respondida; "
+                     "fica a resposta")
+            return atual
+        atualizada = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
+                                       categoria=categoria, falhou_em=correio.agora(),
+                                       nota=None, **campos)
+        self._diario(ia, "erro", f"carteiro: {categoria}: {motivo}"[:400], mid)
+        self._anunciar(caixa, atualizada)
+        return atualizada
 
     def _entregar_com_a_conta(self, caixa: str, ia: str, mensagem: dict, desde: str) -> dict:
         mid = str(mensagem["id"])
@@ -583,27 +802,27 @@ class Carteiro:
         ultima = mensagem
         if ia not in correio.CHATS:
             return self._imagem_fora_do_chat(caixa, ia, mensagem, desde)
+        na_mao = [(caixa, mensagem)]
         try:
             recuperar_imagem = None
             for volta in (1, 2):
                 try:
                     with self.fabrica(ia) as sessao:
-                        casa = self._abrir_casa(ia, sessao)
+                        # A CASA SO ABRE NO PRIMEIRO TURNO DE TEXTO (`_casa_da_sessao`,
+                        # 05/10/2026): pedido de imagem vai em conversa nova, e a
+                        # recuperacao volta direto na conversa da imagem. Antes a
+                        # casa abria a cada pedido de imagem, com o turno do resumo.
+                        self._casa = None
                         self._fora_da_casa = False
                         if recuperar_imagem:
-                            onde, atual = recuperar_imagem
-                            # a imagem foi feita numa conversa propria: volta nela
-                            url_img = (correio.uma(onde, str(atual["id"])) or {}).get("chat_imagem_url")
-                            if url_img:
-                                sessao.abrir_casa(url_img)
-                            ultima = self._turno_imagem(onde, ia, sessao, atual,
-                                                        None if url_img else casa,
-                                                        recuperar=True)
+                            na_mao.append(recuperar_imagem)
+                            ultima = self._recuperar(*recuperar_imagem, ia=ia, sessao=sessao)
                         else:
                             fila = [(caixa, mensagem)]
                             while fila:
                                 onde, atual = fila.pop(0)
-                                ultima = self._um_turno(ia, sessao, casa, atual, caixa=onde)
+                                na_mao.append((onde, atual))
+                                ultima = self._um_turno(ia, sessao, None, atual, caixa=onde)
                                 if ultima["situacao"] != "respondida":
                                     break
                                 proxima = self._esperar_proxima(ia)
@@ -616,35 +835,81 @@ class Carteiro:
                     recuperar_imagem = (exc.caixa, exc.mensagem)
                     recuperado = str(exc.mensagem["id"])
                     self.log(f"[carteiro] {ia} {recuperado}: Chrome fechou no download; "
-                             "reabro a casa uma vez sem pedir outra imagem")
+                             "reabro a conversa da imagem uma vez sem pedir outra")
                     correio.atualizar(exc.caixa, recuperado, nota="Chrome fechou no download; "
                                                                  "reabrindo para recuperar a imagem")
         except Exception as exc:                               # noqa: BLE001
             # A sessao nem abriu (login caido, Chrome ocupado, site fora):
             # a mensagem que estava na mao falha com o motivo legivel.
-            pendente = correio.uma(caixa, mid)
-            if pendente is not None and self._rede_caiu(caixa, pendente, exc):
+            onde, atual = na_mao[-1]
+            amid = str(atual["id"])
+            pendente = correio.uma(onde, amid)
+            if pendente is not None and self._rede_caiu(onde, pendente, exc):
                 pendente = None
-            if pendente is not None and pendente["situacao"] in ("pendente", "entregue"):
+            if (pendente is not None and pendente["situacao"] in ("pendente", "entregue")
+                    and not correio.reservado_por_outro(pendente)):
                 categoria, motivo = classificar_erro(ia, exc)
-                self.log(f"[carteiro] {ia} {mid}: {motivo}")
+                self.log(f"[carteiro] {ia} {amid}: {motivo}")
                 # o site fora na abertura (pagina em branco, 30/09): o rodizio
                 # tira o gerador por `cota_pausa_h`, como no "Alta procura"
                 pausa = ({"pausa_rodizio": True} if getattr(exc, "pausa_rodizio", False)
                          else {})
-                ultima = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
-                                           categoria=categoria, falhou_em=correio.agora(),
-                                           nota=None, **pausa)
-                self._anunciar(caixa, ultima)
+                ultima = self._falhar(onde, ia, amid, motivo, categoria, **pausa)
                 # ...e nao conta contra a casa: na 2a falha ela seria trocada
-                # por uma nova sem ter culpa
-                if type(exc).__name__ != "SiteIndisponivel":
+                # por uma nova sem ter culpa. Pedido de imagem nao usa a casa.
+                if (type(exc).__name__ != "SiteIndisponivel"
+                        and correio.tipo(atual) == "texto"):
                     casa = correio.casa(ia)
                     casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
                     correio.gravar_casa(ia, casa)
         finally:
+            self._casa = None
             self._estado("ocioso")
         return ultima
+
+    def _recuperar(self, caixa: str, mensagem: dict, *, ia: str, sessao) -> dict:
+        """Depois de o Chrome cair no download: volta na conversa PROPRIA da
+        imagem e baixa o que ja esta la, sem pedir outra. Se a conversa nao
+        reabre, falha dizendo isso (antes o retorno de `abrir_casa` era
+        ignorado e a leitura caia na pagina errada)."""
+        mid = str(mensagem["id"])
+        url_img = str((correio.uma(caixa, mid) or {}).get("chat_imagem_url") or "")
+        if url_img:
+            if sessao.abrir_casa(url_img):
+                return self._turno_imagem(caixa, ia, sessao, mensagem, None, recuperar=True)
+            motivo = (f"o Chrome caiu baixando a imagem e a conversa dela não reabriu "
+                      f"({url_img[:90]}); não pedi outra")
+        elif not callable(getattr(sessao, "novo_chat", None)):
+            # sessao sem conversa avulsa: a imagem nasceu na propria casa
+            return self._turno_imagem(caixa, ia, sessao, mensagem,
+                                      self._casa_da_sessao(ia, sessao), recuperar=True)
+        else:
+            motivo = ("o Chrome caiu baixando a imagem e o endereço da conversa dela não "
+                      "ficou registrado; não pedi outra")
+        self.log(f"[carteiro] {ia} {mid}: {motivo}")
+        return self._falhar(caixa, ia, mid, motivo, "recuperacao", gerador=ia)
+
+    def _ja_guardada(self, caixa: str, ia: str, mid: str, exc) -> dict:
+        """A imagem provada deste pedido ja esta no disco: nao sobrescreve e
+        nao marca falha. Se o correio ainda nao diz respondida (o processo
+        caiu entre gravar e responder), responde com a que ja estava."""
+        atual = correio.uma(caixa, mid)
+        self.log(f"[carteiro] {ia} {mid}: a imagem provada ja estava no disco; "
+                 "fica a primeira (nada sobrescrito)")
+        if atual is not None and atual.get("situacao") == "respondida":
+            return atual
+        resumo = dict(getattr(exc, "resumo", None) or {})
+        return correio.atualizar(caixa, mid, situacao="respondida", gerador=ia,
+                                 imagem=resumo, nota=None,
+                                 resposta="imagem pronta (já estava no disco)",
+                                 respondida_em=correio.agora())
+
+    def _casa_da_sessao(self, ia: str, sessao) -> dict:
+        """A casa desta sessao, aberta na primeira vez que um turno de texto
+        precisa dela."""
+        if self._casa is None:
+            self._casa = self._abrir_casa(ia, sessao)
+        return self._casa
 
     def _imagem_fora_do_chat(self, caixa: str, ia: str, mensagem: dict, desde: str) -> dict:
         """O PicassoIA: sessao propria (nao e chat). A PAREDE DE PLANOS reabre o
@@ -666,13 +931,11 @@ class Carteiro:
                                                        "reabrindo o perfil uma vez")
         except Exception as exc:                               # noqa: BLE001
             pendente = correio.uma(caixa, mid)
-            if pendente is not None and pendente["situacao"] in ("pendente", "entregue"):
+            if (pendente is not None and pendente["situacao"] in ("pendente", "entregue")
+                    and not correio.reservado_por_outro(pendente)):
                 categoria, motivo = imagem.classificar(ia, exc)
                 self.log(f"[carteiro] {ia} {mid}: {motivo}")
-                ultima = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
-                                           categoria=categoria, falhou_em=correio.agora(),
-                                           nota=None, gerador=ia)
-                self._anunciar(caixa, ultima)
+                ultima = self._falhar(caixa, ia, mid, motivo, categoria, gerador=ia)
         finally:
             self._estado("ocioso")
         return ultima
@@ -695,10 +958,31 @@ class Carteiro:
         self.dormir(espera)
         return True
 
+    def _resumo_para_a_casa_nova(self, ia: str) -> str:
+        """O resumo da casa anterior, se ele ainda serve: recente (ate
+        `RESUMO_VALIDADE_S`), nao curto e nao recusa. Senao, ""."""
+        texto = correio.resumo_da_casa(ia).strip()
+        if not texto:
+            return ""
+        idade = correio.idade_do_resumo_da_casa(ia)
+        if idade is not None and idade > RESUMO_VALIDADE_S:
+            self.log(f"[carteiro] {ia}: o resumo da casa tem {idade / 3600:.0f} h "
+                     f"(mais de {RESUMO_VALIDADE_S / 3600:.0f} h); a casa nova abre sem ele")
+            return ""
+        if not resumo_aceitavel(texto):
+            self.log(f"[carteiro] {ia}: o resumo guardado é curto ou recusa "
+                     f"(«{' '.join(texto.split())[-80:]}»); a casa nova abre sem ele")
+            return ""
+        return texto
+
     def _abrir_casa(self, ia: str, sessao) -> dict:
         casa = correio.casa(ia)
         aberta = False
-        if casa.get("url") and int(casa.get("falhas_seguidas") or 0) < 2:
+        if casa.get("url") and e_raiz(casa["url"]):
+            # a raiz do site nunca foi uma conversa (o defeito de ate 05/10)
+            self.log(f"[carteiro] {ia}: a casa guardada era a raiz do site "
+                     f"({casa['url']}); comeco uma nova")
+        elif casa.get("url") and int(casa.get("falhas_seguidas") or 0) < 2:
             try:
                 aberta = bool(sessao.abrir_casa(casa["url"]))
             except Exception as exc:                           # noqa: BLE001
@@ -714,14 +998,13 @@ class Carteiro:
                      f"{casa.get('mensagens')} mensagens)")
             return casa
         sessao.novo_chat()
-        resumo = correio.resumo_da_casa(ia)
+        resumo = self._resumo_para_a_casa_nova(ia)
         nova = correio.casa_vazia(ia)
         nova["geracao"] = int(casa.get("geracao") or 0) + 1
         nova["aberta_em"] = correio.agora()
-        nova["url"] = sessao.url()
-        if resumo.strip():
+        if resumo:
             try:
-                sessao.perguntar(PROLOGO_CASA_NOVA + resumo.strip())
+                _perguntar_com_prazo(sessao, PROLOGO_CASA_NOVA + resumo, PRAZO_PROLOGO_S)
                 nova["comecou_com_resumo"] = True
                 self.log(f"[carteiro] {ia}: casa nova (geracao {nova['geracao']}) "
                          "aberta com o resumo da anterior")
@@ -730,6 +1013,11 @@ class Carteiro:
                          f"({type(exc).__name__}); sigo sem ele")
         else:
             self.log(f"[carteiro] {ia}: casa nova (geracao {nova['geracao']})")
+        # A URL SO DEPOIS DO PRIMEIRO TURNO (05/10/2026): antes dele a conversa
+        # nao existe e o site mostra a raiz. Ainda a raiz = None; o primeiro
+        # turno de texto respondido grava o endereco de verdade.
+        endereco = sessao.url()
+        nova["url"] = None if e_raiz(endereco) else endereco
         correio.gravar_casa(ia, nova)
         return nova
 
@@ -744,14 +1032,16 @@ class Carteiro:
         desde = correio.agora()
         info = imagem.gerador(ia)
         if not info["disponivel"]:
-            atualizada = correio.atualizar(
-                caixa, mid, situacao="falhou", categoria="indisponivel", gerador=ia,
-                erro=f"{info['rotulo']} não gera imagem hoje: {info['motivo']}",
-                falhou_em=correio.agora(), nota=None)
-            self._anunciar(caixa, atualizada)
-            return atualizada
-        correio.atualizar(caixa, mid, situacao="entregue", entregue_em=desde, gerador=ia,
-                          nota=None)
+            return self._falhar(caixa, ia, mid,
+                                f"{info['rotulo']} não gera imagem hoje: {info['motivo']}",
+                                "indisponivel", gerador=ia)
+        # pendente -> entregue sob a trava do arquivo: se outro carteiro ja a
+        # levou (ou respondeu), nao se gera de novo
+        if correio.reivindicar(caixa, mid, gerador=ia) is None:
+            atual = correio.uma(caixa, mid) or mensagem
+            self.log(f"[carteiro] {ia} {mid}: ja {atual.get('situacao')} em outra entrega; "
+                     "nao gero de novo")
+            return atual
         self._estado("entregando", ia, mid, desde, nota="gerando imagem")
         if hasattr(sessao, "cliente"):
             sessao.cliente.log = self._log_com_pulso(ia, mid, desde)
@@ -779,24 +1069,30 @@ class Carteiro:
             salvo = imagem.guardar(ia, mid, resultado.get("bytes") or b"",
                                    resultado.get("prova") or {})
         except Exception as exc:                               # noqa: BLE001
+            if isinstance(exc, imagem.JaGuardada):
+                return self._ja_guardada(caixa, ia, mid, exc)
             if self._rede_caiu(caixa, mensagem, exc):
                 return correio.uma(caixa, mid)
             if relancar_parede and type(exc).__name__ == "ParedeDePlanos":
                 raise _Reabrir() from exc
-            if "TargetClosed" in (type(exc).__name__ + str(exc)) and not recuperar and (
+            if chrome_caiu(exc) and not recuperar and (
                     casa is not None or getattr(self, "_fora_da_casa", False)):
                 if casa is None:
                     try:
                         url_img = sessao.url()
                     except Exception:                          # noqa: BLE001
                         url_img = ""
-                    if url_img:
+                    if url_img and not e_raiz(url_img):
                         correio.atualizar(caixa, mid, chat_imagem_url=url_img)
                 raise _ReabrirImagem(caixa, mensagem) from exc
             # so o que surgiu depois do envio: o botao fixo "Fazer upgrade"
             # do rodape do ChatGPT Free nao e motivo (30/09)
             tela = tela_do_turno(sessao)
             categoria, motivo = imagem.classificar(ia, exc, tela)
+            if recuperar:
+                # quem pediu (o worker) nao culpa o gerador por isto
+                categoria = "recuperacao"
+                motivo = f"o Chrome caiu no download e a recuperação falhou: {motivo}"
             self.log(f"[carteiro] {ia} {mid} (imagem) falhou: {motivo}")
             if casa is not None:
                 casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
@@ -804,17 +1100,14 @@ class Carteiro:
             # o aviso do site ("Alta procura"): o rodizio tira o gerador por
             # `cota_pausa_h`, como numa falha de cota (`imagem.fora_de_cota`)
             pausa = {"pausa_rodizio": True} if getattr(exc, "pausa_rodizio", False) else {}
-            atualizada = correio.atualizar(caixa, mid, situacao="falhou", erro=motivo,
-                                           categoria=categoria, falhou_em=correio.agora(),
-                                           gerador=ia, **pausa)
-            self._anunciar(caixa, atualizada)
-            return atualizada
+            return self._falhar(caixa, ia, mid, motivo, categoria, gerador=ia, **pausa)
         reivindicar = getattr(sessao, "reivindicar", None)
         if callable(reivindicar):
             reivindicar(resultado, mid)
         dur = self.relogio() - t0
         if casa is not None:
-            casa["url"] = sessao.url() or casa.get("url")
+            endereco = sessao.url()
+            casa["url"] = endereco if endereco and not e_raiz(endereco) else casa.get("url")
             casa["mensagens"] = int(casa.get("mensagens") or 0) + 1
             casa["falhas_seguidas"] = 0
             correio.gravar_casa(ia, casa)
@@ -833,8 +1126,10 @@ class Carteiro:
         self._anunciar(caixa, atualizada)
         return atualizada
 
-    def _um_turno(self, ia: str, sessao, casa: dict, mensagem: dict,
+    def _um_turno(self, ia: str, sessao, casa: dict | None, mensagem: dict,
                   caixa: str | None = None) -> dict:
+        """Um turno. `casa` None = a da sessao, aberta so se este turno for de
+        TEXTO na casa (`_casa_da_sessao`)."""
         if correio.tipo(mensagem) == "imagem":
             # Imagem SEMPRE em conversa nova (02/10/2026): na casa, o Gemini lembrava
             # dos turnos de texto e do juiz e recusava ("como conversamos, nao
@@ -844,7 +1139,16 @@ class Carteiro:
                 novo()
                 self._fora_da_casa = True
                 return self._turno_imagem(caixa or ia, ia, sessao, mensagem, None)
+            if casa is None:
+                casa = self._casa_da_sessao(ia, sessao)
             return self._turno_imagem(caixa or ia, ia, sessao, mensagem, casa)
+        mid = str(mensagem["id"])
+        # pendente -> entregue sob a trava do arquivo, ANTES de abrir a casa
+        if correio.reivindicar(ia, mid) is None:
+            atual = correio.uma(ia, mid) or mensagem
+            self.log(f"[carteiro] {ia} {mid}: ja {atual.get('situacao')} em outra entrega; "
+                     "nao entrego de novo")
+            return atual
         # Pedido COM ANEXO (o juiz dos sprites) tambem vai em conversa nova
         # (02/10/2026, 14h): na casa, cheia de imagens, o Gemini recusou 17 de 31
         # julgamentos ("sou uma IA com base em texto") e travou 12 por 420 s.
@@ -852,13 +1156,16 @@ class Carteiro:
         if avulsa:
             sessao.novo_chat()
             self._fora_da_casa = True
-        elif getattr(self, "_fora_da_casa", False):
-            # depois de uma conversa avulsa, o texto volta para a casa
+        else:
+            if casa is None:
+                if self._fora_da_casa:
+                    self._casa = None        # a sessao saiu da casa: volta nela
+                casa = self._casa_da_sessao(ia, sessao)
+            elif self._fora_da_casa:
+                # depois de uma conversa avulsa, o texto volta para a casa
+                casa.update(self._abrir_casa(ia, sessao))
             self._fora_da_casa = False
-            casa.update(self._abrir_casa(ia, sessao))
-        mid = str(mensagem["id"])
         desde = correio.agora()
-        correio.atualizar(ia, mid, situacao="entregue", entregue_em=desde, nota=None)
         self._estado("entregando", ia, mid, desde)
         if hasattr(sessao, "cliente"):
             sessao.cliente.log = self._log_com_pulso(ia, mid, desde)
@@ -874,10 +1181,7 @@ class Carteiro:
             if not avulsa:
                 casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
                 correio.gravar_casa(ia, casa)
-            atualizada = correio.atualizar(ia, mid, situacao="falhou", erro=motivo,
-                                           categoria=categoria, falhou_em=correio.agora())
-            self._anunciar(ia, atualizada)
-            return atualizada
+            return self._falhar(ia, ia, mid, motivo, categoria)
         dur = self.relogio() - t0
         resposta = str(resposta or "").strip()
         # A RESPOSTA PODE SER UMA IMAGEM (29/09, 14:24: "gere uma imagem de um
@@ -891,8 +1195,11 @@ class Carteiro:
             try:
                 achada = pegar(mensagem.get("texto") or "")
                 if achada:
-                    salvo = imagem.guardar(ia, mid, achada.get("bytes") or b"",
-                                           achada.get("prova") or {})
+                    try:
+                        salvo = imagem.guardar(ia, mid, achada.get("bytes") or b"",
+                                               achada.get("prova") or {})
+                    except imagem.JaGuardada as ja:
+                        salvo = ja.resumo           # a primeira fica (nada sobrescrito)
                     extra = {"imagem": salvo, "gerador": ia}
                     kb = max(1, round(int(salvo["bytes"]) / 1024))
                     medida = (f"{salvo['largura']}x{salvo['altura']}"
@@ -906,16 +1213,13 @@ class Carteiro:
                 self.log(f"[carteiro] {ia} {mid}: a imagem da resposta nao foi guardada: "
                          f"{motivo}")
                 if not resposta:
-                    atualizada = correio.atualizar(
-                        ia, mid, situacao="falhou", erro=f"a resposta foi uma imagem, mas "
-                        f"ela não foi guardada: {motivo}", categoria=categoria,
-                        falhou_em=correio.agora())
-                    self._anunciar(ia, atualizada)
-                    return atualizada
+                    return self._falhar(ia, ia, mid, f"a resposta foi uma imagem, mas "
+                                        f"ela não foi guardada: {motivo}", categoria)
                 extra = {"nota": f"a resposta trouxe uma imagem que não foi guardada: "
                                  f"{motivo}"[:300]}
         if not avulsa:
-            casa["url"] = sessao.url() or casa.get("url")
+            endereco = sessao.url()
+            casa["url"] = endereco if endereco and not e_raiz(endereco) else casa.get("url")
             casa["mensagens"] = int(casa.get("mensagens") or 0) + 1
             casa["falhas_seguidas"] = 0
             correio.gravar_casa(ia, casa)
@@ -940,6 +1244,15 @@ class Carteiro:
             return False
         if not texto:
             return False
+        if not resumo_aceitavel(texto):
+            # 02/10: o "resumo" do Gemini foi "Não fui programado para fazer
+            # essas coisas." e abriu toda casa nova dali em diante. Fica o
+            # anterior; a proxima tentativa vem depois de mais `resumo_a_cada`.
+            self.log(f"[carteiro] {ia}: o resumo veio curto ou de recusa "
+                     f"(«{' '.join(texto.split())[:80]}»); fica o anterior")
+            casa["resumo_mensagens"] = int(casa.get("mensagens") or 0)
+            correio.gravar_casa(ia, casa)
+            return False
         correio.gravar_resumo_da_casa(ia, texto)
         casa["resumo_mensagens"] = int(casa.get("mensagens") or 0)
         casa["ultimo_resumo_em"] = correio.agora()
@@ -949,11 +1262,15 @@ class Carteiro:
         return True
 
     def _esperar_proxima(self, ia: str) -> dict | None:
-        """Segura a conta por `janela_conversa_s` esperando a proxima dele."""
+        """Segura a conta por `janela_conversa_s` esperando a proxima dele.
+        Janela 0 = nenhuma: o Carteiro sincrono do worker das historias so
+        entrega o pedido dele (nao leva a fila do Adrian junto)."""
         janela = float(self.ajustes.get("janela_conversa_s", 90))
+        if janela <= 0:
+            return None
         fim = self.relogio() + janela
         while True:
-            fila = correio.pendentes(ia)
+            fila = correio.pendentes(ia, so_livres=True)
             if fila:
                 return fila[0]
             if self.relogio() >= fim:
@@ -1023,8 +1340,32 @@ class Carteiro:
             pass
 
     # -------------------------------------------------------------- laco
+    def _varrer_abandonadas(self) -> int:
+        """Pedido reservado (`dono`) por um processo que morreu: quem pediu nao
+        vai ler a resposta, entao nao se gasta a conta com ele (falha, sem
+        Telegram). No maximo uma varredura por `VARRER_ABANDONADAS_S`."""
+        agora = self.relogio()
+        if (self._ultima_varredura is not None
+                and agora - self._ultima_varredura < VARRER_ABANDONADAS_S):
+            return 0
+        self._ultima_varredura = agora
+        quantas = 0
+        for caixa in correio.CAIXAS:
+            for m in correio.pendentes(caixa):
+                if not correio.abandonada(m):
+                    continue
+                correio.atualizar(caixa, m["id"], situacao="falhou", categoria="abandonado",
+                                  erro=f"quem pediu (processo {m.get('dono')}) terminou antes "
+                                       "da entrega; não gerei", falhou_em=correio.agora(),
+                                  nota=None)
+                self.log(f"[carteiro] {caixa} {m['id']}: abandonado pelo processo "
+                         f"{m.get('dono')}; não entrego")
+                quantas += 1
+        return quantas
+
     def uma_volta(self) -> dict | None:
-        mensagem = correio.proxima_pendente(correio.CAIXAS)
+        self._varrer_abandonadas()
+        mensagem = correio.proxima_pendente(correio.CAIXAS, so_livres=True)
         if mensagem is None:
             self._estado("ocioso")
             return None
@@ -1038,7 +1379,7 @@ class Carteiro:
         (conta livre) na fila atras. Uma conta ocupada nao trava as outras."""
         candidatas = []
         for caixa in correio.CAIXAS:
-            candidatas.extend(correio.pendentes(caixa))
+            candidatas.extend(correio.pendentes(caixa, so_livres=True))
         candidatas.sort(key=lambda m: (str(m.get("em") or ""), m["id"]))
         vistas = set()
         for m in candidatas:
@@ -1166,4 +1507,5 @@ __all__ = ["Carteiro", "SessaoDuble", "SessaoReal", "fabrica_duble", "motivo_da_
            "tela_do_turno",
            "avisar_telegram_arquivo",
            "classificar_erro", "config", "sessao_real", "avisar_telegram",
+           "e_raiz", "e_recusa", "resumo_aceitavel", "chrome_caiu",
            "PEDIDO_RESUMO", "PROLOGO_CASA_NOVA"]

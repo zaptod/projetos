@@ -233,13 +233,33 @@ def _ordem_de_geradores(config: dict) -> list[str]:
 
 
 def _entregar_imagem(pedido: dict, prazo_s: float):
-    """Entrega sincronicamente pelo correio; o prazo e do cliente da casa."""
+    """Entrega sincronicamente pelo correio; o prazo e do cliente da casa.
+
+    `janela_conversa_s: 0`: este Carteiro entrega SO o pedido da historia (o
+    pedido nasce reservado para este processo, `_pedir_uma_imagem`); a fila
+    do Adrian fica para o carteiro de servico."""
     from ias.carteiro import Carteiro
 
-    carteiro = Carteiro(ajustes={"resposta_timeout_s": prazo_s},
+    carteiro = Carteiro(ajustes={"resposta_timeout_s": prazo_s, "janela_conversa_s": 0},
                         avisar=lambda _texto: False,
                         avisar_arquivo=lambda _caminho, _legenda: False)
     return carteiro.entregar(pedido)
+
+
+# O Chrome que cai no meio (TargetClosed no download do Gemini, 04-05/10/2026)
+# nao e culpa do gerador: nao conta para "falhou 2x; tento o proximo", que
+# trocaria o gerador fixado da historia (e o rosto do personagem).
+_QUEDA_DO_CHROME = re.compile(r"TargetClosed|browser has been closed|Chrome (caiu|fechou)",
+                              re.I)
+
+
+# Quantas quedas do Chrome seguidas no MESMO gerador antes de a cena ficar
+# para a proxima rodada (nunca passa ao proximo gerador por queda).
+QUEDAS_DO_CHROME_MAX = 3
+
+
+def _queda_do_chrome(erro: str, categoria: str = "") -> bool:
+    return categoria == "recuperacao" or bool(_QUEDA_DO_CHROME.search(str(erro or "")))
 
 
 def _imagem_do_correio(caixa: str, mensagem_id: str, resposta: dict) -> tuple:
@@ -269,15 +289,69 @@ def _imagem_do_correio(caixa: str, mensagem_id: str, resposta: dict) -> tuple:
 
 def _pedir_uma_imagem(caixa: str, prompt: str, proporcao: str, prazo_s: float,
                        entregador) -> tuple:
-    """Pede, espera a entrega e devolve somente um arquivo com prova."""
+    """Pede, espera a entrega e devolve somente um arquivo com prova.
+
+    O pedido nasce RESERVADO para este processo (`dono`): o carteiro de
+    servico nao o entrega junto (05/10/2026: 36 de 173 imagens do PicassoIA
+    desde 02/10 tinham sido geradas duas vezes)."""
+    import os
+
     from ias import correio
 
     pedido = correio.pedir_imagem(caixa, prompt, proporcao=proporcao,
-                                  de="historias")
+                                  de="historias", dono=os.getpid())
     resposta = entregador(pedido, prazo_s)
     origem, gerador, prova, erro, categoria = _imagem_do_correio(
         caixa, str(pedido["id"]), resposta)
     return origem, gerador, prova, erro, categoria, str(pedido["id"])
+
+
+def _refazer_colagem_pelo_correio(caixa: str, prompt: str, destino: Path, final: dict,
+                                  proporcao: str, prazo_s: float, entregador, log,
+                                  rotulo: str, historia_id: str) -> dict:
+    """COLAGEM SE REFAZ COM O MESMO PROMPT tambem no caminho do correio.
+
+    Ate 05/10/2026 so o caminho antigo do PicassoIA refazia: pelo correio, a
+    colagem ia direto para a cena, a vistoria barrava a parte e o reparo
+    culpava o gerador ("o PicassoIA nao devolveu a imagem"; pedido bffbf4ae,
+    calha em 19%). Mesma regra do `_gerar`: a 1a refeita repete o texto, a
+    2a ganha `VARIACAO_DA_REFEITA`; refeita sem prova (ou que nao veio)
+    deixa a imagem PROVADA que ja esta no disco. `final` e atualizado com o
+    prompt, a prova, o gerador e o pedido da imagem que ficou.
+    """
+    refeita = {"voltas": 0, "variacao": False}
+    for volta in range(1, TENTATIVAS_DE_COMPOSICAO):
+        razao = composicao.motivo(destino)
+        if not razao:
+            break
+        com_variacao = volta >= 2
+        pedido_txt = variar_enquadramento(prompt) if com_variacao else prompt
+        refeita["voltas"] = volta
+        refeita["variacao"] = refeita["variacao"] or com_variacao
+        log(f"[imagens] {rotulo}: {razao} Refazendo pelo correio "
+            f"({volta}/{TENTATIVAS_DE_COMPOSICAO - 1})"
+            + (" com outro enquadramento." if com_variacao else "."))
+        origem, gerador, prova, erro, _categoria, pedido = _pedir_uma_imagem(
+            caixa, pedido_txt, proporcao, prazo_s, entregador)
+        if origem is None:
+            log(f"[imagens] {rotulo}: a refeita nao veio com prova ({erro}); "
+                "fica a imagem anterior.")
+            break
+        shutil.copyfile(origem, destino)
+        final.update(prompt=pedido_txt, prova=prova, gerador=gerador or caixa,
+                     pedido=pedido)
+    if refeita["voltas"]:
+        refeita["colagem_no_fim"] = bool(composicao.motivo(destino))
+        try:
+            _rb_atividade.registrar(
+                str(final.get("gerador") or caixa), _rb_atividade.LOG,
+                f"{rotulo}: refeita por colagem {refeita['voltas']}x (correio), "
+                f"variacao={refeita['variacao']}, "
+                f"colagem_no_fim={refeita['colagem_no_fim']}",
+                "historias", etapa="imagens.refeita", ref=f"{historia_id}:{rotulo}")
+        except Exception:                                      # noqa: BLE001
+            pass
+    return refeita
 
 
 def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
@@ -329,7 +403,7 @@ def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
                                      estilo=fila.estilo_do_roteiro(roteiro),
                                      elenco=str(roteiro.get("elenco") or ""))
         rotulo = f"p{numero_parte:02d}_cena_{n:02d}"
-        ultima_recusa, salvo = None, False
+        ultima_recusa, salvo, caiu_demais = None, False, ""
         degraus = moderacao.escalonar(
             prompt, max_nivel=int(config.get("suavizacao_max", 3)),
             preventivo=bool(config.get("suavizar_antes", True)))
@@ -341,7 +415,8 @@ def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
                 caixas.extend(g for g in ordem if g != fixado)
             for caixa in caixas:
                 tentativas = 1 if caixa == correio.LIVRE else 2
-                for _volta in range(tentativas):
+                feitas, quedas = 0, 0
+                while feitas < tentativas:
                     origem, gerador, prova, erro, categoria, pedido = _pedir_uma_imagem(
                         caixa, tentativa, config["aspect"], prazo_s, entregador)
                     gerador = gerador or caixa
@@ -349,26 +424,51 @@ def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
                         destino = Path(linha["arquivo"])
                         destino.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copyfile(origem, destino)
-                        fila.registrar(historia_id, n, prompt=tentativa, arquivo=destino,
-                                       prova=prova,
-                                       parte=numero_parte, nivel=nivel, gerador=gerador,
-                                       pedido=pedido)
+                        final = {"prompt": tentativa, "prova": prova, "gerador": gerador,
+                                 "pedido": pedido}
+                        refeita = _refazer_colagem_pelo_correio(
+                            caixa, tentativa, destino, final, config["aspect"], prazo_s,
+                            entregador, log, rotulo, historia_id)
+                        fila.registrar(historia_id, n, prompt=final["prompt"],
+                                       arquivo=destino, prova=final["prova"],
+                                       parte=numero_parte, nivel=nivel,
+                                       gerador=final["gerador"], pedido=final["pedido"],
+                                       refeita=refeita if refeita["voltas"] else None)
                         geradas += 1
                         salvo = True
                         break
                     if categoria == "conteudo":
                         ultima_recusa = erro
                         break
+                    if _queda_do_chrome(erro, categoria):
+                        # REPETE NO MESMO GERADOR (conferencia 05/10/2026): antes a
+                        # queda so pulava a contagem, o laco se esgotava e a cena
+                        # passava ao proximo gerador do mesmo jeito (2 quedas no
+                        # gemini = cena no chatgpt, outro rosto).
+                        quedas += 1
+                        if quedas >= QUEDAS_DO_CHROME_MAX:
+                            log(f"[imagens] {rotulo}: o Chrome caiu {quedas}x no {gerador}; "
+                                "a cena fica para a proxima rodada, sem trocar de gerador.")
+                            caiu_demais = f"{gerador}: o Chrome caiu {quedas}x ({erro[:160]})"
+                            break
+                        log(f"[imagens] {rotulo}: o Chrome caiu no {gerador} ({erro[:120]}); "
+                            f"nao conto contra o gerador e repito nele "
+                            f"({quedas}/{QUEDAS_DO_CHROME_MAX - 1}).")
+                        continue
+                    feitas += 1
                     falhas = fila.registrar_falha_de_gerador(
                         historia_id, n, parte=numero_parte, gerador=gerador, motivo=erro)
                     if falhas >= 2:
                         log(f"[imagens] {rotulo}: {gerador} falhou 2x; tento o proximo.")
                         break
-                if salvo:
+                if salvo or caiu_demais:
                     break
-            if salvo:
+            if salvo or caiu_demais:
                 break
         if salvo:
+            continue
+        if caiu_demais:
+            erros.append(f"{rotulo}: imagem nao entregue; {caiu_demais}")
             continue
         if ultima_recusa:
             fila.registrar_recusa(historia_id, n, parte=numero_parte,

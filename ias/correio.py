@@ -210,12 +210,19 @@ def enviar(ia: str, texto: str, *, de: str = "adrian", anexos=(),
 
 
 def pedir_imagem(caixa: str, prompt: str, *, proporcao: str, modelo: str | None = None,
-                 de: str = "adrian") -> dict:
+                 de: str = "adrian", dono: int | None = None) -> dict:
     """Deixa um PEDIDO DE IMAGEM na caixa de um gerador (ou na `livre`).
 
     O `texto` da mensagem e o prompt (a primeira linha de uma mensagem precisa
     de `texto`). Quem confere se o gerador gera hoje e a proporcao que ele
     oferece e `ias.imagem` (pela ficha); aqui so a forma.
+
+    `dono` (um PID) RESERVA o pedido para quem vai entrega-lo ele mesmo (o
+    worker das historias, com um Carteiro proprio): o carteiro de servico nao
+    o pega enquanto o dono viver (`reservado_por_outro`). Ate 05/10/2026 o
+    pedido nascia livre e os dois o entregavam: desde 02/10, 36 de 173
+    imagens do PicassoIA, 12 de 178 do Gemini e 6 de 166 do ChatGPT foram
+    geradas DUAS vezes (e 5 respondidas viraram "falhou" depois).
     """
     caixa = _ia(caixa)
     if caixa not in GERADORES and caixa != LIVRE:
@@ -238,6 +245,9 @@ def pedir_imagem(caixa: str, prompt: str, *, proporcao: str, modelo: str | None 
         "anexos": [], "situacao": "pendente", "resposta": None,
         "erro": None, "categoria": None, "nota": None, "imagem": None,
     }
+    if dono:
+        mensagem["dono"] = int(dono)
+        mensagem["reservado_em"] = mensagem["em"]
     _anexar_linha(arquivo(caixa), mensagem)
     return dict(mensagem, atualizado_em=mensagem["em"])
 
@@ -349,15 +359,123 @@ def uma(ia: str, mensagem_id: str) -> dict | None:
     return None
 
 
-def pendentes(ia: str) -> list:
-    return [m for m in ler(ia) if m["situacao"] == "pendente"]
+def pendentes(ia: str, *, so_livres: bool = False) -> list:
+    """As pendentes da caixa. `so_livres`: sem as reservadas por OUTRO
+    processo vivo nem as abandonadas (o que o carteiro pode entregar)."""
+    saida = [m for m in ler(ia) if m["situacao"] == "pendente"]
+    if so_livres:
+        saida = [m for m in saida if not reservado_por_outro(m) and not abandonada(m)]
+    return saida
 
 
-def proxima_pendente(ias=CHATS) -> dict | None:
+# ------------------------------------------------------------- reserva
+# Quanto tempo uma reserva (`dono`) vale sem o dono entregar: depois disso o
+# PID pode ser de outro processo (o Windows reusa PID).
+RESERVA_MAX_S = 4 * 3600.0
+
+
+def _pid_do_campo(mensagem: dict, campo: str) -> int | None:
+    try:
+        numero = int((mensagem or {}).get(campo) or 0)
+    except (TypeError, ValueError):
+        return None
+    return numero or None
+
+
+def _dono(mensagem: dict) -> int | None:
+    """Quem PEDIU e reservou (`pedir_imagem(dono=...)`). So vale com
+    `reservado_em`: ate a conferencia de 05/10/2026 o `reivindicar` gravava
+    o PID de quem ENTREGA no mesmo campo, e uma mensagem do Adrian que voltou
+    a `pendente` (a rede caiu) com o carteiro religado virava "abandonada"
+    (falhou em silencio, com motivo falso)."""
+    if not (mensagem or {}).get("reservado_em"):
+        return None
+    return _pid_do_campo(mensagem, "dono")
+
+
+def _entregador(mensagem: dict) -> int | None:
+    """Quem ESTA entregando (`reivindicar`). Linha antiga sem `entregador`:
+    o `dono` gravado pelo reivindicar de antes."""
+    return _pid_do_campo(mensagem, "entregador") or _pid_do_campo(mensagem, "dono")
+
+
+def _idade_da_reserva(mensagem: dict, agora_s: float | None = None) -> float | None:
+    quando = (mensagem or {}).get("reservado_em")
+    try:
+        inicio = datetime.fromisoformat(str(quando)).timestamp()
+    except (TypeError, ValueError):
+        return None
+    return (time.time() if agora_s is None else agora_s) - inicio
+
+
+def reservado_por_outro(mensagem: dict, pid: int | None = None,
+                        agora_s: float | None = None) -> bool:
+    """O pedido esta reservado (`dono` + `reservado_em`) para OUTRO processo
+    que ainda existe (ou que nao da para saber), dentro de `RESERVA_MAX_S`?"""
+    dono = _dono(mensagem)
+    if dono is None or dono == (os.getpid() if pid is None else int(pid)):
+        return False
+    idade = _idade_da_reserva(mensagem, agora_s)
+    if idade is not None and idade > RESERVA_MAX_S:
+        return False
+    return _pid_vivo(dono) is not False
+
+
+def abandonada(mensagem: dict, pid: int | None = None) -> bool:
+    """Pendente RESERVADA (`pedir_imagem(dono=...)`) por um processo que
+    MORREU antes de entregar: quem pediu nao vai mais ler a resposta (nao vale
+    gastar a conta com ela). Mensagem sem reserva (as do Adrian) nunca e
+    abandonada, nem depois de um carteiro que a entregava morrer."""
+    dono = _dono(mensagem)
+    if dono is None or dono == (os.getpid() if pid is None else int(pid)):
+        return False
+    if (mensagem or {}).get("situacao", "pendente") != "pendente":
+        return False
+    return _pid_vivo(dono) is False
+
+
+def reivindicar(ia: str, mensagem_id: str, *, pid: int | None = None, **campos) -> dict | None:
+    """Passa a mensagem de `pendente` para `entregue` (com `entregador` =
+    este processo) ATOMICAMENTE: lido e escrito sob a trava do arquivo.
+    Devolve a mensagem atualizada, ou None se ela ja nao e de ninguem entregar
+    (outro carteiro a pegou, ela ja foi respondida/falhou, ou e reservada por
+    outro processo vivo). Quem ja entrega uma `entregue` (a recuperacao
+    depois de o Chrome cair) reivindica de novo. O `dono` (a reserva de quem
+    pediu) nao e tocado."""
+    ia = _ia(ia)
+    meu = os.getpid() if pid is None else int(pid)
+    alvo = arquivo(ia)
+    with _trancado(alvo):
+        try:
+            with open(alvo, encoding="utf-8", errors="replace") as fh:
+                linhas = fh.readlines()
+        except OSError:
+            return None
+        mensagens, _ = _dobrar(linhas)
+        m = next((x for x in mensagens if x["id"] == str(mensagem_id)), None)
+        if m is None:
+            return None
+        situacao = m.get("situacao")
+        livre = situacao == "pendente" and not reservado_por_outro(m, meu)
+        retomada = situacao == "entregue" and _entregador(m) == meu
+        if not (livre or retomada):
+            return None
+        quando = agora()
+        delta = {"id": str(mensagem_id), "em": quando, "situacao": "entregue",
+                 "entregue_em": quando, "entregador": meu, "nota": None, **campos}
+        with open(alvo, "ab") as fh:
+            fh.write((json.dumps(delta, ensure_ascii=False) + "\n").encode("utf-8"))
+            fh.flush()
+    m.update({k: v for k, v in delta.items() if k not in ("id", "em")})
+    m["atualizado_em"] = quando
+    return m
+
+
+def proxima_pendente(ias=CHATS, *, so_livres: bool = False) -> dict | None:
     """A mensagem pendente mais velha, entre todas as caixas."""
     candidatas = []
     for ia in ias:
-        candidatas.extend(pendentes(ia))
+        candidatas.extend(pendentes(ia, so_livres=so_livres))
     if not candidatas:
         return None
     return min(candidatas, key=lambda m: (str(m.get("em") or ""), m["id"]))
@@ -504,6 +622,16 @@ def resumo_da_casa(ia: str) -> str:
         return ""
 
 
+def idade_do_resumo_da_casa(ia: str, agora_s: float | None = None) -> float | None:
+    """Ha quantos segundos o `casa_resumo.md` foi gravado (None: nao ha)."""
+    alvo = pasta(_ia(ia)) / "casa_resumo.md"
+    try:
+        gravado = alvo.stat().st_mtime
+    except OSError:
+        return None
+    return (time.time() if agora_s is None else agora_s) - gravado
+
+
 def gravar_resumo_da_casa(ia: str, texto: str) -> Path:
     alvo = pasta(_ia(ia)) / "casa_resumo.md"
     alvo.parent.mkdir(parents=True, exist_ok=True)
@@ -527,6 +655,20 @@ def _pid_vivo(pid) -> bool | None:
         return None
     if numero <= 0:
         return None
+    if os.name == "nt":
+        # NUNCA os.kill no Windows: la `os.kill(pid, 0)` chama TerminateProcess
+        # e MATARIA o worker das historias (esta funcao roda a cada volta do
+        # carteiro contra o PID dele). OpenProcess so pergunta.
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x1000, False, numero)
+            if handle:
+                kernel32.CloseHandle(handle)
+                return True
+            return False if kernel32.GetLastError() == 87 else None   # 87 = sumiu
+        except Exception:                                      # noqa: BLE001
+            return None
     try:
         os.kill(numero, 0)
         return True
@@ -614,6 +756,7 @@ __all__ = ["CHATS", "GERADORES", "LIVRE", "CAIXAS", "ROTULOS", "EMOJIS", "SITUAC
            "CorreioInvalido", "enviar", "pedir_imagem", "tipo", "pendentes_de_texto",
            "pasta_imagens", "arquivo_da_imagem", "imagens", "atualizar", "marcar_vistas", "ler", "historico", "uma",
            "pendentes", "proxima_pendente", "resumo", "guardar_anexo", "casa",
-           "gravar_casa", "resumo_da_casa", "gravar_resumo_da_casa",
+           "reivindicar", "reservado_por_outro", "abandonada", "RESERVA_MAX_S",
+           "gravar_casa", "resumo_da_casa", "gravar_resumo_da_casa", "idade_do_resumo_da_casa",
            "estado_do_carteiro", "gravar_estado_do_carteiro",
            "registrar_presenca", "app_esta_olhando", "raiz", "pasta", "arquivo"]

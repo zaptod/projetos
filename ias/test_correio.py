@@ -388,7 +388,8 @@ class CarteiroCasa(_Base):
         c = _novo(fabrica)
         correio.gravar_casa("gemini", {**correio.casa("gemini"), "url": "https://x/1",
                                        "geracao": 1, "mensagens": 7})
-        correio.gravar_resumo_da_casa("gemini", "combinamos: histórias curtas")
+        correio.gravar_resumo_da_casa("gemini", "combinamos: histórias curtas, em primeira "
+                                                "pessoa, com gancho no fim de cada parte")
         correio.enviar("gemini", "e agora?")
         c.uma_volta()
         s = fabrica.criadas[0]
@@ -414,7 +415,8 @@ class CarteiroCasa(_Base):
 
     def test_resumo_periodico_a_cada_n_mensagens(self):
         fabrica = carteiro_mod.fabrica_duble(
-            responder=lambda t: "RESUMO: tudo combinado" if "resuma" in t else "OK")
+            responder=lambda t: ("RESUMO: tudo combinado — histórias curtas, gancho no "
+                                 "fim de cada parte" if "resuma" in t else "OK"))
         c = _novo(fabrica, ajustes={"resumo_a_cada": 3})
         for n in range(3):
             correio.enviar("deepseek", f"m{n}")

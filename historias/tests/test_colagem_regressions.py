@@ -198,11 +198,18 @@ class RefazerTests(unittest.TestCase):
         cena para consertar o que nao era problema dela.
         """
         from contos.imagens import worker
-        trecho = self.fonte[self.fonte.index("composicao.motivo(destino)"):]
+        inicio = self.fonte.index("def _gerar(")
+        trecho = self.fonte[self.fonte.index("composicao.motivo(destino)", inicio):]
         trecho = trecho[:1400]
         self.assertIn("pedido = (variar_enquadramento(tentativa)", trecho)
         self.assertNotIn("_com_reescrita", trecho)
         self.assertNotIn("suavizar", trecho)
+        # 05/10/2026: o caminho do correio refaz a colagem com a MESMA regra
+        correio = self.fonte[self.fonte.index("def _refazer_colagem_pelo_correio("):
+                             self.fonte.index("def _gerar_pelo_correio(")]
+        self.assertIn("variar_enquadramento(prompt) if com_variacao else prompt", correio)
+        self.assertNotIn("_com_reescrita", correio)
+        self.assertNotIn("suavizar", correio)
         # A variacao ACRESCENTA ao texto da cena; nao troca nada dele.
         original = "duas mulheres na sala, cinematic photography"
         self.assertTrue(

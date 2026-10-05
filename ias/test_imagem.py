@@ -411,8 +411,10 @@ class CarteiroGeraImagem(_Base):
         self.assertEqual(fim["situacao"], "respondida")
         self.assertEqual([s.geradas for s in criadas], [1, 0])
         self.assertEqual([s.recuperadas for s in criadas], [0, 1])
-        # a casa abre, e a recuperacao volta na conversa PROPRIA da imagem (02/10)
-        self.assertEqual(aberturas, [(1, "https://gemini.google.com/app/casa")] * 2)
+        # a recuperacao volta DIRETO na conversa propria da imagem (02/10); a
+        # casa de texto nao abre em pedido de imagem (05/10/2026)
+        self.assertEqual(aberturas, [(1, "https://gemini.google.com/app/casa")])
+        self.assertEqual(correio.casa("gemini")["geracao"], 0)
         self.assertEqual(correio.uma("gemini", m["id"])["chat_imagem_url"],
                          "https://gemini.google.com/app/casa")
         self.assertTrue(correio.arquivo_da_imagem("gemini", m["id"]).is_file())
@@ -1262,8 +1264,16 @@ class CarteiroImagemNovaERede(_Base):
         c.ajustes["janela_conversa_s"] = 1
         c.uma_volta()
         url_casa = correio.casa("grok")["url"]
-        # a 1a conversa nova e a casa; a 2a e a da imagem, que nunca vira casa
-        self.assertIn("/grok/c/1-", url_casa or "")
+        # a casa e a conversa do TEXTO; a da imagem nunca vira casa (a ordem
+        # entre os dois pedidos do mesmo segundo e a do id, entao nao importa
+        # qual conversa nova veio primeiro)
+        turnos = fabrica.criadas[0].turnos
+        do_texto = [t["url"] for t in turnos if t["texto"] == "oi"]
+        da_imagem = [t["url"] for t in turnos if t.get("imagem")]
+        self.assertEqual(len(do_texto), 1)
+        self.assertEqual(len(da_imagem), 1)
+        self.assertEqual(url_casa, do_texto[0])
+        self.assertNotEqual(url_casa, da_imagem[0])
 
     def test_recusa_de_imagem_tenta_uma_vez_em_conversa_nova(self):
         tentativas = []

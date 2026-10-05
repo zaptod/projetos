@@ -69,6 +69,26 @@ PicassoIA, o único antes de 03/10), mesmo que ele esteja fora de cota. Em
 o correio respondeu com prova de origem para `cenas/`; sem prova, a cena continua
 pendente.
 
+**O pedido do worker é dele** (05/10/2026): `_pedir_uma_imagem` cria o pedido já
+reservado (`correio.pedir_imagem(..., dono=<pid>)`) e o Carteiro síncrono roda com
+`janela_conversa_s: 0`. O carteiro de serviço não entrega pedido reservado por processo
+vivo, relê o pedido depois de pegar a trava e só gera com `correio.reivindicar`
+(pendente → entregue, atômico); `ias.imagem.guardar` nunca sobrescreve imagem provada.
+Medido antes: desde 02/10, 36 de 173 imagens do PicassoIA, 12 de 178 do Gemini e 6 de
+166 do ChatGPT foram geradas **duas vezes**, e 5 respondidas viraram "falhou". A
+reserva é `dono` + `reservado_em` (só `pedir_imagem` grava); quem entrega fica em
+`entregador` (`reivindicar`), então mensagem do Adrian nunca vira "abandonada". Na
+espera pela conta o carteiro relê o pedido a cada volta e larga a espera se outro o
+levou; toda falha passa por `Carteiro._falhar` (diário, e nunca desfaz uma
+respondida). A **queda do Chrome** (TargetClosed no download, categoria
+`recuperacao`) não conta para "falhou 2x; tento o próximo": o worker **repete no
+mesmo gerador** até `QUEDAS_DO_CHROME_MAX` (3) e, se o Chrome continuar caindo, a
+cena fica para a próxima rodada **sem trocar o gerador fixado** (antes, 2 quedas no
+Gemini levavam a cena ao ChatGPT). A **colagem pelo correio
+se refaz** com o mesmo prompt como no caminho antigo
+(`worker._refazer_colagem_pelo_correio`, registro `refeita` e diário
+`imagens.refeita`). Testes: `tests/test_imagens_correio_varredura_regressions.py`.
+
 Esta parte **cria**: roteiro num LLM, uma imagem por cena pelo correio (Gemini,
 ChatGPT ou PicassoIA), narração,
 um mp4 por parte, uma IA assiste, e o vídeo aprovado fica no estoque. **Não

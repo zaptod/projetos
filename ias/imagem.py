@@ -85,6 +85,17 @@ class ImagemInvalida(ImagemFalhou):
     categoria = "arquivo"
 
 
+class JaGuardada(ImagemFalhou):
+    """O pedido JA tem imagem provada no disco: a segunda entrega nao a
+    sobrescreve (05/10/2026: no 578bfef6 a cena trocou de sha256 depois de
+    respondida). `resumo` e o da imagem que ficou."""
+    categoria = "duplicada"
+
+    def __init__(self, motivo: str, resumo: dict):
+        super().__init__(motivo)
+        self.resumo = dict(resumo or {})
+
+
 # ================================================================ quem gera
 def _medido(f: dict) -> str:
     return str(f.get("medido_em") or "")[:10]
@@ -267,13 +278,44 @@ def dimensoes(caminho: Path) -> tuple:
         return (None, None)
 
 
+def _resumo_do_registro(registro: dict) -> dict:
+    prova = registro.get("prova") if isinstance(registro.get("prova"), dict) else {}
+    return {"arquivo": registro.get("arquivo"), "largura": registro.get("largura"),
+            "altura": registro.get("altura"), "bytes": registro.get("bytes"),
+            "formato": registro.get("formato"),
+            "sha256": str(registro.get("sha256") or "")[:16],
+            "prova": str(prova.get("metodo") or ""), "forca": prova.get("forca")}
+
+
+def ja_guardada(gerador_ia: str, mensagem_id: str) -> dict | None:
+    """O resumo da imagem PROVADA que ja esta no disco para este pedido, ou
+    None (sem registro, sem prova comprovada ou sem o arquivo)."""
+    try:
+        pasta = correio.pasta_imagens(gerador_ia)
+        registro = json.loads((pasta / f"{mensagem_id}.prova.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, correio.CorreioInvalido):
+        return None
+    if not isinstance(registro, dict):
+        return None
+    prova = registro.get("prova") if isinstance(registro.get("prova"), dict) else {}
+    nome = str(registro.get("arquivo") or "")
+    if not prova.get("comprovada") or not nome or not (pasta / nome).is_file():
+        return None
+    return _resumo_do_registro(registro)
+
+
 def guardar(gerador_ia: str, mensagem_id: str, corpo: bytes, prova: dict) -> dict:
     """Grava os BYTES ORIGINAIS e a prova ao lado. Devolve o resumo da imagem
     que vai para o correio: {arquivo, largura, altura, bytes, formato, sha256,
-    prova}. Levanta `ImagemInvalida` se nao for imagem."""
+    prova}. Levanta `ImagemInvalida` se nao for imagem e `JaGuardada` se o
+    pedido ja tem imagem provada no disco (nunca sobrescreve)."""
     corpo = bytes(corpo or b"")
     if not re.fullmatch(r"[0-9a-f]{8}", str(mensagem_id)):
         raise ImagemInvalida(f"id de mensagem inválido: {mensagem_id!r}")
+    existente = ja_guardada(gerador_ia, mensagem_id)
+    if existente:
+        raise JaGuardada(f"o pedido {mensagem_id} já tem imagem provada "
+                         f"({existente.get('arquivo')}): não sobrescrevo", existente)
     if len(corpo) < BYTES_MIN:
         raise ImagemInvalida(f"o download veio com {len(corpo)} bytes: não é imagem")
     if len(corpo) > BYTES_MAX:
@@ -815,24 +857,35 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
         fim = time.monotonic() + float(timeout_s)
         while time.monotonic() < fim and not baixados:
             page.wait_for_timeout(500)
+        falhas_do_download = []
         if baixados:
-            caminho = baixados[-1].path()
-            corpo = Path(caminho).read_bytes() if caminho else b""
-            log(f"[{cliente.provedor}] baixada pelo botão do site: "
-                f"{baixados[-1].suggested_filename} ({len(corpo)} bytes)")
-            return corpo
+            corpo, falhas_do_download = _bytes_do_download(baixados[-1])
+            if corpo:
+                log(f"[{cliente.provedor}] baixada pelo botão do site: "
+                    f"{_nome_sugerido(baixados[-1])} ({len(corpo)} bytes)")
+                return corpo
+            log(f"[{cliente.provedor}] o download veio, mas o arquivo não foi lido "
+                f"({'; '.join(falhas_do_download)}); tento a resposta de imagem do clique")
         melhor = b""
         for resposta in respostas:
             try:
                 corpo = resposta.body()
-            except Exception:                                  # noqa: BLE001
+            except Exception as exc:                           # noqa: BLE001
+                falhas_do_download.append(f"resposta: {type(exc).__name__}")
                 continue
             if len(corpo) > len(melhor) and extensao(corpo):
                 melhor = corpo
         if melhor:
-            log(f"[{cliente.provedor}] o download não veio em {timeout_s:.0f}s; uso a "
-                f"resposta de imagem que o botão buscou ({len(melhor)} bytes)")
+            log(f"[{cliente.provedor}] " + ("o arquivo do download não abriu"
+                                            if baixados else
+                                            f"o download não veio em {timeout_s:.0f}s")
+                + f"; uso a resposta de imagem que o botão buscou ({len(melhor)} bytes)")
             return melhor
+        if baixados:
+            # o nome da excecao fica no texto (TargetClosedError): o carteiro
+            # le isso como "o Chrome caiu" e reabre para recuperar
+            raise ImagemFalhou("o download veio, mas o arquivo não foi lido ("
+                               + "; ".join(falhas_do_download) + ")", "download")
         raise ImagemFalhou(f"cliquei em baixar e nada veio em {timeout_s:.0f}s", "download")
     finally:
         for evento, funcao in (("download", _baixou), ("response", _respondeu)):
@@ -842,6 +895,47 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
                 pass
         if abrir:
             _fechar_tela_cheia(page)
+
+
+def _nome_sugerido(download) -> str:
+    try:
+        return str(download.suggested_filename or "")
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
+def _bytes_do_download(download) -> tuple:
+    """(bytes, falhas) do evento de download: `path()` (o arquivo que o
+    Chrome gravou) e, se ele cair, `save_as` numa pasta temporaria. 25 de 25
+    recuperacoes falharam em 04-05/10 depois de `path()` levantar
+    TargetClosedError; aqui o caminho de reserva existe antes de desistir."""
+    falhas = []
+    try:
+        caminho = download.path()
+        corpo = Path(caminho).read_bytes() if caminho else b""
+        if len(corpo) >= BYTES_MIN and extensao(corpo):
+            return corpo, falhas
+        falhas.append(f"path: {len(corpo)} bytes que não são imagem")
+    except Exception as exc:                                   # noqa: BLE001
+        falhas.append(f"path: {type(exc).__name__}: {' '.join(str(exc).split())[:100]}")
+    import tempfile
+    pasta = tempfile.mkdtemp(prefix="nf_download_")
+    alvo = Path(pasta) / "imagem.bin"
+    try:
+        download.save_as(str(alvo))
+        corpo = alvo.read_bytes() if alvo.is_file() else b""
+        if len(corpo) >= BYTES_MIN and extensao(corpo):
+            return corpo, falhas
+        falhas.append(f"save_as: {len(corpo)} bytes que não são imagem")
+    except Exception as exc:                                   # noqa: BLE001
+        falhas.append(f"save_as: {type(exc).__name__}: {' '.join(str(exc).split())[:100]}")
+    finally:
+        try:
+            alvo.unlink(missing_ok=True)
+            Path(pasta).rmdir()
+        except OSError:
+            pass
+    return b"", falhas
 
 
 def _fechar_tela_cheia(page) -> None:
@@ -983,4 +1077,4 @@ __all__ = ["VIA", "gerador", "geradores", "conferir_pedido", "rodizio_ordem",
            "baixar_da_resposta",
            "sessao_picasso", "config_do_picasso", "gerar_no_chat", "pedido_de_imagem",
            "baixar", "ImagemFalhou", "SemProva", "SemImagem", "Pausado", "ImagemInvalida",
-           "TIPOS_MIME"]
+           "JaGuardada", "ja_guardada", "TIPOS_MIME"]
