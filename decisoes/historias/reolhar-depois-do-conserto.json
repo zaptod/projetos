@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Hoje 57 de 58 partes de histórias estão RETIDAS. 37 delas já foram consertadas (cenas refeitas e re-renderizadas), mas o veto antigo continua valendo porque ninguém olha o mp4 novo — desde 15/09 é 'uma passada só'. Resultado: quase todo horário sai com parte reprovada e a fábrica não tem estoque limpo. Com a nova olhada, a parte consertada que passar volta ao estoque limpo; a que reprovar de novo continua retida (sem loop: uma olhada por conserto).",
+  "criado": "2026-10-05T12:27:26.188881",
+  "depende_de": [],
+  "historico": [],
+  "id": "reolhar-depois-do-conserto",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "a IA assiste o mp4 consertado uma vez; passou, sai do veto",
+      "id": "sim",
+      "pede_comentario": false,
+      "rotulo": "Sim, uma olhada por conserto (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "consertada sem nova olhada só ganha prioridade sobre a vetada sem conserto",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Não, manter uma passada só"
+    }
+  ],
+  "pergunta": "Quando o reparo refaz as cenas de uma parte reprovada, a IA deve assistir o vídeo novo uma vez para tirar o veto?",
+  "projeto": "historias",
+  "situacao": "pendente",
+  "titulo": "IA olha de novo a parte consertada?",
+  "vigente": null
+}

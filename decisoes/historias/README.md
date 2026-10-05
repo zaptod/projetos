@@ -11,3 +11,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Rodada de histórias travada há 10 h segurando a trava** — Matar o PID 7300 agora e deixar a próxima rodada retomar a 00038 (29/09/2026) `rodada-travada-7300`
 - ✅ **Histórias: teto diário de imagens no PicassoIA** — Sem teto (30/09/2026) `teto-diario-picasso`
 - ✅ **Imagens das histórias: como dividir entre Gemini, ChatGPT e PicassoIA** — Um gerador por história (recomendado) (03/10/2026) `imagens-divisao`
+- ⏳ **IA olha de novo a parte consertada?** — Quando o reparo refaz as cenas de uma parte reprovada, a IA deve assistir o vídeo novo uma vez para tirar o veto? `reolhar-depois-do-conserto`
