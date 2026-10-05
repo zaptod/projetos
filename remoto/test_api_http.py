@@ -516,6 +516,102 @@ def test_teto_de_conexoes(mundo, monkeypatch):
         srv.server_close()
 
 
+# ------------------------------------------- o celular que fecha no meio
+class _SocketMorto:
+    """O `wfile` de um celular que ja fechou: toda escrita da 10053."""
+
+    def __init__(self, erro=ConnectionAbortedError):
+        self.erro, self.escritas = erro, 0
+
+    def write(self, _dados):
+        self.escritas += 1
+        raise self.erro(10053, "Uma conexão estabelecida foi anulada pelo software no computador host")
+
+    closed = False
+
+    def flush(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+def _matar_escrita(monkeypatch, erro=ConnectionAbortedError):
+    mortos = []
+    original = api_http.Manipulador.setup
+
+    def setup(self):
+        original(self)
+        self.wfile = _SocketMorto(erro)
+        mortos.append(self.wfile)
+    monkeypatch.setattr(api_http.Manipulador, "setup", setup)
+    return mortos
+
+
+@pytest.mark.parametrize("erro", list(api_http.CLIENTE_SAIU))
+def test_cliente_que_saiu_no_meio_do_json_nao_vira_500_nem_traceback(servidor, monkeypatch,
+                                                                     capsys, erro):
+    """Item 22 da varredura de 05/10: "GET /api/equipe 200", depois "500" e
+    dois tracebacks (o `_erro` escrevia de novo no socket morto)."""
+    token = _parear(servidor)
+    monkeypatch.setattr(api_http.delegar, "equipe_para_o_app", lambda: {"trabalhadores": []})
+    capsys.readouterr()
+    mortos = _matar_escrita(monkeypatch, erro)
+    with pytest.raises((http.client.HTTPException, ConnectionError)):
+        _pedir(servidor, "GET", "/api/equipe", token=token)
+    time.sleep(0.2)
+    log = capsys.readouterr().err
+    assert "Traceback" not in log
+    assert " 500" not in log
+    linhas = [x for x in log.splitlines() if "/api/equipe" in x]
+    assert len(linhas) == 2 and linhas[0].split()[5] == "200" and linhas[1].split()[5] == "saiu"
+    assert [m.escritas for m in mortos] == [1]         # nenhuma escrita depois da 1a
+
+
+def test_cliente_que_saiu_no_meio_de_um_estatico_nao_vira_traceback(servidor, monkeypatch, capsys):
+    """A escrita fora do `_json` (a casca, as paginas) tambem nao imprime
+    traceback: a requisicao acaba numa linha "saiu"."""
+    capsys.readouterr()
+    _matar_escrita(monkeypatch)
+    with pytest.raises((http.client.HTTPException, ConnectionError)):
+        _pedir(servidor, "GET", "/app.js")
+    time.sleep(0.2)
+    log = capsys.readouterr().err
+    assert "Traceback" not in log and " 500" not in log
+    assert any(x.split()[4:6] == ["/app.js", "saiu"] for x in log.splitlines())
+
+
+def test_cliente_que_saiu_numa_rota_post_nao_vira_traceback(servidor, monkeypatch, capsys):
+    capsys.readouterr()
+    _matar_escrita(monkeypatch)
+    with pytest.raises((http.client.HTTPException, ConnectionError)):
+        _pedir(servidor, "POST", "/api/parear", {"codigo": "000000", "nome": "x"})
+    time.sleep(0.2)
+    log = capsys.readouterr().err
+    assert "Traceback" not in log
+    assert any(x.split()[3:6] == ["POST", "/api/parear", "saiu"] for x in log.splitlines())
+
+
+def test_handle_error_cala_so_o_cliente_que_saiu(capsys):
+    """O reset que chega ANTES do `do_GET` (na leitura da linha do pedido)
+    para no `handle_error` do servidor: uma linha; o resto segue com o
+    traceback inteiro, para nenhum defeito de verdade sumir."""
+    srv = api_http.Servidor.__new__(api_http.Servidor)
+    for erro in api_http.CLIENTE_SAIU:
+        try:
+            raise erro("fechou")
+        except erro:
+            srv.handle_error(None, ("127.0.0.1", 5555))
+    log = capsys.readouterr().err
+    assert "Traceback" not in log and log.count("127.0.0.1 - saiu") == 3
+    try:
+        raise ValueError("defeito de verdade")
+    except ValueError:
+        srv.handle_error(None, ("127.0.0.1", 5555))
+    log = capsys.readouterr().err
+    assert "Traceback" in log and "defeito de verdade" in log
+
+
 @pytest.mark.parametrize("cabecalho,total,esperado", [
     ("", 100, (0, 99)),
     ("bytes=0-", 100, (0, 99)),

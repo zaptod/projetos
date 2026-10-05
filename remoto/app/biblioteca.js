@@ -159,13 +159,23 @@ async function bibliotecaMostrar() {
 
 function bibliotecaParar() {}
 
+// A aba 🧭 Fluxo (05/10/2026) nao e lista de artefatos: e a pagina fixa do
+// index.html com o caminho de um pedido. Ela esconde a busca e a lista.
+function bibliotecaTrocarAba(aba) {
+  Biblioteca.aba = aba;
+  const fluxo = aba === "fluxo";
+  $("biblioteca-fluxo").classList.toggle("oculto", !fluxo);
+  $("biblioteca-lista").classList.toggle("oculto", fluxo);
+  $("biblioteca-busca").classList.toggle("oculto", fluxo);
+  if (!fluxo) bibliotecaDesenhar();
+}
+
 $("biblioteca-abas").addEventListener("click", (evento) => {
   const botao = evento.target.closest("button[data-aba]");
   if (!botao) return;
-  Biblioteca.aba = botao.dataset.aba;
   for (const aba of $("biblioteca-abas").querySelectorAll("button"))
     aba.setAttribute("aria-pressed", String(aba === botao));
-  bibliotecaDesenhar();
+  bibliotecaTrocarAba(botao.dataset.aba);
 });
 $("biblioteca-busca").addEventListener("input", (evento) => {
   Biblioteca.busca = evento.target.value; bibliotecaDesenhar();

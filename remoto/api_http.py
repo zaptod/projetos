@@ -105,6 +105,13 @@ FALHAS_JANELA_S = 10 * 60
 TIMEOUT_S = 15
 CONEXOES_MAX = 32
 VENCIDOS_MAX = 1000                      # bilhetes vencidos que ainda lembramos
+# O celular que fecha a conexao no meio da resposta (trocou de tela, perdeu a
+# rede, o `tailscale serve` desistiu) nao e erro do servidor. Varredura de
+# 05/10/2026 (item 22): 221 linhas de ConnectionAbortedError no
+# app_celular.txt; cada uma era "GET /api/equipe 200" seguido de "500" e de
+# DOIS tracebacks, porque o `except Exception` da rota chamava `_erro`, que
+# escrevia de novo no socket morto. Agora vira uma linha "saiu" e mais nada.
+CLIENTE_SAIU = (ConnectionAbortedError, ConnectionResetError, BrokenPipeError)
 
 ARQUIVO = None                           # os testes apontam para outro lugar
 
@@ -788,25 +795,49 @@ class Manipulador(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Cache-Control", "no-cache" if cache else "no-store")
 
+    # O cliente fechou a conexao (CLIENTE_SAIU): uma linha no log, a conexao
+    # marcada para fechar, e nenhuma escrita a mais neste socket.
+    _saiu = False
+
+    def _cliente_saiu(self) -> None:
+        self.close_connection = True
+        if not self._saiu:
+            self._saiu = True
+            self._log("saiu")
+
     def _json(self, dados, status: int = 200):
+        if self._saiu:
+            return
         corpo = json.dumps(dados, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self._cabecalhos_comuns("application/json; charset=utf-8", len(corpo))
-        # a casca do disco e o fuso do PC: o app confere os dois (o `Date`,
-        # com o relogio do PC, a biblioteca ja manda)
-        with contextlib.suppress(Exception):
-            self.send_header("X-Casca", versao_da_casca())
-            self.send_header("X-Fuso-Min", str(fuso_do_pc_min()))
-        self.end_headers()
-        self.wfile.write(corpo)
+        try:
+            self.send_response(status)
+            self._cabecalhos_comuns("application/json; charset=utf-8", len(corpo))
+            # a casca do disco e o fuso do PC: o app confere os dois (o `Date`,
+            # com o relogio do PC, a biblioteca ja manda)
+            with contextlib.suppress(Exception):
+                self.send_header("X-Casca", versao_da_casca())
+                self.send_header("X-Fuso-Min", str(fuso_do_pc_min()))
+            self.end_headers()
+            self.wfile.write(corpo)
+        except CLIENTE_SAIU:
+            self._cliente_saiu()
 
     def _bytes(self, corpo: bytes, tipo: str):
-        self.send_response(200)
-        self._cabecalhos_comuns(tipo, len(corpo))
-        self.end_headers()
-        self.wfile.write(corpo)
+        if self._saiu:
+            return
+        try:
+            self.send_response(200)
+            self._cabecalhos_comuns(tipo, len(corpo))
+            self.end_headers()
+            self.wfile.write(corpo)
+        except CLIENTE_SAIU:
+            self._cliente_saiu()
 
     def _erro(self, status: int, motivo: str):
+        # Chamado de dentro de um `except Exception` cuja excecao e o cliente
+        # que saiu (uma escrita fora do `_json`): nao ha a quem responder.
+        if self._saiu or isinstance(sys.exc_info()[1], CLIENTE_SAIU):
+            return self._cliente_saiu()
         self._json({"erro": motivo}, status)
 
     # --------------------------------------------------------- trancas
@@ -861,8 +892,24 @@ class Manipulador(BaseHTTPRequestHandler):
         self._id = self._dono[:8]
         return aparelho
 
-    # ------------------------------------------------------------- GET
+    # --------------------------------------------- o cliente que foi embora
+    # Toda escrita fora do `_json` (estaticos, paginas, imagens) cai aqui
+    # quando o celular ja fechou: sem isto, o `handle_error` da biblioteca
+    # imprimia o traceback inteiro a cada troca de tela.
     def do_GET(self):
+        try:
+            self._get()
+        except CLIENTE_SAIU:
+            self._cliente_saiu()
+
+    def do_POST(self):
+        try:
+            self._post()
+        except CLIENTE_SAIU:
+            self._cliente_saiu()
+
+    # ------------------------------------------------------------- GET
+    def _get(self):
         if not self._passou_rede():
             return
         partes = urlsplit(self.path)
@@ -1116,7 +1163,7 @@ class Manipulador(BaseHTTPRequestHandler):
             return None
         return corpo
 
-    def do_POST(self):
+    def _post(self):
         if not self._passou_rede():
             return
         rota = urlsplit(self.path).path
@@ -2249,6 +2296,16 @@ class Servidor(ThreadingHTTPServer):
             super().process_request_thread(request, client_address)
         finally:
             self.vagas.release()
+
+    def handle_error(self, request, client_address):
+        """O cliente que saiu antes de o pedido ser lido (o reset chega na
+        leitura da linha do pedido, fora do `do_GET`) vira uma linha, nao um
+        traceback. Qualquer outra excecao continua com o traceback inteiro."""
+        if isinstance(sys.exc_info()[1], CLIENTE_SAIU):
+            ip = client_address[0] if client_address else "?"
+            sys.stderr.write(f"{datetime.now():%d/%m %H:%M:%S} {ip} - saiu\n")
+            return
+        super().handle_error(request, client_address)
 
 
 def criar_servidor(host: str, porta: int, local: bool,

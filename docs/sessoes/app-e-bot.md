@@ -335,7 +335,12 @@ DOM e clicando.
   - avisa no Telegram uma vez por ocorrência (um tropeço só não conta, o
     funnel conta na hora) e avisa de novo quando volta;
   - o único conserto que faz é abrir o `tailscale-ipn.exe` quando o backend
-    está parado e a bandeja fechada; depois espera até 30 s e diz o que fez;
+    está parado e a bandeja fechada; depois espera até 30 s e diz o que fez.
+    Desde 05/10 ela abre **pelo `explorer.exe`** (§20): aberta direto, a
+    bandeja era filha do bot e morria no `taskkill /t /f` de cada religada;
+  - `status` que não responde **não é "fora"**: ela pergunta de novo na hora
+    e só avisa "❔ não sei se o app está no tailnet" depois de 3 olhadas
+    seguidas sem resposta (§20);
   - só roda `status --json`, `serve status --json` e `tasklist`, e há teste
     que varre o fonte atrás de `funnel`, `set`, `up` e `--bg`;
   - desliga com `"vigiar_tailnet": false` no `remoto.json`.
@@ -351,6 +356,14 @@ DOM e clicando.
   no diário". Para conferir no log: toda carga (`GET /`) tem de ter os seis
   `.js` logo depois. Uma lista de `.js` depois de `GET /sw.js` é o precache
   do service worker, não carga da página.
+- **O celular que fecha a conexão no meio da resposta não é erro do
+  servidor** (05/10, §20). Antes, cada um virava "200", depois "500" e dois
+  tracebacks no `app_celular.txt` (221 linhas de ConnectionAbortedError),
+  porque o `except Exception` da rota chamava `_erro`, que escrevia de novo
+  no socket morto. `api_http.CLIENTE_SAIU` é tratado no `_json`, no `_bytes`,
+  no `_erro`, no `do_GET`/`do_POST` e no `handle_error` do servidor: vira uma
+  linha "saiu". Toda escrita nova no socket passa pelo `_json`/`_bytes`, ou
+  fica dentro do `do_GET`/`do_POST`.
 - **Nos testes do bot, `comandos._rodar` é um `Popen` de verdade.** O
   `/publicar` antigo chamava o `main.py publicar` real por ali. O fixture
   `bot` de `test_acoes.py` troca esse caminho, as guardas, o disparo e a
@@ -2092,7 +2105,8 @@ comando que o `limpar` imprime.
 `%LOCALAPPDATA%\neural-fights\biblioteca\itens.json` e junta planos, relatórios
 do Palco e sessões como fontes somente de leitura. A aba **📚 Biblioteca**
 de Ver (até 02/10, um atalho da Mesa) tem abas, busca e leitor de Markdown
-seguro; páginas `https` abrem em outra aba.
+seguro; páginas `https` abrem em outra aba. Desde 05/10 tem também a aba
+**🧭 Fluxo**: o caminho de um pedido, texto fixo no `index.html` (§20).
 
 ### Paginas locais e marcacoes (01/10/2026)
 
@@ -2277,6 +2291,97 @@ fechada", 0 erros de JS. Telas em `E:\projetos-wt\_prova_servidor\133601\telas\`
 reiniciar para valer (o coordenador carrega o `aplicar_pelo_servidor`; o
 app, a casca v41 e as rotas). Quem reinicia é quem chamou, fora da janela
 da postagem.
+
+## 20. Varredura de 05/10: cliente que saiu, bandeja pelo explorer e a aba Fluxo
+
+Três itens da varredura de erros de 05/10 (relatório da sessão principal,
+itens 22 e 13, e o pedido do Adrian pela página do fluxo).
+
+**Item 22: o celular que fecha a conexão.** Medido no `app_celular.txt`: 221
+linhas de `ConnectionAbortedError`/`Reset`/`BrokenPipe` e 124 blocos
+"Exception occurred during processing". O padrão era "GET /api/equipe 200",
+depois "GET /api/equipe 500" e dois tracebacks: o `_json` levantava no
+socket morto, o `except Exception` da rota chamava `_erro(500)`, e o `_erro`
+escrevia de novo. Agora `CLIENTE_SAIU = (ConnectionAbortedError,
+ConnectionResetError, BrokenPipeError)`:
+- `_json` e `_bytes` engolem e marcam a requisição (`_saiu`, uma linha
+  "saiu" no log, `close_connection`); nada mais é escrito nela;
+- `_erro` não escreve quando a requisição já saiu ou quando é chamado de
+  dentro de um `except` cuja exceção é o cliente que saiu;
+- `do_GET`/`do_POST` viraram uma casca em volta de `_get`/`_post`: a escrita
+  fora do `_json` (estáticos, páginas, imagens) também acaba em "saiu";
+- `Servidor.handle_error` cala só o `CLIENTE_SAIU` (o reset que chega na
+  leitura da linha do pedido, antes do `do_GET`); outra exceção segue com o
+  traceback inteiro.
+
+Testes em `test_api_http.py` (6, com o `wfile` trocado por um socket que dá
+10053 em toda escrita, pelo servidor de verdade): o JSON (com os três tipos
+de erro), um estático, uma rota POST e o `handle_error`. Os 6 falham contra
+o código de antes.
+
+**Item 13: a bandeja do Tailscale e o "não sei".** Medido: o
+`tailscale-ipn.exe` (pid 9680) era filho do bot (pid 12780); cada religada
+do bot pelo supervisor (`taskkill /t /f`) o matava, e 1 a 2 min depois vinha
+o aviso de NoState (5 vezes em 03/10, 5 em 04/10). E os 4 avisos "fora do
+tailnet: não consegui perguntar o estado" entre 23:00 e 00:06 eram o
+`tailscale status` falhando, não o app fora. Agora:
+- `abrir_bandeja` abre pelo `explorer.exe` (quem cria a bandeja é o shell,
+  como no logon), tentando sair do job e, se o Agendador negar, preso a ele
+  (o explorer só repassa e sai). Sem explorer, ou com ele recusando, o
+  caminho antigo;
+- `sondar` marca `sem_resposta` quando o `status` ou o `serve status` não
+  respondem; a vigia pergunta de novo na hora (5 s) e só avisa depois de 3
+  olhadas seguidas sem resposta (`SEM_RESPOSTA_SEGUIDAS`), com o texto "❔
+  não sei se o app do celular está no tailnet … Pode ser só o comando do
+  Tailscale travado". A volta diz "o Tailscale voltou a responder". Olhada
+  sem resposta e tropeço de verdade (Starting) têm contas separadas, e o
+  "não sei" não cala a ocorrência real que vier depois (a bandeja fechada
+  ainda é consertada).
+
+Testes em `test_vigia_tailnet.py` (+11; 10 falham contra o código de antes).
+A outra metade do item 13 (o supervisor religando sem esperar a edição, e o
+`_parar` poupando a bandeja) é do coordenador.
+
+**A aba 🧭 Fluxo da Biblioteca** (pedido do Adrian, "sim eu quero"). Em Ver
+› Biblioteca, a quinta aba mostra como um pedido anda: as três entradas (📝
+App, ✈️ Telegram, 📖 Grimório) → 1 Mesa de pedidos → 2 Orquestrador (Claude,
+ou Codex no teto/limite) → 3 Permissão (gerente aceita / pergunta a você /
+nega) → 4 Despachante → 5 Vigia → 6 Conferente → 7 Resposta, a faixa das
+situações que o app mostra, e os quatro caminhos de erro (Limite do Claude,
+Espera do Grimório, Conflito, Falhou: como ver e como reabrir). É HTML fixo
+no `index.html` com setas em SVG e classes no `app.css` (a CSP da casca não
+deixa `style=`); a aba esconde a busca e a lista (`bibliotecaTrocarAba`).
+Nenhuma rota nova. Para a página não mentir quando o código mudar,
+`remoto/test_app_fluxo.py` (12) confere cada número e nome contra o código:
+pulso de 5 s, 5 retomadas a cada 2 min, 10 min sem sinal, vigia a cada 1
+min, aviso de árvore suja em 1 h, as origens do `registrar`, as três regras
+de permissão e a conta sempre negada, o veredito do conferente, o
+`reabrir-pedido` e as situações (todas as de `VIVOS`+`FINAIS`, pelo rótulo
+do `coordenador.js`). Mudou lá: o teste cai e a página é corrigida junto.
+
+O conferente pegou duas frases copiadas de docstring velha, e o teste agora
+guarda as duas: o validador do despachante **só recusa a entrega vazia**
+desde 02/10 (fora da lista, binário e diff grande entram com aviso, e a
+vazia vira "nada a aplicar", sem integrador): o teste roda `validar_diff`
+numa entrega binária, fora da lista e grande e exige `[]`. E o momento
+seguro do vigia para aplicar é **só "sem publicação em voo"** desde 03/10
+(sem janela de relógio): o teste monta o `Supervisor` 2 min antes do post
+das 17:57 e exige `seguro("") == (True, "")`, e falso com `postar.py` vivo.
+A única janela da postagem que sobrou na página é a da ação da lista
+fechada que mexe no estoque (`ACOES_REPO` com `janela=True`). Contra o
+texto antigo, os 2 testes novos falham.
+
+Casca `v43`. **Prova de tela:** `test_app_tela.py::test_a_biblioteca_mostra_o_fluxo_de_um_pedido`
+(com `NF_TESTE_NAVEGADOR=1`), Chrome 390×844, claro e escuro, clicando: as
+7 etapas e os 4 erros, nada passa da largura, as setas com tamanho, voltar a
+Páginas esconde o fluxo, 0 erro de JS. Uma captura por dobra em
+`E:\tmp_pytest\tela_app\biblioteca-fluxo-<tema>-<n>.png`.
+
+**Fica para depois:** o app (8931) precisa reiniciar para o `api_http` novo
+valer (a casca v43 já chega sem reinício: o servidor lê do disco), e o bot
+para a vigia nova. Quem reinicia é o orquestrador, fora da janela da
+postagem. O app não tem botão para reabrir pedido: é pelo PC
+(`python -m coordenador reabrir-pedido <id>`), como a página diz.
 
 # Sprites para conferir
 

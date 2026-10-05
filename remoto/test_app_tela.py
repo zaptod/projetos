@@ -266,6 +266,74 @@ def test_agora_mostra_o_servidor_e_nao_a_sessao_fechada(tela_isolada, tmp_path):
     assert not erros, erros
 
 
+@pytest.mark.parametrize("tema", ["light", "dark"])
+def test_a_biblioteca_mostra_o_fluxo_de_um_pedido(tela_isolada, tema):
+    """05/10/2026: a aba 🧭 Fluxo da Biblioteca (o caminho de um pedido) em
+    390x844, clicando: abre, cabe na largura sem rolar de lado, as sete etapas
+    e os quatro caminhos de erro aparecem, as setas em SVG tem tamanho, e
+    voltar para Paginas esconde o fluxo. Conferido pelo DOM."""
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    from patchright.sync_api import sync_playwright
+
+    base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    CAPTURAS.mkdir(parents=True, exist_ok=True)
+    erros = []
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True,
+                              has_touch=True, service_workers="block", color_scheme=tema)
+        ctx.set_default_timeout(8000)
+        page = ctx.new_page()
+        page.on("pageerror", lambda erro: erros.append(str(erro)))
+        page.on("console", lambda msg: erros.append(msg.text) if msg.type == "error" else None)
+        page.goto(base + "/", wait_until="domcontentloaded")
+        page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("document.body.classList.contains('pareado')")
+        page.evaluate("() => document.querySelector('#obj-ver').click()")
+        page.locator("#tela-videos:not(.oculto)").wait_for(state="visible")
+        page.evaluate("() => document.querySelector(\"#tela-videos [data-aba-tela='biblioteca']\").click()")
+        page.locator("#tela-biblioteca:not(.oculto)").wait_for(state="visible")
+        assert page.locator("#biblioteca-fluxo").is_hidden()
+        page.locator("#biblioteca-abas button[data-aba='fluxo']").click()
+        page.locator("#biblioteca-fluxo").wait_for(state="visible")
+        assert page.locator("#biblioteca-lista").is_hidden()
+        assert page.locator("#biblioteca-busca").is_hidden()
+        assert page.locator("#biblioteca-abas button[data-aba='fluxo']").get_attribute(
+            "aria-pressed") == "true"
+        assert page.locator("#tela-biblioteca").evaluate("t => t.scrollWidth <= t.clientWidth")
+        assert page.locator(".fluxo-passo").count() == 7
+        assert page.locator(".fluxo-erro").count() == 4
+        larguras = page.locator("#biblioteca-fluxo .fluxo-passo, #biblioteca-fluxo .fluxo-erro, "
+                                "#biblioteca-fluxo .fluxo-entrada").evaluate_all(
+            "caixas => caixas.map((c) => [c.getBoundingClientRect().left, c.getBoundingClientRect().right])")
+        assert all(0 <= esq and dir_ <= 390 for esq, dir_ in larguras), larguras
+        setas = page.locator("#biblioteca-fluxo svg").evaluate_all(
+            "s => s.map((x) => [x.getBoundingClientRect().width, x.getBoundingClientRect().height])")
+        assert len(setas) >= 7 and all(w > 0 and h > 0 for w, h in setas), setas
+        texto = page.locator("#biblioteca-fluxo").inner_text()
+        for trecho in ("Mesa de pedidos", "Orquestrador", "Permissão", "Despachante", "Vigia",
+                       "Conferente", "Resposta", "Limite do Claude", "Espera do Grimório",
+                       "Conflito", "reabrir-pedido"):
+            assert trecho in texto, trecho
+        # a tela rola por dentro (o full_page so pega a 1a dobra): uma
+        # captura por dobra, para conferir a pagina inteira no celular
+        altura = page.locator("#tela-biblioteca").evaluate("t => t.scrollHeight")
+        for n, topo in enumerate(range(0, altura, 760)):
+            page.locator("#tela-biblioteca").evaluate("(t, y) => { t.scrollTop = y; }", topo)
+            page.wait_for_timeout(100)
+            page.screenshot(path=str(CAPTURAS / f"biblioteca-fluxo-{tema}-{n}.png"))
+        page.locator("#tela-biblioteca").evaluate("t => { t.scrollTop = 0; }")
+        page.locator("#biblioteca-abas button[data-aba='paginas']").click()
+        assert page.locator("#biblioteca-fluxo").is_hidden()
+        assert page.locator("#biblioteca-lista").is_visible()
+        assert page.locator("#biblioteca-busca").is_visible()
+        nav.close()
+    assert not erros, erros
+
+
 def test_ligar_o_gerente_fica_ligado(tela_isolada, tmp_path, monkeypatch):
     """05/10/2026: o Adrian marcava "gerente ligado" e o recarregar de 5 s da
     Equipe desmarcava antes do Salvar. Agora a caixinha salva na hora e

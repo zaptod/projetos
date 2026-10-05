@@ -53,10 +53,14 @@ class Rodar:
         return subprocess.CompletedProcess(args, 0, saida, "")
 
 
+EXPLORER = r"C:\Windows\explorer.exe"
+
+
 @pytest.fixture(autouse=True)
 def _exe(monkeypatch):
     monkeypatch.setattr(V, "_tailscale_exe", lambda: "tailscale.exe")
     monkeypatch.setattr(V, "_bandeja_exe", lambda: "tailscale-ipn.exe")
+    monkeypatch.setattr(V, "_explorer_exe", lambda: EXPLORER)
 
 
 # ================================================================ sondar
@@ -102,24 +106,65 @@ def test_serve_que_aponta_para_outro_lugar():
 def test_o_que_nao_se_le_nao_passa(rodar, trecho):
     ficha = V.sondar(rodar)
     assert ficha["ok"] is False and trecho in ficha["motivo"]
+    assert ficha["sem_resposta"] is True          # "não sei", não "fora"
+
+
+def test_resposta_ruim_nao_e_sem_resposta():
+    assert not V.sondar(Rodar(estado="NoState", tasklist=BANDEJA_FECHADA)).get("sem_resposta")
+    assert not V.sondar(Rodar(serve=SERVE_FUNNEL)).get("sem_resposta")
 
 
 def test_sem_tailscale_instalado(monkeypatch):
     monkeypatch.setattr(V, "_tailscale_exe", lambda: None)
     ficha = V.sondar(Rodar())
     assert ficha["ok"] is False and "tailscale.exe" in ficha["motivo"]
+    assert not ficha.get("sem_resposta")
 
 
 # ============================================================ a bandeja
-def test_abrir_bandeja_sai_do_job_do_bot():
+def test_abrir_bandeja_pelo_explorer_fora_da_arvore_do_bot():
+    """Item 13 da varredura de 05/10: aberta direto, a bandeja era FILHA do
+    bot (pid 9680 do 12780) e morria no `taskkill /t /f` de cada religada.
+    Pelo explorer, quem a cria e o shell do Windows."""
     chamadas = []
-    V.abrir_bandeja(lambda args, **k: chamadas.append((args, k["creationflags"])))
+    feito = V.abrir_bandeja(lambda args, **k: chamadas.append((args, k["creationflags"])))
     ((args, flags),) = chamadas
-    assert args == ["tailscale-ipn.exe"]
+    assert args == [EXPLORER, "tailscale-ipn.exe"]
     assert flags & V.FORA_DO_JOB == V.FORA_DO_JOB
+    assert feito == "abri o tailscale-ipn.exe"
 
 
-def test_abrir_bandeja_sem_sair_do_job_quando_o_windows_nega():
+def test_abrir_bandeja_pelo_explorer_preso_ao_job_ainda_e_pelo_explorer():
+    """O Agendador pode negar a saida do job: o explorer preso ao job so
+    entrega o pedido ao shell, e a bandeja nasce fora dele assim mesmo."""
+    chamadas = []
+
+    def popen(args, **k):
+        chamadas.append((args, k["creationflags"]))
+        if len(chamadas) == 1:
+            raise OSError("acesso negado")
+    assert V.abrir_bandeja(popen) == "abri o tailscale-ipn.exe"
+    assert chamadas[1] == ([EXPLORER, "tailscale-ipn.exe"], V.DESLIGADO)
+
+
+@pytest.mark.parametrize("sem_explorer", [True, False])
+def test_abrir_bandeja_direto_so_sem_explorer(monkeypatch, sem_explorer):
+    """Sem explorer.exe (ou com ele recusando), o caminho antigo: direto,
+    tentando sair do job."""
+    chamadas = []
+    if sem_explorer:
+        monkeypatch.setattr(V, "_explorer_exe", lambda: None)
+
+    def popen(args, **k):
+        chamadas.append((args, k["creationflags"]))
+        if args[0] == EXPLORER:
+            raise OSError("explorer recusou")
+    assert V.abrir_bandeja(popen) == "abri o tailscale-ipn.exe"
+    assert chamadas[-1] == (["tailscale-ipn.exe"], V.DESLIGADO | V.FORA_DO_JOB)
+
+
+def test_abrir_bandeja_sem_sair_do_job_quando_o_windows_nega(monkeypatch):
+    monkeypatch.setattr(V, "_explorer_exe", lambda: None)
     chamadas = []
 
     def popen(args, **k):
@@ -237,6 +282,68 @@ def test_serve_sumido_so_ensina_a_refazer_nunca_refaz():
     assert "Não mexi em nada" in aviso and V.REFAZER_SERVE in aviso
     assert "--https=443 http://127.0.0.1:8931" in V.REFAZER_SERVE
     assert "funnel" not in V.REFAZER_SERVE
+
+
+SEM_RESPOSTA = {"ok": False, "estado": None, "sem_resposta": True,
+                "motivo": "não consegui perguntar o estado ao Tailscale"}
+
+
+def test_sem_resposta_nao_e_fora_e_so_avisa_na_terceira_seguida():
+    """Item 13 da varredura de 05/10: 4 avisos "fora do tailnet: não consegui
+    perguntar o estado" entre 23:00 e 00:06, cada um depois de 2 olhadas. O
+    app podia estar no ar; o aviso afirmava que não."""
+    m = Mundo([SEM_RESPOSTA])
+    v = m.vigia()
+    assert v.uma_olhada() is None
+    assert v.uma_olhada() is None
+    aviso = v.uma_olhada()
+    assert aviso.startswith("❔") and "não sei" in aviso
+    assert "não consegui perguntar" in aviso and "3 olhadas seguidas" in aviso
+    assert "fora do tailnet" not in aviso and "Não mexi em nada" in aviso
+    assert m.abertas == 0
+    assert len(m.sonos) == 3                      # cada olhada perguntou de novo
+    for _ in range(3):
+        assert v.uma_olhada() is None             # um aviso por ocorrencia
+    assert m.avisos == [aviso]
+
+
+def test_sem_resposta_que_responde_na_segunda_pergunta_nao_conta():
+    m = Mundo([SEM_RESPOSTA, OK, SEM_RESPOSTA, OK, SEM_RESPOSTA, OK, SEM_RESPOSTA, OK])
+    v = m.vigia()
+    for _ in range(4):
+        assert v.uma_olhada() is None
+    assert v.sem_resposta == 0 and m.avisos == []
+
+
+def test_sem_resposta_e_tropeco_nao_se_somam():
+    """Duas olhadas sem resposta e um tropeço (Starting) não viram aviso:
+    cada um tem a sua conta."""
+    m = Mundo([SEM_RESPOSTA, SEM_RESPOSTA, SEM_RESPOSTA, SEM_RESPOSTA, CONECTANDO, OK])
+    v = m.vigia()
+    for _ in range(3):
+        assert v.uma_olhada() is None
+    assert m.avisos == []
+
+
+def test_depois_do_nao_sei_a_volta_diz_que_voltou_a_responder():
+    m = Mundo([SEM_RESPOSTA] * 6 + [OK])
+    v = m.vigia()
+    for _ in range(3):
+        v.uma_olhada()
+    volta = v.uma_olhada()
+    assert volta.startswith("✅") and "voltou a responder" in volta
+    assert len(m.avisos) == 2
+
+
+def test_depois_do_nao_sei_a_bandeja_fechada_ainda_e_consertada():
+    """O "não sei" não pode calar a ocorrência de verdade que vem depois."""
+    m = Mundo([SEM_RESPOSTA] * 6 + [PARADO, OK])
+    v = m.vigia()
+    for _ in range(3):
+        v.uma_olhada()
+    aviso = v.uma_olhada()
+    assert m.abertas == 1 and aviso.startswith("🔧")
+    assert len(m.avisos) == 2
 
 
 def test_olha_no_ritmo_certo():

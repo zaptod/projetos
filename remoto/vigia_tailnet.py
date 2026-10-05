@@ -17,7 +17,10 @@ O QUE ELA CONFERE, de tempos em tempos, dentro do laco do bot:
 
 O QUE ELA FAZ. Um aviso no Telegram por ocorrencia, e outro quando volta.
 O UNICO conserto automatico e o de 28/09: abrir o cliente da bandeja quando
-o backend esta parado e ele nao esta aberto. Ela NUNCA roda `tailscale
+o backend esta parado e ele nao esta aberto (pelo `explorer.exe`, para ela
+nao morrer junto com o bot; 05/10). Quando o Tailscale nao responde, ela nao
+diz "fora": pergunta de novo e, depois de 3 olhadas seguidas sem resposta,
+avisa "nao sei". Ela NUNCA roda `tailscale
 funnel`, nunca mexe na configuracao do `serve` e nunca liga o modo
 "unattended" (essa decisao e do Adrian). Os comandos que ela roda sao dois,
 os dois de leitura: `status --json` e `serve status --json`.
@@ -46,6 +49,13 @@ DESLIGADO = (getattr(subprocess, "DETACHED_PROCESS", 0)
 FORA_DO_JOB = getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
 BANDEJA = "tailscale-ipn.exe"
 REFAZER_SERVE = "tailscale serve --bg --https=443 http://127.0.0.1:8931"
+# "Nao consegui perguntar" (o `tailscale status` falhou ou travou) NAO e "fora
+# do tailnet": o app pode estar no ar. Varredura de 05/10/2026 (item 13): 4
+# avisos "fora do tailnet: nao consegui perguntar o estado" entre 23:00 e
+# 00:06 de 04/10, cada um depois de 2 olhadas. Agora a olhada sem resposta
+# pergunta de novo na hora, e so vira aviso (com o texto "nao sei") depois de
+# 3 olhadas seguidas sem resposta.
+SEM_RESPOSTA_SEGUIDAS = 3
 
 
 def _pasta_do_tailscale() -> Path:
@@ -62,6 +72,12 @@ def _tailscale_exe() -> str | None:
 
 def _bandeja_exe() -> str | None:
     caminho = _pasta_do_tailscale() / BANDEJA
+    return str(caminho) if caminho.is_file() else None
+
+
+def _explorer_exe() -> str | None:
+    pasta = os.environ.get("SystemRoot") or os.environ.get("WINDIR") or r"C:\Windows"
+    caminho = Path(pasta) / "explorer.exe"
     return str(caminho) if caminho.is_file() else None
 
 
@@ -137,6 +153,7 @@ def sondar(rodar=subprocess.run) -> dict:
     ficha["estado"] = estado = _estado(exe, rodar)
     if estado is None:
         ficha["motivo"] = "não consegui perguntar o estado ao Tailscale"
+        ficha["sem_resposta"] = True
         return ficha
     if estado != "Running":
         ficha["bandeja"] = aberta = bandeja_aberta(rodar)
@@ -148,6 +165,7 @@ def sondar(rodar=subprocess.run) -> dict:
     ficha["serve"] = serve is not None and bool(serve)
     if serve is None:
         ficha["motivo"] = "não consegui ler a configuração do serve"
+        ficha["sem_resposta"] = True
         return ficha
     if _funnel_ligado(serve):
         ficha["funnel"] = True
@@ -164,12 +182,31 @@ def sondar(rodar=subprocess.run) -> dict:
 
 
 def abrir_bandeja(popen=subprocess.Popen) -> str:
-    """Abre o cliente da bandeja, fora do job do bot. Devolve o que fez."""
+    """Abre o cliente da bandeja PELO EXPLORER. Devolve o que fez.
+
+    Varredura de 05/10/2026 (item 13): aberta direto, a bandeja virava filha
+    do bot (pid 9680 filho do 12780), e cada religada do bot pelo supervisor
+    (`taskkill /t /f`, a arvore inteira) a matava junto: 1 a 2 min depois
+    vinha o aviso de NoState (5 vezes em 03/10 e 5 em 04/10). Pelo
+    `explorer.exe`, quem cria a bandeja e o shell do Windows, como no logon:
+    ela fica fora da arvore e fora do job do bot. Sem explorer (ou se ele
+    recusar), o caminho antigo: direto, tentando sair do job.
+    """
     exe = _bandeja_exe()
     if not exe:
         return f"não achei o {BANDEJA} para abrir"
     comum = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                  stderr=subprocess.DEVNULL, close_fds=True)
+    explorer = _explorer_exe()
+    if explorer:
+        # O explorer so entrega o pedido ao shell e sai: mesmo preso ao job
+        # do bot (o Agendador pode negar a saida), a bandeja nasce fora dele.
+        for flags in (DESLIGADO | FORA_DO_JOB, DESLIGADO):
+            try:
+                popen([explorer, exe], creationflags=flags, **comum)
+                return f"abri o {BANDEJA}"
+            except OSError:
+                continue
     try:
         try:
             popen([exe], creationflags=DESLIGADO | FORA_DO_JOB, **comum)
@@ -201,7 +238,9 @@ class Vigia:
         self.intervalo = intervalo
         self.proxima = relogio() + primeira
         self.fora = False          # ja avisei desta ocorrencia
+        self.fora_sem_resposta = False   # ...e o aviso foi o de "nao sei"
         self.falhas = 0
+        self.sem_resposta = 0      # olhadas seguidas sem resposta do Tailscale
 
     def talvez(self) -> str | None:
         """Chamada a cada volta do laco; so olha quando venceu o intervalo."""
@@ -214,16 +253,39 @@ class Vigia:
     def uma_olhada(self) -> str | None:
         """Olha uma vez. Devolve o aviso mandado, se mandou algum."""
         ficha = self._sondar()
+        if ficha.get("sem_resposta"):
+            # o `tailscale status` falha por um instante (o servico ocupado):
+            # pergunta de novo antes de contar a olhada como sem resposta
+            self._dormir(PASSO_DA_ESPERA_S)
+            ficha = self._sondar()
         if ficha.get("ok"):
-            self.falhas = 0
+            self.falhas = self.sem_resposta = 0
             if self.fora:
                 self.fora = False
+                if self.fora_sem_resposta:
+                    self.fora_sem_resposta = False
+                    return self._mandar("✅ o Tailscale voltou a responder: o app do "
+                                        "celular está no tailnet (serve só no tailnet).")
                 return self._mandar("✅ o app do celular voltou para o tailnet "
                                     "(Tailscale rodando, serve só no tailnet).")
             return None
-        self.falhas += 1
+        # `falhas` conta so as olhadas COM resposta (e ruim); as sem resposta
+        # tem a conta delas: uma nao empurra a outra para o aviso
+        sem_resposta = bool(ficha.get("sem_resposta"))
+        self.sem_resposta = self.sem_resposta + 1 if sem_resposta else 0
+        if not sem_resposta:
+            self.falhas += 1
+        if self.fora and self.fora_sem_resposta and not sem_resposta:
+            # o aviso foi "nao sei"; agora ha resposta, e ela e ruim: e outra
+            # ocorrencia (e o conserto da bandeja ainda pode ser tentado)
+            self.fora = self.fora_sem_resposta = False
         if self.fora:
             return None                  # um aviso por ocorrencia
+        if sem_resposta:
+            if self.sem_resposta < SEM_RESPOSTA_SEGUIDAS:
+                return None
+            self.fora = self.fora_sem_resposta = True
+            return self._mandar(self._texto_sem_resposta(ficha, self.sem_resposta))
         feito = ""
         if ficha.get("estado") not in (None, "Running") \
                 and ficha.get("bandeja") is False:
@@ -254,6 +316,14 @@ class Vigia:
             if ficha.get("ok"):
                 return ficha
         return ficha
+
+    def _texto_sem_resposta(self, ficha: dict, vezes: int) -> str:
+        minutos = round(vezes * self.intervalo / 60)
+        return (f"❔ não sei se o app do celular está no tailnet: "
+                f"{ficha.get('motivo') or 'o Tailscale não respondeu'} "
+                f"({vezes} olhadas seguidas, ~{minutos} min). Pode ser só o "
+                "comando do Tailscale travado, e o app pode estar no ar. "
+                "Não mexi em nada.")
 
     @staticmethod
     def _texto_da_falha(ficha: dict, feito: str) -> str:

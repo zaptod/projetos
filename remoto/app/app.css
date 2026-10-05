@@ -1007,6 +1007,70 @@ button.biblioteca-cartao { cursor: pointer; }
   .biblioteca-texto th, .biblioteca-texto pre { background: #4a3929; }
   .biblioteca-texto a { color: #9fc0ff; }
 }
+/* O fluxo de um pedido (05/10/2026): a aba 🧭 Fluxo da Biblioteca. Caixas
+   em coluna (o texto quebra sozinho em 390 px) ligadas por setas em SVG; os
+   desvios e os caminhos de erro levam a cor do caminho. */
+.biblioteca-fluxo { line-height: 1.5; overflow-wrap: anywhere; }
+.biblioteca-fluxo p { margin: 4px 0; }
+.biblioteca-fluxo code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; }
+.fluxo-titulo { margin: 4px 0 6px; font-size: 17px; color: #513b24; }
+.fluxo-entradas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px;
+  margin-top: 10px; }
+.fluxo-entrada { padding: 7px 6px; border: 1px solid #cbb98f; border-top: 4px solid #8a673c;
+  border-radius: 9px; background: #fffdf6; font-size: 12.5px; line-height: 1.35; text-align: center; }
+.fluxo-entrada b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+.fluxo-junta { display: block; width: 100%; height: auto; margin: 0 0 -2px; }
+.fluxo-junta path, .fluxo-seta path { fill: none; stroke: #8a673c; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; }
+.fluxo-passos { list-style: none; margin: 0; padding: 0; }
+.fluxo-passo { padding: 8px 10px; border: 1px solid #cbb98f; border-left: 5px solid #8a673c;
+  border-radius: 9px; background: #fffdf6; }
+.fluxo-passo.fluxo-fim { border-left-color: #2f7d4f; }
+.fluxo-cabeca { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  flex-wrap: wrap; }
+.fluxo-cabeca b { font-size: 15px; }
+.fluxo-cabeca code { color: #725e48; }
+.fluxo-seta { display: flex; justify-content: center; height: 22px; }
+.fluxo-seta svg { width: 20px; height: 22px; }
+.fluxo-regras { margin: 4px 0 0; padding-left: 18px; }
+.fluxo-regras li { margin: 3px 0; }
+.r-aceita { color: #2f7d4f; }
+.r-pergunta { color: #9a6410; }
+.r-nega { color: #b03a2e; }
+.fluxo-erro { margin: 8px 0; padding: 8px 10px; border: 1px solid #cbb98f; border-left: 5px solid;
+  border-radius: 9px; background: #fffdf6; }
+.fluxo-erro > b { font-size: 15px; }
+.fluxo-desvio { margin-top: 6px; padding: 4px 8px; border-radius: 7px; font-size: 13px;
+  border-left: 4px solid; background: #f6eedb; }
+/* as cores do caminho vem DEPOIS das caixas: o `border` delas nao as apaga */
+.d-limite { border-left-color: #c98a1b; }
+.d-grimorio { border-left-color: #7a4fb0; }
+.d-conflito { border-left-color: #3b6db0; }
+.d-falhou { border-left-color: #b03a2e; }
+.d-ok { border-left-color: #2f7d4f; }
+.fluxo-situacoes { margin: 12px 0 14px; font-size: 13px; line-height: 2; }
+.fluxo-situacoes span:not(.fraco) { display: inline-block; padding: 0 7px; border-radius: 99px;
+  border: 1px solid #cbb98f; background: #fffdf6; line-height: 1.6; }
+.fluxo-nota { margin-top: 10px; }
+@media (prefers-color-scheme: dark) {
+  .fluxo-titulo { color: #f5dfad; }
+  .fluxo-entrada, .fluxo-passo, .fluxo-erro, .fluxo-situacoes span:not(.fraco) {
+    background: #3a2f24; border-color: #6b5539; }
+  .fluxo-entrada { border-top-color: #d1a96a; }
+  .fluxo-passo { border-left-color: #d1a96a; }
+  .fluxo-passo.fluxo-fim { border-left-color: #5cc185; }
+  .fluxo-junta path, .fluxo-seta path { stroke: #d1a96a; }
+  .fluxo-cabeca code { color: #d1bfa4; }
+  .fluxo-desvio { background: #2b231b; }
+  .d-limite { border-left-color: #f0a04b; }
+  .d-grimorio { border-left-color: #b994ec; }
+  .d-conflito { border-left-color: #7ea4ff; }
+  .d-falhou { border-left-color: #ff6b5b; }
+  .d-ok { border-left-color: #5cc185; }
+  .r-aceita { color: #5cc185; }
+  .r-pergunta { color: #f0a04b; }
+  .r-nega { color: #ff6b5b; }
+}
 @media (prefers-reduced-motion: reduce) { .livro.oficina:not(.oculto) { animation: none; } }
 button.orq-codex-tarefa { width: 100%; text-align: left; background: transparent; border: 0;
   border-top: 1px dashed #c9ad78; border-radius: 0; padding: 8px 2px; color: inherit; font: inherit; }

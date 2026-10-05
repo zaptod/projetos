@@ -486,8 +486,153 @@
         <button class="acao" data-aba="planos" aria-pressed="false">Planos</button>
         <button class="acao" data-aba="relatorios" aria-pressed="false">Relatórios</button>
         <button class="acao" data-aba="tudo" aria-pressed="false">Tudo</button>
+        <button class="acao" data-aba="fluxo" aria-pressed="false">🧭 Fluxo</button>
       </div>
       <div id="biblioteca-lista"></div>
+      <!-- O FLUXO de um pedido (05/10/2026, pedido do Adrian: "sim eu quero").
+           Texto fixo, tirado do código de verdade: coordenador/pedidos.py
+           (MesaPedidos), coordenador/equipe.py (gerente e permissões),
+           remoto/delegar.py (despachante), coordenador/vigia_trabalho.py
+           (vigia e integrador). Mudou lá, muda aqui: remoto/test_app_fluxo.py
+           confere os nomes e números contra o código. -->
+      <div id="biblioteca-fluxo" class="biblioteca-fluxo oculto">
+        <h3 class="fluxo-titulo">Como anda um pedido</h3>
+        <p class="fraco">Do que você escreve até a resposta. Tudo roda no PC, no
+          coordenador (o servidor), que passa pelos pedidos a cada 5 s. O app e o
+          Telegram só entregam o pedido e mostram o andamento.</p>
+
+        <div class="fluxo-entradas" role="list" aria-label="Por onde o pedido entra">
+          <div class="fluxo-entrada" role="listitem"><b>📝 App</b>
+            <span>Agora › Pedir, ou a Conversa do Coordenador</span></div>
+          <div class="fluxo-entrada" role="listitem"><b>✈️ Telegram</b>
+            <span>texto sem “/”; <code>/novo</code> abre outro assunto</span></div>
+          <div class="fluxo-entrada" role="listitem"><b>📖 Grimório</b>
+            <span>a sua resposta a uma decisão</span></div>
+        </div>
+        <svg class="fluxo-junta" viewBox="0 0 340 34" aria-hidden="true">
+          <path d="M57 2 C57 20 170 14 170 30" />
+          <path d="M170 2 L170 30" />
+          <path d="M283 2 C283 20 170 14 170 30" />
+          <path class="fluxo-ponta" d="M163 24 L170 32 L177 24" />
+        </svg>
+
+        <ol class="fluxo-passos" id="fluxo-passos">
+          <li class="fluxo-passo">
+            <div class="fluxo-cabeca"><b>1 · Mesa de pedidos</b><code>MesaPedidos</code></div>
+            <p>Guarda o pedido e responde na hora. Pergunta curta de estado (“o app
+              está no ar?”) não vira pedido: vai ao cérebro, que responde em segundos.
+              Texto novo enquanto o pedido está vivo vai ao <b>mesmo</b> orquestrador;
+              “Novo assunto” abre outro.</p>
+            <div class="fluxo-desvio d-grimorio">↳ a resposta do Grimório volta ao pedido que
+              a esperava; se nenhum esperava, vira pedido novo</div>
+          </li>
+          <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
+          <li class="fluxo-passo">
+            <div class="fluxo-cabeca"><b>2 · Orquestrador</b><code>trabalhador</code></div>
+            <p>Um trabalhador de cargo “orquestrador”, contratado pelo coordenador,
+              trabalha numa worktree só dele (<code>E:\projetos-wt</code>). É o
+              <b>Claude</b>; se o Claude está proibido, acima do teto ou no limite, o
+              <b>Codex</b> assume os pedidos de construir (os outros esperam).</p>
+            <div class="fluxo-desvio d-limite">↳ caiu no limite do Claude: ver
+              <b>Limite do Claude</b>, abaixo</div>
+            <div class="fluxo-desvio d-ok">↳ só respondeu, sem mudar código:
+              <b>respondido</b>, direto para a resposta (pula o vigia e o conferente)</div>
+          </li>
+          <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
+          <li class="fluxo-passo">
+            <div class="fluxo-cabeca"><b>3 · Permissão</b><code>se ele pedir</code></div>
+            <p>Se o trabalhador precisa sair do combinado, ele pede e para. A regra
+              da categoria decide:</p>
+            <ul class="fluxo-regras">
+              <li><b class="r-aceita">gerente aceita</b> — o gerente da equipe libera
+                e retoma sozinho (só com o gerente ligado; desligado, a pergunta vem a você);</li>
+              <li><b class="r-pergunta">pergunta a você</b> — aviso no Telegram e um cartão
+                em Agora › Equipe (Permitir, Negar, Permitir sempre). Decisão de
+                produto vira nó no Grimório;</li>
+              <li><b class="r-nega">nega</b> — a tarefa não segue. Mexer em conta é
+                sempre negado.</li>
+            </ul>
+          </li>
+          <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
+          <li class="fluxo-passo">
+            <div class="fluxo-cabeca"><b>4 · Despachante</b><code>remoto.delegar</code></div>
+            <p>Cuida da worktree e da entrega: os eventos do trabalhador ao vivo (a
+              Oficina, em Agora › Codex), o diff e o validador: só a entrega vazia
+              é recusada; fora da lista, binário e diff grande entram com aviso.</p>
+          </li>
+          <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
+          <li class="fluxo-passo">
+            <div class="fluxo-cabeca"><b>5 · Vigia</b><code>a cada 1 min</code></div>
+            <p>Testa a área da entrega, espera um momento seguro (sem publicação
+              em voo; não espera horário), aplica na árvore principal, faz o
+              commit <b>por caminho</b> e pede o reinício do serviço que mudou.
+              Teste vermelho: o trabalhador recebe <b>uma</b> correção.</p>
+            <div class="fluxo-desvio d-conflito">↳ não aplicou: ver <b>Conflito</b>, abaixo</div>
+          </li>
+          <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
+          <li class="fluxo-passo">
+            <div class="fluxo-cabeca"><b>6 · Conferente</b><code>só lê</code></div>
+            <p>Outro trabalhador olha a entrega já aplicada, sem mudar nada.
+              <b>APROVADO</b> → conferido. <b>DEFEITOS</b> → falhou, com a lista.</p>
+          </li>
+          <li class="fluxo-seta" aria-hidden="true"><svg viewBox="0 0 20 18"><path d="M10 0 V14 M4 9 L10 16 L16 9" /></svg></li>
+          <li class="fluxo-passo fluxo-fim">
+            <div class="fluxo-cabeca"><b>7 · Resposta</b><code>app + Telegram</code></div>
+            <p>A resposta final aparece na conversa (Agora › Coordenador, e no cartão
+              Pedir) e chega no Telegram: ✅ conferido, 🧭 respondido ou ❌ falhou.</p>
+          </li>
+        </ol>
+
+        <p class="fluxo-situacoes"><span class="fraco">O que o app mostra:</span>
+          <span>recebido</span> → <span>trabalhando</span> → <span>entregue</span> →
+          <span>conferido</span>; e também <span>respondido</span>, <span>em espera</span>,
+          <span>parado_limite</span>, <span>esperando você no Grimório</span>,
+          <span>executando</span> e <span>falhou</span>.</p>
+
+        <h3 class="fluxo-titulo">Quando algo dá errado</h3>
+        <div class="fluxo-erro d-limite" id="fluxo-limite">
+          <b>⏸ Limite do Claude</b>
+          <p>A rodada caiu no limite (da sessão ou da semana). O pedido fica
+            <b>parado_limite</b> sem gastar nenhuma das 5 retomadas, e volta a andar
+            <b>sozinho</b> quando o uso renova. Pedido de construir não espera: o Codex
+            assume na hora. Uma mensagem nova sua com o Claude no limite também vai ao
+            Codex, com o pedido inteiro.</p>
+        </div>
+        <div class="fluxo-erro d-grimorio" id="fluxo-grimorio">
+          <b>📖 Espera do Grimório</b>
+          <p>O trabalhador precisa de uma decisão sua. O pedido fica <b>esperando
+            você no Grimório</b> e o Telegram avisa qual nó. Quando você responde, a
+            resposta volta ao <b>mesmo</b> pedido e ao mesmo orquestrador, que
+            continua de onde parou. Se a decisão já estava tomada, ela volta na hora,
+            sem perguntar de novo. Se você escrever outra coisa antes, ele segue sem
+            esperar.</p>
+        </div>
+        <div class="fluxo-erro d-conflito" id="fluxo-conflito">
+          <b>🔀 Conflito</b>
+          <p>A entrega não entra (conflito com o que mudou no meio, teste vermelho de
+            novo depois da correção): o vigia contrata um
+            <b>integrador</b>, que junta os dois lados, roda os testes e entrega de
+            novo. Árvore principal com mudança por commitar nos mesmos arquivos não é
+            conflito: a entrega espera, avisa uma vez depois de 1 h e entra sozinha
+            quando limpar. Publicação em voo também só faz esperar. Entrega vazia
+            não é conflito: vira nada a aplicar.</p>
+        </div>
+        <div class="fluxo-erro d-falhou" id="fluxo-falhou">
+          <b>❌ Falhou</b>
+          <p>Quando o mesmo trabalhador cai 5 vezes (o coordenador retoma a cada
+            2 min; 10 min sem sinal conta como queda) ou o conferente aponta defeitos.
+            O Telegram avisa.</p>
+          <p><b>Para ver:</b> Agora › Coordenador mostra o pedido com o motivo; Agora ›
+            Equipe e Agora › Codex abrem o log do trabalhador.</p>
+          <p><b>Para reabrir:</b> no PC, <code>python -m coordenador reabrir-pedido
+            &lt;id&gt;</code>. Zera as retomadas e o <b>mesmo</b> trabalhador continua.
+            Uma mensagem nova depois do falhou abre um pedido novo.</p>
+        </div>
+        <p class="fraco fluxo-nota">Um pedido pode ainda pedir uma ação da lista
+          fechada (as histórias, os testes do coordenador) no repositório principal:
+          fica <b>executando</b>, nunca publica, espera a janela da postagem quando a
+          ação mexe no estoque, e o resultado volta ao mesmo orquestrador.</p>
+      </div>
     </div>
     <div class="cartao oculto" id="biblioteca-leitor">
       <div class="botoes biblioteca-nav">
