@@ -348,6 +348,11 @@ class ClienteLLM:
         self._pagina_vista = ("", 0)
         if sel.encontrar(self.page, self.sel["logado"], timeout=6.0) is not None:
             return "logado"
+        # O AVATAR E PROVA DE SESSAO (05/10/2026): o editor do Gemini pode
+        # levar mais que 6 s para montar, e o avatar ja esta la.
+        conta = self.sel.get("conta")
+        if conta and sel.encontrar(self.page, conta, timeout=1.0) is not None:
+            return "logado"
         if sel.encontrar(self.page, self.sel["login"], timeout=1.0) is not None:
             return "deslogado"
         if sel.encontrar(self.page, self.sel["campo"], timeout=1.0) is not None:
@@ -372,6 +377,15 @@ class ClienteLLM:
         para a pagina que nao montou ou o desafio anti-bot, com a tela salva
         em `PASTA_EM_BRANCO`. Devolve o estado."""
         estado = self.estado_da_pagina()
+        if estado == "deslogado":
+            # CONFIRMA DE NOVO antes de mandar refazer o login (05/10/2026):
+            # quatro "a sessao caiu" do Gemini em 04/10 eram a pagina ainda
+            # montando. Login caido de verdade continua caido daqui a pouco.
+            time.sleep(float(self.ajustes.get("reconfirmar_login_s", 5.0)))
+            estado = self.estado_da_pagina()
+            if estado != "deslogado":
+                self.log(f"[{self.provedor}] a tela de login sumiu na segunda "
+                         f"olhada ({estado}); nao era login caido.")
         if estado == "deslogado":
             raise NaoLogado(
                 f"a sessao do {self.provedor} nao esta valida neste perfil (a tela "
@@ -1062,6 +1076,8 @@ class ClienteLLM:
         olha_aviso = bool(self.sel.get("indisponivel"))
         aviso_seguido = 0
         avisou_pagina = False
+        from .texto import e_recusa_enlatada
+        recusa_vista = ("", 0.0)
 
         while time.monotonic() < fim:
             texto = self._resposta_nova()
@@ -1150,6 +1166,25 @@ class ClienteLLM:
                 raise EnvioTruncado(
                     f"so um pedaco do prompt virou mensagem no {self.provedor}: "
                     "o fim dele continua na caixa de texto.")
+            # A RECUSA ENLATADA VOLTA NA HORA (05/10/2026), mesmo com o "Parar
+            # resposta" na tela: o Gemini deixava o botao visivel depois de
+            # trocar 4040 chars por 124 de "Nao posso te ajudar com isso", e a
+            # espera ficava ate o prazo. Igual por `estabilidade` segundos
+            # basta: a frase e curta e nao cresce.
+            if (e_recusa_enlatada(texto) and not prontas
+                    and not achado.get("gerando")):
+                if texto != recusa_vista[0]:
+                    recusa_vista = (texto, time.monotonic())
+                elif time.monotonic() - recusa_vista[1] >= estabilidade:
+                    decorrido = time.monotonic() - inicio
+                    self.log(f"[{self.provedor}] recusa enlatada em "
+                             f"{decorrido:.0f}s: "
+                             f"«{' '.join(texto.split())[:120]}»")
+                    self._ultima_resposta = texto
+                    self.imagens_na_resposta = []
+                    return texto
+            else:
+                recusa_vista = ("", 0.0)
             if len(texto) != ultimo_tamanho:
                 ultimo_tamanho = len(texto)
                 parado_desde = None
@@ -1397,6 +1432,16 @@ class ClienteLLM:
         if (getattr(self, "sel", None) or {}).get("limpar_resposta"):
             from .texto import limpar_resposta
             texto = limpar_resposta(texto)
+        # A RECUSA ENLATADA NAO E "ok" (05/10/2026): a `historia_00059` teve
+        # tres turnos "Sou apenas um modelo de linguagem" registrados como
+        # turnos bons, e o diario dizia que o Gemini estava escrevendo.
+        from .texto import e_recusa_enlatada
+        if e_recusa_enlatada(texto):
+            ClienteLLM._registrar_turno(
+                self, "aviso", "recusa enlatada: "
+                + " ".join(str(texto).split())[:120],
+                time.monotonic() - comeco)
+            return texto
         ClienteLLM._registrar_turno(self, "ok", f"{len(texto)} chars",
                                     time.monotonic() - comeco)
         return texto

@@ -253,10 +253,24 @@ GEMINI = {
         "rich-textarea div.ql-editor[contenteditable='true']",
         "div.ql-editor[contenteditable='true']",
     ],
+    # SO O QUE APARECE PARA QUEM NAO ESTA LOGADO (05/10/2026). O antigo
+    # `a[href*='accounts.google.com']` casava com o AVATAR de quem esta
+    # logado (o link dele vai para accounts.google.com/SignOutOptions): 4
+    # "login caiu" em 04/10, e o mesmo pedido entregou a imagem 2 min depois
+    # sem login nenhum no meio. O link de entrar vai para ServiceLogin/signin.
     "login": [
-        "a[href*='accounts.google.com']",
+        "a[href*='accounts.google.com/ServiceLogin']",
+        "a[href*='accounts.google.com/v3/signin']",
+        "a[href*='accounts.google.com/signin']",
         "a[aria-label*='Sign in' i]",
+        "a[aria-label*='Fazer login' i]",
         "a:has-text('Fazer login')",
+    ],
+    # A prova de sessao viva quando o editor ainda nao montou: o avatar.
+    "conta": [
+        "a[href*='accounts.google.com/SignOutOptions']",
+        "a[aria-label*='Conta do Google' i]",
+        "a[aria-label*='Google Account' i]",
     ],
     "anexo_botao": [
         # O rotulo ATUAL, medido em 11/09/2026 sondando a pagina: o botao de

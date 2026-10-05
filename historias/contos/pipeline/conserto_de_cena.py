@@ -111,11 +111,25 @@ def classificar(motivos) -> dict:
 
 
 def motivos_da_cena(motivos, n: int) -> str:
-    """O que a IA disse sobre a cena `n`, junto."""
+    """O que a IA disse sobre a cena `n`, junto — LITERAL.
+
+    O pedaco sem numero que vem depois de um "cena N:" e continuacao dele, e
+    vai junto (05/10/2026): "cena 9: a imagem mostra um homem; a narracao diz
+    que uma mulher abriu a ficha" partia no `;`, a segunda metade nao tinha
+    numero e o conserto pela narracao recebia so "a imagem mostra um homem"
+    — sem saber que era para ser uma MULHER.
+    """
     saida = []
-    for pedaco in _pedacos(motivos):
-        if n in {int(m.group(1)) for m in NUMERO.finditer(pedaco)}:
-            saida.append(pedaco)
+    # A continuacao vale DENTRO do mesmo motivo: um motivo seguinte sem
+    # numero ("o titulo promete...") e de outro assunto, nao da cena de cima.
+    for motivo in ([motivos] if isinstance(motivos, str) else motivos or []):
+        dono = None
+        for pedaco in _pedacos([motivo]):
+            numeros = {int(m.group(1)) for m in NUMERO.finditer(pedaco)}
+            if numeros:
+                dono = numeros
+            if dono and int(n) in dono:
+                saida.append(pedaco)
     return "; ".join(saida)
 
 
@@ -145,7 +159,8 @@ def fixar_protagonista(roteiro: dict, nova: str) -> int:
     return trocas
 
 
-def pedido_de_prompt(cena: dict, protagonista: str, motivo: str) -> str:
+def pedido_de_prompt(cena: dict, protagonista: str, motivo: str,
+                     elenco: str = "") -> str:
     """O que se pede ao LLM para reescrever o prompt de UMA cena.
 
     PEDIDO DE TEXTO, E DITO NA PRIMEIRA LINHA. A primeira versao abria com
@@ -168,11 +183,27 @@ def pedido_de_prompt(cena: dict, protagonista: str, motivo: str) -> str:
     if protagonista:
         linhas.append("Se o protagonista aparecer, use exatamente esta "
                       f"descricao dele: {protagonista}.")
+    # OS OUTROS PERSONAGENS TAMBEM TEM FICHA (05/10/2026). De 158 motivos de
+    # reprovacao de 01 a 05/10, 36 eram "um homem no lugar da mulher" ou
+    # "o protagonista no lugar de outra pessoa": o conserto so conhecia a
+    # descricao do protagonista, e reescrevia o resto com "a clerk", "a
+    # neighbor" — sem genero, o gerador sorteia.
+    if elenco:
+        linhas.append("Se aparecer alguem do elenco, use exatamente a "
+                      f"descricao fixa dele: {elenco}.")
+    linhas.append("Quem a NARRACAO diz que age nesta cena e quem aparece na "
+                  "descricao. Diga o GENERO e a idade de cada pessoa ('a woman "
+                  "in her 50s', 'a teenage boy'), mesmo de quem nao tem nome; "
+                  "nunca so a funcao ('a clerk', 'a neighbor'). Nao ponha o "
+                  "protagonista onde a narracao fala de outra pessoa.")
     linhas += [
         "",
         f"NARRACAO DA CENA: {cena.get('narracao', '')}",
         f"PROMPT ATUAL: {cena.get('imagem', '')}",
-        f"O QUE O REVISOR APONTOU: {motivo or 'a imagem nao bate com a narracao'}",
+        # LITERAL, como o revisor escreveu (`motivos_da_cena`): e ele que diz
+        # o que esta errado, e resumir aqui ja perdeu o "era uma mulher".
+        f"O QUE O REVISOR APONTOU (literal): "
+        f"{motivo or 'a imagem nao bate com a narracao'}",
         "",
         "Responda SO o novo prompt, sem aspas e sem comentario.",
     ]
@@ -215,6 +246,7 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
 
     alvo = _cenas_da_parte(roteiro, parte)
     protagonista = str(roteiro.get("protagonista") or "")
+    elenco = str(roteiro.get("elenco") or "")
     novos = {}
 
     def _rodar(pergunta, de_novo=None):
@@ -223,7 +255,8 @@ def reescrever_prompts(roteiro: dict, parte: int, cenas: list, motivos, *,
             if cena is None:
                 continue
             pedido = pedido_de_prompt(cena, protagonista,
-                                      motivos_da_cena(motivos, int(n)))
+                                      motivos_da_cena(motivos, int(n)),
+                                      elenco)
             resposta = pergunta(pedido)
             # A RECUSA ENLATADA (27/09/2026, 02:18): "Nao fui programado para
             # fazer essas coisas" virava prompt vazio em `limpar`, e o reparo

@@ -418,16 +418,18 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
     add("")
     add("CONSISTENCIA VISUAL (isto e obrigatorio):")
     add("  - Descreva o protagonista FISICAMENTE em ingles, em uma frase "
-        "curta e fixa. Ela PRECISA ter, nesta ordem: etnia ou tom de pele, "
-        "idade aparente, cabelo (cor e corte), UM traco marcante do rosto, "
-        "e a roupa recorrente.")
+        "curta e fixa. Ela PRECISA ter, nesta ordem: GENERO (man, woman, "
+        "boy, girl), etnia ou tom de pele, idade aparente, cabelo (cor e "
+        "corte), UM traco marcante do rosto, e a roupa recorrente.")
     add("  - Nada de adjetivo vago no lugar de um traco: 'tired eyes' e "
         "'kind face' nao descrevem ninguem e cada imagem inventa uma pessoa "
         "diferente. Vale 'a thin scar on the left eyebrow', 'round "
         "wire-frame glasses', 'a wide gap between the front teeth'.")
     add("  - Essa frase sera repetida em TODAS as imagens de TODAS as partes, "
         "entao nao pode mudar depois. Nada de nome dentro dela.")
-    add("  - Faca o mesmo para cada personagem que aparece mais de uma vez.")
+    add("  - Faca o mesmo para cada personagem que aparece mais de uma vez, "
+        "no ELENCO: a mesma ficha fixa, comecando pelo GENERO e pela idade "
+        "('woman, 60 years old, ...'), com a roupa.")
     add("")
     # O gemeo FACTUAL da consistencia visual. A descricao fisica ja e repetida
     # em toda imagem — mas repetir uma descricao VAGA nao fixa ninguem: em
@@ -466,14 +468,16 @@ def prompt_biblia(*, partes: int = PARTES_PADRAO,
         "especifica desta historia e facil de reconhecer numa lista. Nao "
         "repita a frase do titulo>")
     add("PREMISSA: <2 frases: a situacao e a pergunta central>")
-    add("PROTAGONISTA: <nome> | <descricao fisica em ingles, uma frase>")
+    add("PROTAGONISTA: <nome> | <descricao fisica em ingles, uma frase, "
+        "comecando pelo genero>")
     # Continua sendo pedido de volta mesmo quando ja foi ditado: e assim que
     # `parse_biblia` o captura, e e a confirmacao de que o modelo obedeceu.
     add("NARRADOR: " + (f"{narrador} (ja definido acima; repita exatamente "
                         "isto)" if narrador
                         else "<homem ou mulher — quem esta contando em "
                              "primeira pessoa>"))
-    add("ELENCO: <nome> | <descricao fisica em ingles>; <nome> | <descricao>")
+    add("ELENCO: <nome> | <descricao fisica em ingles, comecando pelo "
+        "genero e pela idade, com a roupa>; <nome> | <descricao>")
     add("CENARIO: <onde a historia acontece, em ingles, uma frase>")
     add("ALAVANCAS: <as DUAS escolhidas> | <o que exatamente esta em jogo "
         "para quem assiste, em uma frase>")
@@ -759,6 +763,9 @@ def prompt_parte(biblia: dict, numero: int, *,
             f"imagem com: {biblia['protagonista']}")
     if biblia.get("elenco"):
         add(f"  - Outros personagens: {biblia['elenco']}")
+        add("  - Quando um deles aparecer, escreva no prompt de imagem a "
+            "descricao fixa dele INTEIRA, igual a de cima.")
+    _quem_age_na_cena(add)
     if biblia.get("cenario"):
         add(f"  - Cenario: {biblia['cenario']}")
     add("")
@@ -916,13 +923,31 @@ def _limite_da_plataforma(add) -> None:
     add("")
 
 
+def _quem_age_na_cena(add) -> None:
+    """A regra de QUEM aparece em cada imagem (05/10/2026).
+
+    De 158 motivos de reprovacao do parecer de 01 a 05/10, 36 eram a pessoa
+    errada: "um homem no lugar da mulher", o protagonista onde a narracao
+    fala de outro. Na h56 p03 a narracao dizia "uma mulher abriu a ficha" e o
+    prompt dizia "a middle-aged clerk" — sem genero, o gerador desenhou um
+    homem. So a ficha do protagonista era fixa.
+    """
+    add("  - Em cada cena, o prompt de imagem mostra QUEM a narracao diz que "
+        "age nela. Personagem do elenco entra com a descricao fixa; pessoa "
+        "sem nome entra com GENERO e idade ('a woman in her 50s behind the "
+        "counter', nunca so 'a clerk'). Nao ponha o protagonista onde a "
+        "narracao fala de outra pessoa.")
+
+
 def _consistencia(add, biblia: dict | None = None) -> None:
     if biblia is None:
         add("PARA AS IMAGENS (o video mostra uma imagem gerada por cena):")
         add("  - Descreva cada personagem que aparece mais de uma vez em "
-            "INGLES, numa frase fixa: etnia ou tom de pele, idade aparente, "
-            "cabelo, UM traco concreto do rosto e a roupa. Ela sera repetida "
-            "em todas as imagens, entao nao muda depois.")
+            "INGLES, numa frase fixa: GENERO (man, woman, boy, girl), etnia "
+            "ou tom de pele, idade aparente, cabelo, UM traco concreto do "
+            "rosto e a roupa. Vale para o protagonista E para cada um do "
+            "ELENCO. Ela sera repetida em todas as imagens, entao nao muda "
+            "depois.")
         # 17/09/2026, favela livre: quem narrava era um morador, o
         # protagonista era o porteiro, e o Gemini reprovou porque as imagens
         # mostravam o porteiro quando a narracao falava do narrador.
@@ -937,7 +962,9 @@ def _consistencia(add, biblia: dict | None = None) -> None:
         add(f"  - Protagonista, em toda imagem em que aparecer: "
             f"{biblia['protagonista']}")
     if biblia.get("elenco"):
-        add(f"  - Outros personagens: {biblia['elenco']}")
+        add(f"  - Outros personagens, cada um com a descricao fixa inteira em "
+            f"toda imagem em que aparecer: {biblia['elenco']}")
+    _quem_age_na_cena(add)
     if biblia.get("cenario"):
         add(f"  - Cenario: {biblia['cenario']}")
     if biblia.get("fatos"):
@@ -986,9 +1013,11 @@ def prompt_biblia_livre(*, partes: int, cenas_por_parte: int, tipo: str,
     add("TITULO DA SERIE: <o titulo da historia>")
     add("NOME DA SERIE: <2 a 4 palavras; vai no titulo de todas as partes>")
     add("PREMISSA: <2 frases>")
-    add("PROTAGONISTA: <nome> | <descricao fisica em ingles, uma frase>")
+    add("PROTAGONISTA: <nome> | <descricao fisica em ingles, uma frase, "
+        "comecando pelo genero>")
     add("NARRADOR: <homem ou mulher — a voz que vai contar>")
-    add("ELENCO: <nome> | <descricao fisica em ingles>; <nome> | <descricao>")
+    add("ELENCO: <nome> | <descricao fisica em ingles, comecando pelo "
+        "genero e pela idade, com a roupa>; <nome> | <descricao>")
     add("CENARIO: <onde acontece, em ingles, uma frase>")
     add("FATOS: <fato> = <valor>; <fato> = <valor>")
     add("VIRADA CENTRAL: <a virada principal, uma frase>")

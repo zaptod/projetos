@@ -265,12 +265,15 @@ def _lembrar(video, veredito: dict) -> None:
         return
 
     carimbo = _carimbar(dict(veredito))
+    motivos = [m for m in (veredito.get("motivos") or []) if not motivo_lixo(m)]
+    if not motivos and veredito.get("motivos"):
+        motivos = ["sem motivo dado"]
     dados[chave] = {
         "mtime": marca,
         "aprovado": bool(veredito.get("aprovado")),
         "situacao": carimbo["situacao"],
         "assistido": carimbo["assistido"],
-        "motivos": list(veredito.get("motivos") or []),
+        "motivos": motivos,
         "vista": vista,
         "numeracao": str(veredito.get("numeracao") or ""),
         "protagonista": str(veredito.get("protagonista") or ""),
@@ -288,11 +291,115 @@ def ja_olhado(video) -> bool:
     E a regra de uma passada so (15/09/2026): o video consertado depois do
     veto tem mp4 novo, `lembrado` o trata como nunca visto, e a revisao da
     madrugada perguntaria de novo.
+
+    Com `REOLHAR_DEPOIS_DO_CONSERTO` ligado, o mp4 CONSERTADO (`consertado`)
+    ganha UMA olhada: a ficha nova, dada depois do conserto, desliga o
+    `consertado` e a parte volta a contar como olhada. Sem loop: uma olhada
+    por conserto, e o reparo so conserta uma vez (`reparo.UMA_PASSADA`).
     """
     try:
-        return bool(_lembretes().get(str(getattr(video, "id", video))))
+        if not _lembretes().get(str(getattr(video, "id", video))):
+            return False
     except Exception:                                          # noqa: BLE001
         return False
+    if REOLHAR_DEPOIS_DO_CONSERTO and consertado(video):
+        return False
+    return True
+
+
+# A IA OLHA DE NOVO A PARTE CONSERTADA? (05/10/2026, varredura de erros.)
+# De 58 partes na fila, 57 estavam RETIDAS, e 37 delas ja tinham sido
+# consertadas ("refiz as cenas ... e re-renderizei"): o veto do mp4 ANTIGO
+# continuava valendo porque, desde 15/09/2026, e uma passada so no Gemini.
+# Ligar isto muda aquela regra, e a decisao e do Adrian: no Grimorio
+# (`historias/reolhar-depois-do-conserto`) ele decidiu "Nao, manter uma
+# passada so" (05/10/2026, 12:32). Por isso fica DESLIGADO. Desligado: a parte
+# consertada so passa a ser RECONHECIDA (`consertado`, `estado_do_video`), e
+# a publicacao decide o que fazer com isso.
+REOLHAR_DEPOIS_DO_CONSERTO = False
+
+# O `feito` do reparo que e conserto de verdade: cenas refeitas e mp4 novo.
+# "a imagem nova nao veio; desfiz", "consertei mas a vistoria ainda reprova"
+# e "a IA reprova e nao ha conserto" NAO trocaram imagem nenhuma.
+FEITO_DO_CONSERTO = ("refiz",)
+ESTADO_CONSERTADO = "consertado"
+
+
+def _quando(texto) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(texto or ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def conserto_depois_do_parecer(video) -> dict | None:
+    """A ficha do reparo que REFEZ cenas deste video DEPOIS do ultimo parecer.
+
+    `None` se nao ha parecer, se o ultimo reparo nao refez nada, ou se ele e
+    de antes do parecer. Nunca levanta.
+    """
+    try:
+        chave = str(getattr(video, "id", video))
+        ficha = _lembretes().get(chave)
+        if not ficha:
+            return None
+        from ..pipeline import reparo
+        registro = reparo._ler().get(chave) or {}
+    except Exception:                                          # noqa: BLE001
+        return None
+    feito = str(registro.get("feito") or "").strip().lower()
+    if not feito.startswith(FEITO_DO_CONSERTO):
+        return None
+    depois, antes = _quando(registro.get("quando")), _quando(ficha.get("quando"))
+    if depois is None or antes is None or depois <= antes:
+        return None
+    return registro
+
+
+def consertado(video) -> bool:
+    """A parte REPROVADA foi consertada depois do veto e ninguem olhou ainda?
+
+    As tres condicoes juntas, e cada uma tem motivo:
+
+      - o ultimo parecer e REPROVADO (aprovado nao precisa de conserto, e o
+        `nao_assistido` e outro caminho: volta ao Gemini sem conserto);
+      - o mp4 MUDOU desde o parecer, e para mais novo. `video` precisa ter
+        `caminho`: so com o id nao da para saber, e a resposta e False;
+      - o `_reparos.json` registra "refiz" DEPOIS do parecer. So o mtime nao
+        basta: um re-render sem conserto ("imagem mais nova que o video")
+        tambem muda o mp4, e o veto continua valendo (revisao de 15/09/2026).
+
+    NAO quer dizer aprovado: ninguem assistiu ao mp4 novo. `situacao_do_video`
+    continua dizendo "reprovado" de proposito — quem decide o que a parte
+    consertada vale na grade e a publicacao (`estado_do_video`). Nunca levanta.
+    """
+    try:
+        ficha = _lembretes().get(str(getattr(video, "id", video)))
+        if not ficha or situacao(ficha) != SITUACAO_REPROVADO:
+            return False
+        marca = _marca_do_video(video)
+        if marca <= 0.0:
+            return False
+        if marca - float(ficha.get("mtime") or 0) <= 1.0:
+            return False      # o mesmo mp4 (ou um mais velho): nada mudou
+    except Exception:                                          # noqa: BLE001
+        return False
+    return conserto_depois_do_parecer(video) is not None
+
+
+def estado_do_video(video) -> str:
+    """A pergunta da PUBLICACAO: `situacao_do_video` mais o "consertado".
+
+    `"aprovado"` | `"reprovado"` | `"nao_assistido"` | `"consertado"` | `""`.
+
+    `"consertado"` = reprovado, mas o reparo refez as cenas e o mp4 de agora
+    e posterior ao veto (`consertado`). Ninguem assistiu a ele: a decisao
+    `reprovado-ou-nao-assistido` (27/09/2026) continua valendo, e a parte
+    consertada so ganha a frente da vetada sem conserto. Nunca levanta.
+    """
+    if consertado(video):
+        return ESTADO_CONSERTADO
+    return situacao_do_video(video)
 
 
 def veto_por_id(video) -> dict | None:
@@ -584,6 +691,59 @@ def prompt(video, roteiro: dict, parte: int, laudo: dict | None = None, *,
     return "\n".join(linhas)
 
 
+# O QUE NAO E MOTIVO (05/10/2026). Seis fichas de `_pareceres.json` (h23
+# p03, h43 p02, h47 p05, h49 p02, h56 p03 e p04) terminavam com as linhas
+# "MP4" e "+ 1"/"+ 4": o rotulo do anexo de video e o contador de anexos do
+# Gemini, lidos junto com a resposta. Viravam motivo, iam ao Telegram e ao
+# texto do reparo. Uma linha so e motivo se diz alguma coisa.
+_LIXO_DO_ANEXO = re.compile(
+    r"^(?:mp4|mov|webm|mkv|png|jpe?g|webp|gif|pdf|v[ií]deo|video|arquivo|"
+    r"file|imagem|image)$"
+    r"|^\+\s*\d+$"
+    r"|^\d{1,2}:\d{2}(?::\d{2})?$"
+    r"|^[\w .()-]+\.(?:mp4|mov|webm|png|jpe?g|webp)$",
+    re.IGNORECASE)
+
+
+def motivo_lixo(linha) -> bool:
+    """A linha e enfeite da pagina (rotulo de anexo, contador), e nao motivo?"""
+    limpo = " ".join(str(linha or "").split()).strip(" -•\t.:;")
+    if not limpo:
+        return True
+    if _LIXO_DO_ANEXO.match(limpo):
+        return True
+    # Sem duas letras seguidas nao ha frase: "+ 1", "--", "3".
+    return not re.search(r"[^\W\d_]{2}", limpo)
+
+
+def limpar_motivos_gravados(caminho: Path | None = None) -> int:
+    """Tira de `_pareceres.json` os motivos-lixo ja gravados. Devolve quantos.
+
+    So mexe em `motivos`; o veredito, a data e o mtime ficam. Ficha que
+    ficaria sem motivo nenhum ganha "sem motivo dado", como em `ler_veredito`.
+    """
+    alvo = Path(caminho or LEMBRETES)
+    if not alvo.is_file():
+        return 0
+    with open(alvo, encoding="utf-8-sig") as fh:
+        dados = json.load(fh)
+    if not isinstance(dados, dict):
+        return 0
+    tirados = 0
+    for ficha in dados.values():
+        if not isinstance(ficha, dict) or not ficha.get("motivos"):
+            continue
+        antes = list(ficha["motivos"])
+        bons = [m for m in antes if not motivo_lixo(m)]
+        if len(bons) != len(antes):
+            tirados += len(antes) - len(bons)
+            ficha["motivos"] = bons or ["sem motivo dado"]
+    if tirados:
+        with open(alvo, "w", encoding="utf-8") as fh:
+            json.dump(dados, fh, ensure_ascii=False, indent=2)
+    return tirados
+
+
 def ler_veredito(texto: str) -> dict:
     """A resposta crua -> `{aprovado, motivos, texto}`.
 
@@ -610,7 +770,7 @@ def ler_veredito(texto: str) -> dict:
         for linha in linhas:
             if linha.upper().startswith("PROTAGONISTA:"):
                 protagonista = linha.split(":", 1)[1].strip()
-            else:
+            elif not motivo_lixo(linha):
                 motivos.append(linha)
         return {"aprovado": False, "motivos": motivos or ["sem motivo dado"],
                 "protagonista": protagonista, "texto": str(texto).strip()}
@@ -819,6 +979,8 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
 
 __all__ = ["pedir", "prompt", "ler_veredito", "folha_de_contato",
            "folha_por_cena", "situacao", "situacao_do_video", "nao_assistido",
-           "marcar_nao_assistido",
+           "marcar_nao_assistido", "consertado", "estado_do_video",
+           "conserto_depois_do_parecer", "limpar_motivos_gravados",
+           "REOLHAR_DEPOIS_DO_CONSERTO", "ESTADO_CONSERTADO",
            "SemParecer", "RecusaDoModelo", "APROVADO", "REPROVADO",
            "SITUACAO_APROVADO", "SITUACAO_REPROVADO", "NAO_ASSISTIDO"]

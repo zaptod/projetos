@@ -818,15 +818,38 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     laudo.update({"parte": parte, "imagens": imagens,
                   "titulo": R.titulo_da_parte(roteiro, parte),
                   "ok": not laudo["erros"]})
+    _registrar_vistoria(historia_id, parte, laudo, _t.monotonic() - _comeco)
+    return laudo
+
+
+# SO O QUE DIZ ALGUMA COISA VAI AO DIARIO (05/10/2026). Uma linha por parte
+# em toda passada eram 2849 das 3836 linhas do `atividade.jsonl` (74%): o
+# diario cobria 23,6 h, a poda por numero de linhas o derrubaria para ~12 h,
+# e o relatorio "das ultimas 24 h" lia 8,6 h. A vistoria que passou rapido
+# (memo de `_vistoria_medidas.json`: ~0,1 s) nao conta nada a ninguem; a que
+# barrou, ou que levou tempo (decode de verdade), conta.
+VISTORIA_LENTA_S = 5.0
+
+
+def _registrar_vistoria(historia_id: str, parte: int, laudo: dict,
+                        dur_s: float) -> bool:
+    """Registra a vistoria no diario SE barrou ou foi lenta. Nunca levanta."""
+    erros = list(laudo.get("erros") or [])
+    if not erros and dur_s < VISTORIA_LENTA_S:
+        return False
     try:
         from builds import atividade as _at
-        _at.registrar("estudio", _at.LOG, f"vistoria {historia_id} p{parte}",
-                      "historias", etapa="vistoria",
-                      ref=f"{historia_id}:p{parte}",
-                      dur_s=_t.monotonic() - _comeco)
+        detalhe = f"vistoria {historia_id} p{parte}"
+        if erros:
+            detalhe += f": {len(erros)} erro(s) — {str(erros[0])[:160]}"
+        else:
+            detalhe += f": lenta ({dur_s:.1f} s)"
+        _at.registrar("estudio", _at.LOG, detalhe, "historias",
+                      etapa="vistoria", ref=f"{historia_id}:p{parte}",
+                      dur_s=dur_s)
     except Exception:                                          # noqa: BLE001
-        pass
-    return laudo
+        return False
+    return True
 
 
 def liberado(video, roteiro: dict | None = None) -> dict:

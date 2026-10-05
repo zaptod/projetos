@@ -542,10 +542,20 @@ class _SaidaNoDiario:
     interativo); a do Agendador nao conta, e e exatamente ela que trava.
     """
 
+    # O QUE UM `sys.stdout` TEM QUE TER (05/10/2026). Sem `buffer`, o
+    # `postar._linha` (`sys.stdout.buffer.write`) levantava AttributeError
+    # dentro da rodada; `postar.pendentes_por_canal` engolia e devolvia -1, e
+    # `estoque_publicavel` caia no plano B, que contava as RETIDAS: "ja ha
+    # 59-60 videos novos na fila (teto 20)" com 1 parte limpa de verdade, e
+    # nenhuma historia nova nas madrugadas de 03, 04 e 05/10.
+    encoding = "utf-8"
+    errors = "replace"
+
     def __init__(self, destino: Path, original=None):
         self.destino = Path(destino)
         self.eco = original if _e_terminal(original) else None
         self._resto = ""
+        self.buffer = _BufferDoDiario(self)
 
     def write(self, texto: str) -> int:
         if self.eco is not None:
@@ -574,6 +584,24 @@ class _SaidaNoDiario:
 
     def isatty(self) -> bool:
         return False
+
+
+class _BufferDoDiario:
+    """O `sys.stdout.buffer` minimo: bytes viram texto e vao ao mesmo diario."""
+
+    def __init__(self, saida: _SaidaNoDiario):
+        self._saida = saida
+
+    def write(self, dados) -> int:
+        if isinstance(dados, (bytes, bytearray, memoryview)):
+            texto = bytes(dados).decode("utf-8", "replace")
+        else:
+            texto = str(dados)
+        self._saida.write(texto)
+        return len(dados)
+
+    def flush(self) -> None:
+        self._saida.flush()
 
 
 def avisar(texto: str, log=print) -> bool:
@@ -813,16 +841,65 @@ def estoque_publicavel() -> int:
     escolha (`fila_de_historias`) sem as retidas. Nenhum criterio duplicado:
     se a publicacao mudar o que conta, a agenda muda junto.
 
-    Nao deu para contar (`-1` ou excecao): cai no `aprovados_no_estoque`,
-    que conta a mais — o erro barato e criar de menos, nao sem parar.
+    Nao deu para contar (`-1` ou excecao): cai no `aprovados_no_estoque`
+    SEM AS RETIDAS (05/10/2026) — e AVISA, no log e no diario. O plano B de
+    antes contava as retidas e ficou tres madrugadas (03 a 05/10) vendo 58
+    "publicaveis" onde a publicacao via 1: a falha que o levava ao plano B
+    (o `_SaidaNoDiario` sem `buffer`) nunca apareceu em lugar nenhum.
     """
+    motivo = ""
     try:
         n = int(_postar().pendentes_por_canal().get("historias", -1))
-    except Exception:                                          # noqa: BLE001
+        if n < 0:
+            motivo = "a publicacao devolveu -1 (ela engoliu um erro ao contar)"
+    except Exception as exc:                                   # noqa: BLE001
         n = -1
+        motivo = f"{type(exc).__name__}: {exc}"
     if n >= 0:
         return n
-    return len(aprovados_no_estoque())
+    aprovados = aprovados_no_estoque()
+    limpos = [v for v in aprovados if not _retida(v)]
+    _avisar_plano_b(motivo, len(aprovados), len(limpos))
+    return len(limpos)
+
+
+def _retida(video) -> bool:
+    """A valvula da publicacao a seguraria? (`reprovado` ou `nao_assistido`).
+
+    A MESMA leitura do `postar._retencao`: `parecer.situacao_do_video`, pelo
+    id. A parte consertada que ninguem olhou continua "reprovado" ali.
+    Sem conseguir ler, NAO e retida (conta a mais, cria de menos).
+    """
+    try:
+        from ..publicar import parecer
+        return parecer.situacao_do_video(video) in (
+            parecer.SITUACAO_REPROVADO, parecer.NAO_ASSISTIDO)
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+_PLANO_B_AVISADO = False
+
+
+def _avisar_plano_b(motivo: str, total: int, limpos: int) -> None:
+    """Uma linha no log e UMA no diario por processo. Nunca levanta."""
+    global _PLANO_B_AVISADO
+    texto = (f"[auto] a publicacao nao soube contar o estoque ({motivo or '?'}); "
+             f"plano B: {limpos} publicavel(is) de {total} aprovado(s) na "
+             f"vistoria ({total - limpos} retida(s) descontada(s)).")
+    try:
+        print(texto)
+    except Exception:                                          # noqa: BLE001
+        pass
+    if _PLANO_B_AVISADO:
+        return
+    _PLANO_B_AVISADO = True
+    try:
+        from builds import atividade
+        atividade.registrar("estudio", "aviso", texto[:400], "historias",
+                            etapa="criacao.estoque")
+    except Exception:                                          # noqa: BLE001
+        pass
 
 
 def dias_de_estoque_novo() -> int:
@@ -1166,6 +1243,29 @@ def _avisar_uma_vez_por_dia(chave: str, texto: str, agora, log=print) -> bool:
     return avisar(texto, log=log)
 
 
+def _kwargs_da_conferencia(funcao, log) -> dict:
+    """`{log, origem="servico"}` quando `conferir_tudo` aceita a origem.
+
+    A conferencia mudou de hora em 30/09 (edccded: da madrugada para o 1o
+    disparo do dia), e `sinais.noite_rodou` seguiu exigindo uma rodada antes
+    das 06:37: o alarme "noite sem conferencia" disparava todo dia (varredura
+    de 05/10/2026, item 14). A origem diz quem conferiu. Passada so se a
+    assinatura a tiver: a funcao e da parte de metricas, e uma versao sem
+    o parametro levantaria TypeError e mataria a conferencia do dia.
+    """
+    kwargs = {"log": log}
+    try:
+        import inspect
+        parametros = inspect.signature(funcao).parameters
+        if ("origem" in parametros or any(
+                p.kind is inspect.Parameter.VAR_KEYWORD
+                for p in parametros.values())):
+            kwargs["origem"] = "servico"
+    except (TypeError, ValueError):
+        pass
+    return kwargs
+
+
 def _servico_do_dia(config: dict, headless: bool, log) -> None:
     """O servico do 1o disparo do dia. Nunca derruba a rodada: e servico.
 
@@ -1201,7 +1301,8 @@ def _servico_do_dia(config: dict, headless: bool, log) -> None:
             f"{type(exc).__name__}: {exc}")
     try:
         from builds.publicar import conferencia
-        conferencia.conferir_tudo(log=log)
+        conferencia.conferir_tudo(**_kwargs_da_conferencia(
+            conferencia.conferir_tudo, log))
     except Exception as exc:                                   # noqa: BLE001
         log(f"[auto] a conferencia do canal falhou: "
             f"{type(exc).__name__}: {exc}")

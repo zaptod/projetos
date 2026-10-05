@@ -88,9 +88,62 @@ class _Diario:
         self.destino = novo
 
 
+class RecusaEnlatada(GeracaoFalhou):
+    """O site respondeu a frase fixa de "isso eu nao faco", e insistiu."""
+
+
+# QUANTAS VEZES A RECUSA ENLATADA E PERGUNTADA DE NOVO, cada uma num chat
+# novo. 05/10/2026, 11:05Z: a parte 5 da `historia_00059` virou "Nao posso te
+# ajudar com isso. Sou apenas um modelo de linguagem" (cont1, retomada e
+# revisao, tudo recusa), `_completar_parte` pediu "continue da cena 0" no
+# mesmo chat, e a criacao morreu em "voltou sem cena legivel". A frase e
+# sorteada (`llm.texto.e_recusa_enlatada`): o mesmo pedido num chat novo
+# costuma passar. Tres e o teto: cada volta custa um turno inteiro.
+TENTATIVAS_DE_RECUSA = 3
+
+
+def _nome_do_provedor(cliente) -> str:
+    return str(getattr(cliente, "provedor", "") or "LLM")
+
+
+def _perguntar_sem_recusa(cliente, prompt: str, *, rotulo: str, pasta=None,
+                          nome: str = "", log=print,
+                          tentativas: int = TENTATIVAS_DE_RECUSA) -> str:
+    """`cliente.perguntar(prompt)`, perguntando de novo NUM CHAT NOVO quando a
+    resposta e a recusa enlatada. Levanta `RecusaEnlatada` se todas forem.
+
+    Chat novo, e nao o mesmo: no mesmo chat o modelo tende a repetir a
+    propria recusa. O prompt de parte (`prompt_parte`) ja leva a biblia, o
+    elenco e a ficha de FATOS, entao o chat novo nao perde a historia — so a
+    memoria fina do texto, como na retomada.
+    """
+    from ..llm.texto import e_recusa_enlatada
+
+    texto = ""
+    for volta in range(1, max(1, int(tentativas)) + 1):
+        texto = cliente.perguntar(prompt)
+        if not e_recusa_enlatada(texto):
+            return texto
+        frase = " ".join(str(texto).split())[:100]
+        if pasta is not None and nome:
+            _guardar_conversa(Path(pasta), f"{nome}_recusa{volta}.txt", texto)
+        if volta >= tentativas:
+            break
+        log(f"[serie] {rotulo}: recusa enlatada do "
+            f"{_nome_do_provedor(cliente)} ({frase}); pergunto de novo num "
+            f"chat novo ({volta}/{tentativas - 1}).")
+        cliente.abrir(novo_chat=True)
+    raise RecusaEnlatada(
+        f"recusa enlatada do {_nome_do_provedor(cliente)} em {rotulo}, "
+        f"{tentativas} vez(es) seguidas (chat novo a cada uma): "
+        + " ".join(str(texto).split())[:120])
+
+
 def _completar_parte(cliente, texto: str, numero: int, cenas_alvo: int,
                      pasta: Path, log) -> dict:
     """A parte parseada, pedindo continuacao enquanto vier cortada."""
+    from ..llm.texto import e_recusa_enlatada
+
     parcial = R.parse(texto)
     tentativas = 0
     while len(parcial["cenas"]) < cenas_alvo and tentativas < 3:
@@ -101,6 +154,12 @@ def _completar_parte(cliente, texto: str, numero: int, cenas_alvo: int,
         extra = cliente.perguntar(
             S.prompt_continuar(numero, ultima, cenas_alvo))
         _guardar_conversa(pasta, f"parte_{numero:02d}_cont{tentativas}.txt", extra)
+        if e_recusa_enlatada(extra):
+            # "Continue da cena N" num chat que recusa nao tem conserto ali:
+            # fica o que ja veio, e quem chamou decide (chat novo).
+            log(f"[serie] parte {numero}: a continuacao veio com a recusa "
+                f"enlatada do {_nome_do_provedor(cliente)}; paro de pedir.")
+            break
         novas = R.parse(extra)["cenas"]
         if not novas:
             break
@@ -139,8 +198,11 @@ def _exigir_coerencia(cliente, parcial: dict, numero: int, cenas_alvo: int,
             f"({motivos[0][:90]}). Pedindo de novo "
             f"({volta}/{TENTATIVAS_DE_COERENCIA}).")
         try:
-            texto = cliente.perguntar(
-                S.prompt_parte(biblia, numero, cenas=cenas_alvo, config=config))
+            texto = _perguntar_sem_recusa(
+                cliente,
+                S.prompt_parte(biblia, numero, cenas=cenas_alvo, config=config),
+                rotulo=f"a parte {numero} (de novo)", pasta=pasta,
+                nome=f"parte_{numero:02d}_recoerencia{volta}", log=log)
         except Exception as exc:                               # noqa: BLE001
             log(f"[serie] a parte {numero} nao veio de novo ({exc}).")
             break
@@ -302,9 +364,12 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
         cliente.abrir(novo_chat=True)
         for numero in faltam:
             log(f"[serie] retomada: escrevendo a parte {numero}...")
-            texto = cliente.perguntar(
+            texto = _perguntar_sem_recusa(
+                cliente,
                 S.prompt_parte(biblia, numero, cenas=cenas_por_parte,
-                               config=config))
+                               config=config),
+                rotulo=f"a parte {numero} (retomada)", pasta=pasta,
+                nome=f"parte_{numero:02d}_retomada", log=log)
             _guardar_conversa(pasta, f"parte_{numero:02d}_retomada.txt", texto)
             parcial = _completar_parte(cliente, texto, numero, cenas_por_parte,
                                        pasta, log)
@@ -408,21 +473,23 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             log(f"[serie] etapa 1: planejando a historia inteira "
                 f"(molde: {estrutura or 'nenhum'}, narrador: {narrador}, "
                 f"alavancas: {' + '.join(ganchos) or 'nenhuma'})...")
-            texto = cliente.perguntar(
-                S.prompt_biblia(partes=partes, cenas_por_parte=cenas_por_parte,
-                                tema=tema, config=config,
-                                # O chat e novo a cada rodada: sem esta lista o
-                                # modelo nao sabe o que o canal ja tem, e com o
-                                # tema livre ele repete o mesmo gancho.
-                                evitar=R.titulos_recentes(),
-                                # E sem MOLDE ele repete tambem a forma: a
-                                # serie nunca usou os tres de `roteiro.json`.
-                                estrutura=estrutura,
-                                # Sem estes dois ele repetia as MESMAS duas
-                                # alavancas em 5 de 5 historias.
-                                ganchos=ganchos, narrador=narrador,
-                                tipo=tipo or "",
-                                recentes=R.resumos_recentes(3)))
+            pedido_da_biblia = S.prompt_biblia(
+                partes=partes, cenas_por_parte=cenas_por_parte,
+                tema=tema, config=config,
+                # O chat e novo a cada rodada: sem esta lista o
+                # modelo nao sabe o que o canal ja tem, e com o
+                # tema livre ele repete o mesmo gancho.
+                evitar=R.titulos_recentes(),
+                # E sem MOLDE ele repete tambem a forma: a
+                # serie nunca usou os tres de `roteiro.json`.
+                estrutura=estrutura,
+                # Sem estes dois ele repetia as MESMAS duas
+                # alavancas em 5 de 5 historias.
+                ganchos=ganchos, narrador=narrador,
+                tipo=tipo or "",
+                recentes=R.resumos_recentes(3))
+            texto = _perguntar_sem_recusa(cliente, pedido_da_biblia,
+                                          rotulo="a biblia", log=log)
             biblia = S.parse_biblia(texto, partes)
             problemas = S.problemas_da_biblia(biblia)
 
@@ -492,9 +559,12 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             partes_prontas = []
             for numero in range(1, total + 1):
                 log(f"[serie] etapa 2: escrevendo a parte {numero}/{total}...")
-                texto = cliente.perguntar(
+                texto = _perguntar_sem_recusa(
+                    cliente,
                     S.prompt_parte(biblia, numero, cenas=cenas_por_parte,
-                                   config=config))
+                                   config=config),
+                    rotulo=f"a parte {numero}", pasta=pasta,
+                    nome=f"parte_{numero:02d}", log=log)
                 _guardar_conversa(pasta, f"parte_{numero:02d}.txt", texto)
                 parcial = _completar_parte(cliente, texto, numero, cenas_por_parte,
                                            pasta, log)

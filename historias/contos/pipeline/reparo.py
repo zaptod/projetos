@@ -260,8 +260,71 @@ def _nao_da_para_consertar(erros: list) -> list[str]:
     return fora
 
 
+NOMES_DOS_GERADORES = {"picasso": "PicassoIA", "gemini": "Gemini",
+                       "chatgpt": "ChatGPT", "grok": "Grok"}
+
+
+def _nome_do_gerador(historia_id: str) -> str:
+    """Quem gera as imagens DESTA historia (`imagens-divisao`, 03/10/2026).
+
+    Ate 05/10 a mensagem dizia "o PicassoIA nao devolveu a imagem" para
+    qualquer gerador — e para imagem que VEIO e foi recusada como colagem.
+    """
+    try:
+        from ..imagens import fila
+        gerador = (fila.gerador_da_historia(historia_id)
+                   or fila.gerador_herdado(historia_id))
+    except Exception:                                          # noqa: BLE001
+        gerador = ""
+    gerador = str(gerador or "").lower()
+    return NOMES_DOS_GERADORES.get(gerador, gerador or "o gerador")
+
+
+def _registro_das_cenas(historia_id: str, parte: int, cenas) -> dict:
+    """`{n: registro em imagens.json ou None}` — para desfazer junto."""
+    try:
+        from ..imagens import fila
+        registradas = fila._meta(historia_id).get("cenas") or {}
+    except Exception:                                          # noqa: BLE001
+        return {}
+    return {int(n): (dict(registradas[f"{int(parte)}:{int(n)}"])
+                     if isinstance(registradas.get(f"{int(parte)}:{int(n)}"),
+                                   dict) else None)
+            for n in cenas}
+
+
+def _restaurar_registros(historia_id: str, parte: int, antes: dict,
+                         cenas) -> None:
+    """Devolve ao `imagens.json` o registro das cenas restauradas. Nunca
+    levanta. Sem isto ele ficava apontando para a imagem DESCARTADA (o
+    prompt, a prova e o gerador dela) com o arquivo antigo no disco — o
+    caso do pedido `bffbf4ae` (colagem com 1 calha em 19%)."""
+    if not cenas:
+        return
+    try:
+        from ..imagens import fila
+        dados = fila._meta(historia_id)
+        registradas = dados.setdefault("cenas", {})
+        mudou = False
+        for n in cenas:
+            chave = f"{int(parte)}:{int(n)}"
+            if int(n) not in antes:
+                continue
+            velho = antes[int(n)]
+            if velho is None:
+                mudou |= registradas.pop(chave, None) is not None
+            elif registradas.get(chave) != velho:
+                registradas[chave] = velho
+                mudou = True
+        if mudou:
+            fila._gravar_meta(historia_id, dados)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def _refazer_cenas(pipeline, historia_id: str, parte: int, cenas: list, *,
-                   headless: bool = False, log=print) -> tuple:
+                   headless: bool = False, log=print,
+                   motivos: dict | None = None) -> tuple:
     """Troca as imagens daquelas cenas. NUNCA deixa pior do que achou.
 
     Aprendido em campo, 11/09/2026 as 20:33, na primeira rodada automatica
@@ -279,10 +342,14 @@ def _refazer_cenas(pipeline, historia_id: str, parte: int, cenas: list, *,
       falha: ele devolve o resultado com erros dentro. Quem confirma e o
       arquivo existir de novo e nao ser colagem outra vez.
 
-    Devolve `(cenas trocadas, cenas restauradas)`.
+    Devolve `(cenas trocadas, cenas restauradas)`. `motivos`, se vier,
+    recebe `{n: por que a cena foi restaurada}` (05/10/2026): "nao veio" e
+    "veio em colagem" sao defeitos diferentes, de quem gera e de quem desenha.
+    O registro da cena em `imagens.json` volta junto com o arquivo.
     """
     from ..imagens import composicao, fila
 
+    registros = _registro_das_cenas(historia_id, parte, cenas)
     guardados = {}
     for n in cenas:
         arquivo = fila.caminho_da_cena(historia_id, n, parte)
@@ -304,25 +371,36 @@ def _refazer_cenas(pipeline, historia_id: str, parte: int, cenas: list, *,
         for arquivo, reserva in guardados.values():
             arquivo.unlink(missing_ok=True)
             reserva.replace(arquivo)
+        _restaurar_registros(historia_id, parte, registros, list(guardados))
         log("[reparo] a conta estava em uso; restaurei tudo e adiei.")
         raise
     except Exception as erro:                                  # noqa: BLE001
         log(f"[reparo] a geracao falhou ({type(erro).__name__}); desfazendo.")
 
-    trocadas, restauradas = [], []
+    gerador = _nome_do_gerador(historia_id)
+    trocadas, restauradas, porque = [], [], {}
     for n, (arquivo, reserva) in sorted(guardados.items()):
-        nova_serve = arquivo.is_file() and not composicao.e_colagem(arquivo)
-        if nova_serve:
+        if not arquivo.is_file():
+            porque[n] = f"o {gerador} nao devolveu a imagem"
+        elif not composicao.e_colagem(arquivo):
             reserva.unlink(missing_ok=True)
             trocadas.append(n)
             continue
+        else:
+            try:
+                colagem = composicao.motivo(arquivo) or "parece colagem"
+            except Exception:                                  # noqa: BLE001
+                colagem = "parece colagem"
+            porque[n] = f"a imagem do {gerador} veio e foi recusada: {colagem}"
         # Nem veio, ou veio em painel de novo: a antiga volta.
         arquivo.unlink(missing_ok=True)
         reserva.replace(arquivo)
         restauradas.append(n)
-    if restauradas:
-        log(f"[reparo] a(s) cena(s) {restauradas} nao melhoraram; "
-            "restaurei a imagem anterior.")
+    _restaurar_registros(historia_id, parte, registros, restauradas)
+    for n in restauradas:
+        log(f"[reparo] cena {n}: {porque[n]}; restaurei a imagem anterior.")
+    if motivos is not None:
+        motivos.update(porque)
     return trocadas, restauradas
 
 
@@ -377,17 +455,25 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
     acao = ""
     try:
         if colagens:
+            porque = {}
             trocadas, guardadas = _refazer_cenas(
                 pipeline, historia_id, parte, colagens,
-                headless=headless, log=log)
+                headless=headless, log=log, motivos=porque)
             if not trocadas:
                 # NADA de renderizar: as imagens voltaram para o lugar e o
                 # video continua como estava. Ver abaixo por que isso importa.
+                # O MOTIVO E POR CENA (05/10/2026): "o PicassoIA nao devolveu"
+                # era dito ate para imagem que VEIO e foi recusada como colagem.
+                por_cena = "; ".join(f"cena {n}: {m}"
+                                     for n, m in sorted(porque.items()))
                 conta = _anotar(video_id, "; ".join(str(e) for e in erros),
-                                "a imagem nova nao veio; desfiz")
+                                "a imagem nova nao veio; desfiz"
+                                + (f" ({por_cena[:300]})" if por_cena else ""))
                 return {"acao": "adiado", "ok": False,
-                        "detalhe": "o PicassoIA nao devolveu a imagem; "
-                                   "restaurei a antiga e nao re-renderizei",
+                        "detalhe": ((por_cena or "a imagem nova nao veio")
+                                    + "; restaurei a antiga e nao "
+                                      "re-renderizei")[:400],
+                        "motivos_por_cena": dict(porque),
                         "tentativas": conta}
             pipeline.render(historia_id, parte=parte, log=log)
             acao = f"refiz as cenas {trocadas} e re-renderizei"

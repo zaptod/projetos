@@ -134,7 +134,12 @@ uma chave de `config/agenda.json` — nenhum número mora no código. Plano medi
   retidas** (18 com veto da IA — a vistoria mecânica deixa passar o veto vencido —, 2 só
   pela folha); os 8 da publicação eram os 7 restantes mais a h41 p01, que a vistoria
   barrava. Publicação que não sabe contar (`-1`/exceção) cai em `aprovados_no_estoque`
-  (conta a mais). A `noite`/`zero` continua com `aprovados_no_estoque`: ali a pergunta é
+  **sem as retidas** (`agenda._retida`, a mesma leitura do `postar`) e avisa no log e
+  **uma vez por processo** no diário (`criacao.estoque`) — desde 05/10/2026: o plano B
+  antigo contava as retidas e ficou as madrugadas de 03 a 05/10 vendo 58–60 "publicáveis"
+  onde a publicação via 1, sem criar nada. A falha que o levava ao plano B era o
+  `_SaidaNoDiario` sem `buffer` (`postar._linha` escreve em `sys.stdout.buffer`); hoje ele
+  tem `buffer`, `encoding` e `errors`. A `noite`/`zero` continua com `aprovados_no_estoque`: ali a pergunta é
   "sai algo no próximo horário?", e a retida sai quando o horário ia ficar vazio.
   Testes: `tests/test_estoque_unico_regressions.py`.
 
@@ -294,6 +299,38 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   `00034 p04` (REPROVADO, 05:25, na rodada seguinte) foram assistidas em 28/09. A reescrita
   do reparo pergunta de novo num chat novo e,
   recusada duas vezes, vira falha do provedor em vez de "nenhum motivo tem conserto".
+  **No roteiro** (05/10/2026): `gerar._perguntar_sem_recusa` vale para bíblia, partes,
+  retomada e coerência — até 3 tentativas, chat novo a cada recusa, cada recusa salva em
+  `conversa/*_recusaN.txt`; na última levanta `RecusaEnlatada` (subclasse de
+  `GeracaoFalhou`). `_completar_parte` não pede continuação a uma recusa, `cliente.perguntar`
+  registra a recusa como `aviso` (não `ok`), e `esperar_resposta` devolve a recusa depois
+  da `estabilidade` mesmo com o "Parar" na tela (sem imagem chegando). A 2ª tentativa do
+  `conserto_de_cena` **já** ia num chat novo (`_num_chat_novo`; há teste).
+- **Avatar do Gemini lido como login** (05/10/2026): `a[href*='accounts.google.com']`
+  casava com o botão da conta logada. O login agora é ServiceLogin / v3/signin / signin /
+  "Fazer login"; a lista `conta` (SignOutOptions, aria-label "Conta do Google") prova
+  sessão em `estado_da_pagina`, e `conferir_sessao` confere de novo depois de
+  `reconfirmar_login_s` (5 s) antes de levantar `NaoLogado`.
+- **Motivos-lixo no parecer** (05/10/2026): 12 linhas "MP4" e "+ N" (rótulo e contador de
+  anexo do Gemini) em 6 fichas viravam motivo e iam ao Telegram e ao reparo.
+  `parecer.motivo_lixo` filtra em `ler_veredito` e `_lembrar`;
+  `limpar_motivos_gravados()` tirou as 12 de produção (cópia em
+  `outputs/_pareceres.json.antes-motivos-lixo-20261005`).
+- **Pessoa ou gênero errado na cena** (05/10/2026): 36 de 158 motivos de veto (23 %) de
+  01 a 05/10. Na h56 p03 cena 9 a narração dizia "uma mulher abriu a ficha" e o prompt
+  "a middle-aged clerk", sem gênero. Agora as fichas do protagonista e do elenco
+  (`serie.py`) começam pelo gênero (man/woman/boy/girl), depois idade e roupa;
+  `_quem_age_na_cena` manda cada imagem mostrar quem a narração diz que age (figurante com
+  gênero e idade); o prompt da parte repete a descrição fixa inteira; e
+  `conserto_de_cena.motivos_da_cena` leva o pedaço sem número depois de "cena N:" e o
+  elenco ao pedido de prompt.
+- **Reparo que desfaz diz por quê** (05/10/2026): `reparo._refazer_cenas(..., motivos=)`
+  dá o motivo por cena ("o <gerador> nao devolveu a imagem" / "a imagem do X veio e foi
+  recusada: …") no detalhe e no `feito`, e o registro da cena em `imagens.json` volta com
+  o arquivo restaurado (também no `NaoRodou`).
+- **A vistoria enchia o diário** (05/10/2026): 2849 de 3836 linhas do `atividade.jsonl`
+  (74 %) eram "vistoria hNN pM". Só vão ao diário as que barraram ou levaram ≥
+  `VISTORIA_LENTA_S` (5 s); a mediana da etapa "vistoria" em `builds.tempos` sobe por isso.
 - **Parede de planos do PicassoIA**: o diálogo de assinatura cobre a página e engole o
   clique, mesmo em conta com plano. `worker.gerar()` fecha o navegador e **reabre o
   perfil** `reaberturas_na_parede` vezes (2 desde 30/09, `config/imagens.json`, com
@@ -447,6 +484,16 @@ ler, use `parecer.situacao(ficha)` (nas fichas antigas, sem o campo, deduz de `a
 `aprovados_no_estoque`) **ainda conta** `nao_assistido` como aprovado — mas desde 30/09 o
 número que **decide criar** é o da publicação (`agenda.estoque_publicavel`, §1a), que já
 tira as retidas.
+
+**A parte consertada** (05/10/2026): `parecer.consertado(video)` = último parecer
+reprovado **e** mp4 mais novo que ele **e** `_reparos.json` com "refiz" depois dele (só com
+o id dá `False`: sem o arquivo não há mtime). `parecer.estado_do_video(video)` é a pergunta
+da publicação: `aprovado` | `reprovado` | `nao_assistido` | `consertado` | `""`.
+`situacao_do_video` **continua** dizendo `reprovado` para a consertada. Ninguém assiste ao
+mp4 consertado: decisão `historias/reolhar-depois-do-conserto` = "Não, manter uma passada
+só" (05/10), e por isso `parecer.REOLHAR_DEPOIS_DO_CONSERTO = False`; a consertada só ganha
+a frente da vetada sem conserto. Medido em 05/10: 37 consertadas, 19 reprovadas, 1
+aprovada na fila.
 
 **O diário** é `builds.atividade.registrar(...)` com `canal="historias"` e `etapa` (ex.:
 `imagens.parede_de_planos`, `criacao.series`) — é o que o bot de apuração lê para
