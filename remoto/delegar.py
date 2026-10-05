@@ -1568,6 +1568,21 @@ def _casa(caminho: str, padrao: str) -> bool:
     return fnmatch.fnmatchcase(caminho, padrao.replace("**/", "*"))
 
 
+def _e_ruido(caminho: str) -> bool:
+    """Arquivo do despachante ou sobra (NOSSOS/RUIDO), com a mesma ancora do
+    `:(exclude,glob)` do git: padrao sem `**/` vale so na raiz."""
+    if caminho in NOSSOS:
+        return True
+    for p in RUIDO:
+        if p.startswith("**/"):
+            formas = (p[3:], "*/" + p[3:])
+        else:
+            formas = (p,)
+        if any(fnmatch.fnmatchcase(caminho, f) for f in formas):
+            return True
+    return False
+
+
 def validar_diff(arquivos: list[dict], permitidos: list[str], config: dict,
                  ia: str = "Codex") -> list[str]:
     """Os motivos de recusa (vazio = passa).
@@ -1617,6 +1632,13 @@ def coletar(tarefa_id: str) -> dict:
     deixados = []
     for caminho in mudados:
         c = caminho.strip().replace("\\", "/")
+        if _e_ruido(c):
+            # o `exclude` do add nao tira o que JA estava no indice (05/10: o
+            # pedido-cb44cd52-1 nasceu quando resposta.md ainda era rastreado,
+            # o resposta.md entrou no indice e o commit do vigia caiu no
+            # .gitignore); rascunho e sobra nunca sao entrega
+            _git("reset", "-q", "--", caminho, cwd=wt, verificar=False)
+            continue
         if any(_casa(c, p) for p in PROIBIDOS):
             # arquivo do Adrian: sai do diff (fica na worktree), o resto segue
             _git("reset", "-q", "--", caminho, cwd=wt, verificar=False)

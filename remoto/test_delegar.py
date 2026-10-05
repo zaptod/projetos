@@ -242,6 +242,34 @@ def test_rascunhos_de_agente_na_raiz_nao_entram_no_diff(mundo):
     assert "remoto/novo.py" in caminhos
 
 
+def test_rascunho_que_ja_estava_no_indice_sai_do_diff(mundo):
+    # 05/10: o pedido-cb44cd52-1 nasceu quando resposta.md ainda era rastreado;
+    # o resposta.md ficou no indice da worktree, o `exclude` do add nao o
+    # tirou, o diff levou so ele e o commit do vigia caiu no .gitignore.
+    (mundo.repo / "resposta.md").write_text("antiga\n", encoding="utf-8")
+    _git(mundo.repo, "add", "resposta.md")
+    _git(mundo.repo, "commit", "-qm", "resposta rastreada")
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    wt = Path(e["worktree"])
+    (wt / "resposta.md").write_text("nova\n", encoding="utf-8")
+    (wt / "remoto" / "_tmp_x").mkdir()
+    (wt / "remoto" / "_tmp_x" / "lixo.txt").write_text("x\n", encoding="utf-8")
+    _git(wt, "add", "-A")
+    caminhos = [a["caminho"] for a in delegar.coletar("t01")["arquivos"]]
+    assert "resposta.md" not in caminhos
+    assert "remoto/_tmp_x/lixo.txt" not in caminhos
+    assert "remoto/novo.py" in caminhos
+
+
+def test_ruido_tem_a_ancora_do_git():
+    assert delegar._e_ruido("resposta.md") and delegar._e_ruido(".codex_tarefa.md")
+    assert delegar._e_ruido("remoto/__pycache__/x.pyc") and delegar._e_ruido("_tmp_tela/a.png")
+    # padrao sem `**/` e so da raiz; `**/_tmp*` nao pega pasta que so contem "_tmp"
+    assert not delegar._e_ruido("docs/resposta.md")
+    assert not delegar._e_ruido("remoto/meu_tmp_x/a.py")
+
+
 def test_gravar_json_tenta_de_novo_quando_o_windows_segura_o_arquivo(mundo, monkeypatch):
     real = os.replace
     falhas = []
