@@ -74,7 +74,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Imagem-mestra do estilo: aprovar?** — Refazer (diga o que mudar no comentário) (02/10/2026) · “Sei lá quero algo mais estiloso” `imagem-mestra-v1`
 - ✅ **Imagem-mestra: qual estilo (9 testes)?** — 2 Anime (02/10/2026) `imagem-mestra-v2`
 - ✅ **Som real nas 15 builds de estoque: fazer ou tirar da fila?** — Só as novas têm som real (04/10/2026) `som-real-15-builds`
-- ⏳ **Parede de planos do Digen: consertar agora ou depois?** — Implemento agora o tratamento da parede de planos do Digen, ou deixo os testes em espera enquanto o vídeo de payoff está desligado? `digen-parede`
+- ✅ **Parede de planos do Digen: consertar agora ou depois?** — Deixar em espera (05/10/2026) `digen-parede`
 
 <!-- decisoes:fim -->
 
