@@ -73,3 +73,42 @@ def test_fila_pausada_pelo_app_nao_contrata_ninguem():
         gerente._contratar = lambda item: contratados.append(item["id"])
         gerente.passo()
         assert contratados == esperado
+
+
+class DespachanteDeConferencia(Despachante):
+    """Um trabalhador ja aplicado: o gerente contrata o conferente."""
+
+    def __init__(self, raiz):
+        super().__init__(True)
+        self.raiz, self.criados = raiz, []
+        self.tarefa = {"id": "t1", "situacao": "terminou", "aplicado": {"arquivos": ["x.py"]}}
+
+    def pasta(self):
+        return self.raiz
+
+    def prompt_do_cargo(self, cargo):
+        return f"[cargo {cargo}]"
+
+    def criar(self, ident, arquivo, _permitidos, **kw):
+        self.criados.append((ident, kw, arquivo.read_text(encoding="utf-8")))
+        return {"ia": kw.get("ia")}
+
+
+class MesaComUso(Mesa):
+    def __init__(self, passou):
+        self.passou = passou
+
+    def ler_uso(self):
+        return {"passou_teto": self.passou, "motivo_teto": "a semana está em 100% (teto 95%)"}
+
+
+def test_conferente_responde_na_mensagem_final_e_vai_ao_codex_acima_do_teto(tmp_path):
+    """Item 12 e 6 de 05/10: nada de resposta.md na worktree; com a semana no
+    teto o conferente nao nasce Claude (caia na hora)."""
+    for passou, ia in ((False, "claude"), (True, "codex")):
+        d = DespachanteDeConferencia(tmp_path / ia)
+        GerenteEquipe(mesa=MesaComUso(passou), despachante=d)._conferir_aplicadas()
+        ident, kw, texto = d.criados[0]
+        assert kw["ia"] == ia and kw["cargo"] == "conferente"
+        assert "mensagem final" in texto and "em resposta.md" not in texto
+        assert texto.startswith("[cargo conferente]") == (ia == "codex")

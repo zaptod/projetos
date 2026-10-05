@@ -101,8 +101,9 @@ def montar() -> Supervisor:
     # a resposta final de um pedido vai tambem ao Telegram, de onde quer que
     # ele tenha vindo
     pedidos.MESA.avisar = s.avisar
-    # as respostas do Grimorio sao lidas pelo SERVIDOR (04/10/2026)
-    pedidos._ligar_grimorio_real()
+    # as respostas do Grimorio sao lidas pelo SERVIDOR (04/10/2026), e o
+    # desfecho das acoes da lista branca vai ao diario (05/10/2026)
+    pedidos._ligar_producao()
     return s
 
 
@@ -117,9 +118,24 @@ def main(argv=None):
     sub.add_parser("remover-tarefa")
     sub.add_parser("desligar-tarefas-antigas")
     sub.add_parser("religar-tarefas-antigas")
+    reabrir = sub.add_parser("reabrir-pedido",
+                             help="devolve um pedido falhou/parado para 'esperando'")
+    reabrir.add_argument("id", nargs="+")
+    reabrir.add_argument("--motivo", default="reaberto pelo orquestrador")
     args = parser.parse_args(argv)
     if args.acao == "rodar":
         return montar().rodar()
+    if args.acao == "reabrir-pedido":
+        from . import pedidos
+        codigo = 0
+        for ident in args.id:
+            try:
+                p = pedidos.reabrir(ident, args.motivo)
+                print(f"{ident}: {p['situacao']}")
+            except (KeyError, ValueError) as exc:
+                print(f"{ident}: {exc}")
+                codigo = 1
+        return codigo
     if args.acao == "status":
         import json
         print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))

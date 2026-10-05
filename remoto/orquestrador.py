@@ -99,6 +99,9 @@ ROTULO_MODO = {"um_por_vez": "Um por vez", "paralelo": "Paralelo",
 # O padrao de fabrica; sem `config.json`, vale o que o Grimorio diz
 # (`padrao_do_grimorio`: modo-de-trabalho, teto-de-uso, forca-total-ainda-vale).
 PADRAO_CONFIG = {"max_paralelo": 1, "modo": "um_por_vez", "teto_sessao_pct": 50,
+                 # 05/10/2026: a semana em 100% passava batido (so a sessao era
+                 # olhada) e os pedidos queimavam as retomadas no limite semanal
+                 "teto_semana_pct": 95,
                  "forca_total_antes_min": 20, "fila_pausada": False,
                  "sonda_min": 10,
                  # os modelos (01/10/2026): None = o padrao de cada um
@@ -460,10 +463,9 @@ def agente_inicio(parte: str, titulo: str, *, da_fila: str = "", relato: str = "
             if config["fila_pausada"]:
                 raise Recusa("a fila está pausada pelo Adrian; use --forcar se ele mandou")
             uso = ler_uso()
-            if (uso["situacao"] == "ok" and uso["passou_teto"]
-                    and config["modo"] != "forca_total"):
-                raise Recusa(f"o uso da sessão está em {uso['medicao']['sessao_pct']:.0f}%, "
-                             f"acima do teto de {config['teto_sessao_pct']}%")
+            if uso["passou_teto"] and config["modo"] != "forca_total":
+                raise Recusa("o uso do Claude passou do teto: "
+                             + (uso.get("motivo_teto") or f"teto de {config['teto_sessao_pct']}%"))
         novo_id = agente_id or _novo_id()
         if not _ID.fullmatch(novo_id) or any(a.get("id") == novo_id for a in estado["agora"]):
             raise Recusa(f"id inválido ou já em uso: {novo_id}")
@@ -2055,9 +2057,14 @@ def situacao_do_servidor(agora: float | None = None, *, coordenador: dict | None
     if (uso or {}).get("passou_teto"):
         medicao = (uso or {}).get("medicao") or {}
         pct = medicao.get("sessao_pct")
+        porque = (uso or {}).get("motivo_teto") or (
+            f"{round(pct)}% da sessão, teto {uso.get('teto')}%" if pct is not None else "")
+        renova = _numero((uso or {}).get("renova_em"))
+        if renova:
+            porque += (", " if porque else "") + "renova " + datetime.fromtimestamp(
+                renova).strftime("%d/%m %H:%M")
         alarmes.append("O Claude passou do teto de uso"
-                       + (f" ({round(pct)}% da sessão, teto {uso.get('teto')}%)"
-                          if pct is not None else "")
+                       + (f" ({porque})" if porque else "")
                        + ": os pedidos esperam ou vão ao Codex.")
     resumo = []
     if pedidos_vivos is None:
@@ -2114,6 +2121,9 @@ def ler_rate_limit(saida: str) -> dict | None:
                                    if sete.get("utilization") is not None else None),
                     "semana_renova_em": sete.get("resetsAt"),
                     "status": info.get("status"),
+                    # "rejected" traz qual janela recusou e quando ela renova
+                    "tipo_limite": info.get("rateLimitType"),
+                    "renova_em": info.get("resetsAt"),
                     "gravado_em": time.time()}
         except (TypeError, ValueError):
             continue
@@ -2186,12 +2196,74 @@ def _limite_de_idade_s(config: dict) -> float:
     return max(25 * 60, 2 * minutos * 60 + 5 * 60)
 
 
+def _numero(valor) -> float | None:
+    try:
+        return None if valor is None else float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def _teto_da_medicao(medicao: dict, config: dict) -> tuple[bool, str, float | None]:
+    """(passou do teto?, por que, quando renova).
+
+    05/10/2026: so a sessao era olhada; com a sessao em 41% e a SEMANA em
+    100% ("You've hit your weekly limit") o Claude era contratado de novo e
+    de novo. Passa do teto: a semana no teto dela, o Claude dizendo
+    "rejected", ou a sessao no teto dela.
+    """
+    sessao = _numero(medicao.get("sessao_pct")) or 0.0
+    semana = _numero(medicao.get("semana_pct"))
+    teto_semana = _numero(config.get("teto_semana_pct"))
+    if teto_semana is None:
+        teto_semana = float(PADRAO_CONFIG["teto_semana_pct"])
+    teto_sessao = _numero(config.get("teto_sessao_pct")) or float(PADRAO_CONFIG["teto_sessao_pct"])
+    semanal = semana is not None and semana >= teto_semana
+    if str(medicao.get("status") or "").lower() == "rejected":
+        tipo = str(medicao.get("tipo_limite") or "")
+        renova = _numero(medicao.get("renova_em"))
+        if renova is None:
+            renova = _numero(medicao.get("semana_renova_em") if (semanal or "seven" in tipo)
+                             else medicao.get("sessao_renova_em"))
+        return True, "o Claude recusou por limite" + (f" ({tipo})" if tipo else ""), renova
+    if semanal:
+        return (True, f"a semana está em {semana:.0f}% (teto {teto_semana:.0f}%)",
+                _numero(medicao.get("semana_renova_em")))
+    if sessao >= teto_sessao:
+        return (True, f"a sessão está em {sessao:.0f}% (teto {teto_sessao:.0f}%)",
+                _numero(medicao.get("sessao_renova_em")))
+    return False, "", None
+
+
+def _semana_ainda_no_teto(medicao: dict, config: dict, agora: float) -> tuple[bool, str, float | None]:
+    """A medicao ficou velha (a sessao renovou, a sonda falhou), mas o limite
+    da SEMANA so acaba quando a semana renova: ate la continua valendo."""
+    semana = _numero(medicao.get("semana_pct"))
+    teto_semana = _numero(config.get("teto_semana_pct"))
+    if teto_semana is None:
+        teto_semana = float(PADRAO_CONFIG["teto_semana_pct"])
+    recusa_semanal = (str(medicao.get("status") or "").lower() == "rejected"
+                      and "seven" in str(medicao.get("tipo_limite") or ""))
+    if not (recusa_semanal or (semana is not None and semana >= teto_semana)):
+        return False, "", None          # o teto era da sessao: essa renovou
+    renova = _numero(medicao.get("semana_renova_em"))
+    if renova is None and recusa_semanal:
+        renova = _numero(medicao.get("renova_em"))
+    if renova is None or renova <= agora:
+        return False, "", None
+    _, motivo, _ = _teto_da_medicao(medicao, config)
+    return True, motivo, renova
+
+
 def ler_uso(agora: float | None = None) -> dict:
     """O uso como a tela deve mostrar: NUNCA um numero velho como se fosse atual.
 
     situacao: "ok" (medicao valida), "velha" (a sonda falhou depois dela,
     passou do prazo, ou a janela ja renovou), "parada" (Claude proibido: a
     sonda nao roda) ou "nunca". So "ok" leva numero.
+
+    `passou_teto` olha a sessao, a SEMANA (`teto_semana_pct`) e o "rejected";
+    `motivo_teto` diz qual e `renova_em` quando acaba. Uma medicao velha que
+    tinha a semana no teto continua com `passou_teto` ate a semana renovar.
     """
     agora = time.time() if agora is None else agora
     config = ler_config()
@@ -2211,6 +2283,8 @@ def ler_uso(agora: float | None = None) -> dict:
     saida = {"situacao": "nunca", "medicao": None, "desde": None, "fonte": None,
              "motivo": registro.get("motivo") or "", "teto": config["teto_sessao_pct"],
              "passou_teto": False, "forca_total_antes_min": config["forca_total_antes_min"],
+             "teto_semana": config.get("teto_semana_pct"), "motivo_teto": "",
+             "renova_em": None,
              "janela_forca_total": False, "falhas_seguidas":
                  int(registro.get("falhas_seguidas") or 0)}
     estado_claude = claude_estado.ler()
@@ -2253,12 +2327,17 @@ def ler_uso(agora: float | None = None) -> dict:
             pass
     if velha:
         saida["situacao"] = "velha"
+        ainda, motivo_teto, renova_teto = _semana_ainda_no_teto(medicao, config, agora)
+        if ainda:
+            saida.update(passou_teto=True, motivo_teto=motivo_teto, renova_em=renova_teto)
         return saida
     saida["situacao"] = "ok"
     saida["medicao"] = {k: medicao.get(k) for k in ("sessao_pct", "sessao_renova_em",
                                                     "semana_pct", "semana_renova_em",
-                                                    "status", "gravado_em")}
-    saida["passou_teto"] = float(medicao.get("sessao_pct") or 0) >= config["teto_sessao_pct"]
+                                                    "status", "tipo_limite", "renova_em",
+                                                    "gravado_em")}
+    passou, motivo_teto, renova_teto = _teto_da_medicao(medicao, config)
+    saida.update(passou_teto=passou, motivo_teto=motivo_teto, renova_em=renova_teto)
     antes = config["forca_total_antes_min"]
     try:
         saida["janela_forca_total"] = bool(

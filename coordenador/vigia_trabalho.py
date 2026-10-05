@@ -364,6 +364,25 @@ class VigiaTrabalho:
         self.avisar("⚠ " + texto)
         self._novidade(mem, "olho", texto)
 
+    def _ia_do_integrador(self) -> str:
+        """Claude so com ele liberado E abaixo do teto da Mesa (sessao ou semana).
+
+        05/10/2026: integrar-pedido-66e4ba54 foi contratado como Claude com a
+        semana no limite e morreu em "falhou" (rate_limit_event "rejected")."""
+        try:
+            if self.proibido():
+                return "codex"
+        except Exception:                                     # noqa: BLE001
+            return "codex"
+        ler_uso = getattr(self.orquestrador, "ler_uso", None)
+        if callable(ler_uso):
+            try:
+                if (ler_uso() or {}).get("passou_teto"):
+                    return "codex"
+            except Exception:                                 # noqa: BLE001
+                pass
+        return "claude"
+
     def _contratar_integrador(self, mem: dict, ident: str, motivo: str) -> str | None:
         if ident.startswith("integrar-") or "não mudou nada" in motivo:
             return None                   # nao integra integrador; vazio vira permissao
@@ -389,13 +408,7 @@ class VigiaTrabalho:
                 "3. rode os testes da parte com -p no:cacheprovider até ficarem verdes.\n"
                 "A sua entrega É a entrega original, já integrada. Não desista: se precisar de "
                 "algo fora do escopo, peça permissão (.permissao.json).\n", encoding="utf-8")
-            ia = "claude"
-            try:
-                from remoto.orquestrador import claude_estado
-                if not claude_estado.ler().get("liberado", True):
-                    ia = "codex"
-            except Exception:                                 # noqa: BLE001
-                pass
+            ia = self._ia_do_integrador()
             permitidos = (self.delegar.ler_estado(ident).get("permitidos") or ["**"])
             criar(novo, pedido, permitidos, ia=ia, cargo="integrador",
                   titulo=f"Integrar {ident}")

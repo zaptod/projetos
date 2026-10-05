@@ -527,6 +527,30 @@ def test_entrega_travada_contrata_o_integrador(mundo):
     assert any("integrador integrar-trava já está resolvendo" in a for a in mundo.avisos)
     mundo.vigia.passo()                          # nao contrata de novo
     assert len(criados) == 1
+    assert criados[0][1]["ia"] == "claude"       # abaixo do teto (a Mesa nao mede)
+
+
+@pytest.mark.parametrize("uso", [
+    {"situacao": "ok", "passou_teto": True, "motivo_teto": "a sessão está em 60% (teto 50%)"},
+    {"situacao": "velha", "passou_teto": True, "motivo_teto": "a semana está em 100% (teto 95%)"},
+])
+def test_integrador_acima_do_teto_vai_ao_codex(mundo, uso):
+    """05/10/2026: integrar-pedido-66e4ba54 nasceu Claude com a semana no limite
+    e morreu em "falhou" (rate_limit_event "rejected")."""
+    d = mundo.delegar
+    criados = []
+    d.criar = lambda ident, pedido, permitidos, **kw: criados.append((ident, kw)) or {"id": ident}
+    d.no_fundo = lambda args, ident: None
+    d.ler_estado = lambda ident: {"permitidos": ["remoto/**"]}
+    mundo.mesa.ler_uso = lambda: dict(uso)
+
+    def aplicar(ident, sem_testes=False):
+        raise Exception("conflito de merge em: remoto/x.py")
+    d.aplicar = aplicar
+    d.novo("trava", mundo.depois)
+    d.testes["trava"] = [{"ok": True, "codigo": 0, "resumo": "1 passed"}]
+    mundo.vigia.passo()
+    assert [(c[0], c[1]["ia"]) for c in criados] == [("integrar-trava", "codex")]
 
 
 def test_arvore_suja_espera_em_vez_de_abandonar(mundo):

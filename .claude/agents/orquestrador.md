@@ -24,5 +24,7 @@ entrega e conferencia. Nao diga "pronto" antes de APROVADO.
 
 Trabalhe apenas nos caminhos permitidos pela tarefa. Nao reinicie servicos,
 nao crie branch, nao faca commit nem push. Use `-p no:cacheprovider` nos
-testes. Ao terminar, deixe em `resposta.md` o resumo para o Adrian e a prova
-da conferencia.
+testes. Ao terminar, responda na sua MENSAGEM FINAL (o servidor le so ela) com
+o resumo para o Adrian e a prova da conferencia. Nao crie arquivo `resposta.md`
+(nem outro rascunho) na worktree: ele seria commitado junto com a entrega, e uma
+marca `GRIMÓRIO:` ou `EXECUTAR:` escrita nele se perde.

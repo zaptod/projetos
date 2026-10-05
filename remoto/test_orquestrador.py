@@ -373,6 +373,78 @@ def test_ler_rate_limit_ignora_lixo():
     assert O.ler_rate_limit("nao e json\n{\"type\":\"rate_limit_event\"}") is None
 
 
+# ===================================================== teto da semana (05/10)
+def _saida_limite(sessao=0.41, semana=1.0, status="allowed", tipo=None,
+                  sessao_renova=None, semana_renova=None):
+    """A sonda como a de 04/10: sessao 41%, semana 100%, "rejected"."""
+    agora = int(time.time())
+    semana_renova = semana_renova if semana_renova is not None else agora + 2 * 86400
+    info = {"status": status, "unifiedWindows": {
+        "five_hour": {"utilization": sessao,
+                      "resetsAt": sessao_renova if sessao_renova is not None else agora + 3600},
+        "seven_day": {"utilization": semana, "resetsAt": semana_renova}}}
+    if tipo:
+        info.update(rateLimitType=tipo, resetsAt=semana_renova)
+    linha = json.dumps({"type": "rate_limit_event", "rate_limit_info": info})
+    return lambda *a, **k: types.SimpleNamespace(stdout=linha, returncode=0)
+
+
+def test_semana_em_100_passa_do_teto_mesmo_com_a_sessao_em_41(mundo):
+    """04/10: sessao 41% e semana 100% -> os pedidos queimavam as retomadas."""
+    O.sondar(_saida_limite(sessao=0.41, semana=1.0))
+    uso = O.ler_uso()
+    assert uso["situacao"] == "ok" and uso["passou_teto"] is True
+    assert "semana" in uso["motivo_teto"]
+    assert uso["renova_em"] == uso["medicao"]["semana_renova_em"]
+    assert O.ler_config()["teto_semana_pct"] == 95
+
+
+def test_teto_da_semana_e_95_por_padrao_e_vem_do_config(mundo):
+    O.sondar(_saida_limite(sessao=0.10, semana=0.94))
+    assert O.ler_uso()["passou_teto"] is False
+    O.sondar(_saida_limite(sessao=0.10, semana=0.95))
+    assert O.ler_uso()["passou_teto"] is True
+    O._mudar_config("teto_semana_pct", 100, "teste")
+    assert O.ler_uso()["passou_teto"] is False
+
+
+def test_rejected_passa_do_teto_e_guarda_quando_renova(mundo):
+    renova = int(time.time()) + 5 * 3600
+    O.sondar(_saida_limite(sessao=0.05, semana=0.20, status="rejected",
+                           tipo="seven_day", semana_renova=renova))
+    uso = O.ler_uso()
+    assert uso["passou_teto"] is True and "recusou" in uso["motivo_teto"]
+    assert uso["medicao"]["tipo_limite"] == "seven_day"
+    assert uso["renova_em"] == renova
+
+
+def test_medicao_velha_nao_solta_o_limite_da_semana(mundo):
+    """A sessao renovou (medicao velha), mas a SEMANA so acaba quando renovar."""
+    agora = time.time()
+    O.sondar(_saida_limite(sessao=0.41, semana=1.0, sessao_renova=int(agora) + 60,
+                           semana_renova=int(agora) + 86400))
+    uso = O.ler_uso(agora + 120)
+    assert uso["situacao"] == "velha" and uso["medicao"] is None
+    assert uso["passou_teto"] is True and "semana" in uso["motivo_teto"]
+    assert O.ler_uso(agora + 86400 + 60)["passou_teto"] is False      # a semana renovou
+    # o teto da SESSAO, esse sim, acaba quando a sessao renova
+    O.sondar(_saida_limite(sessao=0.80, semana=0.10, sessao_renova=int(agora) + 60))
+    assert O.ler_uso(agora + 120)["passou_teto"] is False
+
+
+def test_semana_no_teto_barra_o_inicio_de_agente(mundo):
+    O.mudar_modo("paralelo")
+    O.sondar(_saida_limite(sessao=0.41, semana=1.0))
+    with pytest.raises(O.Recusa, match="semana"):
+        O.agente_inicio("builds", "x")
+
+
+def test_alarme_do_status_diz_a_semana_e_quando_renova(mundo):
+    O.sondar(_saida_limite(sessao=0.41, semana=1.0))
+    texto = " ".join(O.situacao_do_servidor()["alarmes"])
+    assert "teto" in texto and "semana" in texto and "renova" in texto
+
+
 # ================================================================ acessos
 def test_acessos_sem_segredo(mundo, monkeypatch):
     from builds import contas

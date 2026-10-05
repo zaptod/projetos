@@ -58,6 +58,20 @@ class GerenteEquipe:
         except Exception:                                    # noqa: BLE001
             return True
 
+    def _ia(self, ia):
+        """Claude acima do teto (sessao, SEMANA ou "rejected") nao e contratado:
+        o trabalho vai ao Codex. 04/10/2026: com a semana em 100% os
+        trabalhadores Claude eram relancados e caiam na hora."""
+        if ia != "claude":
+            return ia
+        ler = getattr(self.mesa, "ler_uso", None)
+        if ler is None:
+            return ia
+        try:
+            return "codex" if (ler() or {}).get("passou_teto") else ia
+        except Exception:                                    # noqa: BLE001
+            return ia
+
     def _contratar(self, item):
         tarefa_id = _id(item.get("id"))
         if any(t.get("id") == tarefa_id for t in self.despachante.listar()):
@@ -67,7 +81,7 @@ class GerenteEquipe:
         if cargo not in self.despachante.cargos():
             cargo = "integrador"
         regra = self.despachante.ler_config().get("regra_ia") or {}
-        ia = regra.get(_tipo(titulo), "codex")
+        ia = self._ia(regra.get(_tipo(titulo), "codex"))
         pasta = self.despachante.pasta() / tarefa_id
         pasta.mkdir(parents=True, exist_ok=True)
         pedido = pasta / "pedido.md"
@@ -87,10 +101,19 @@ class GerenteEquipe:
                 pasta = self.despachante.pasta() / conferencia
                 pasta.mkdir(parents=True, exist_ok=True)
                 pedido = pasta / "pedido.md"
-                pedido.write_text("Confira a entrega aplicada " + ident + ". Devolva APROVADO ou DEFEITOS em resposta.md.",
-                                  encoding="utf-8")
+                ia = self._ia("claude")
+                corpo = ("Confira a entrega aplicada " + ident + ". Devolva APROVADO ou "
+                         "DEFEITOS (com a lista) na sua mensagem final; não crie "
+                         "arquivo resposta.md (nem outro) na worktree.")
+                if ia == "codex":
+                    # o Codex nao le o cargo sozinho: vai junto com a tarefa
+                    try:
+                        corpo = self.despachante.prompt_do_cargo("conferente") + "\n\n" + corpo
+                    except Exception:                        # noqa: BLE001
+                        pass
+                pedido.write_text(corpo, encoding="utf-8")
                 self.despachante.criar(conferencia, pedido, ["remoto/**", "coordenador/**", "docs/**"],
-                                       ia="claude", cargo="conferente", titulo="Conferir " + ident)
+                                       ia=ia, cargo="conferente", titulo="Conferir " + ident)
                 self.despachante.no_fundo(["rodar", "--id", conferencia], conferencia)
             self.estado["conferidos"][ident] = conferencia
             self.evento("equipe_conferencia", f"conferente para {ident}")
