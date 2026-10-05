@@ -334,3 +334,90 @@ def test_processos_windows_le_em_utf8_sem_quebrar():
     assert lista and lista[0]["pid"] == 7
     assert visto["encoding"] == "utf-8" and visto["errors"] == "replace"
     assert "OutputEncoding" in visto["script"]
+
+
+# ---- varredura 05/10/2026, item 13: tempestade de religadas -----------------
+def _arvore_de_modulo(tmp_path):
+    for rel in ("remoto/servico.py", "remoto/test_orquestrador.py", "remoto/conftest.py",
+                "remoto/tests/ajuda.py"):
+        alvo = tmp_path / rel
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        alvo.write_text("x = 1\n", encoding="utf-8")
+    return tmp_path
+
+
+def _tocar(caminho, quando):
+    import os
+    os.utime(caminho, (quando.timestamp(), quando.timestamp()))
+
+
+def test_mexer_so_em_teste_nao_e_codigo_velho(tmp_path):
+    """04/10: mexer so em test_orquestrador.py ja religava o app e o bot."""
+    raiz = _arvore_de_modulo(tmp_path)
+    s, relogio = supervisor(raiz=raiz, git=None)
+    ficha_app = {"modulos": ["remoto"]}
+    inicio = relogio() - timedelta(hours=1)
+    for p in raiz.rglob("*.py"):
+        _tocar(p, inicio - timedelta(minutes=5))             # tudo anterior ao processo
+    for rel in ("remoto/test_orquestrador.py", "remoto/conftest.py", "remoto/tests/ajuda.py"):
+        _tocar(raiz / rel, relogio() - timedelta(minutes=10))
+    assert s._mudou_codigo(ficha_app, inicio.isoformat()) is False
+    _tocar(raiz / "remoto" / "servico.py", relogio() - timedelta(minutes=10))
+    assert s._mudou_codigo(ficha_app, inicio.isoformat()) is True
+
+
+def test_codigo_so_conta_depois_de_90_s_sem_salvar(tmp_path):
+    from coordenador import supervisor as mod
+    raiz = _arvore_de_modulo(tmp_path)
+    s, relogio = supervisor(raiz=raiz, git=None)
+    ficha_app = {"modulos": ["remoto"]}
+    inicio = relogio() - timedelta(hours=1)
+    for p in raiz.rglob("*.py"):
+        _tocar(p, inicio - timedelta(minutes=5))
+    _tocar(raiz / "remoto" / "servico.py", relogio() - timedelta(seconds=mod.CALMA_S - 30))
+    assert s._mudou_codigo(ficha_app, inicio.isoformat()) is False     # ainda editando
+    relogio.andar(31)
+    assert s._mudou_codigo(ficha_app, inicio.isoformat()) is True
+
+
+def test_no_maximo_uma_religada_por_codigo_a_cada_2_min():
+    from coordenador import supervisor as mod
+    parou, iniciou = [], []
+    s, relogio = supervisor(processos=lambda: [{"pid": 10 + len(iniciou), "comando": "app"}],
+                            git=lambda *_: True, parar=parou.append,
+                            iniciar=lambda _: iniciou.append(1) or 10 + len(iniciou))
+    s.pulso()
+    assert len(iniciou) == 1                                  # a primeira religa na hora
+    for _ in range(int(mod.RELIGADA_MIN_S // mod.PULSO_S) - 1):
+        relogio.andar(mod.PULSO_S)
+        s.pulso()
+    assert len(iniciou) == 1
+    assert "no máximo uma vez" in s.estado["app"]["motivo_espera"]
+    relogio.andar(mod.PULSO_S * 2)
+    s.pulso()
+    assert len(iniciou) == 2
+
+
+def test_parar_poupa_a_bandeja_do_tailscale():
+    """A bandeja (tailscale-ipn.exe) nasce filha do bot; o taskkill /t a matava
+    e o app do celular saia do tailnet de 1 a 3 min a cada religada."""
+    from coordenador.supervisor import plano_de_parada
+    arvore = [{"pid": 100, "pai": 1, "nome": "python.exe"},
+              {"pid": 101, "pai": 100, "nome": "chrome.exe"},
+              {"pid": 102, "pai": 101, "nome": "chrome.exe"},
+              {"pid": 103, "pai": 100, "nome": "tailscale-ipn.exe"},
+              {"pid": 104, "pai": 103, "nome": "filho-da-bandeja.exe"},
+              {"pid": 200, "pai": 1, "nome": "outro.exe"}]
+    assert plano_de_parada(100, arvore) == [102, 101, 100]
+    sem_bandeja = [p for p in arvore if p["pid"] not in (103, 104)]
+    assert plano_de_parada(100, sem_bandeja) is None           # taskkill /t de sempre
+    ciclo = [{"pid": 5, "pai": 6, "nome": "a"}, {"pid": 6, "pai": 5, "nome": "tailscale-ipn.exe"}]
+    assert plano_de_parada(5, ciclo) == [5]
+
+    chamadas = []
+    s, _ = supervisor()
+    s._parar(100, listar=lambda: arvore, rodar=lambda cmd, **kw: chamadas.append(cmd))
+    assert chamadas == [["taskkill", "/pid", p, "/f"] for p in ("102", "101", "100")]
+    chamadas.clear()
+    s._parar(100, listar=lambda: [], rodar=lambda cmd, **kw: chamadas.append(cmd))
+    assert chamadas == [["taskkill", "/pid", "100", "/t", "/f"]]  # sem lista: como antes

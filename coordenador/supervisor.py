@@ -63,6 +63,73 @@ def publicacao_rodando(processos):
 
 ESPERA_ENTREGA_S = 600   # quanto o reinicio por codigo velho espera uma entrega do carteiro
 
+# 04/10/2026, 13:17-13:29: 13 religadas do app e do bot SEM commit nenhum (era
+# edicao em andamento; mexer so em test_orquestrador.py ja religava), e cada
+# religada do bot derrubava o app do celular do tailnet por 1 a 3 min.
+CALMA_S = 90              # codigo so conta como "mudou" 90 s depois do ultimo save
+RELIGADA_MIN_S = 120      # no maximo uma religada por codigo velho a cada 2 min
+PASTAS_DE_TESTE = ("tests", "testes")
+# A bandeja do Tailscale nasce filha do bot (vigia_tailnet.abrir_bandeja); o
+# `taskkill /t` a levava junto e o celular saia do tailnet.
+POUPAR_AO_PARAR = ("tailscale-ipn.exe",)
+
+
+def e_codigo_de_servico(caminho: Path, base: Path) -> bool:
+    """Teste nao e codigo de servico: mudar so teste nao pede religada."""
+    nome = caminho.name.lower()
+    if nome.startswith("test_") or nome.endswith("_test.py") or nome == "conftest.py":
+        return False
+    try:
+        partes = caminho.relative_to(base).parts[:-1]
+    except ValueError:
+        partes = caminho.parts[:-1]
+    return not any(p.lower() in PASTAS_DE_TESTE for p in partes)
+
+
+def plano_de_parada(raiz: int, processos: list[dict]):
+    """A ordem de matar a arvore de `raiz` poupando POUPAR_AO_PARAR (e o que
+    estiver abaixo dele). `processos`: [{pid, pai, nome}]. None = nada a
+    poupar (o `taskkill /t` de sempre serve); senao, os pids das folhas para
+    a raiz, a raiz por ultimo."""
+    filhos = {}
+    for p in processos:
+        filhos.setdefault(int(p.get("pai") or 0), []).append(p)
+    matar, vistos, poupou = [], {int(raiz)}, False
+
+    def descer(pid):
+        nonlocal poupou
+        for filho in filhos.get(pid, []):
+            fpid = int(filho.get("pid") or 0)
+            if not fpid or fpid in vistos:
+                continue
+            vistos.add(fpid)
+            if str(filho.get("nome") or "").lower() in POUPAR_AO_PARAR:
+                poupou = True
+                continue
+            descer(fpid)
+            matar.append(fpid)
+    descer(int(raiz))
+    return (matar + [int(raiz)]) if poupou else None
+
+
+def processos_com_pai(rodar=subprocess.run):
+    """[{pid, pai, nome}] de todos os processos ([] se a leitura falhar)."""
+    script = ("[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+              "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name"
+              " | ConvertTo-Json -Compress")
+    try:
+        r = rodar(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                  capture_output=True, text=True, encoding="utf-8", errors="replace",
+                  check=False, timeout=30,
+                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        dados = json.loads(r.stdout or "[]")
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return []
+    if isinstance(dados, dict):
+        dados = [dados]
+    return [{"pid": int(p.get("ProcessId") or 0), "pai": int(p.get("ParentProcessId") or 0),
+             "nome": str(p.get("Name") or "")} for p in dados if isinstance(p, dict)]
+
 # A ESTEIRA DE SPRITES (02/10/2026): ninguem chamava o `avancar` e 10 imagens
 # ficaram paradas entre "pedido" e "julgado". O pulso agora roda o `ciclo`
 # de cada perfil (anda tudo e mantem a producao cheia, commit 708a767), no
@@ -189,6 +256,7 @@ class Supervisor:
         self.saudes_ruins = {n: 0 for n in self.servicos}
         self.ausencias = {n: 0 for n in self.servicos}
         self.velho_desde = {}
+        self.religado_por_codigo = {}
         self.eventos = []
         # O cerebro (`cerebro.atender`) e o vigia de trabalho so existem quando
         # o `__main__` os liga: nos testes, ausentes = nada de Codex nem git.
@@ -237,9 +305,14 @@ class Supervisor:
         finally:
             fh.close()
 
-    def _parar(self, pid):
-        subprocess.run(["taskkill", "/pid", str(pid), "/t", "/f"], check=False,
-                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    def _parar(self, pid, listar=processos_com_pai, rodar=subprocess.run):
+        flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        plano = plano_de_parada(int(pid), listar())
+        if plano is None:
+            rodar(["taskkill", "/pid", str(pid), "/t", "/f"], check=False, creationflags=flags)
+            return
+        for alvo in plano:                    # folhas primeiro, a bandeja fica
+            rodar(["taskkill", "/pid", str(alvo), "/f"], check=False, creationflags=flags)
 
     @staticmethod
     def _porta_8931():
@@ -283,12 +356,26 @@ class Supervisor:
         subprocess.run(["python", "-m", "remoto.delegar", "parar", "--id", str(ident)], check=False)
 
     def _mudou_codigo(self, ficha, desde):
+        """Codigo de servico (nao teste) mais novo que o processo, e parado ha
+        CALMA_S: enquanto alguem salva arquivo, a edicao nao terminou."""
         inicio = datetime.fromisoformat(desde).timestamp() if desde else 0
+        mais_nova = None
         for modulo in ficha.get("modulos", []):
             alvo = self.raiz / modulo
-            if alvo.exists() and any(p.stat().st_mtime > inicio for p in alvo.rglob("*.py")):
-                return True
-        return False
+            if not alvo.exists():
+                continue
+            for p in alvo.rglob("*.py"):
+                if not e_codigo_de_servico(p, alvo):
+                    continue
+                try:
+                    quando = p.stat().st_mtime
+                except OSError:                    # apagado no meio da varredura
+                    continue
+                if quando > inicio and (mais_nova is None or quando > mais_nova):
+                    mais_nova = quando
+        if mais_nova is None:
+            return False
+        return self.relogio().timestamp() - mais_nova >= CALMA_S
 
     def _executar_acao(self, acao):
         return acoes_pc.executar(acao, publicar_ativo=lambda: publicacao_rodando(self.processos()),
@@ -415,10 +502,19 @@ class Supervisor:
                 self.velho_desde[nome] = self.relogio()
                 estado["codigo_velho"] = True
                 self.evento(nome, "codigo_velho", "codigo mudou desde o inicio")
+            ultima = self.religado_por_codigo.get(nome)
+            if ultima is not None:
+                passou = (self.relogio() - ultima).total_seconds()
+                if passou < RELIGADA_MIN_S:
+                    estado.update(motivo_espera=f"religou por código há {int(passou)} s; "
+                                                f"no máximo uma vez a cada {RELIGADA_MIN_S} s",
+                                  proximo_reinicio=None)
+                    return
             ok, espera = self.seguro(nome, processos)
             if ok:
                 self.parar(achado["pid"])
                 self.religar(nome, "codigo velho", forcar=True)
+                self.religado_por_codigo[nome] = self.relogio()
                 self.reinicio_pedido.discard(nome)
                 self.evento(nome, "reiniciou", "codigo atualizado")
             else:

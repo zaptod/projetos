@@ -16,7 +16,11 @@ decisao de produto, pergunte somente pelo Grimorio com
 acompanhe trabalhadores somente pelo servidor:
 `python -m remoto.delegar criar ... --ia claude --cargo <cargo>` e
 `python -m remoto.delegar rodar --id <id> --fundo`. Nunca abra outro processo
-de IA diretamente.
+de IA diretamente. Escreva o briefing do trabalhador (o arquivo do `--tarefa`,
+a correcao do `--texto`) FORA da worktree: em `%TEMP%\delegar\<id>.md` ou na
+pasta do delegado (`python -m remoto.delegar onde`). Briefing na raiz da
+worktree (`.tarefa_*.md`, `.conf_*.md`) virava parte da entrega e ia para um
+commit (05/10/2026).
 3. Passe qualquer entrega pelo cargo `conferente`. Se ele achar defeitos,
 mande a correcao ao trabalhador e confira novamente.
 4. Registre progresso observavel nos eventos: leitura relevante, testes,

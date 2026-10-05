@@ -111,7 +111,11 @@ RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_ca
          ".tmp_pytest*/**", "**/.tmp_pytest*/**", ".tmp/**",
          # 02/10: a pasta temporaria dos testes caiu na raiz (tmp_pytest<id>bt, a
          # barra comida) e o Codex deixou capturas em _tmp_tela/; nenhum e trabalho
-         "tmp_pytest*/**", "_tmp*/**", "**/_tmp*/**", "_prova*/**", "**/_prova*/**")
+         "tmp_pytest*/**", "_tmp*/**", "**/_tmp*/**", "_prova*/**", "**/_prova*/**",
+         # 05/10: rascunhos de agente na raiz (resposta.md, .conf_som_real.md,
+         # .tarefa_imagens_heranca.md) entraram em commits e geraram conflito
+         # de merge no pedido-66e4ba54; a resposta e a MENSAGEM FINAL, nao arquivo
+         "resposta.md", ".tarefa_*.md", ".conf_*.md")
 # O que o Codex nunca mexe, qualquer que seja a lista da tarefa.
 # 01/10 23:5x: era "palco/**" inteiro e barrou a entrega das buscas do palco;
 # o que e do Adrian no palco sao so estes tres (as artes dele, sem commit).
@@ -175,6 +179,13 @@ class Recusa(Exception):
     """Nao vai acontecer; a mensagem e para quem pediu."""
 
 
+class Ocupado(Recusa):
+    """Agora nao, mas passa sozinho: outra rodada com a trava, o trabalhador
+    ainda rodando. Quem chama tenta de novo depois (o vigia poe em
+    `esperando`), em vez de tratar como defeito da entrega."""
+    passageira = True
+
+
 # ================================================================ lugares
 def pasta() -> Path:
     if PASTA:
@@ -184,13 +195,42 @@ def pasta() -> Path:
     return runtime_dir() / "delegados"
 
 
+_PRINCIPAL: dict = {}
+
+
 def repo() -> Path:
-    return Path(REPO) if REPO else RAIZ
+    """A arvore PRINCIPAL. Rodando de dentro de uma worktree (o `RAIZ` vem do
+    `__file__`), ainda e o repositorio principal: em 04/10 o conf-log-cp1252
+    foi criado de dentro da worktree do pedido-66e4ba54, gravou a worktree
+    como `repo` e o vigia esperou para sempre por "arvore principal suja"."""
+    if REPO:
+        return Path(REPO)
+    chave = str(RAIZ)
+    if chave not in _PRINCIPAL:
+        try:
+            _PRINCIPAL[chave] = _repo_principal(RAIZ)
+        except (Recusa, OSError):
+            return RAIZ
+    return _PRINCIPAL[chave]
 
 
 def repo_da(estado: dict) -> Path:
-    """Repositorio principal da tarefa; estados antigos continuam no repo padrao."""
-    return Path(estado.get("repo") or repo())
+    """Repositorio principal da tarefa; estados antigos continuam no repo padrao.
+
+    Estados de 03-04/10 gravaram uma WORKTREE como `repo` (conf-log-cp1252 e
+    conf-som-real-15 apontavam para a do pedido-66e4ba54): resolve o principal
+    dela, e se ela ja foi limpa, volta ao repositorio padrao (antes o `limpar`
+    caia com WinError 267, diretorio invalido)."""
+    gravado = estado.get("repo")
+    if not gravado:
+        return repo()
+    alvo = Path(gravado)
+    if not alvo.is_dir():
+        return repo()
+    try:
+        return _repo_principal(alvo)
+    except Recusa:
+        return alvo
 
 
 def wt_raiz() -> Path:
@@ -254,11 +294,29 @@ def _ler_json(caminho: Path, padrao):
         raise Recusa(f"{caminho.name} está ilegível") from exc
 
 
+TENTATIVAS_REPLACE = 6
+ESPERA_REPLACE_S = 0.15
+
+
 def _gravar_json(caminho: Path, dados) -> None:
+    """Grava por cima de forma atomica. O `os.replace` no Windows da
+    PermissionError (WinError 5) enquanto outro processo (o app lendo o
+    estado, um antivirus) segura o destino por um instante: tenta de novo."""
     caminho.parent.mkdir(parents=True, exist_ok=True)
     tmp = caminho.with_name(f".{caminho.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, caminho)
+    for tentativa in range(TENTATIVAS_REPLACE):
+        try:
+            os.replace(tmp, caminho)
+            return
+        except PermissionError:
+            if tentativa == TENTATIVAS_REPLACE - 1:
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+                raise
+            time.sleep(ESPERA_REPLACE_S * (tentativa + 1))
 
 
 def _mesmo_caminho(a, b) -> bool:
@@ -269,10 +327,26 @@ def _repo_valido(caminho) -> Path:
     alvo = Path(str(caminho or "")).expanduser()
     if not str(alvo):
         raise Recusa("repositorio vazio")
+    return _repo_principal(alvo)
+
+
+def _repo_principal(alvo) -> Path:
+    """O repositorio principal de `alvo`, mesmo que `alvo` seja uma worktree.
+
+    `--git-common-dir` aponta para o `.git` do principal (numa worktree o
+    `--show-toplevel` devolveria a propria worktree)."""
+    alvo = Path(alvo)
     feito = _git("rev-parse", "--show-toplevel", cwd=alvo, verificar=False)
     if feito.returncode != 0:
         raise Recusa(f"repositorio invalido: {alvo}")
-    return Path(feito.stdout.strip())
+    topo = Path(feito.stdout.strip())
+    comum = _git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=alvo,
+                 verificar=False)
+    if comum.returncode == 0 and comum.stdout.strip():
+        pasta_git = Path(comum.stdout.strip())
+        if pasta_git.name == ".git" and pasta_git.parent.is_dir():
+            return pasta_git.parent
+    return topo
 
 
 def _frontmatter_cargo(cargo: str) -> dict:
@@ -417,7 +491,19 @@ def _log(tarefa_id: str, texto: str) -> None:
             fh.write(linha + "\n")
     except OSError:
         pass
-    print(linha, flush=True)
+    # No fundo o stdout e um arquivo em cp1252: a seta do prompt de um cargo
+    # derrubava o despachante antes de o trabalhador abrir (03/10 e 04/10,
+    # 4 quedas "UnicodeEncodeError '→'"). O log em disco e utf-8 e inteiro.
+    try:
+        print(linha, flush=True)
+    except UnicodeEncodeError:
+        cod = getattr(sys.stdout, "encoding", None) or "ascii"
+        try:
+            print(linha.encode(cod, "replace").decode(cod), flush=True)
+        except (UnicodeError, LookupError, OSError, ValueError):
+            pass
+    except (OSError, ValueError):
+        pass                                   # stdout fechado: o log.txt ja tem a linha
 
 
 def listar() -> list[dict]:
@@ -1005,6 +1091,25 @@ def _preparar_rodada(tarefa_id: str, tipo: str, forcar: bool) -> tuple[dict, dic
     return estado, config
 
 
+ARG_LOG_MAX = 160                 # caracteres de cada argumento no log.txt
+
+
+def _nome_da_ia(estado: dict) -> str:
+    return "Claude" if estado.get("ia") == "claude" else "Codex"
+
+
+def _args_para_log(args: list[str]) -> str:
+    """A linha de comando para o log, sem o prompt inteiro: o `-p` do Claude
+    leva a tarefa toda (dezenas de KB) e cada rodada a repetia no log.txt."""
+    partes = []
+    for a in args[-12:]:
+        a = str(a)
+        if len(a) > ARG_LOG_MAX:
+            a = a[:ARG_LOG_MAX] + f"…(+{len(a) - ARG_LOG_MAX} caracteres)"
+        partes.append(a if " " not in a and "\n" not in a else repr(a))
+    return " ".join(partes)
+
+
 class _Rodada:
     """Um `codex exec` (ou `resume`) com os eventos indo para o disco ao vivo."""
 
@@ -1098,9 +1203,8 @@ class _Rodada:
                 _gravar_estado(estado)
 
     def rodar(self) -> int:
-        nome = "claude" if self.estado.get("ia") == "claude" else "codex"
-        _log(self.id, nome + ": " + " ".join(a if " " not in a else repr(a)
-                                           for a in self.args[-12:]))
+        nome = _nome_da_ia(self.estado)
+        _log(self.id, nome.lower() + ": " + _args_para_log(self.args))
         erro = open(pasta_da(self.id) / "codex_stderr.log", "ab")
         try:
             self.proc = subprocess.Popen(
@@ -1109,12 +1213,12 @@ class _Rodada:
                 creationflags=NO_WINDOW)
         except OSError as exc:
             erro.close()
-            self.anotar({"type": "delegar.erro", "texto": f"o codex não abriu: {exc}",
+            self.anotar({"type": "delegar.erro", "texto": f"o {nome} não abriu: {exc}",
                          "ok": False})
             return 127
         _mudar_estado(self.id, pid_codex=self.proc.pid)
         self.anotar({"type": "delegar.inicio", "ok": True,
-                     "texto": f"Codex {self.estado.get('modelo') or 'modelo padrão'} começou "
+                     "texto": f"{nome} {self.estado.get('modelo') or 'modelo padrão'} começou "
                               f"(pid {self.proc.pid})"})
         vigia = threading.Thread(target=self.guarda, daemon=True)
         vigia.start()
@@ -1180,13 +1284,16 @@ def _rodada(tarefa_id: str, tipo: str, prompt: str, *, forcar: bool = False) -> 
         modelo = ["-m", estado["modelo"]] if estado.get("modelo") else []
         esforco = (["-c", f'model_reasoning_effort="{estado["esforco"]}"']
                    if estado.get("esforco") else [])
+        # O conferente so LE (05/10): no Codex ele escrevia resposta.md e
+        # .conf_*.md na raiz da worktree, e o vigia os commitava.
+        sandbox = "read-only" if estado.get("cargo") == "conferente" else "workspace-write"
         if tipo == "rodar":
-            args = base + ["--json", "--sandbox", "workspace-write", "-C", str(wt), "-o",
+            args = base + ["--json", "--sandbox", sandbox, "-C", str(wt), "-o",
                            str(resposta), *modelo, *esforco, "-"]
         else:
         # `resume` NAO aceita --sandbox (medido em 01/10): vai por -c
             args = base + ["resume", estado["thread_id"], "--json", "-o", str(resposta),
-                           "-c", 'sandbox_mode="workspace-write"', *modelo, *esforco, "-"]
+                           "-c", f'sandbox_mode="{sandbox}"', *modelo, *esforco, "-"]
     rodada = _Rodada(estado, config, args, prompt)
     codigo = -1
     try:
@@ -1204,12 +1311,13 @@ def _rodada(tarefa_id: str, tipo: str, prompt: str, *, forcar: bool = False) -> 
 
 
 def _encerrar(tarefa_id: str, rodada: _Rodada, codigo) -> None:
+    nome = _nome_da_ia(ler_estado(tarefa_id))
     if rodada.motivo_parada:
         situacao, motivo = "parado", rodada.motivo_parada
     elif codigo == 0:
         situacao, motivo = "terminou", ""
     else:
-        situacao, motivo = "falhou", f"o codex saiu com o código {codigo}"
+        situacao, motivo = "falhou", f"o {nome} saiu com o código {codigo}"
     with _trava():
         estado = ler_estado(tarefa_id)
         estado.update(situacao=situacao, motivo=motivo, fim=_agora_iso(), pid=None,
@@ -1222,7 +1330,7 @@ def _encerrar(tarefa_id: str, rodada: _Rodada, codigo) -> None:
         (pasta_da(tarefa_id) / "parar.pedido").unlink()
     except OSError:
         pass
-    texto = {"terminou": "o Codex terminou", "falhou": "o Codex falhou: " + motivo,
+    texto = {"terminou": f"o {nome} terminou", "falhou": f"o {nome} falhou: " + motivo,
              "parado": "parado: " + motivo}[situacao]
     with open(pasta_da(tarefa_id) / "eventos.jsonl", "a", encoding="utf-8") as fh:
         fh.write(json.dumps({"n": rodada.n + 1, "em": _agora_iso(),
@@ -1437,9 +1545,12 @@ def no_fundo(argv: list[str], tarefa_id: str) -> int:
              | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | NO_WINDOW)
     saida = open(pasta_da(tarefa_id) / "fundo.txt", "ab")
     args = [sys.executable, "-m", "remoto.delegar", *argv]
+    # Sem isto o fundo.txt sai em cp1252: qualquer print com seta derruba o
+    # despachante e o acento chega estragado ao motivo que o app le.
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
     for extra in (getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0), 0):
         try:
-            proc = subprocess.Popen(args, cwd=str(RAIZ), stdout=saida, stderr=saida,
+            proc = subprocess.Popen(args, cwd=str(RAIZ), stdout=saida, stderr=saida, env=env,
                                     stdin=subprocess.DEVNULL, creationflags=flags | extra)
             return proc.pid
         except OSError:
@@ -1457,7 +1568,8 @@ def _casa(caminho: str, padrao: str) -> bool:
     return fnmatch.fnmatchcase(caminho, padrao.replace("**/", "*"))
 
 
-def validar_diff(arquivos: list[dict], permitidos: list[str], config: dict) -> list[str]:
+def validar_diff(arquivos: list[dict], permitidos: list[str], config: dict,
+                 ia: str = "Codex") -> list[str]:
     """Os motivos de recusa (vazio = passa).
 
     Desde 02/10/2026 so recusa a entrega VAZIA. O Adrian: "QUE IDIOTICE E ESSA
@@ -1467,7 +1579,8 @@ def validar_diff(arquivos: list[dict], permitidos: list[str], config: dict) -> l
     (PROIBIDOS) e o lixo de teste saem do diff em `coletar`, sem recusar o resto.
     """
     if not arquivos:
-        return ["o Codex não mudou nada"]
+        # o vigia casa "não mudou nada" (vigia_trabalho._cuidar): manter o trecho
+        return [f"o {ia} não mudou nada"]
     return []
 
 
@@ -1534,7 +1647,8 @@ def coletar(tarefa_id: str) -> dict:
         raise Recusa("git diff falhou: " + feito.stderr.decode("utf-8", "replace")[:400])
     patch = feito.stdout
     config = ler_config()
-    motivos = validar_diff(arquivos, estado.get("permitidos") or [], config)
+    motivos = validar_diff(arquivos, estado.get("permitidos") or [], config,
+                           ia=_nome_da_ia(estado))
     avisos = avisos_do_diff(arquivos, estado.get("permitidos") or [], config)
     sha = hashlib.sha1(patch).hexdigest()[:12]
     resumo = {"em": _agora_iso(), "sha": sha, "arquivos": arquivos,
@@ -1554,14 +1668,46 @@ def coletar(tarefa_id: str) -> dict:
 def testar(tarefa_id: str, cmd: str | None = None, *, timeout_s: float | None = None) -> dict:
     estado = ler_estado(tarefa_id)
     if _rodando(estado):
-        raise Recusa("o Codex ainda está rodando nessa worktree")
+        raise Ocupado(f"o {_nome_da_ia(estado)} ainda está rodando nessa worktree")
     cmd = str(cmd or estado.get("testes_cmd") or "").strip()
     if not cmd:
         raise Recusa("diga o comando dos testes (--cmd)")
+    # Uma rodada por vez por tarefa (o vigia e o orquestrador podiam testar a
+    # mesma entrega juntos) e uma pasta por rodada: o basetemp fixo fazia o
+    # pytest apagar a pasta da rodada anterior presa no Windows (WinError
+    # 145/183) e a entrega ia para correcao a toa.
+    try:
+        from .api_http import trava_arquivo
+        trava = trava_arquivo(pasta_da(tarefa_id) / "testar.lock")
+        trava.__enter__()
+    except OSError as exc:
+        raise Ocupado(f"outra rodada de testes de {tarefa_id} está em andamento ({exc})") from exc
+    try:
+        return _testar_travado(tarefa_id, estado, cmd, timeout_s)
+    finally:
+        trava.__exit__(None, None, None)
+
+
+def pasta_de_teste(tarefa_id: str) -> Path:
+    """Uma pasta NOVA por rodada, fora da worktree, e as velhas apagadas
+    (o que o Windows segurar fica para a proxima)."""
+    raiz = temp_testes() / "delegados" / validar_id(tarefa_id)
+    raiz.mkdir(parents=True, exist_ok=True)
+    # a trava do `testar` garante que nenhuma outra rodada desta tarefa usa
+    # as velhas; a pasta fixa antiga (`bt` direto) sai junto
+    for velha in raiz.iterdir():
+        if velha.is_dir():
+            shutil.rmtree(velha, ignore_errors=True)
+    nome = f"r{_agora():%Y%m%d%H%M%S}-{os.getpid()}-{time.monotonic_ns() % 1_000_000:06d}"
+    temp = raiz / nome
+    temp.mkdir(parents=True, exist_ok=True)
+    return temp
+
+
+def _testar_travado(tarefa_id: str, estado: dict, cmd: str, timeout_s) -> dict:
     resumo = coletar(tarefa_id)
     config = ler_config()
-    temp = temp_testes() / "delegados" / validar_id(tarefa_id)
-    temp.mkdir(parents=True, exist_ok=True)
+    temp = pasta_de_teste(tarefa_id)
     env = {**os.environ, "TEMP": str(temp), "TMP": str(temp),
            # barra normal: o pytest le o ADDOPTS com shlex e come a barra invertida,
            # e o basetemp caia DENTRO da worktree (tmp_pytestdelegados<id>bt, 02/10/2026)
@@ -1624,7 +1770,7 @@ def aplicar(tarefa_id: str, *, sem_testes: bool = False, processos=None) -> dict
         raise Recusa("publicação em voo: " + _cortar(voando[0], 200))
     estado = ler_estado(tarefa_id)
     if _rodando(estado):
-        raise Recusa("o Codex ainda está rodando")
+        raise Ocupado(f"o {_nome_da_ia(estado)} ainda está rodando")
     if estado.get("aplicado"):
         raise Recusa(f"já aplicado em {estado['aplicado'].get('em')}")
     resumo = coletar(tarefa_id)
@@ -1778,7 +1924,7 @@ def _mover_para_o_lixo(alvo: Path, nome: str) -> dict:
 def limpar(tarefa_id: str) -> dict:
     estado = ler_estado(tarefa_id)
     if _rodando(estado):
-        raise Recusa("o Codex ainda está rodando; pare antes (delegar parar)")
+        raise Ocupado(f"o {_nome_da_ia(estado)} ainda está rodando; pare antes (delegar parar)")
     wt = Path(estado["worktree"])
     saida = {"worktree": str(wt), "sobrou": None}
     alvo_repo = repo_da(estado)
@@ -1793,6 +1939,22 @@ def limpar(tarefa_id: str) -> dict:
                                                           if k != "worktree"}})
     _log(tarefa_id, "limpa" + (f"; sobrou {saida['sobrou']}" if saida.get("sobrou") else ""))
     return saida
+
+
+def commits_a_frente(estado: dict) -> int | None:
+    """Quantos commits a branch da tarefa tem a frente da base (None = nao sei).
+    A faxina do vigia so apaga worktree sem commit proprio."""
+    base, branch = estado.get("base"), estado.get("branch")
+    if not base or not branch:
+        return None
+    feito = _git("rev-list", "--count", f"{base}..{branch}", cwd=repo_da(estado),
+                 verificar=False)
+    if feito.returncode != 0:
+        return None
+    try:
+        return int(feito.stdout.strip())
+    except ValueError:
+        return None
 
 
 def limpar_orfas() -> list[dict]:

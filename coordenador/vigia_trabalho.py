@@ -13,7 +13,10 @@ propria (os testes de uma entrega levam minutos). Sem novidade, ele so le.
    coletar -> validador -> testes da area -> momento seguro -> aplicar ->
    commit POR CAMINHO (so os arquivos do diff) -> limpar. Testes vermelhos:
    UMA correcao (`corrigir`, no fundo, com a cauda da saida); falhou de novo,
-   ou o validador recusou: avisa ("precisa de olho") e nao mexe mais. Codigo
+   ou o validador recusou: avisa ("precisa de olho") e nao mexe mais. Arvore
+   suja nos arquivos da entrega, trava ocupada ou janela da postagem nao sao
+   defeito: a entrega fica em `esperando` (arvore suja avisa UMA vez depois de
+   60 min) e aplica sozinha quando passar. Codigo
    de servico mudou: pede o reinicio ao supervisor (que so reinicia em
    momento seguro). Entregas mais velhas que o vigia so aparecem no resumo:
    muitas ja foram aplicadas a mao, e reaplicar seria barulho.
@@ -59,6 +62,26 @@ RESUMO_A_CADA_S = 60 * 60
 CORRECAO_ESPERA_S = 10 * 60      # a correcao pedida tem de comecar nesse prazo
 CAUDA_TESTES = 4000
 SEM_TESTE = ("docs",)            # pasta de topo que nao tem teste
+# Varredura 05/10/2026 (itens 7, 12, 21c e 23):
+ESPERA_SUJA_S = 60 * 60          # arvore suja: passado isto, avisa UMA vez (e segue esperando)
+OLHO_VALIDADE_S = 48 * 3600      # item de olho/corrigidos mais velho que isto sai
+FAXINA_APOS_S = 6 * 3600         # delegado encerrado ha mais que isto e limpo
+FAXINA_POR_PASSO = 3
+TERMINAIS = ("terminou", "falhou", "parado", "negado")
+# Falha de teste que e do AMBIENTE, nao da entrega: roda de novo uma vez antes
+# de pedir correcao (pasta presa pelo Windows, Tcl que nao achou a biblioteca).
+INFRA = re.compile(r"WinError (?:5|145|183)\b|tcl_findLibrary|"
+                   r"Can't find a usable init\.tcl", re.I)
+# Recusa que passa sozinha: outra rodada segurando a trava, o trabalhador
+# ainda rodando. Vira `esperando` (tenta no proximo passo), nunca `olho` com
+# integrador contratado (05/10: conf-log-cp1252 foi para olho por "trava
+# ocupada ha mais de 15 s: delegar.lock").
+PASSAGEIRA = re.compile(r"trava ocupada|est[aá] em andamento|ainda est[aá] rodando", re.I)
+# Marca do motivo de arvore suja (o vigia solta do `olho` quem tem isto).
+SUJA_MARCA = "mudança não commitada"
+# Titulo dos pedidos que nascem de uma resposta no Grimorio: e a PERGUNTA.
+GRIMORIO = re.compile(r"^O Adrian respondeu no Grim[oó]rio\s*\(([^)]*)\)\s*:?\s*«?(.*?)»?\s*$")
+ASSUNTO_MAX = 100
 CO_AUTOR = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # "O que ficou duvidoso", "o que ficou de fora ou em duvida" (o pedido padrao
@@ -129,6 +152,191 @@ def primeira_linha(resposta: str, reserva: str) -> str:
             break
         return limpa[:120]
     return (str(reserva or "").strip() or "entrega do Codex")[:120]
+
+
+def nome_da_ia(estado: dict) -> str:
+    return "Claude" if str(estado.get("ia") or "") == "claude" else "Codex"
+
+
+def recusa_passageira(exc) -> bool:
+    """A recusa passa sozinha (trava ocupada, rodada em andamento)?"""
+    return bool(getattr(exc, "passageira", False)) or bool(PASSAGEIRA.search(str(exc)))
+
+
+def _sem_markdown(texto: str) -> str:
+    limpo = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", str(texto or ""))
+    limpo = re.sub(r"[#*`>]+", "", limpo)
+    return " ".join(limpo.split()).strip(" -:")
+
+
+def _cortar_na_palavra(texto: str, n: int = ASSUNTO_MAX, reticencias: bool = True) -> str:
+    texto = str(texto or "").strip()
+    if len(texto) <= n:
+        return texto
+    corte = texto[:n - 1].rsplit(" ", 1)[0].rstrip(",;:—–- ")
+    return (corte or texto[:n - 1]) + ("…" if reticencias else "")
+
+
+# Rascunho de agente, nao trabalho (mesmos nomes do RUIDO do despachante).
+RASCUNHO = re.compile(r"^(resposta\.md|\.tarefa_.*\.md|\.conf_.*\.md|tarefa-.*\.md)$")
+
+
+def o_que_mudou(resposta: str) -> str:
+    """A primeira frase com conteudo da fala do agente, pulando as genericas
+    ("Implementado.", "Alterações propostas:", "Mudanças:") em vez de desistir."""
+    for linha in str(resposta or "").splitlines():
+        crua = linha.strip()
+        if not crua or crua.startswith(("```", "|")):
+            continue
+        limpa = _sem_markdown(crua).lstrip("•·").strip()
+        if len(limpa) < 25 or crua.rstrip("*").endswith(":"):
+            continue
+        if re.match(r"(?i)(ainda sem sa[ií]da|aguardo|n[aã]o alterei|nada foi commitado)", limpa):
+            continue
+        return re.split(r"(?<=[.!?])\s+", limpa, maxsplit=1)[0].rstrip(".")
+    return ""
+
+
+def _e_teste(caminho: str) -> bool:
+    nome = caminho.replace("\\", "/").rsplit("/", 1)[-1]
+    partes = caminho.replace("\\", "/").split("/")
+    return (nome.startswith("test_") or nome.endswith("_test.py") or nome == "conftest.py"
+            or "tests" in partes[:-1] or "testes" in partes[:-1])
+
+
+def arquivos_em_resumo(arquivos, n: int = 3) -> str:
+    """"postar.py, reparo.py + 1 teste": os arquivos que a entrega mudou, curto."""
+    arquivos = [a for a in arquivos
+                if not RASCUNHO.match(a.replace("\\", "/").rsplit("/", 1)[-1])]
+    codigo = [a for a in arquivos if not _e_teste(a)]
+    testes = len(arquivos) - len(codigo)
+    nomes = []
+    for a in codigo:
+        nome = a.replace("\\", "/").rsplit("/", 1)[-1]
+        if nome not in nomes:
+            nomes.append(nome)
+    texto = ", ".join(nomes[:n])
+    if len(nomes) > n:
+        texto += f" e mais {len(nomes) - n}"
+    if testes:
+        texto += (" + " if texto else "") + (f"{testes} teste" + ("s" if testes > 1 else ""))
+    return texto
+
+
+def _e_pedido(estado: dict, titulo: str) -> bool:
+    """Pedido (do app ou do Grimorio): o titulo e o pedido CRU ou a pergunta,
+    e a fala final do orquestrador narra a espera ("O trabalhador x está
+    rodando. Aguardo…"), nao o que mudou (medido em 05/10 nos 12 pedidos)."""
+    return bool(GRIMORIO.match(titulo)) or str(estado.get("cargo") or "") == "orquestrador"
+
+
+def titulo_do_commit(estado: dict, resposta: str, original: dict | None = None,
+                     resposta_original: str = "", arquivos=(),
+                     limite: int = ASSUNTO_MAX) -> str:
+    """O assunto do commit: o que a tarefa FEZ, em uma linha.
+
+    05/10: "Implementado." e "Ainda sem saída; aguardo…" viraram mensagem de
+    commit porque a fala do agente vinha antes; o titulo resolve as tarefas
+    comuns. Nos pedidos o titulo e o pedido cru do Adrian ("Preciso que você
+    conserte…") ou a PERGUNTA do Grimorio («IA olha de novo a parte
+    consertada?», cortada no meio aos 120), e a fala final so narra a espera:
+    ali o assunto e o no do Grimorio (ou o pedido curto) com os ARQUIVOS que
+    mudaram. O integrador ("Integrar pedido-x") herda o assunto da entrega
+    original, com os arquivos dele."""
+    titulo = _sem_markdown(estado.get("titulo"))
+    cargo = str(estado.get("cargo") or "")
+    if cargo == "integrador" or titulo.startswith("Integrar "):
+        alvo = titulo[len("Integrar "):].strip() if titulo.startswith("Integrar ") else ""
+        sufixo = " (integrado)"
+        if original:
+            base = titulo_do_commit(original, resposta_original or resposta, arquivos=arquivos,
+                                    limite=limite - len(sufixo))
+            return base + sufixo
+        mudou = arquivos_em_resumo(arquivos) or o_que_mudou(resposta)
+        if mudou:
+            return _cortar_na_palavra(f"{alvo + ': ' if alvo else ''}{mudou}", limite)
+    if _e_pedido(estado, titulo):
+        grimorio = GRIMORIO.match(titulo)
+        # pedido cru: a primeira oracao ("Preciso que você conserte o
+        # problema do Picasso"); o pedido inteiro vai no corpo
+        quem = (grimorio.group(1).strip() if grimorio else _cortar_na_palavra(
+            re.split(r"[,.;!?]\s", titulo, maxsplit=1)[0], 60, reticencias=False))
+        mudou = arquivos_em_resumo(arquivos)
+        if not mudou:
+            mudou = grimorio.group(2).strip() if grimorio else o_que_mudou(resposta)
+        if quem and mudou:
+            return _cortar_na_palavra(f"{quem}: {mudou}", limite)
+    if len(titulo) >= 6:
+        return _cortar_na_palavra(titulo, limite)
+    return _cortar_na_palavra(o_que_mudou(resposta)
+                              or primeira_linha(resposta, titulo or str(estado.get("id") or "")),
+                              limite)
+
+
+def medida_dos_testes(testes: dict | None) -> str:
+    """O que o vigia MEDIU, curto: "1395 passed, 21 skipped" (sem o tempo)."""
+    testes = testes or {}
+    if testes.get("sem_testes"):
+        return "só documentação, sem testes"
+    resumo = " ".join(str(testes.get("resumo") or "").split()).strip("= ")
+    resumo = re.sub(r"\s+in\s+[\d.]+s\b.*$", "", resumo)
+    if resumo:
+        return resumo[:80]
+    return "testes verdes" if testes.get("ok") else f"testes com código {testes.get('codigo')}"
+
+
+def mensagem_do_commit(estado: dict, resposta: str, testes: dict | None,
+                       original: dict | None = None, resposta_original: str = "",
+                       arquivos=()) -> str:
+    """Assunto com o que mudou e o que foi medido; corpo com o pedido (quando
+    o titulo era a pergunta), quem fez, o comando que o vigia rodou, os
+    arquivos e o comeco da fala do agente (menos a do orquestrador, que so
+    narra a espera)."""
+    arquivos = list(arquivos or [])
+    assunto = titulo_do_commit(estado, resposta, original, resposta_original, arquivos)
+    medido = medida_dos_testes(testes)
+    linhas = [f"{assunto} — {medido}", ""]
+    for fonte in (original, estado):
+        titulo = _sem_markdown((fonte or {}).get("titulo"))
+        if fonte and _e_pedido(fonte, titulo):
+            achado = GRIMORIO.match(titulo)
+            linhas.append(f"Pedido: «{achado.group(2).strip() if achado else titulo[:300]}»"
+                          + (f" (Grimório {achado.group(1).strip()})" if achado else ""))
+            break
+    cmd = str((testes or {}).get("cmd") or "").strip()
+    linhas.append(f"Feito pelo {nome_da_ia(estado)} ({estado.get('id')}), validado pelo vigia"
+                  + (f": `{cmd}` deu {medido}." if cmd else "."))
+    if arquivos:
+        linhas.append("Arquivos: " + ", ".join(arquivos[:20])
+                      + (f" e mais {len(arquivos) - 20}" if len(arquivos) > 20 else ""))
+    if str(estado.get("cargo") or "") == "orquestrador":
+        resposta = ""
+    corpo, total = [], 0
+    for linha in str(resposta or "").splitlines():
+        linha = linha.rstrip()
+        if linha.strip().startswith("```"):
+            break
+        if total + len(linha) > 900 or len(corpo) >= 12:
+            break
+        corpo.append(linha)
+        total += len(linha)
+    corpo_txt = "\n".join(corpo).strip()
+    if corpo_txt:
+        linhas += ["", corpo_txt]
+    linhas += ["", CO_AUTOR, ""]
+    return "\n".join(linhas)
+
+
+def veredito(resposta: str) -> str:
+    """APROVADO / REPROVADO do conferente, ou a primeira linha da resposta."""
+    achado = re.search(r"\b(REPROVAD[OA]|APROVAD[OA])\b", str(resposta or ""))
+    if achado:
+        return achado.group(1)[:-1] + "O"
+    return primeira_linha(resposta, "sem veredito escrito")
+
+
+def falha_de_infra(texto: str) -> bool:
+    return bool(INFRA.search(str(texto or "")))
 
 
 def comando_de_teste(estado: dict, arquivos: list[str]) -> str | None:
@@ -275,6 +483,29 @@ def _propostas_real() -> int:
     return len(cerebro.propostas_pendentes())
 
 
+def _em_uso_real() -> set:
+    """Os delegados que um pedido ABERTO ainda cita (trabalhador e conferente):
+    a faxina nao os toca, porque o pedido retoma o MESMO trabalhador depois de
+    uma queda (ate dias, no limite semanal). Arquivo ilegivel LEVANTA: sem
+    saber quem esta em uso, nada e limpo (o `_ler` dos pedidos daria lista
+    vazia e tudo pareceria livre)."""
+    from . import pedidos
+    caminho = pedidos._arquivo()
+    try:
+        texto = caminho.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return set()
+    dados = json.loads(texto)
+    em_uso = set()
+    for pedido in (dados.get("pedidos") or []) if isinstance(dados, dict) else []:
+        if not isinstance(pedido, dict) or pedido.get("situacao") in pedidos.FINAIS:
+            continue
+        for chave in ("trabalhador", "conferente"):
+            if pedido.get(chave):
+                em_uso.add(str(pedido[chave]))
+    return em_uso
+
+
 def _servicos_real() -> dict:
     from .supervisor import carregar_servicos
     return carregar_servicos()
@@ -285,7 +516,8 @@ class VigiaTrabalho:
     def __init__(self, *, delegar=None, orquestrador=None, decisoes=None, commitar=None,
                  sujos=None, corrigir=None, pode_corrigir=None, avisar=None, evento=None,
                  relogio=datetime.now, seguro=None, pedir_reinicio=None, proibido=None,
-                 classificar=None, propostas=None, servicos=None, memoria=None):
+                 classificar=None, propostas=None, servicos=None, memoria=None,
+                 em_uso=None):
         if delegar is None:
             from remoto import delegar
         if orquestrador is None:
@@ -307,6 +539,7 @@ class VigiaTrabalho:
         self.classificar = classificar or _classificar_real
         self.propostas = propostas or _propostas_real
         self.servicos = servicos or _servicos_real
+        self.em_uso = em_uso or _em_uso_real
         self.caminho_memoria = Path(memoria) if memoria else pasta() / "trabalho_memoria.json"
         self.ultimo = {}
 
@@ -332,15 +565,21 @@ class VigiaTrabalho:
         for chave, padrao in (("vistos", []), ("olho", {}), ("aplicados", {}),
                               ("corrigidos", {}), ("esperando", {}), ("parados", []),
                               ("nos", {}), ("titulos", []), ("novidades", []),
-                              ("duvidas", []), ("fechados", [])):
+                              ("duvidas", []), ("fechados", []), ("conferencias", {}),
+                              ("sem_mudanca", {}), ("sujo_desde", {}), ("sujo_avisado", {}),
+                              ("retestes", {}),
+                              ("arquivados", []), ("faxina", [])):
             if not isinstance(dados.get(chave), type(padrao)):
                 dados[chave] = padrao
         return dados
 
     def _gravar_memoria(self, mem: dict) -> None:
         for chave, n in (("vistos", 300), ("parados", 300), ("titulos", 300),
-                         ("novidades", 60), ("duvidas", 300), ("fechados", 300)):
+                         ("novidades", 60), ("duvidas", 300), ("fechados", 300),
+                         ("arquivados", 300), ("faxina", 100)):
             mem[chave] = mem[chave][-n:]
+        for chave in ("conferencias", "sem_mudanca", "retestes", "sujo_avisado"):
+            mem[chave] = dict(list(mem[chave].items())[-100:])
         mem["nos"] = dict(sorted(mem["nos"].items())[-10:])
         self.caminho_memoria.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.caminho_memoria.with_name(f".{self.caminho_memoria.name}.{os.getpid()}.tmp")
@@ -351,13 +590,17 @@ class VigiaTrabalho:
         mem["novidades"].append({"em": _iso(self.relogio()), "tipo": tipo, "texto": texto})
         self.evento(f"trabalho_{tipo}", texto)
 
-    def _olho(self, mem: dict, ident: str, motivo: str) -> None:
+    def _olho(self, mem: dict, ident: str, motivo: str, integrar: bool = True) -> None:
         mem["olho"][ident] = {"motivo": motivo[:400], "em": _iso(self.relogio())}
         mem["esperando"].pop(ident, None)
+        mem["sujo_desde"].pop(ident, None)
+        mem["sujo_avisado"].pop(ident, None)
         # 03/10/2026, o Adrian: "VOCE AINDA BARRA O CODEX DE RESOLVER O PROBLEMA".
         # Entrega travada nao fica esperando ninguem: um INTEGRADOR e contratado
         # na hora para juntar, testar e entregar de novo (uma vez por entrega).
-        integrador = self._contratar_integrador(mem, ident, motivo)
+        # Arvore principal suja nao e caso de integrador: a entrega dele
+        # bateria na mesma mudanca nao commitada.
+        integrador = self._contratar_integrador(mem, ident, motivo) if integrar else None
         texto = (f"entrega {ident} travou ({motivo[:300]}); "
                  + (f"o integrador {integrador} já está resolvendo" if integrador
                     else "precisa de olho"))
@@ -384,8 +627,9 @@ class VigiaTrabalho:
         return "claude"
 
     def _contratar_integrador(self, mem: dict, ident: str, motivo: str) -> str | None:
-        if ident.startswith("integrar-") or "não mudou nada" in motivo:
-            return None                   # nao integra integrador; vazio vira permissao
+        if ident.startswith("integrar-") or "não mudou nada" in motivo or PASSAGEIRA.search(motivo):
+            # nao integra integrador; vazio vira permissao; trava ocupada passa sozinha
+            return None
         feitos = mem.setdefault("integrando", {})
         if ident in feitos:
             return feitos[ident]
@@ -428,15 +672,23 @@ class VigiaTrabalho:
         proibido = self.proibido()
         delegados = self._listar()
         mesa = self._mesa()
+        self._faxina_olho(delegados, mem, agora)
         if not proibido:
             for d in delegados:
                 if d.get("situacao") == "terminou" and not d.get("aplicado") and not d.get("limpo"):
+                    if str(d.get("cargo") or "") == "conferente":
+                        # o conferente SO LE: o desfecho dele e o veredito, nunca
+                        # uma entrega para coletar, aplicar ou commitar (05/10)
+                        self._conferencia(d, mem)
+                        continue
                     try:
                         self._cuidar(d, mem, mesa, delegados, agora)
                     except Exception as exc:                  # noqa: BLE001
                         self._olho(mem, str(d.get("id")), f"o vigia tropeçou: {exc}")
             delegados = self._listar()
             self._fechar_mesa(mesa, delegados, mem)
+            self._faxina_delegados(delegados, mem, agora)
+            delegados = self._listar()
         self._mesa_parada(mesa, mem, agora)
         trabalho = self._retrato(delegados, mesa, mem, agora, proibido)
         self._resumo(trabalho, mem, agora)
@@ -473,9 +725,97 @@ class VigiaTrabalho:
             return ""
         return texto[-CAUDA_TESTES:]
 
+    # ---------------------------------------------------------- faxinas
+    def _faxina_olho(self, delegados: list, mem: dict, agora: datetime) -> None:
+        """`olho` e `corrigidos` so guardam o que ainda pede atencao: sai o que
+        foi aplicado, limpo, sumiu da lista ou tem mais de 48 h (05/10: 10 itens
+        em `olho`, 5 de conferentes e 2 ja integrados). O que sai por idade vai
+        para `arquivados`, e o vigia nao volta a mexer nele."""
+        por_id = {str(d.get("id")): d for d in delegados}
+        lista_ok = bool(delegados)          # lista vazia (falha de leitura) nao e "sumiu"
+        for chave in ("olho", "corrigidos"):
+            for ident in list(mem[chave]):
+                d = por_id.get(ident)
+                quando = _data((mem[chave][ident] or {}).get("em"))
+                velho = quando is not None and (agora - quando).total_seconds() > OLHO_VALIDADE_S
+                resolvido = d is not None and (d.get("aplicado") or d.get("limpo"))
+                sumiu = d is None and lista_ok
+                if resolvido or sumiu or velho:
+                    mem[chave].pop(ident, None)
+                    if velho and not resolvido and not sumiu and ident not in mem["arquivados"]:
+                        mem["arquivados"].append(ident)
+
+    def _faxina_delegados(self, delegados: list, mem: dict, agora: datetime) -> None:
+        """Worktree de delegado encerrado ha mais de 6 h e sem commit proprio
+        sai (05/10: 11 worktrees `delegar/*` paradas, `limpar` so rodava depois
+        de aplicar). Entram: falhou ou negado, conferente encerrado e
+        integrador aplicado ou caido. Nunca um que um pedido aberto cita (ele
+        retoma o mesmo trabalhador), nem um em `olho` ou esperando."""
+        limpar = getattr(self.delegar, "limpar", None)
+        commits = getattr(self.delegar, "commits_a_frente", None)
+        if not (callable(limpar) and callable(commits)):
+            return
+        candidatos = []
+        for d in delegados:
+            did, cargo = str(d.get("id") or ""), str(d.get("cargo") or "")
+            situacao = d.get("situacao")
+            if not did or d.get("limpo") or situacao not in TERMINAIS:
+                continue
+            fim = _data(d.get("fim"))
+            if fim is None or (agora - fim).total_seconds() < FAXINA_APOS_S:
+                continue
+            if did in mem["olho"] or did in mem["esperando"]:
+                continue
+            if not (situacao in ("falhou", "negado")
+                    or cargo == "conferente"
+                    or (cargo == "integrador" and (d.get("aplicado")
+                                                   or situacao in ("falhou", "negado", "parado")))):
+                continue
+            candidatos.append(d)
+        if not candidatos:
+            return
+        try:
+            em_uso = set(self.em_uso())
+        except Exception as exc:                              # noqa: BLE001
+            self.evento("trabalho_faxina", f"não li os pedidos; não limpo nada ({exc})")
+            return
+        livres = [d for d in candidatos if str(d["id"]) not in em_uso]
+        for d in livres[:FAXINA_POR_PASSO]:
+            did = str(d["id"])
+            try:
+                if commits(d) != 0:
+                    continue
+                if str(d.get("cargo") or "") != "conferente":
+                    try:
+                        self.delegar.coletar(did)     # o diff.patch fica na pasta do estado
+                    except Exception:                 # noqa: BLE001
+                        pass
+                limpar(did)
+            except Exception as exc:                          # noqa: BLE001
+                self.evento("trabalho_faxina", f"{did}: não limpei ({exc})")
+                continue
+            mem["faxina"].append({"id": did, "em": _iso(self.relogio()),
+                                  "situacao": d.get("situacao"), "cargo": d.get("cargo") or ""})
+            self.evento("trabalho_faxina", f"limpei a worktree de {did} ({d.get('situacao')})")
+
+    # ----------------------------------------------------------- entregas
+    def _conferencia(self, d: dict, mem: dict) -> None:
+        did = str(d["id"])
+        if did in mem["conferencias"]:
+            return
+        texto = veredito(self._resposta(did))
+        mem["conferencias"][did] = {"em": _iso(self.relogio()), "veredito": texto[:200]}
+        if did not in mem["vistos"]:
+            mem["vistos"].append(did)
+        self._novidade(mem, "conferencia", f"conferente {did}: {texto[:200]}")
+
     def _cuidar(self, d: dict, mem: dict, mesa: dict, delegados: list, agora: datetime) -> None:
         did = str(d["id"])
-        if did in mem["olho"]:
+        if SUJA_MARCA in str((mem["olho"].get(did) or {}).get("motivo") or ""):
+            # Arvore suja nao e defeito da entrega: um `olho` com esse motivo
+            # (de antes de 05/10) volta a ser avaliado, e aplica quando limpar.
+            mem["olho"].pop(did, None)
+        if did in mem["olho"] or did in mem["arquivados"] or did in mem["sem_mudanca"]:
             return
         if str(d.get("fim") or "") < mem["desde"]:
             mem.setdefault("antigos", [])
@@ -484,7 +824,7 @@ class VigiaTrabalho:
             return
         if did not in mem["vistos"]:
             mem["vistos"].append(did)
-            self._novidade(mem, "terminou", f"o Codex terminou {did}")
+            self._novidade(mem, "terminou", f"o {nome_da_ia(d)} terminou {did}")
             self._duvida(d, mem, mesa, agora)
         corr = mem["corrigidos"].get(did)
         if corr and str(d.get("fim") or "") <= corr.get("em", ""):
@@ -497,10 +837,20 @@ class VigiaTrabalho:
         try:
             resumo = self.delegar.coletar(did)
         except Exception as exc:                              # noqa: BLE001
+            if recusa_passageira(exc):
+                mem["esperando"][did] = f"coletar o diff espera: {str(exc)[:300]}"
+                return
             self._olho(mem, did, f"não consegui coletar o diff: {exc}")
             return
+        motivos = list(resumo.get("motivos") or [])
+        if not resumo.get("ok") and motivos and all("não mudou nada" in m for m in motivos):
+            # sem mudanca = nada a aplicar: nao e defeito nem caso de integrador
+            mem["sem_mudanca"][did] = {"em": _iso(self.relogio())}
+            mem["esperando"].pop(did, None)
+            self._novidade(mem, "sem_mudanca", f"{did} terminou sem mudança: nada a aplicar")
+            return
         if not resumo.get("ok"):
-            self._olho(mem, did, "o validador recusou: " + "; ".join(resumo.get("motivos") or []))
+            self._olho(mem, did, "o validador recusou: " + "; ".join(motivos))
             return
         arquivos = [a["caminho"] for a in resumo.get("arquivos") or []]
         ok, motivo = self.seguro()
@@ -509,19 +859,19 @@ class VigiaTrabalho:
             return
         testes = d.get("testes") if isinstance(d.get("testes"), dict) else None
         if not testes or testes.get("diff_sha") != resumo.get("sha"):
-            cmd = comando_de_teste(d, arquivos)
-            if cmd is None:
-                testes = {"ok": True, "sem_testes": True, "resumo": "só documentação"}
-            else:
-                if precisa_da_prova_de_tela(arquivos):
-                    # `delegar.testar` usa cmd.exe: a prova, marcada para nao
-                    # abrir Chrome nas suites comuns, entra nesta entrega.
-                    cmd = "set NF_TESTE_NAVEGADOR=1&& " + cmd
-                try:
-                    testes = self.delegar.testar(did, cmd)
-                except Exception as exc:                      # noqa: BLE001
-                    self._olho(mem, did, f"não consegui rodar os testes: {exc}")
-                    return
+            testes = self._testar(d, mem, arquivos)
+            if testes is None:
+                return
+        if not testes.get("ok") and not testes.get("sem_testes") \
+                and mem["retestes"].get(did) != resumo.get("sha") \
+                and falha_de_infra(self._cauda_testes(did)):
+            # pasta presa (WinError 5/145/183) ou Tcl sem biblioteca: e o
+            # ambiente, nao a entrega. Roda de novo UMA vez por diff.
+            mem["retestes"][did] = resumo.get("sha")
+            self.evento("trabalho_reteste", f"{did}: falha de ambiente nos testes; rodo de novo")
+            testes = self._testar(d, mem, arquivos)
+            if testes is None:
+                return
         if not testes.get("ok"):
             self._vermelho(d, mem, delegados, agora, resumo, testes)
             return
@@ -534,7 +884,11 @@ class VigiaTrabalho:
                                      "sozinho está desligado no config.json do coordenador")
             return
         try:
-            repo_tarefa = Path(d["repo"]) if d.get("repo") else None
+            repo_da = getattr(self.delegar, "repo_da", None)
+            if callable(repo_da):
+                repo_tarefa = Path(repo_da(d))       # o principal, mesmo de estado antigo
+            else:
+                repo_tarefa = Path(d["repo"]) if d.get("repo") else None
             if repo_tarefa is None and hasattr(self.delegar, "repo"):
                 repo_tarefa = self.delegar.repo()
             sujos = self.sujos(arquivos, repo=repo_tarefa) if repo_tarefa else self.sujos(arquivos)
@@ -542,10 +896,31 @@ class VigiaTrabalho:
             self._olho(mem, did, f"não consegui conferir a árvore principal: {exc}")
             return
         if sujos:
-            # alguem esta mexendo nesses arquivos agora: espera, nao abandona
-            mem["esperando"][did] = ("a árvore principal tem mudança não commitada em "
-                                     + ", ".join(sujos[:5]))
+            # alguem esta mexendo nesses arquivos agora: espera dizendo QUAL
+            # arvore (04/10: o conf-log-cp1252 esperou calado por "arvore
+            # principal suja" e a suja era uma worktree). Passado o prazo,
+            # avisa UMA vez e SEGUE esperando: ir para `olho` era sem volta
+            # (05/10, conferente), e a principal quase sempre tem arquivo M.
+            arvore = str(repo_tarefa) if repo_tarefa else "principal"
+            desde = _data(mem["sujo_desde"].setdefault(did, _iso(agora))) or agora
+            prazo = desde + timedelta(seconds=ESPERA_SUJA_S)
+            lista = ", ".join(sujos[:5])
+            if agora >= prazo:
+                motivo = (f"a árvore {arvore} segue com {SUJA_MARCA} em {lista} desde "
+                          f"{desde:%d/%m %H:%M}; commite ou descarte e a entrega volta sozinha")
+                if did not in mem["sujo_avisado"]:
+                    mem["sujo_avisado"][did] = _iso(agora)
+                    texto = f"entrega {did} parada: {motivo}"
+                    self.avisar("⚠ " + texto)
+                    self._novidade(mem, "olho", texto)
+                mem["esperando"][did] = motivo + " (avisado)"
+                return
+            mem["esperando"][did] = (f"a árvore {arvore} tem {SUJA_MARCA} em {lista} "
+                                     f"(esperando desde {desde:%H:%M}; às {prazo:%H:%M} "
+                                     "aviso o Adrian)")
             return
+        mem["sujo_desde"].pop(did, None)
+        mem["sujo_avisado"].pop(did, None)
         try:
             aplicado = self.delegar.aplicar(did, sem_testes=bool(testes.get("sem_testes")))
         except Exception as exc:                              # noqa: BLE001
@@ -556,8 +931,8 @@ class VigiaTrabalho:
                 self._olho(mem, did, f"aplicar recusou: {texto}")
             return
         arquivos = list(aplicado.get("arquivos") or arquivos)
-        mensagem = (f"{primeira_linha(self._resposta(did), d.get('titulo'))} "
-                    f"(feito pelo Codex, validado pelo vigia)\n\n{CO_AUTOR}\n")
+        mensagem = mensagem_do_commit(d, self._resposta(did), testes,
+                                      *self._original_do_integrador(d), arquivos=arquivos)
         try:
             commit = (self.commitar(arquivos, mensagem, repo=repo_tarefa)
                       if repo_tarefa else self.commitar(arquivos, mensagem))
@@ -579,6 +954,48 @@ class VigiaTrabalho:
             self.delegar.limpar(did)
         except Exception as exc:                              # noqa: BLE001
             self.evento("trabalho_limpar", f"{did}: não limpei a worktree ({exc})")
+
+    def _testar(self, d: dict, mem: dict, arquivos: list[str]) -> dict | None:
+        """Os testes da area; None = nao rodou (ja foi para `olho`, ou para
+        `esperando` quando a recusa passa sozinha)."""
+        did = str(d["id"])
+        cmd = comando_de_teste(d, arquivos)
+        if cmd is None:
+            return {"ok": True, "sem_testes": True, "resumo": "só documentação"}
+        if precisa_da_prova_de_tela(arquivos):
+            # `delegar.testar` usa cmd.exe: a prova, marcada para nao
+            # abrir Chrome nas suites comuns, entra nesta entrega.
+            cmd = "set NF_TESTE_NAVEGADOR=1&& " + cmd
+        try:
+            return self.delegar.testar(did, cmd)
+        except Exception as exc:                              # noqa: BLE001
+            if recusa_passageira(exc):
+                # outra rodada segurando o testar.lock (o vigia e o
+                # orquestrador testando juntos): tenta no proximo passo
+                mem["esperando"][did] = f"os testes esperam: {str(exc)[:300]}"
+                return None
+            self._olho(mem, did, f"não consegui rodar os testes: {exc}")
+            return None
+
+    def _original_do_integrador(self, d: dict) -> tuple[dict | None, str]:
+        """O estado e a fala da entrega que o integrador juntou (para o
+        assunto do commit dizer o que mudou, nao "Integrar pedido-x")."""
+        titulo = str(d.get("titulo") or "")
+        if str(d.get("cargo") or "") != "integrador" and not titulo.startswith("Integrar "):
+            return None, ""
+        alvo = titulo[len("Integrar "):].strip() if titulo.startswith("Integrar ") else ""
+        if not alvo and str(d.get("id") or "").startswith("integrar-"):
+            alvo = str(d["id"])[len("integrar-"):]
+        ler = getattr(self.delegar, "ler_estado", None)
+        if not alvo or not callable(ler):
+            return None, ""
+        try:
+            original = ler(alvo)
+        except Exception:                                     # noqa: BLE001
+            return None, ""
+        if not isinstance(original, dict) or not original.get("titulo"):
+            return None, ""
+        return original, self._resposta(alvo)
 
     def _vermelho(self, d, mem, delegados, agora, resumo, testes) -> None:
         did = str(d["id"])
@@ -742,6 +1159,8 @@ class VigiaTrabalho:
                 "corrigindo": [k for k in mem["corrigidos"] if k not in mem["aplicados"]
                                and k not in mem["olho"]],
                 "antigos": list(mem.get("antigos", []))[-20:],
+                "conferencias": [{"id": k, **v} for k, v in mem["conferencias"].items()][-10:],
+                "faxina": list(mem["faxina"])[-10:],
                 "espera_adrian": self._espera_adrian(),
                 "fila": {"n": len(fila), "primeiros": [f"[{f.get('parte')}] {f.get('item')}"
                                                        for f in fila[:3]]},
@@ -788,7 +1207,7 @@ class VigiaTrabalho:
         self._espera_nova(espera, mem, agora)
         icones = {"aplicado": "✓", "terminou": "⏹", "olho": "⚠", "corrigindo": "🔧",
                   "no": "🌳", "mesa": "📌", "parada": "⏸", "integrando": "🧩",
-                  "espera": "📥"}
+                  "espera": "📥", "conferencia": "🔎", "sem_mudanca": "∅"}
         # Novidade que nao aparece no texto nao justifica mensagem.
         mem["novidades"] = [n for n in mem["novidades"] if n.get("tipo") in icones]
         if not mem["novidades"]:

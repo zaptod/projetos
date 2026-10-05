@@ -121,6 +121,211 @@ def test_claude_monta_stream_cargo_e_worktree_presa(mundo, monkeypatch):
     assert args[args.index("--add-dir") + 1] == str(delegar.worktree_de("t01"))
 
 
+# ---------------------------------------------- varredura 05/10/2026 (item 7)
+def test_log_nao_cai_com_stdout_cp1252(mundo, monkeypatch):
+    # O despachante no fundo escreve num arquivo em cp1252; a seta do prompt
+    # do cargo historias derrubava a rodada antes de o Claude abrir.
+    import io
+    delegar.pasta_da("t01").mkdir(parents=True)
+    bruto = io.BytesIO()
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(bruto, encoding="cp1252"))
+    delegar._log("t01", "roteiro → LLM → imagens")
+    sys.stdout.flush()
+    assert b"roteiro ? LLM" in bruto.getvalue()
+    texto = (delegar.pasta_da("t01") / "log.txt").read_text(encoding="utf-8")
+    assert "roteiro → LLM → imagens" in texto
+
+
+def test_no_fundo_abre_o_despachante_em_utf8(mundo, monkeypatch):
+    # O _imprimir do fim da rodada tambem caia com a seta no titulo/motivo, e
+    # o app lia o fundo.txt em utf-8 com o acento estragado.
+    delegar.pasta_da("t01").mkdir(parents=True)
+    visto = {}
+
+    class Proc:
+        pid = 4321
+
+    def popen(args, **kw):
+        visto.update(kw)
+        return Proc()
+
+    monkeypatch.delenv("PYTHONIOENCODING", raising=False)
+    monkeypatch.setattr(delegar.subprocess, "Popen", popen)
+    assert delegar.no_fundo(["rodar", "--id", "t01"], "t01") == 4321
+    assert visto["env"]["PYTHONIOENCODING"] == "utf-8"
+    assert visto["env"]["PATH"] == os.environ["PATH"]
+
+
+def test_criar_a_partir_de_worktree_grava_o_repo_principal(mundo, monkeypatch):
+    # 04/10: o conf-log-cp1252 nasceu de dentro da worktree do pedido-66e4ba54,
+    # gravou a worktree como "repo" e o vigia esperou para sempre.
+    outra = mundo.tmp / "outra-wt"
+    _git(mundo.repo, "worktree", "add", "-q", str(outra), "-b", "lado")
+    e = _criar(mundo, repo_tarefa=outra)
+    assert Path(e["repo"]).resolve() == mundo.repo.resolve()
+    # e o padrao (RAIZ do __file__) rodando de dentro da worktree tambem
+    monkeypatch.setattr(delegar, "REPO", None)
+    monkeypatch.setattr(delegar, "RAIZ", outra)
+    monkeypatch.setattr(delegar, "_PRINCIPAL", {})
+    assert delegar.repo().resolve() == mundo.repo.resolve()
+
+
+def test_estado_antigo_com_worktree_como_repo_limpa_no_principal(mundo):
+    # 05/10: conf-log-cp1252 e conf-som-real-15 tinham `repo` = a worktree do
+    # pedido-66e4ba54; limpa ela, o `limpar` deles caia com WinError 267.
+    outra = mundo.tmp / "outra-wt"
+    _git(mundo.repo, "worktree", "add", "-q", str(outra), "-b", "lado")
+    e = _criar(mundo)
+    assert delegar.repo_da({"repo": str(outra)}).resolve() == mundo.repo.resolve()
+    delegar._mudar_estado("t01", repo=str(mundo.tmp / "worktree-que-sumiu"))
+    assert delegar.repo_da(delegar.ler_estado("t01")) == delegar.repo()
+    r = delegar.limpar("t01")
+    assert r["sobrou"] is None and not Path(e["worktree"]).exists()
+    assert "delegar/codex-t01" not in _git(mundo.repo, "branch")
+
+
+def test_log_da_rodada_nao_registra_o_prompt_inteiro():
+    args = ["claude", "-p", "regra\n\n" + "x" * 50_000, "--model", "m"]
+    linha = delegar._args_para_log(args)
+    assert len(linha) < 600 and "+" in linha and "caracteres" in linha
+    assert "--model m" in linha
+
+
+def test_mensagens_dizem_a_ia_de_verdade(mundo, monkeypatch):
+    _criar(mundo, ia="claude", cargo="conferente")
+
+    class Rodada:
+        def __init__(self, estado, config, args, prompt):
+            self.n, self.motivo_parada, self.estado = 0, "", estado
+
+        def rodar(self):
+            return 1
+
+    monkeypatch.setattr(delegar, "comando_claude", lambda: ["claude-falso"])
+    monkeypatch.setattr(delegar, "_Rodada", Rodada)
+    estado = delegar._rodada("t01", "rodar", "tarefa", forcar=True)
+    assert estado["motivo"] == "o Claude saiu com o código 1"
+    log = (delegar.pasta_da("t01") / "log.txt").read_text(encoding="utf-8")
+    assert "o Claude falhou" in log and "Codex falhou" not in log
+
+
+# --------------------------------------- varredura 05/10/2026 (item 12/21c)
+def test_conferente_no_codex_roda_so_leitura(mundo, monkeypatch):
+    _criar(mundo, ia="codex", cargo="conferente")
+    vistos = []
+
+    class Rodada:
+        def __init__(self, estado, config, args, prompt):
+            self.n, self.motivo_parada, self.estado = 0, "", estado
+            vistos.append(args)
+
+        def rodar(self):
+            return 0
+
+    monkeypatch.setattr(delegar, "_Rodada", Rodada)
+    delegar._rodada("t01", "rodar", "tarefa", forcar=True)
+    assert vistos[0][vistos[0].index("--sandbox") + 1] == "read-only"
+    delegar._mudar_estado("t01", thread_id="th1")
+    delegar._rodada("t01", "corrigir", "de novo", forcar=True)
+    assert 'sandbox_mode="read-only"' in vistos[1]
+    assert "workspace-write" not in " ".join(vistos[0] + vistos[1])
+
+
+def test_rascunhos_de_agente_na_raiz_nao_entram_no_diff(mundo):
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    wt = Path(e["worktree"])
+    for nome in ("resposta.md", ".conf_som_real.md", ".tarefa_imagens_heranca.md"):
+        (wt / nome).write_text("rascunho\n", encoding="utf-8")
+    caminhos = [a["caminho"] for a in delegar.coletar("t01")["arquivos"]]
+    assert not {"resposta.md", ".conf_som_real.md", ".tarefa_imagens_heranca.md"} & set(caminhos)
+    assert "remoto/novo.py" in caminhos
+
+
+def test_gravar_json_tenta_de_novo_quando_o_windows_segura_o_arquivo(mundo, monkeypatch):
+    real = os.replace
+    falhas = []
+
+    def replace(a, b):
+        if len(falhas) < 2:
+            falhas.append(1)
+            raise PermissionError(5, "Acesso negado")
+        return real(a, b)
+
+    monkeypatch.setattr(delegar.os, "replace", replace)
+    monkeypatch.setattr(delegar, "ESPERA_REPLACE_S", 0)
+    alvo = mundo.tmp / "x" / "estado.json"
+    delegar._gravar_json(alvo, {"a": 1})
+    assert json.loads(alvo.read_text(encoding="utf-8")) == {"a": 1} and len(falhas) == 2
+    # preso de vez: levanta, sem deixar o .tmp para tras
+    monkeypatch.setattr(delegar.os, "replace",
+                        lambda a, b: (_ for _ in ()).throw(PermissionError(5, "x")))
+    with pytest.raises(PermissionError):
+        delegar._gravar_json(alvo, {"a": 2})
+    assert not list(alvo.parent.glob(".*.tmp"))
+
+
+def test_testar_usa_uma_pasta_por_rodada_fora_da_worktree(mundo):
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    cmd = f'"{sys.executable}" -c "import os; print(os.environ[\'TEMP\'])"'
+    um = delegar.testar("t01", cmd)["resumo"]
+    dois = delegar.testar("t01", cmd)["resumo"]
+    assert um != dois
+    for t in (um, dois):
+        assert Path(t).is_relative_to(mundo.tmp / "temp" / "delegados" / "t01")
+        assert not Path(t).is_relative_to(Path(e["worktree"]))
+    # so a ultima rodada fica no disco (as velhas sao apagadas)
+    assert not Path(um).exists() and Path(dois).exists()
+
+
+def test_testar_com_a_trava_ocupada_e_recusa_passageira(mundo, monkeypatch):
+    """Conferente 05/10: a 2a rodada dava Recusa comum em 15 s e o vigia
+    mandava a entrega para `olho` com integrador contratado."""
+    from remoto import api_http
+    _criar(mundo)
+    delegar.rodar("t01")
+
+    def ocupada(caminho, *a, **kw):
+        raise OSError(f"trava ocupada ha mais de 15 s: {Path(caminho).name}")
+    monkeypatch.setattr(api_http, "trava_arquivo", ocupada)
+    with pytest.raises(delegar.Ocupado) as erro:
+        delegar.testar("t01", f'"{sys.executable}" -c "print(1)"')
+    assert isinstance(erro.value, delegar.Recusa) and erro.value.passageira
+    assert "testar.lock" in str(erro.value) and "em andamento" in str(erro.value)
+
+
+def test_ia_ainda_rodando_e_ocupado_com_o_nome_certo(mundo):
+    _criar(mundo)
+    delegar.rodar("t01")
+    delegar._mudar_estado("t01", situacao="rodando", pid=os.getpid(), ia="claude")
+    for chamada in (lambda: delegar.testar("t01", "echo 1"),
+                    lambda: delegar.aplicar("t01", processos=[]),
+                    lambda: delegar.limpar("t01")):
+        with pytest.raises(delegar.Ocupado) as erro:
+            chamada()
+        assert "o Claude ainda está rodando" in str(erro.value), erro.value
+    delegar._mudar_estado("t01", situacao="terminou")
+
+
+def test_validador_diz_qual_ia_nao_mudou_nada():
+    config = dict(delegar.PADRAO_CONFIG)
+    assert delegar.validar_diff([], ["**"], config, ia="Claude") == ["o Claude não mudou nada"]
+    # o vigia casa este trecho para "nada a aplicar"
+    assert "não mudou nada" in delegar.validar_diff([], ["**"], config)[0]
+
+
+def test_commits_a_frente(mundo):
+    e = _criar(mundo)
+    assert delegar.commits_a_frente(e) == 0
+    wt = Path(e["worktree"])
+    (wt / "remoto" / "c.py").write_text("C = 1\n", encoding="utf-8")
+    _git(wt, "add", "-A")
+    _git(wt, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "c")
+    assert delegar.commits_a_frente(e) == 1
+    assert delegar.commits_a_frente({"base": None}) is None
+
+
 # ------------------------------------------------------------------ criar
 def test_criar_faz_worktree_branch_e_tarefa_com_as_regras(mundo):
     e = _criar(mundo, modelo="gpt-6-luna")
@@ -457,7 +662,8 @@ def test_testar_aplicar_e_limpar(mundo, monkeypatch):
     # e a pasta caia dentro da worktree (02/10/2026)
     cmd = f'"{sys.executable}" -c "import os,shlex; print(shlex.split(os.environ[\'PYTEST_ADDOPTS\'])[-1])"'
     r = delegar.testar("t01", cmd)
-    assert r["resumo"] == "--basetemp=" + (mundo.tmp / "temp" / "delegados" / "t01" / "bt").as_posix()
+    prefixo = "--basetemp=" + (mundo.tmp / "temp" / "delegados" / "t01").as_posix() + "/r"
+    assert r["resumo"].startswith(prefixo) and r["resumo"].endswith("/bt")
     cmd = f'"{sys.executable}" -c "import os,sys; print(os.environ[\'TEMP\']); sys.exit(1)"'
     r = delegar.testar("t01", cmd)
     assert r["ok"] is False and r["codigo"] == 1

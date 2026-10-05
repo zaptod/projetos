@@ -112,7 +112,7 @@ def mundo(tmp_path):
     mundo = SimpleNamespace(relogio=relogio, delegar=Delegar(tmp_path / "delegados"),
                             mesa=Mesa(), grimorio=Grimorio(), avisos=[], eventos=[],
                             commits=[], corrigidos=[], reinicios=[], seguro=[True, ""],
-                            proibido="", fichas=[], sujos=[])
+                            proibido="", fichas=[], sujos=[], em_uso=set())
 
     def classificar(duvida, contexto):
         if isinstance(mundo.fichas, Exception):
@@ -134,7 +134,7 @@ def mundo(tmp_path):
         classificar=classificar, propostas=lambda: 0,
         servicos=lambda: {"app": {"modulos": ["remoto"]}, "bot": {"modulos": ["remoto"]},
                           "vila": {"modulos": ["painel"]}},
-        memoria=tmp_path / "memoria.json")
+        memoria=tmp_path / "memoria.json", em_uso=lambda: set(mundo.em_uso))
     # o vigia nasce agora; as entregas dos testes terminam depois
     mundo.vigia.passo()
     mundo.avisos.clear()
@@ -161,7 +161,12 @@ def test_terminou_valido_verde_e_seguro_aplica_commita_por_caminho_e_limpa(mundo
     assert d.feitas("aplicar") and d.feitas("limpar")
     arquivos, mensagem = mundo.commits[0]
     assert arquivos == ["remoto/x.py", "remoto/test_x.py"]
-    assert mensagem.startswith("Conserta o X sem quebrar o Y (feito pelo Codex, validado pelo vigia)")
+    # 05/10: o assunto e o TITULO da tarefa (nao a fala do agente) com o que
+    # o vigia MEDIU; o corpo diz quem fez e o comando que rodou
+    assert mensagem.startswith("titulo do delegado — 10 passed\n\n")
+    assert ("Feito pelo Codex (conserto-x), validado pelo vigia: "
+            "`python -m pytest remoto -q` deu 10 passed.") in mensagem
+    assert "## Conserta o X sem quebrar o Y" in mensagem
     assert "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" in mensagem
     assert sorted(mundo.reinicios) == ["app", "bot"]          # mudou codigo de servico
     assert t["aplicados"][0]["commit"] == "c1"
@@ -218,7 +223,7 @@ def test_correcao_que_nao_comeca_em_10_min_avisa(mundo):
 
 def test_validador_recusou_avisa_e_nao_aplica(mundo):
     d = mundo.delegar
-    d.novo("fora", mundo.depois, ok=False, motivos=["o Codex não mudou nada: palco/x.gd"])
+    d.novo("fora", mundo.depois, ok=False, motivos=["diff ilegível: palco/x.gd"])
     mundo.vigia.passo()
     assert not d.feitas("testar") and not d.feitas("aplicar")
     assert any("fora travou" in a and "palco/x.gd" in a and "precisa de olho" in a
@@ -638,3 +643,361 @@ def test_novidade_sem_linha_no_texto_nao_manda_andamento(mundo):
     mundo.relogio.andar(61)
     mundo.vigia.passo()
     assert _andamentos(mundo) == []
+
+
+# ---- varredura 05/10/2026 (itens 7, 12, 21c e 23) --------------------------
+def test_conferente_so_registra_o_veredito_e_nunca_e_entrega(mundo):
+    """5 conferentes caiam em `olho` com "o Codex não mudou nada", e os
+    rascunhos deles (.conf_*.md, resposta.md) iam parar em commits."""
+    d = mundo.delegar
+    d.novo("conf-x", mundo.depois, resposta="Conferi a tela.\n\nREPROVADO: o botão some.",
+           ok=False, motivos=["o Codex não mudou nada"])
+    d.tarefas["conf-x"]["cargo"] = "conferente"
+    t = mundo.vigia.passo()
+    assert d.chamadas == [] and mundo.commits == []          # nem coletar
+    assert not t["olho"] and not t["esperando"]
+    assert t["conferencias"][0]["id"] == "conf-x"
+    assert t["conferencias"][0]["veredito"] == "REPROVADO"
+    mundo.relogio.andar(61)
+    mundo.vigia.passo()                                      # registra uma vez so
+    ditos = [a for a in mundo.avisos if "conferente conf-x: REPROVADO" in a]
+    assert len(ditos) == 1 and ditos[0].startswith("🛰 Andamento")
+    assert "🔎 conferente conf-x: REPROVADO" in ditos[0]
+
+
+def test_sem_mudanca_e_nada_a_aplicar_nao_olho(mundo):
+    d = mundo.delegar
+    criados = []
+    d.criar = lambda *a, **kw: criados.append(a)
+    d.no_fundo = lambda *a: None
+    d.novo("vazio", mundo.depois, ok=False, motivos=["o Codex não mudou nada"])
+    t = mundo.vigia.passo()
+    assert not t["olho"] and criados == [] and not mundo.commits
+    assert not any("precisa de olho" in a for a in mundo.avisos)
+    n = len(d.chamadas)
+    mundo.vigia.passo()                                      # nao coleta de novo
+    assert len(d.chamadas) == n
+
+
+def test_commit_usa_o_titulo_e_so_sem_titulo_a_fala(mundo):
+    assert vigia_trabalho.titulo_do_commit(
+        {"titulo": "# Conserto do **cp1252** no despachante"}, "Implementado.") \
+        == "Conserto do cp1252 no despachante"
+    assert vigia_trabalho.titulo_do_commit(
+        {"titulo": "", "id": "x1"}, "Troquei o print do _log por um seguro") \
+        == "Troquei o print do _log por um seguro"
+    d = mundo.delegar
+    d.novo("fala", mundo.depois, resposta="Implementado.\n", titulo="Integrar pedido-66e4ba54")
+    d.tarefas["fala"]["ia"] = "claude"
+    d.testes["fala"] = [verde()]
+    mundo.vigia.passo()
+    # integrador sem o estado original legivel: o alvo e os arquivos que mudaram
+    assert mundo.commits[0][1].startswith("pedido-66e4ba54: x.py — 10 passed\n")
+    assert "Feito pelo Claude (fala), validado pelo vigia" in mundo.commits[0][1]
+
+
+# ---- conferente 05/10: o titulo dos pedidos e a pergunta, nao o que mudou --
+GRIMORIO_LONGO = ("O Adrian respondeu no Grimório (historias/imagens-divisao): «Imagens das "
+                  "histórias: como dividir entre Gemini, ChatGPT e PicassoIA quando uma "
+                  "delas cai no meio da rodada da madrugada»")
+
+
+PEDIDO_FC = {"id": "pedido-fc098cab", "cargo": "orquestrador", "titulo":
+              "O Adrian respondeu no Grimório (historias/reolhar-depois-do-conserto): "
+              "«IA olha de novo a parte consertada?»"}
+# a fala final real do pedido-fc098cab: narra a espera, nao o que mudou
+FALA_FC = ("O trabalhador `consertada-primeiro` está rodando. Aguardo ele terminar para "
+           "mandar a entrega ao `conferente`.\n")
+ARQUIVOS_FC = ["ferramentas/postar.py", "historias/contos/pipeline/reparo.py",
+               "historias/tests/test_valvula_de_qualidade_regressions.py",
+               "tarefa-consertada-primeiro.md"]
+
+
+def test_assunto_do_pedido_do_grimorio_diz_o_no_e_os_arquivos():
+    # o no do Grimorio na frente, os arquivos que mudaram (rascunho fora)
+    assert vigia_trabalho.titulo_do_commit(PEDIDO_FC, FALA_FC, arquivos=ARQUIVOS_FC) == (
+        "historias/reolhar-depois-do-conserto: postar.py, reparo.py + 1 teste")
+    # sem arquivos: a pergunta, cortada na PALAVRA e com reticencias
+    assunto = vigia_trabalho.titulo_do_commit({"titulo": GRIMORIO_LONGO}, "Implementado.")
+    assert assunto.startswith("historias/imagens-divisao: Imagens das histórias: como dividir")
+    assert len(assunto) <= vigia_trabalho.ASSUNTO_MAX and assunto.endswith("…")
+    assert "O Adrian respondeu" not in assunto and "«" not in assunto
+    assert not assunto[:-1].endswith((" ", ","))
+
+
+def test_mensagem_do_pedido_tem_a_pergunta_os_arquivos_e_a_medida():
+    mensagem = vigia_trabalho.mensagem_do_commit(
+        PEDIDO_FC, FALA_FC, {"ok": True, "cmd": "python -m pytest ferramentas historias -q",
+                             "resumo": "1427 passed, 21 skipped in 148.1s"},
+        arquivos=ARQUIVOS_FC)
+    linhas = mensagem.splitlines()
+    assert linhas[0] == ("historias/reolhar-depois-do-conserto: postar.py, reparo.py + 1 teste"
+                         " — 1427 passed, 21 skipped")
+    assert ("Pedido: «IA olha de novo a parte consertada?» "
+            "(Grimório historias/reolhar-depois-do-conserto)") in linhas
+    assert "Arquivos: ferramentas/postar.py, historias/contos/pipeline/reparo.py" in mensagem
+    assert "`python -m pytest ferramentas historias -q` deu 1427 passed, 21 skipped." in mensagem
+    assert "Aguardo" not in mensagem                  # a narracao do orquestrador fica fora
+    assert linhas[-1] == vigia_trabalho.CO_AUTOR
+
+
+def test_assunto_do_pedido_do_app_e_a_primeira_oracao_e_os_arquivos():
+    pedido = {"id": "pedido-66e4ba54", "cargo": "orquestrador", "titulo":
+              "Preciso que você conserte o problema do Picasso, teste novamente para ver se "
+              "foi, se tiver ido encha a reserva de vídeos novamente"}
+    assunto = vigia_trabalho.titulo_do_commit(
+        pedido, "O Picasso voltou.", arquivos=["remoto/delegar.py", "remoto/test_delegar.py",
+                                               "resposta.md"])
+    assert assunto == "Preciso que você conserte o problema do Picasso: delegar.py + 1 teste"
+
+
+def test_integrador_herda_o_assunto_da_entrega_original(mundo):
+    d = mundo.delegar
+    d.ler_estado = lambda ident: dict(PEDIDO_FC) if ident == "pedido-fc098cab" else {}
+    (d.pasta / "pedido-fc098cab").mkdir(parents=True, exist_ok=True)
+    (d.pasta / "pedido-fc098cab" / "resposta.md").write_text(FALA_FC, encoding="utf-8")
+    d.novo("integrar-pedido-fc098cab", mundo.depois, titulo="Integrar pedido-fc098cab",
+           resposta="A entrega pedido-fc098cab está aplicada e com a suíte verde.\n",
+           arquivos=tuple(ARQUIVOS_FC[:3]))
+    d.tarefas["integrar-pedido-fc098cab"].update(cargo="integrador", ia="claude")
+    d.testes["integrar-pedido-fc098cab"] = [
+        {"ok": True, "codigo": 0, "resumo": "1522 passed, 21 skipped in 230.3s (0:03:50)"}]
+    mundo.vigia.passo()
+    mensagem = mundo.commits[0][1]
+    assert mensagem.splitlines()[0] == (
+        "historias/reolhar-depois-do-conserto: postar.py, reparo.py + 1 teste (integrado)"
+        " — 1522 passed, 21 skipped")
+    assert "Feito pelo Claude (integrar-pedido-fc098cab)" in mensagem
+    assert "Pedido: «IA olha de novo a parte consertada?»" in mensagem
+    # a fala do integrador (o que ele juntou) entra no corpo
+    assert "A entrega pedido-fc098cab está aplicada" in mensagem
+
+
+def test_integrador_com_original_longo_nao_dobra_reticencias():
+    original = {"id": "x", "titulo": "Um título comprido " * 10}
+    assunto = vigia_trabalho.titulo_do_commit({"titulo": "Integrar x", "cargo": "integrador"},
+                                              "", original)
+    assert assunto.endswith("… (integrado)") and "……" not in assunto
+    assert len(assunto) <= vigia_trabalho.ASSUNTO_MAX
+
+
+def test_medida_dos_testes():
+    medida = vigia_trabalho.medida_dos_testes
+    assert medida({"resumo": "1 failed, 887 passed, 1 warning in 512.00s (0:08:32)"}) \
+        == "1 failed, 887 passed, 1 warning"
+    assert medida({"sem_testes": True}) == "só documentação, sem testes"
+    assert medida({"ok": True, "resumo": ""}) == "testes verdes"
+
+
+def test_arvore_suja_diz_qual_e_tem_prazo(mundo):
+    d = mundo.delegar
+    d.novo("suja2", mundo.depois)
+    d.tarefas["suja2"]["repo"] = "E:/projetos-wt/codex-pedido-66e4ba54"
+    d.testes["suja2"] = [verde(), verde(), verde()]
+    mundo.vigia.sujos = lambda arquivos, repo=None: ["remoto/x.py"]
+    criados = []
+    d.criar = lambda *a, **kw: criados.append(a)
+    d.no_fundo = lambda *a: None
+    t = mundo.vigia.passo()
+    texto = t["esperando"]["suja2"]
+    assert "codex-pedido-66e4ba54" in texto and "remoto/x.py" in texto
+    assert "aviso o Adrian" in texto
+
+    def alertas():
+        return [a for a in mundo.avisos if a.startswith("⚠ entrega suja2")]
+    assert not t["olho"] and not alertas()
+    mundo.relogio.andar(30)
+    assert not mundo.vigia.passo()["olho"]
+    mundo.relogio.andar(31)
+    t = mundo.vigia.passo()
+    # passou do prazo: avisa UMA vez e SEGUE esperando (olho era sem volta)
+    assert not t["olho"] and "(avisado)" in t["esperando"]["suja2"]
+    assert len(alertas()) == 1 and "codex-pedido-66e4ba54" in alertas()[0]
+    assert "a entrega volta sozinha" in alertas()[0]
+    mundo.relogio.andar(30)
+    mundo.vigia.passo()
+    assert len(alertas()) == 1                               # nao repete
+    assert criados == [] and not d.feitas("aplicar")          # sem integrador
+
+
+def test_suja_depois_do_prazo_volta_quando_limpa(mundo):
+    """A prova do conferente (05/10): a mensagem dizia "commite ou descarte e a
+    entrega volta", mas ela ia para `olho` e nunca mais era aplicada."""
+    d = mundo.delegar
+    d.novo("suja3", mundo.depois)
+    d.testes["suja3"] = [verde(), verde(), verde(), verde()]
+    estado = {"sujos": ["remoto/x.py"]}
+    mundo.vigia.sujos = lambda arquivos, repo=None: list(estado["sujos"])
+    d.criar = lambda *a, **kw: None
+    d.no_fundo = lambda *a: None
+    mundo.vigia.passo()
+    mundo.relogio.andar(61)
+    t = mundo.vigia.passo()
+    assert "a entrega volta sozinha" in t["esperando"]["suja3"]
+    estado["sujos"] = []          # o Adrian commitou, como a mensagem pede
+    mundo.relogio.andar(5)
+    t = mundo.vigia.passo()
+    assert d.feitas("aplicar") and mundo.commits and "suja3" not in t["esperando"]
+    mem = mundo.vigia._ler_memoria()
+    assert "suja3" not in mem["sujo_desde"] and "suja3" not in mem["sujo_avisado"]
+
+
+def test_olho_antigo_por_arvore_suja_volta_a_ser_avaliado(mundo):
+    d = mundo.delegar
+    d.novo("velho-sujo", mundo.depois)
+    d.testes["velho-sujo"] = [verde()]
+    mem = mundo.vigia._ler_memoria()
+    mem["olho"]["velho-sujo"] = {
+        "motivo": "a árvore principal tem mudança não commitada em remoto/x.py",
+        "em": mundo.relogio().isoformat(timespec="seconds")}
+    mem["olho"]["outro"] = {"motivo": "o validador recusou: x",
+                            "em": mundo.relogio().isoformat(timespec="seconds")}
+    d.novo("outro", mundo.depois)
+    mundo.vigia._gravar_memoria(mem)
+    t = mundo.vigia.passo()
+    assert d.feitas("aplicar") == [("aplicar", "velho-sujo")]
+    assert [o["id"] for o in t["olho"]] == ["outro"]          # o resto segue no olho
+
+
+@pytest.mark.parametrize("onde", ["testar", "coletar"])
+def test_trava_ocupada_espera_sem_olho_nem_integrador(mundo, onde):
+    """Conferente 05/10: outra rodada segurando o testar.lock (ou o
+    delegar.lock) virava `olho` e contratava integrador por colisão de tempo."""
+    d = mundo.delegar
+    criados = []
+    d.criar = lambda *a, **kw: criados.append(a)
+    d.no_fundo = lambda *a: None
+    d.novo("colide", mundo.depois)
+    d.testes["colide"] = [verde()]
+    original = getattr(d, onde)
+    vezes = {"n": 0}
+
+    def ocupado(ident, *a, **kw):
+        vezes["n"] += 1
+        if vezes["n"] == 1:
+            raise Recusa("outra rodada de testes de colide está em andamento "
+                         "(trava ocupada ha mais de 15 s: testar.lock)")
+        return original(ident, *a, **kw)
+    setattr(d, onde, ocupado)
+    t = mundo.vigia.passo()
+    assert not t["olho"] and criados == [] and "colide" in t["esperando"]
+    assert not any("precisa de olho" in a or "travou" in a for a in mundo.avisos)
+    mundo.relogio.andar(1)
+    t = mundo.vigia.passo()                                  # o proximo passo aplica
+    assert d.feitas("aplicar") and "colide" not in t["esperando"]
+
+
+def test_recusa_passageira_pela_marca_da_excecao():
+    class Ocupado(Exception):
+        passageira = True
+    assert vigia_trabalho.recusa_passageira(Ocupado("qualquer texto"))
+    assert vigia_trabalho.recusa_passageira(OSError("trava ocupada ha mais de 15 s: delegar.lock"))
+    assert not vigia_trabalho.recusa_passageira(Exception("conflito de merge em: x.py"))
+
+
+def test_faxina_do_olho_e_dos_corrigidos(mundo):
+    d = mundo.delegar
+    d.novo("aplicada", mundo.depois)
+    d.tarefas["aplicada"]["aplicado"] = {"arquivos": []}
+    d.novo("velha", mundo.depois)
+    mem = mundo.vigia._ler_memoria()
+    agora = mundo.relogio()
+    for ident, em in (("aplicada", agora), ("sumida", agora),
+                      ("velha", agora - timedelta(hours=49))):
+        mem["olho"][ident] = {"motivo": "x", "em": em.isoformat(timespec="seconds")}
+    mem["corrigidos"]["sumida"] = {"em": agora.isoformat(timespec="seconds")}
+    mundo.vigia._gravar_memoria(mem)
+    t = mundo.vigia.passo()
+    assert t["olho"] == []
+    mem = mundo.vigia._ler_memoria()
+    assert mem["corrigidos"] == {} and mem["arquivados"] == ["velha"]
+    assert not d.feitas("coletar")                           # arquivada: o vigia nao volta
+
+
+@pytest.mark.parametrize("assinatura", [
+    "PermissionError: [WinError 5] Acesso negado: 'E:/tmp_pytest/bt'",
+    "OSError: [WinError 145] O diretório não está vazio",
+    "FileExistsError: [WinError 183] Não é possível criar um arquivo já existente",
+    '_tkinter.TclError: invalid command name "tcl_findLibrary"',
+])
+def test_falha_de_ambiente_roda_os_testes_de_novo_antes_de_corrigir(mundo, assinatura):
+    d = mundo.delegar
+    d.novo("infra", mundo.depois)
+    (d.pasta / "infra" / "testes.log").write_text("...\n" + assinatura + "\n1 error",
+                                                  encoding="utf-8")
+    d.testes["infra"] = [vermelho(), verde()]
+    mundo.vigia.passo()
+    assert len(d.feitas("testar")) == 2 and d.feitas("aplicar") and not mundo.corrigidos
+
+
+def test_falha_de_ambiente_so_reroda_uma_vez_e_falha_de_codigo_nao_reroda(mundo):
+    d = mundo.delegar
+    d.novo("infra2", mundo.depois)
+    (d.pasta / "infra2" / "testes.log").write_text("[WinError 145]", encoding="utf-8")
+    d.testes["infra2"] = [vermelho(), vermelho()]
+    d.novo("codigo", mundo.depois)
+    (d.pasta / "codigo" / "testes.log").write_text("AssertionError: 1 != 2", encoding="utf-8")
+    d.testes["codigo"] = [vermelho()]
+    mundo.vigia.passo()
+    testados = [c[1] for c in d.feitas("testar")]
+    assert testados.count("infra2") == 2 and testados.count("codigo") == 1
+    assert sorted(c[0] for c in mundo.corrigidos) == ["codigo", "infra2"]
+
+
+def _encerrado(d, ident, situacao, horas_atras, mundo, **mais):
+    fim = (mundo.relogio() - timedelta(hours=horas_atras)).isoformat(timespec="seconds")
+    d.novo(ident, fim)
+    d.tarefas[ident].update(situacao=situacao, **mais)
+
+
+def test_faxina_limpa_delegado_encerrado_ha_6h_sem_commit(mundo):
+    d = mundo.delegar
+    frente = {"tem-commit": 1}
+    d.commits_a_frente = lambda estado: frente.get(estado["id"], 0)
+    _encerrado(d, "caiu", "falhou", 7, mundo)
+    _encerrado(d, "negado1", "negado", 7, mundo)
+    _encerrado(d, "conf-velho", "terminou", 7, mundo, cargo="conferente")
+    _encerrado(d, "integ-ok", "terminou", 7, mundo, cargo="integrador",
+               aplicado={"arquivos": []})
+    _encerrado(d, "recente", "falhou", 5, mundo)                 # menos de 6 h
+    _encerrado(d, "tem-commit", "falhou", 7, mundo)              # commit proprio
+    _encerrado(d, "do-pedido", "falhou", 7, mundo)               # pedido aberto o retoma
+    _encerrado(d, "entrega", "parado", 7, mundo)                 # trabalhador comum parado
+    mundo.em_uso = {"do-pedido"}
+    t = mundo.vigia.passo()
+    assert len(d.feitas("limpar")) == 3                          # no maximo 3 por passo
+    t = mundo.vigia.passo()
+    limpos = sorted(c[1] for c in d.feitas("limpar"))
+    assert limpos == ["caiu", "conf-velho", "integ-ok", "negado1"]
+    assert {f["id"] for f in t["faxina"]} == set(limpos)
+    # o diff do que caiu fica guardado na pasta (coletar antes de limpar)
+    assert ("coletar", "caiu") in d.chamadas and ("coletar", "conf-velho") not in d.chamadas
+
+
+def test_faxina_sem_ler_os_pedidos_nao_limpa_nada(mundo):
+    d = mundo.delegar
+    d.commits_a_frente = lambda estado: 0
+    _encerrado(d, "caiu", "falhou", 7, mundo)
+
+    def quebrado():
+        raise ValueError("pedidos.json ilegível")
+    mundo.vigia.em_uso = quebrado
+    mundo.vigia.passo()
+    assert not d.feitas("limpar")
+    assert any(t == "trabalho_faxina" and "não limpo nada" in x for t, x in mundo.eventos)
+
+
+def test_em_uso_real_le_trabalhador_e_conferente_dos_pedidos_abertos(tmp_path, monkeypatch):
+    import json
+    from coordenador import pedidos
+    arquivo = tmp_path / "pedidos.json"
+    arquivo.write_text(json.dumps({"pedidos": [
+        {"situacao": "parado_limite", "trabalhador": "w1", "conferente": None},
+        {"situacao": "entregue", "trabalhador": "w2", "conferente": "c2"},
+        {"situacao": "conferido", "trabalhador": "w3", "conferente": "c3"}]}),
+        encoding="utf-8")
+    monkeypatch.setattr(pedidos, "_arquivo", lambda: arquivo)
+    assert vigia_trabalho._em_uso_real() == {"w1", "w2", "c2"}
+    arquivo.write_text("{quebrado", encoding="utf-8")
+    with pytest.raises(ValueError):
+        vigia_trabalho._em_uso_real()

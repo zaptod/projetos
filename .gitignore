@@ -43,6 +43,19 @@ outputs/_cura/
 # Registro dos experimentos e a que braco cada producao foi sorteada: estado
 # DESTA maquina, escrito pela pipeline a cada rodada.
 outputs/_experimentos/
+# Saidas dos servicos do coordenador e do correio das IAs (logs que crescem).
+outputs/carteiro.txt
+outputs/coordenador.txt
+outputs/vila_flutuante.txt
+outputs/retomar_codex.*
+outputs/_ias/
+
+# Rascunhos de agente na raiz (05/10/2026: resposta.md, .conf_som_real.md e
+# .tarefa_imagens_heranca.md entraram em commits). A resposta de um agente e a
+# MENSAGEM FINAL dele, e o briefing de um trabalhador mora fora da worktree.
+/resposta.md
+/.tarefa_*.md
+/.conf_*.md
 
 # A PASTA DO CLAUDE CODE. Os agentes por parte do projeto VAO para o
 # repositorio: sao a metade "papel" dos documentos de docs/sessoes/ (o

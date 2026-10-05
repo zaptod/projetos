@@ -18,9 +18,15 @@ def raiz_tk():
     raiz.destroy()
 
 
+TK_SEM_BIBLIOTECA = ("init.tcl", "tcl_findLibrary")
+
+
 def _falha_ao_iniciar_tk(erro):
+    """O Tcl nao achou a propria biblioteca: e o ambiente, nao o painel.
+    05/10/2026: a variante `invalid command name "tcl_findLibrary"` (Tcl
+    carregado pela metade com varios pytest juntos) caia como falha."""
     return (isinstance(erro, tk.TclError)
-            and "init.tcl" in str(erro))
+            and any(trecho in str(erro) for trecho in TK_SEM_BIBLIOTECA))
 
 
 @pytest.hookimpl(hookwrapper=True)
