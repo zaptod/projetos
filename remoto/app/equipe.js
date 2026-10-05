@@ -2,6 +2,9 @@
 // A Equipe e comando do servidor; a Oficina segue sendo a unica tela de log.
 let equipeTimer = null;
 let equipeSeloEm = 0;
+// O recarregar de 5 s nao pode desfazer o que o Adrian esta editando: com o
+// formulario "sujo", os campos do gerente ficam como ele deixou ate salvar.
+let equipeConfigSuja = false;
 
 async function equipeSelo() {
   if (Date.now() - equipeSeloEm < 60000) return;
@@ -98,9 +101,11 @@ async function equipeCarregar() {
     const detalhes = dados.cargos_detalhes || {};
     if (!$("equipe-repo").value) $("equipe-repo").value = (detalhes[cargo.value] || {}).repo || "";
     const c = dados.config || {};
-    $("equipe-gerente-ligado").checked = !!c.gerente_ligado;
-    $("equipe-renovar-turnos").value = c.renovar_apos_turnos || 60;
-    $("equipe-renovar-min").value = c.renovar_apos_min || 90;
+    if (!equipeConfigSuja) {
+      $("equipe-gerente-ligado").checked = !!c.gerente_ligado;
+      $("equipe-renovar-turnos").value = c.renovar_apos_turnos || 60;
+      $("equipe-renovar-min").value = c.renovar_apos_min || 90;
+    }
     $("equipe-gerente").textContent = `Gerente ${c.gerente_ligado ? "ligado" : "desligado"} · renovação ${c.renovar_apos_turnos || 60} turnos / ${c.renovar_apos_min || 90} min`;
     $("equipe-passagem").textContent = (dados.nota || "(sem NOTA)") + "\n\n" + (dados.retrato || "");
     const pedidos = $("equipe-pedidos-permissao");
@@ -142,12 +147,20 @@ $("equipe-salvar-permissoes").addEventListener("click", async () => {
   } catch (err) { avisar(err.message || "Politica invalida", true); }
 });
 
-$("equipe-salvar-gerente").addEventListener("click", async () => {
+async function equipeSalvarConfig() {
   try {
     await api("/api/equipe/config", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({gerente_ligado: $("equipe-gerente-ligado").checked,
         renovar_apos_turnos: Number($("equipe-renovar-turnos").value),
         renovar_apos_min: Number($("equipe-renovar-min").value)})});
+    equipeConfigSuja = false;
+    avisar(`Gerente ${$("equipe-gerente-ligado").checked ? "ligado" : "desligado"}`);
     equipeCarregar();
   } catch (err) { avisar(err.message, true); }
-});
+}
+$("equipe-salvar-gerente").addEventListener("click", equipeSalvarConfig);
+// Ligar/desligar o gerente vale na hora: a caixinha sozinha ja e a decisao.
+$("equipe-gerente-ligado").addEventListener("change", equipeSalvarConfig);
+for (const id of ["equipe-renovar-turnos", "equipe-renovar-min"]) {
+  $(id).addEventListener("input", () => { equipeConfigSuja = true; });
+}

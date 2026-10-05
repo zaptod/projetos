@@ -264,3 +264,48 @@ def test_agora_mostra_o_servidor_e_nao_a_sessao_fechada(tela_isolada, tmp_path):
         page.screenshot(path=str(CAPTURAS / "agora-servidor-sem-pulso.png"))
         nav.close()
     assert not erros, erros
+
+
+def test_ligar_o_gerente_fica_ligado(tela_isolada, tmp_path, monkeypatch):
+    """05/10/2026: o Adrian marcava "gerente ligado" e o recarregar de 5 s da
+    Equipe desmarcava antes do Salvar. Agora a caixinha salva na hora e
+    continua marcada depois de dois recarregamentos."""
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    from patchright.sync_api import sync_playwright
+
+    delegados = tmp_path / "delegados"
+    delegados.mkdir()
+    monkeypatch.setenv("NF_DELEGADOS_PASTA", str(delegados))
+    # o app de verdade roda com --acoes; sem isso a Equipe responde 403
+    monkeypatch.setattr(tela_isolada.RequestHandlerClass.estado, "com_acoes", True)
+    base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    CAPTURAS.mkdir(parents=True, exist_ok=True)
+    erros = []
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True,
+                              has_touch=True, service_workers="block")
+        ctx.set_default_timeout(8000)
+        page = ctx.new_page()
+        page.on("pageerror", lambda erro: erros.append(str(erro)))
+        page.goto(base + "/", wait_until="domcontentloaded")
+        page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("document.body.classList.contains('pareado')")
+        page.evaluate("() => document.querySelector('#obj-agora').click()")
+        page.evaluate("() => document.querySelector(\"#tela-agora [data-aba-tela='equipe']\").click()")
+        caixa = page.locator("#equipe-gerente-ligado")
+        caixa.wait_for(state="attached")
+        page.wait_for_timeout(1500)
+        assert not caixa.is_checked()
+        page.evaluate("() => document.querySelector('#equipe-gerente-ligado').click()")
+        page.wait_for_timeout(11000)          # dois recarregamentos de 5 s
+        assert caixa.is_checked()
+        assert "Gerente ligado" in (page.locator("#equipe-gerente").text_content() or "")
+        page.screenshot(path=str(CAPTURAS / "equipe-gerente-ligado.png"), full_page=True)
+        nav.close()
+    salvo = json.loads((delegados / "config.json").read_text(encoding="utf-8"))
+    assert salvo["gerente_ligado"] is True
+    assert not erros, erros
