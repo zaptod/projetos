@@ -31,7 +31,9 @@ PUBLICAR = RAIZ / "historias" / "outputs" / "_publicar"
 LEDGER = PUBLICAR / "publicados.jsonl"
 FEITAS = PUBLICAR / "_capas_atrasadas.json"
 OUTPUTS = RAIZ / "historias" / "outputs"
-LIMITE_PADRAO = 120          # 120 x 50 = 6.000 de 10.000: sobra para metricas e capas do dia
+# O YouTube corta as capas em ~100 por dia (429, medido em 05/10); 60 deixa
+# folga para as capas dos 10 horarios do dia.
+LIMITE_PADRAO = 60
 
 
 def pendentes(ledger: Path = LEDGER, feitas: dict | None = None) -> list[dict]:
@@ -102,8 +104,10 @@ def main(argv=None) -> int:
             print(f"  ok  {v['video_id']}  {v['youtube_id']}")
             continue
         print(f"  NAO {v['video_id']}  {v['youtube_id']}: {texto[:300]}")
-        if "quota" in texto.lower():
-            print("cota do dia acabou; amanha continua de onde parou")
+        # 05/10: depois de 100 capas o YouTube respondeu 429 "uploaded too many
+        # thumbnails recently" — um teto proprio das capas, alem da cota.
+        if "quota" in texto.lower() or "(429)" in texto:
+            print("o YouTube pediu para parar por hoje; amanha continua de onde parou")
             break
         if "(404)" in texto:      # video apagado do canal: nao ha o que capar
             feitas[v["youtube_id"]] = {"video_id": v["video_id"], "sumiu": True}
