@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Existe um arquivo de teste fora do git (random_builds/tests/test_parede_de_plano_digen_regressions.py) com 13 testes falhando: o cliente do Digen fecha a 'parede de planos' (Assine para gerar) como se fosse propaganda e segue gastando tentativa. Hoje não causa estrago porque o payoff em vídeo do Digen está desligado (payoff_video=false), mas volta a quebrar no dia em que ligar.",
+  "criado": "2026-10-05T12:27:32.698741",
+  "depende_de": [],
+  "historico": [],
+  "id": "digen-parede",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "trato a parede como falta de crédito, os 13 testes passam",
+      "id": "implementar",
+      "pede_comentario": false,
+      "rotulo": "Implementar agora (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "marco os testes como pulados até o Digen ser religado",
+      "id": "esperar",
+      "pede_comentario": false,
+      "rotulo": "Deixar em espera"
+    }
+  ],
+  "pergunta": "Implemento agora o tratamento da parede de planos do Digen, ou deixo os testes em espera enquanto o vídeo de payoff está desligado?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Parede de planos do Digen: consertar agora ou depois?",
+  "vigente": null
+}
