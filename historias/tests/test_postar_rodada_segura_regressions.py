@@ -271,8 +271,8 @@ with travas.trava(sys.argv[1]) as minha:
 """
 
 
-class TravaDaRodadaEntreProcessosTests(unittest.TestCase):
-    """Um SEGUNDO PROCESSO segura a trava, como a rodada que estourou."""
+class _BaseDaRodada(unittest.TestCase):
+    """Base sem testes: a rodada com dubles e o segundo processo."""
 
     def setUp(self):
         self.m = m = _postar()
@@ -332,6 +332,9 @@ class TravaDaRodadaEntreProcessosTests(unittest.TestCase):
         self.assertEqual(str(travas._pasta()), pasta)
         self.assertEqual("PEGUEI", proc.stdout.readline().strip())
         return proc
+
+class TravaDaRodadaEntreProcessosTests(_BaseDaRodada):
+    """Um SEGUNDO PROCESSO segura a trava, como a rodada que estourou."""
 
     def test_rodada_anterior_viva_a_nova_nao_publica_e_avisa(self):
         self._outro_processo(30)
@@ -604,7 +607,7 @@ class LimiteDaTarefaTests(unittest.TestCase):
         self.assertEqual([("NeuralFights_postar_20", "PT2H")], pedidos)
 
 
-class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
+class _BaseDaDona(_BaseDaRodada):
     """Dois processos de verdade: a dona 'pendurada' dorme segurando a trava,
     com um filho; idade, pulso e horario dela sao simulados na ficha. A lista
     "a conferir" vai para uma pasta do teste."""
@@ -667,6 +670,9 @@ class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
 
     def _anterior(self):
         return self.m._inicio_do_horario() - timedelta(hours=3)
+
+class DonaPenduradaEntreProcessosTests(_BaseDaDona):
+    """Dois processos de verdade (ver `_BaseDaDona`)."""
 
     def test_pendurada_de_horario_anterior_morre_com_o_filho_e_a_nova_publica(
             self):
@@ -767,6 +773,113 @@ class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
         motivo = self.avisos[0][0]["motivo"]
         self.assertIn("o 'escoar' do app (postar.py --tudo)", motivo)
         self.assertNotIn("rodada anterior", motivo)
+
+
+class FichaAnteriorSemDonaVivaTests(_BaseDaDona):
+    """A trava esta livre e a ficha da rodada anterior ficou no disco
+    (conferente do 9025da2). Herda a escolha de verdade (`_sem_a_conferir`)
+    e a lista "a conferir" na pasta do teste."""
+
+    BOA = {"pid": 4242, "criado": 1000.0, "inicio": 1000.0, "pulso": 1000.0,
+           "horario": "2026-10-06T12:07", "tipo": "rodada", "comando": "x"}
+
+    def _ficha(self, conteudo):
+        caminho = self.m._arquivo_da_dona()
+        if isinstance(conteudo, bytes):
+            caminho.write_bytes(conteudo)
+        else:
+            caminho.write_text(json.dumps(conteudo), encoding="utf-8")
+        return caminho
+
+    def _voo(self, etapa="clicou", **troca):
+        return dict({"canal": "historias", "alvo": self.VOO,
+                     "destino": "youtube", "etapa": etapa}, **troca)
+
+    def _marcados(self):
+        from builds.publicar import desfecho
+        return desfecho.a_conferir("historias", "youtube")
+
+    def test_voo_em_escolhido_NAO_pousa(self):
+        """O mutante que sobreviveu: antes da entrega nada subiu; marcar
+        prenderia o video a toa. A rodada segue e pode leva-lo."""
+        self._ficha(dict(self.BOA, em_voo=self._voo("escolhido")))
+        self.assertEqual(0, self.m.main([]))
+        self.assertNotIn(self.VOO, self._marcados())
+        self.assertEqual([self.VOO], self.escolhidos)
+
+    def test_ficha_invalida_com_voo_inteiro_clicou_pousa(self):
+        """Ficha que nao valida (fuso no horario), mas com o voo inteiro:
+        o voo pousa como qualquer outro, e a rodada leva outra parte."""
+        self._ficha(dict(self.BOA, horario="2026-10-06T12:07+00:00",
+                         em_voo=self._voo("clicou")))
+        self.assertEqual(0, self.m.main([]))
+        self.assertIn(self.VOO, self._marcados())
+        self.assertEqual([self.OUTRO], self.escolhidos)
+        self.assertTrue(any("ficha da trava da rodada esta invalida"
+                            in str(a) for a in self.diario))
+
+    def test_ficha_invalida_com_voo_torto_nao_publica(self):
+        caminho = self._ficha(dict(self.BOA, criado="ontem",
+                                   em_voo={"etapa": "clicou"}))
+        antes = caminho.read_bytes()
+        self.assertEqual(1, self.m.main([]))
+        self.assertEqual([], self.ordem)
+        self.assertEqual(antes, caminho.read_bytes(), "a ficha fica")
+        self.assertIn("nao da para saber", self.avisos[0][0]["motivo"])
+
+    def test_ficha_ilegivel_nao_publica(self):
+        self._ficha(b"\x00{ isto nao e json")
+        self.assertEqual(1, self.m.main([]))
+        self.assertEqual([], self.ordem)
+        self.assertIn("nao da para saber", self.avisos[0][0]["motivo"])
+
+    def test_ficha_invalida_sem_voo_segue(self):
+        self._ficha(dict(self.BOA, horario="2026-10-06T12:07+00:00",
+                         em_voo=None))
+        self.assertEqual(0, self.m.main([]))
+        self.assertEqual([self.VOO], self.escolhidos)
+
+    def test_caso_zero_sem_ficha_segue(self):
+        self.assertFalse(self.m._arquivo_da_dona().exists())
+        self.assertEqual(0, self.m.main([]))
+        self.assertEqual([self.VOO], self.escolhidos)
+
+
+class UploadQueFalaTests(unittest.TestCase):
+    """O laco do upload do `youtube_web` ficava ate 15 min calado: com os
+    20 min de pulso parado, a folga era ~4 min. Agora fala a cada 60 s."""
+
+    def test_uma_linha_por_minuto(self):
+        from builds.publicar import youtube_web as yw
+        falas = []
+        aviso = yw._AvisoDoUpload(falas.append, 1000.0)
+        self.assertFalse(aviso.talvez(1030.0))
+        self.assertTrue(aviso.talvez(1061.0))
+        self.assertFalse(aviso.talvez(1100.0))
+        self.assertTrue(aviso.talvez(1122.0))
+        self.assertEqual(2, len(falas))
+        self.assertIn("61 s de 900 s", falas[0])
+
+    def test_o_laco_do_upload_chama_o_aviso(self):
+        raiz = Path(__file__).resolve().parents[2]
+        fonte = (raiz / "random_builds" / "builds" / "publicar"
+                 / "youtube_web.py").read_text(encoding="utf-8")
+        laco = fonte[fonte.index("limite = time.time() + ESPERA_UPLOAD_S"):]
+        laco = laco[:laco.index("if pronto is None:")]
+        self.assertIn("aviso_do_upload.talvez(time.time())", laco)
+
+    def test_a_fala_do_upload_nao_e_etapa_do_voo(self):
+        """A frase nova nao pode ser lida como "arquivo entregue"."""
+        import io
+        m = _postar()
+        m._linha = lambda *_a, **_k: None
+        self.addCleanup(m._DONA.clear)
+        m._gravar_dona("rodada")
+        saida = m._SaidaComPulso(io.StringIO())
+        with m._em_voo("builds", "g1", "youtube"):
+            saida.write("[youtube-web] o arquivo ainda sobe (61 s de 900 s)"
+                        "...\n")
+            self.assertEqual("escolhido", m._DONA["em_voo"]["etapa"])
 
 
 class ReservaRespeitaAMargemTests(unittest.TestCase):

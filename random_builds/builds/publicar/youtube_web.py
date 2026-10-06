@@ -126,6 +126,28 @@ ESPERA_PAGINA_S = 90.0
 # quando ele termina de subir.
 ESPERA_UPLOAD_S = 900.0
 ESPERA_CONFIRMAR_S = 120.0
+# A ESPERA DO UPLOAD FALA (06/10/2026). Ate 15 min calada, e o postar mede
+# "pendurado" pelo PULSO (toda linha da saida): 15 min de silencio deixavam
+# so ~4 min de folga para os 20 min de pulso parado. Uma linha por minuto,
+# sem mudar a espera.
+FALA_DO_UPLOAD_S = 60.0
+
+
+class _AvisoDoUpload:
+    """Uma linha de progresso a cada `FALA_DO_UPLOAD_S` enquanto o arquivo sobe."""
+
+    def __init__(self, passo, comeco: float):
+        self._passo = passo
+        self._comeco = comeco
+        self._proximo = comeco + FALA_DO_UPLOAD_S
+
+    def talvez(self, agora: float) -> bool:
+        if agora < self._proximo:
+            return False
+        self._proximo = agora + FALA_DO_UPLOAD_S
+        self._passo(f"o arquivo ainda sobe ({agora - self._comeco:.0f} s de "
+                    f"{ESPERA_UPLOAD_S:.0f} s)...")
+        return True
 
 
 class YouTubeWebFalhou(RuntimeError):
@@ -1428,10 +1450,12 @@ def publicar(video, *, visibilidade: str | None = None,
         # O botao so habilita quando o arquivo termina de subir.
         pronto = None
         limite = time.time() + ESPERA_UPLOAD_S
+        aviso_do_upload = _AvisoDoUpload(passo, time.time())
         while time.time() < limite and pronto is None:
             pronto = _primeiro(page, SINAIS_PRONTO, timeout=3.0)
             if pronto is not None:
                 break
+            aviso_do_upload.talvez(time.time())
             # A COTA SE DESCOBRE AQUI, e nao depois de 15 min de espera: o
             # aviso ja esta na tela e nenhum botao vai habilitar. Perguntar
             # antes de dormir e a diferenca entre saber em 3 s e saber em 900.

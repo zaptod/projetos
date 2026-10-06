@@ -4495,6 +4495,34 @@ def _ler_dona() -> tuple:
     return _ficha_valida(dados)
 
 
+def _voo_da_ficha_invalida() -> tuple:
+    """(voo que da para pousar ou None, sei?) de uma ficha que NAO validou.
+
+    `sei` e False quando nao da para afirmar que nao havia voo: arquivo
+    ilegivel, nao-dicionario, ou `em_voo` presente mas torto (etapa
+    desconhecida, canal/alvo/destino faltando). Voo inteiro em `escolhido`
+    nao pousa (nada foi entregue); sem `em_voo`, nao havia voo.
+    """
+    try:
+        dados = json.loads(_arquivo_da_dona().read_text(encoding="utf-8"))
+    except Exception:                                          # noqa: BLE001
+        return None, False
+    if not isinstance(dados, dict):
+        return None, False
+    voo = dados.get("em_voo")
+    if voo is None:
+        return None, True
+    inteiro = (isinstance(voo, dict)
+               and voo.get("canal") in ("historias", "builds")
+               and isinstance(voo.get("alvo"), str) and voo.get("alvo")
+               and voo.get("destino") in ("youtube", "tiktok")
+               and isinstance(voo.get("etapa"), str)
+               and voo["etapa"] in _ORDEM_DA_ETAPA)
+    if not inteiro:
+        return None, False
+    return dict(voo), True
+
+
 def _avisar_ficha_invalida(problema: str) -> None:
     texto = (f"a ficha da trava da rodada esta invalida ({problema}); trato "
              "como 'sem ficha': espero, nao mato ninguem")
@@ -4747,8 +4775,23 @@ def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
     if vez["minha"]:
         anterior, problema = _ler_dona()
         if problema:
+            # FICHA QUE EXISTE E NAO VALIDA (conferente do 9025da2): o voo
+            # dela nao pode ser ignorado. Se ainda da para ler um voo
+            # inteiro, ele pousa como qualquer outro; se nao da para saber,
+            # nada sai e a ficha fica para uma pessoa olhar.
             _avisar_ficha_invalida(problema)
-        if _pousar_voo_perdido(anterior):
+            voo, sei = _voo_da_ficha_invalida()
+            anterior = {"em_voo": voo} if voo else None
+            if not sei:
+                vez["minha"] = False
+                vez["voo_preso"] = (
+                    f"a ficha da rodada anterior ({_arquivo_da_dona()}) esta "
+                    f"invalida ({problema}) e nao da para saber se havia "
+                    "video no ar; este horario NAO publicou. Confira os "
+                    "canais e apague a ficha para liberar")
+        if not vez["minha"]:
+            pass
+        elif _pousar_voo_perdido(anterior):
             _gravar_dona(tipo)
         else:
             vez["minha"] = False      # a ficha velha fica: a proxima tenta
@@ -4763,7 +4806,9 @@ def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
 def _rodada_presa(prazo: float, dona: dict | None = None,
                   voo_preso: bool = False) -> int:
     """Quem segura a trava nao terminou no prazo: nada sai, e todo mundo sabe."""
-    if voo_preso:
+    if isinstance(voo_preso, str):
+        texto = voo_preso
+    elif voo_preso:
         texto = ("o video que a rodada anterior deixou no ar nao foi para a "
                  "lista a conferir; este horario NAO publicou (repetir e "
                  "pior que nao postar)")
@@ -4817,7 +4862,7 @@ def main(argv=None) -> int:
     with _trava_da_rodada(prazo, _tipo_da_chamada(args)) as vez:
         if not vez["minha"]:
             return _rodada_presa(prazo, vez["dona"],
-                                 vez.get("voo_preso", False))
+                                 vez.get("voo_preso") or False)
         # O PULSO: toda linha da saida (a nossa e a dos publicadores) diz
         # "estou vivo" e marca a etapa do voo (ver `_SaidaComPulso`).
         original = sys.stdout

@@ -126,7 +126,13 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    pid, criação do processo, início, horário da grade, tipo, **pulso** e
    **em voo**). Ficha com tipo errado (fuso no horário, texto no lugar de
    número, pid booleano…) é **inválida** (`_ficha_valida`): vale como "sem
-   ficha" — espera, não mata — e vai ao diário como aviso.
+   ficha" — espera, não mata — e vai ao diário como aviso. Mas o **voo**
+   dela não é ignorado (`_voo_da_ficha_invalida`): voo inteiro em
+   `entregue`/`clicou` pousa em "a conferir" como qualquer outro; sem
+   `em_voo`, segue; ficha ilegível ou com `em_voo` torto ("não dá para
+   saber") = a rodada **não publica**, a ficha fica e o aviso pede para
+   conferir os canais e apagar a ficha. Ficha que não existe = segue.
+   Voo em `escolhido` (antes da entrega) **não** pousa: nada subiu.
    **Pulso**: no processo dono, `sys.stdout` é `_SaidaComPulso`; toda linha
    (as do postar e as dos publicadores, que narram cada passo) renova o
    pulso, gravado no máximo a cada 30 s, e a postagem pulsa antes de cada
@@ -583,6 +589,18 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   leva outra parte; dona caída sozinha com voo → idem; marca que não grava
   → não publica e a ficha fica; lenta mas viva → não morre; ficha com
   fuso → não morre e avisa). Mutação: 22 regras, 22 derrubam teste.
+  **Conferente do 9025da2** (aprovado para as 15:37, que rodou com ele:
+  h61 p01 e duelo_00051, ficha gravada e `em_voo` nulo no fim): (1) a
+  ficha inválida fazia a guarda de voo falhar **aberta** (voo "clicou"
+  ignorado). → `_voo_da_ficha_invalida` (ver §1). (2) O mutante "pousar
+  também em `escolhido`" sobreviveu. → teste: não marca, e a rodada leva o
+  mesmo vídeo. (3) **Folga do pulso**: o laço que espera o arquivo subir
+  no `youtube_web` (`ESPERA_UPLOAD_S` = 900) ficava calado até 15 min, e
+  com 20 min de pulso parado a folga era ~4 min no pior caso teórico. →
+  `_AvisoDoUpload`: uma linha "o arquivo ainda sobe (N s de 900 s)..." a
+  cada `FALA_DO_UPLOAD_S` (60 s), sem mudar a espera; a frase não contém
+  "arquivo entregue" (teste). Testes em `FichaAnteriorSemDonaVivaTests` e
+  `UploadQueFalaTests`. Mutação: 25 regras, 25 derrubam teste.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
