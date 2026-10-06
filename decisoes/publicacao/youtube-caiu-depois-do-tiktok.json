@@ -3,7 +3,15 @@
   "contexto": "Em 06/10 00:37 a h54 p02 saiu só no TikTok (o YouTube de histórias falhou: página levou 126 s e o plano B não podia clicar). Hoje a reposição leva ao YouTube a PRÓXIMA parte elegível, e a parte que caiu fica sem YouTube para sempre — no canal do YouTube a série fica com um buraco (ex.: Parte 1 e Parte 3, sem a 2). O conserto c431c6e faz a reposição acontecer em mais casos, então isso vai aparecer mais. Serve para decidir a fila de cada plataforma.",
   "criado": "2026-10-06T01:36:01.185540",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-06T02:34:18",
+      "opcao": "mesma",
+      "origem": "app"
+    }
+  ],
   "id": "youtube-caiu-depois-do-tiktok",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "Quando o YouTube de histórias falha num horário e o TikTok já publicou a parte, o que a reposição sobe no YouTube?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Parte que caiu só no YouTube",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-06T02:34:18",
+    "opcao": "mesma"
+  }
 }

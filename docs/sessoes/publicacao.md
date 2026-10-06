@@ -52,7 +52,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Legenda incompleta da h31 p06 no TikTok** — Corrigir (28/09/2026) `legenda-h31-p06`
 - ✅ **A guarda de 1 post por horário conta pela hora do relógio** — Contar pelo horário da grade (recomendado) (29/09/2026) `guarda-hora-da-grade`
 - ✅ **Teto de 2 por série/dia: dia do calendário ou dia de grade?** — Contar pelo dia de grade (igual à guarda) (29/09/2026) `teto-por-fonte-dia-de-grade`
-- ⏳ **Parte que caiu só no YouTube** — Quando o YouTube de histórias falha num horário e o TikTok já publicou a parte, o que a reposição sobe no YouTube? `youtube-caiu-depois-do-tiktok`
+- ✅ **Parte que caiu só no YouTube** — Subir a MESMA parte no YouTube (06/10/2026) `youtube-caiu-depois-do-tiktok`
 
 <!-- decisoes:fim -->
 
