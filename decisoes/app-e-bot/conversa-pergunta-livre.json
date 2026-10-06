@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Desde 06/10 (04h) a conversa responde como gente: saudação, 'orquestrador?' e 'o que você está fazendo?' recebem resposta em segundos e nunca entram na fila. Qualquer outro texto vira pedido para a equipe e recebe na hora 'Entendi: ... começa em uns X min'. A resposta de verdade a uma pergunta só vem quando um trabalhador pega o pedido (com o Claude acima do limite, pode demorar horas). Para que serve: decidir se o chat responde na hora também as perguntas livres.",
+  "criado": "2026-10-06T04:12:37.902093",
+  "depende_de": [],
+  "historico": [],
+  "id": "conversa-pergunta-livre",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Só saudação e status são conversa; toda outra mensagem vira pedido e recebe na hora o aviso de quando começa.",
+      "id": "como-esta",
+      "pede_comentario": false,
+      "rotulo": "Como está agora"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Toda mensagem recebe na hora uma resposta curta do modelo leve, com o que ele sabe do servidor; a que não é da lista continua virando pedido para a equipe aprofundar. Custa uma chamada leve ao Codex por mensagem.",
+      "id": "modelo-em-tudo",
+      "pede_comentario": false,
+      "rotulo": "Resposta rápida em tudo, pedido continua (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Pergunta ou conversa ele responde e não abre pedido; pedido de trabalho vai para a equipe. Risco: um pedido de verdade pode ser tomado por conversa (a resposta diz isso, e você manda de novo).",
+      "id": "modelo-decide",
+      "pede_comentario": false,
+      "rotulo": "O modelo decide"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (comente)"
+    }
+  ],
+  "pergunta": "Na aba Conversa do app (e no Telegram), quando você escreve uma pergunta que não é saudação nem 'o que você está fazendo?' (ex.: 'por que o vídeo das 17h não saiu?'), o que deve acontecer?",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "Conversa: pergunta que não está na lista",
+  "vigente": null
+}
