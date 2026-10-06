@@ -360,10 +360,10 @@ def test_ver_no_godot_do_lutador_leva_so_a_combinacao_escolhida(provador, monkey
     _nova(provador, PELE, (200, 200, 200, 255))
     chamadas = []
 
-    def godot(classe, personagem, biblioteca, saida):
+    def godot(classe, personagem, biblioteca, saida, cor=None):
         variantes = sorted(str(p.relative_to(biblioteca)).replace("\\", "/")
                            for p in Path(biblioteca).rglob("*.png"))
-        chamadas.append((classe, personagem, variantes))
+        chamadas.append((classe, personagem, variantes, cor))
         Image.new("RGBA", (6, 6), (len(chamadas), 0, 0, 255)).save(saida)
         return {"estado": "pronta", "arquivo": str(saida)}
     monkeypatch.setattr(api_http, "_godot_folha", godot)
@@ -376,8 +376,9 @@ def test_ver_no_godot_do_lutador_leva_so_a_combinacao_escolhida(provador, monkey
         assert resposta.status == 202
         time.sleep(0.05)
     assert resposta.status == 200 and Image.open(io.BytesIO(bruto)).getpixel((0, 0))[0] == 1
-    classe, personagem, arquivos = chamadas[0]
+    classe, personagem, arquivos, cor = chamadas[0]
     assert classe == "guerreiro_forca_bruta" and personagem == "Lucius a Sombria"
+    assert tuple(cor) == (216, 54, 69)          # a folha pinta com a cor DELE (--cor)
     assert arquivos == ["partes/lutador/olhos/comum/_/v03/neutro.png",
                         "partes/lutador/pele/comum/_/v01/base.png"]
     # a biblioteca temporaria do Godot mora na pasta do teste, nunca no PC real

@@ -2532,6 +2532,58 @@ cai no destino único e, se já houver arte, pede confirmação (409) como antes
 Depois de mandar, a carinha do painel passa a ser a do destino (o cartão fica à
 vista) e o aviso diz "N recortes viraram variantes novas de <peça>".
 
+**Reprovação do conferente (06/10, casca v52) e o que mudou:**
+- **O encaixe é do DESTINO, na hora de mandar.** Antes o `parte` do seletor ia
+  junto da folha e o encaixe no gabarito era feito ao SUBIR. O seletor abre em
+  "Sombra", então 4 olhos mandados depois aos Olhos caíram na zona da sombra
+  (256..767 × 552..726). Agora o servidor guarda os recortes CRUS na memória
+  (as 4 últimas folhas por aparelho; antes nada saía da memória). O
+  `GET /api/sprites/recortar/arquivo/<sessão>/recorte-N?destino=<lugar>&olhos=<modo>`
+  devolve o PNG já encaixado (`recortador.encaixar`): na zona do CONTRATO §2.3
+  para peça de lutador, e no quadro inteiro do slot para as outras (arma
+  1024×256, que antes era recusada por formato). O `parte` que uma casca
+  velha ainda mande ao subir é ignorado.
+- **Pares de olhos.** Com destino Olhos, a junção vira sozinha **pares de
+  olhos** e a folha é recortada de novo. Ao sair dos olhos, ela volta ao
+  médio. Dois desenhos viram um par quando têm tamanhos parecidos (≥ 0,6
+  nos dois lados), estão alinhados (centros a ≤ 0,35 da altura) e o vão
+  entre eles é de até 3× a largura de um olho. Eles se casam pelo menor
+  vão, e um olho nunca entra em dois pares. Um par que o médio já juntou
+  (olhos a menos de 16 px) é dividido pelo vão limpo. Na folha realista do
+  conferente (6 pares, vão de 24 ou 40 px, pares só de pupilas com 94 px)
+  saem 6 pares, não 12 recortes.
+- **O modo do par** (tela "Par de olhos", só com destino Olhos) vem da
+  decisão `builds/recortador-par-de-olhos`. A tela abre na resposta vigente,
+  ou em "separar" enquanto ela estiver pendente. Os modos:
+  - `separar`: cada olho no seu lugar, (563,420) e (563,604), na mesma
+    escala, maior lado 122 px, sem girar. O olho da DIREITA da imagem (o
+    esquerdo do rosto) vai para cima. Olho sozinho vira o par;
+  - `girar`: o par gira 90° anti-horário e encaixa na caixa dos olhos;
+  - `vista-de-cima`: não mexe, só encaixa como veio.
+- **Franja de cor de fundo na borda.** Medido na folha do conferente: o anel
+  de 1 px tinha média (96,6, 13,9, 100,6) no magenta. 1307 de 4528 pixels
+  estavam mais perto da chave que do contorno. O `limpeza.remover_fundo`
+  (`descontaminar=True`) agora lê cada pixel a até 2 px do fundo como
+  C = a·F + (1−a)·K. F é a média dos vizinhos confiáveis numa janela 5×5,
+  ou 9×9 se faltar. O alfa vira a projeção na reta K→F e a cor vira F, mas
+  só quando C está na reta: um brilho branco encostado no fundo fica. Depois
+  disso o anel ficou com média (20,7, 20,1, 26,6), que é o contorno, com 0
+  pixels perto da chave, verde e magenta. A folha 2048 recorta em 1,5 s.
+- **Recusar uma folha esquece a anterior** (lista, folha e seleção): o
+  "Mandar" não manda mais a folha de antes.
+- **Textos.** O aviso agora tem acento ("há bastante…"). "Mandar para" é
+  agrupado por peça (`optgroup`), com o texto "Olhos · fúria" (antes era
+  "Olhos · fúria · furia" e "Sombra · base"). Cada recorte se chama
+  "Recorte 3 · 357×127 px · par de olhos" ("· um olho só" quando não tem
+  par), e a legenda diz "Fundo magenta · 6 pares de olhos". O nome do
+  arquivo aparece sem as letras espaçadas: o `input` global do código de
+  pareamento tem `letter-spacing: .3em`, e o `input[type=file]` agora
+  volta ao normal. O "Ateliê antigo" passou de 22 para 44 px de toque. O
+  rótulo e o botão da carinha dizem o mesmo ("Carinha: neutra" e
+  "✓ neutra"), no painel e no Provador.
+- Folha de teste: `painel/sprites/folha_de_olhos.py` gera, byte a byte, a
+  folha do conferente.
+
 ### Variantes no cartão (06/10/2026, casca v51)
 
 - **"+ Nova variante" com vários arquivos.** O seletor já era `multiple`, mas o
@@ -2591,8 +2643,32 @@ modos no topo, **🧩 Montar peças** (o que já existia) e **👕 Provador**; o
 - **Ver no Godot deste lutador:** monta uma biblioteca temporária em
   `<runtime>/previas_sprites/provador/<hash>/` só com a variante escolhida de
   cada peça e roda a mesma `previa_sprites.tscn` com `--personagem=<nome>
-  --classe=<classe>`. O guarda-roupa de verdade não entra; guarda as 6
-  últimas. Mesma fila do Godot (um por vez, um na fila).
+  --classe=<classe> --cor=#RRGGBB`. A cor vem do banco: com ela, as seis
+  bolinhas da folha saem pintadas com a cor do lutador (a folha aceita
+  `--cor` desde o bfb6b35, da parte builds). O lutador de exemplo vai sem
+  `--cor` e fica com as cores de exemplo. O guarda-roupa de verdade não
+  entra. A pasta guarda as 6 últimas folhas. Usa a mesma fila do Godot (um
+  por vez, um na fila).
+- **Ver no Godot com o PC ocupado** (06/10, casca v52): o conferente mediu
+  62 s, e o servidor parava o Godot em 45 s. Agora:
+  - o servidor espera `GODOT_TIMEOUT_S = 150` s;
+  - no estouro ele para a ÁRVORE (`taskkill /T /F`), porque o
+    `_console.exe` abre o Godot de verdade como filho e matar só o console
+    o deixava rodando;
+  - a tela espera até 3 min (`godotEsperar`, comum ao painel e ao
+    Provador). Depois de 8 s ela diz "montando… o PC está ocupado, pode
+    levar 1–2 min";
+  - fechar o Ateliê ou trocar de lutador cancela a espera, sem escrever
+    no aviso do outro.
+- **O lutador montado fica sempre à vista** (06/10, casca v52). Medido pelo
+  conferente: depois de apertar ‹ ›, a prévia ficava 47 px acima do topo em
+  pé e 270 px acima deitado. Agora:
+  - em pé, a prévia (230 px, até 30vh) fica `sticky` logo abaixo do
+    cabeçalho;
+  - deitado (≥ 560 px de largura), ela vai para a coluna da esquerda,
+    presa, e os controles rolam à direita (`.provador-mesa`);
+  - a prova confere pelo `elementFromPoint` que nada cobre a prévia depois
+    da seta.
 
 **Rotas** (todas com token; as que gravam exigem `--acoes`):
 
@@ -2636,10 +2712,23 @@ troca a miniatura (cor medida no canvas), Fixar, recarregar e continua fixada,
 frase) → Desfazer. Toques ≥ 44 px e nenhum id/caminho na tela. Capturas em
 `<TEMP>/tela_app/provador/`.
 
-**Pendências (são do palco, não do app):** a folha do Godot pinta cada bolinha
-com uma cor fixa (`previa_sprites.gd::CORES`), não com a cor do personagem; e
-um nome longo ("Júlia a Abençoada · Berserker (Fúria)") encosta nas bordas do
-título da folha.
+`remoto/test_app_recortador_tela.py` (`NF_TESTE_NAVEGADOR=1`, claro e
+escuro) refaz o caminho natural da reprovação de 06/10 pelo SELETOR de arquivo
+real, com a folha do conferente. Os passos:
+1. sobe a folha com destino Sombra e recebe 12 recortes crus;
+2. uma folha azul é recusada e a lista fica vazia, então "Mandar" não manda
+   nada;
+3. sobe de novo, troca o destino para "Olhos · neutra" e recebe 6 pares;
+4. manda: as 6 variantes são gravadas e a CAIXA de cada olho no PNG fica na
+   zona do §2.3;
+5. "girar" e "já visto de cima" pelo seletor do par;
+6. confere os textos, os 44 px, a prévia do Provador presa em pé e deitado,
+   e o "PC ocupado" com um Godot dublê de 10 s.
+
+As capturas ficam em `<TEMP>/tela_app/recortador/`.
+
+**Pendências do palco resolvidas pelo bfb6b35 (parte builds):** a folha pinta
+com a cor do personagem e o título vai em duas linhas, sem encostar na borda.
 
 # Aba Equipe
 

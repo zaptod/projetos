@@ -153,7 +153,91 @@ def remover_fundo(arr: np.ndarray, metodo: str = "bordas", cor=None,
             saida[..., :3][meio] = np.clip(limpo, 0, 255).round().astype(
                 np.uint8)
     saida[..., 3] = np.clip(alfa * fator, 0, 255).round().astype(np.uint8)
+    if descontaminar:
+        saida = _desmisturar_franja(saida, rgb, alfa, fundo, cor)
     return zerar_transparentes(saida)
+
+
+def _desmisturar_franja(saida: np.ndarray, rgb: np.ndarray, alfa_origem: np.ndarray,
+                        fundo: np.ndarray, cor) -> np.ndarray:
+    """A franja de 1-2 px entre o desenho e a cor-chave.
+
+    Medido em 06/10/2026 nas folhas de olhos do conferente: o pixel da borda
+    e MISTURA do contorno com o fundo (metade de (20,20,26) com metade de
+    magenta = (134,11,136)). A rampa de alfa por distancia a chave so pega a
+    mistura que e quase toda fundo; o resto ficava opaco e roxo -- um anel
+    de 1 px puxando para o magenta (46 de 53 pixels medidos) por cima de
+    qualquer fundo do jogo.
+
+    Para cada pixel perto do fundo, a cor do desenho F vem dos vizinhos
+    confiaveis (`cor_de_dentro`) e o pixel C e lido como C = a*F + (1-a)*K:
+    o alfa e a projecao de C na reta K->F, e a cor vira F. So vale quando C
+    esta MESMO nessa reta (sobra pequena) e F e longe da chave: um brilho
+    branco ou um traco de outra cor encostado no fundo fica como estava.
+    """
+    perto = caixa(fundo.astype(np.float32), 2) > 0
+    alfa = saida[..., 3]
+    franja = perto & (alfa > 0)
+    if not franja.any():
+        return saida
+    confiavel = ~perto & ~fundo & (alfa == 255)
+    if not confiavel.any():
+        return saida
+    ys, xs = np.nonzero(franja)
+    f, achou = _media_confiavel(saida[..., :3], confiavel, ys, xs)
+    ys, xs, f = ys[achou], xs[achou], f[achou]
+    k = np.asarray(cor, np.float64)[:3]
+    c = rgb[ys, xs].astype(np.float64)
+    v = f - k
+    u = c - k
+    vv = (v * v).sum(1)
+    a = np.clip((u * v).sum(1) / np.maximum(vv, 1e-6), 0.0, 1.0)
+    sobra = np.sqrt(((u - a[:, None] * v) ** 2).sum(1)) / RAIZ3
+    longe = np.sqrt(vv) / RAIZ3
+    ok = (longe >= 40) & (sobra <= np.maximum(16.0, 0.2 * longe))
+    if not ok.any():
+        return saida
+    ys, xs, a, f = ys[ok], xs[ok], a[ok], f[ok]
+    # A projecao substitui a rampa por distancia; o alfa que a folha ja
+    # trazia (folha com transparencia) multiplica, nunca sobe.
+    novo_alfa = alfa_origem[ys, xs].astype(np.float64) * a
+    saida = saida.copy()
+    saida[ys, xs, 3] = np.clip(novo_alfa, 0, 255).round().astype(np.uint8)
+    mistura = a < 0.995
+    saida[ys[mistura], xs[mistura], :3] = np.clip(f[mistura], 0, 255).round().astype(np.uint8)
+    return saida
+
+
+def _media_confiavel(rgb: np.ndarray, confiavel: np.ndarray, ys: np.ndarray, xs: np.ndarray,
+                     raios=(2, 4)) -> tuple[np.ndarray, np.ndarray]:
+    """A cor media dos pixels confiaveis numa janela em volta de CADA pixel
+    pedido (janela 5x5, depois 9x9 para quem nao achou). So nos pixels da
+    franja: a `cor_de_dentro` da folha inteira levava 3,5 s numa 2048."""
+    h, w = confiavel.shape
+    n = len(ys)
+    saida = np.zeros((n, 3), np.float64)
+    falta = np.ones(n, bool)
+    for raio in raios:
+        idx = np.nonzero(falta)[0]
+        if not len(idx):
+            break
+        py, px = ys[idx], xs[idx]
+        soma = np.zeros((len(idx), 3), np.float64)
+        peso = np.zeros(len(idx), np.float64)
+        for dy in range(-raio, raio + 1):
+            yy = py + dy
+            fora_y = (yy < 0) | (yy >= h)
+            yy = np.clip(yy, 0, h - 1)
+            for dx in range(-raio, raio + 1):
+                xx = px + dx
+                p = confiavel[yy, np.clip(xx, 0, w - 1)] & ~fora_y & (xx >= 0) & (xx < w)
+                if p.any():
+                    soma[p] += rgb[yy[p], xx[p]]
+                    peso[p] += 1
+        tem = peso > 0
+        saida[idx[tem]] = soma[tem] / peso[tem][:, None]
+        falta[idx[tem]] = False
+    return saida, ~falta
 
 
 def alfa_minimo(arr: np.ndarray, limite: int) -> np.ndarray:

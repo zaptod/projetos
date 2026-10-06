@@ -95,7 +95,14 @@ PARTES_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca"
 MANIFESTO_SPRITES = PARTES_BIBLIOTECA / "manifesto_slots.json"
 GODOT_PREVIA = Path("E:/ferramentas/godot/Godot_v4.7.2-stable_win64_console.exe")
 GODOT_RAIZ = Path(__file__).resolve().parents[1] / "palco"
+# A folha do Godot com o PC ocupado levou 62 s (conferente, 06/10/2026); com
+# 45 s ela era parada no meio. A tela espera um pouco mais que isto.
+GODOT_TIMEOUT_S = 150
 SPRITE_MAX = 20 * 1024 * 1024
+RECORTADOR_SESSOES = 4               # folhas do recortador guardadas por aparelho
+# A resposta do Adrian sobre o par de olhos desenhado de frente (o padrao da
+# tela do recortador); pendente = "separar", a recomendada.
+DECISAO_OLHOS = ("builds", "recortador-par-de-olhos")
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -1009,8 +1016,36 @@ def _rodar_previa_godot(alvo: str, biblioteca: Path) -> dict:
     return _godot_folha('' if alvo == '_' else alvo, "", biblioteca, saida)
 
 
-def _godot_folha(classe: str, personagem: str, biblioteca: Path, saida: Path) -> dict:
-    """O Godot de verdade: a folha das seis carinhas de `classe`/`personagem`."""
+def _olhos_padrao() -> str:
+    """O modo do par de olhos que a tela abre: a resposta vigente do Adrian no
+    Grimorio, ou "separar" (a recomendada) enquanto ele nao responde."""
+    try:
+        item = json.loads(decisoes.caminho_item(*DECISAO_OLHOS).read_text(encoding="utf-8"))
+        opcao = str(((item.get("vigente") or {}).get("opcao")) or "")
+    except (OSError, ValueError, AttributeError):
+        opcao = ""
+    return opcao if opcao in sprites_recortador.MODOS_OLHOS else "separar"
+
+
+def _parar_arvore(processo: subprocess.Popen) -> None:
+    """O `_console.exe` do Godot abre o Godot de verdade como FILHO: matar so
+    o console deixava o Godot rodando (e a GPU ocupada) depois do estouro."""
+    if os.name == "nt":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(["taskkill", "/PID", str(processo.pid), "/T", "/F"],
+                           capture_output=True, timeout=20, creationflags=NO_WINDOW)
+    with contextlib.suppress(OSError):
+        processo.kill()
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        processo.communicate(timeout=10)
+
+
+def _godot_folha(classe: str, personagem: str, biblioteca: Path, saida: Path, cor=None) -> dict:
+    """O Godot de verdade: a folha das seis carinhas de `classe`/`personagem`.
+
+    `cor` (r, g, b) vai como `--cor=#RRGGBB`: a folha pinta as seis bolinhas
+    com a cor DELE (bfb6b35, parte builds); sem ela o Godot procura o nome no
+    banco, e o lutador de exemplo fica com as cores de exemplo."""
     try:
         with contextlib.suppress(OSError):
             saida.unlink()
@@ -1018,13 +1053,21 @@ def _godot_folha(classe: str, personagem: str, biblioteca: Path, saida: Path) ->
                "res://ferramentas/previa_sprites.tscn", "--",
                f"--classe={classe}", f"--personagem={personagem}",
                f"--biblioteca={biblioteca}", f"--saida={saida}"]
-        processo = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                                  errors="replace", timeout=45, creationflags=NO_WINDOW)
+        if cor is not None:
+            cmd.append("--cor=#%02X%02X%02X" % tuple(max(0, min(255, int(c))) for c in tuple(cor)[:3]))
+        processo = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                    encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+        try:
+            processo.communicate(timeout=GODOT_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            _parar_arvore(processo)
+            with contextlib.suppress(OSError):
+                saida.unlink()
+            return {"estado": "erro", "erro": f"o Godot passou de {GODOT_TIMEOUT_S // 60} minutos e foi "
+                                              "parado; tente de novo quando o PC estiver mais livre"}
         if processo.returncode == 0 and saida.is_file():
             return {"estado": "pronta", "arquivo": str(saida)}
         return {"estado": "erro", "erro": "o Godot não conseguiu desenhar a folha; tente de novo daqui a pouco"}
-    except subprocess.TimeoutExpired:
-        return {"estado": "erro", "erro": "o Godot demorou demais e foi parado; tente de novo"}
     except (OSError, subprocess.SubprocessError):
         return {"estado": "erro", "erro": "não consegui abrir o Godot neste PC"}
 
@@ -1471,7 +1514,10 @@ def _rodar_previa_provador(pedido: dict) -> dict:
     except OSError:
         return {"estado": "erro", "erro": "não consegui preparar a prévia neste PC"}
     lutador = pedido["lutador"]
-    return _godot_folha(lutador["classe"], lutador["nome_jogo"], pasta, pasta / "folha.png")
+    if lutador.get("exemplo") or lutador.get("cor") is None:
+        return _godot_folha(lutador["classe"], lutador["nome_jogo"], pasta, pasta / "folha.png")
+    return _godot_folha(lutador["classe"], lutador["nome_jogo"], pasta, pasta / "folha.png",
+                        cor=lutador["cor"])
 
 
 class Manipulador(BaseHTTPRequestHandler):
@@ -1695,7 +1741,7 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._atelie_arquivo(*achado.groups())
             achado = re.fullmatch(r"/api/sprites/recortar/arquivo/([A-Za-z0-9_-]{8,40})/(limpa|marcada|recorte-\d+)", rota)
             if achado:
-                return self._recortador_arquivo(*achado.groups())
+                return self._recortador_arquivo(*achado.groups(), consulta)
             achado = re.fullmatch(r"/api/sprites/arquivo/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/([^/]+)", rota)
             if achado:
                 return self._arquivo_sprite(achado.group(1), achado.group(2), achado.group(3))
@@ -2042,6 +2088,7 @@ class Manipulador(BaseHTTPRequestHandler):
         if grupo == "lutador":
             resposta["progresso"] = _progresso_sprites(indice)
             resposta["expressoes"] = _expressoes_publicas()
+            resposta["recortador_olhos"] = _olhos_padrao()
         return self._json(resposta)
 
     def _sprites_modulares_gabarito(self, slot_id: str):
@@ -2452,8 +2499,13 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._bytes(corpo, "image/gif" if parte == "previa" else "image/png")
 
     # ------------------------------------------------ folha verde ou magenta
-    def _recortador_arquivo(self, sessao: str, parte: str):
-        """Previa temporaria do recortador; nunca e arquivo da biblioteca."""
+    def _recortador_arquivo(self, sessao: str, parte: str, consulta: dict | None = None):
+        """Previa temporaria do recortador; nunca e arquivo da biblioteca.
+
+        `recorte-N` sai CRU; com `?destino=<lugar>` (e `olhos=<modo>` quando o
+        lugar e de olhos) sai encaixado no gabarito DAQUELE lugar. O encaixe e
+        feito aqui, na hora de mandar: em 06/10 ele era feito ao subir a folha,
+        com a peca que estava no seletor, e olhos cairam na zona da sombra."""
         with self.estado.trava:
             dados = self.estado.atelie.get(sessao)
         if not dados or dados["dono"] != self._dono or "recortador" not in dados:
@@ -2461,7 +2513,20 @@ class Manipulador(BaseHTTPRequestHandler):
         corpo = dados["recortador"].get(parte)
         if corpo is None:
             return self._erro(404, "recorte nao existe")
-        return self._bytes(corpo, "image/png")
+        destino = str(((consulta or {}).get("destino") or [""])[0])
+        if not destino or not parte.startswith("recorte-"):
+            return self._bytes(corpo, "image/png")
+        slot = _indice_sprites()["por_id"].get(destino)
+        if not isinstance(slot, dict):
+            return self._erro(404, "peça desconhecida")
+        modo = str(((consulta or {}).get("olhos") or [_olhos_padrao()])[0])
+        if modo not in sprites_recortador.MODOS_OLHOS:
+            return self._erro(400, "modo de olhos desconhecido")
+        recorte = dados["recortes"][int(parte.split("-", 1)[1])]
+        pronto = sprites_recortador.encaixar(
+            recorte, str(slot.get("parte") or ""), grupo=str(slot.get("grupo") or ""),
+            tamanho=tuple(slot.get("tamanho_px") or (1024, 1024)), olhos=modo)
+        return self._bytes(self._atelie_png(pronto), "image/png")
 
     def _atelie_corpo(self):
         """(imagem, opcoes) de JSON/base64 ou multipart, limitado antes de ler."""
@@ -2574,19 +2639,20 @@ class Manipulador(BaseHTTPRequestHandler):
             return
         imagem, opcoes = pedido
         nivel = str(opcoes.get("juncao") or "medio")
-        if nivel not in sprites_recortador.JUNCAO:
-            return self._erro(400, "juncao precisa ser pouco, medio ou muito")
+        if nivel not in sprites_recortador.NIVEIS:
+            return self._erro(400, "juncao precisa ser pouco, medio, muito ou pares")
         try:
             origem = sprites_importar.abrir_bytes(imagem)
             resultado = sprites_recortador.recortar(
-                origem, juntar=sprites_recortador.JUNCAO[nivel],
+                origem, juntar=sprites_recortador.JUNCAO.get(nivel, sprites_recortador.JUNCAO["medio"]),
                 area_min=max(1, int(opcoes.get("area_min") or 50)),
-                margem=max(0, int(opcoes.get("margem") or 8)))
+                margem=max(0, int(opcoes.get("margem") or 8)), pares=nivel == "pares")
         except (TypeError, ValueError) as exc:
             return self._erro(400, str(exc))
-        parte = str(opcoes.get("parte") or "")
-        imagens = [sprites_recortador.no_gabarito(r.imagem, parte) if parte else r.imagem
-                   for r in resultado.recortes]
+        # Os recortes ficam CRUS: o encaixe no gabarito e do destino, na hora
+        # de mandar (`_recortador_arquivo` com `?destino=`). A `parte` que a
+        # casca antiga ainda manda aqui e ignorada de proposito.
+        imagens = [r.imagem for r in resultado.recortes]
         marcada = Image.fromarray(resultado.limpo, "RGBA")
         caneta = ImageDraw.Draw(marcada)
         for i, recorte in enumerate(resultado.recortes, 1):
@@ -2598,13 +2664,21 @@ class Manipulador(BaseHTTPRequestHandler):
                     "marcada": self._atelie_png(np.asarray(marcada, np.uint8))}
         arquivos.update({f"recorte-{i}": self._atelie_png(q) for i, q in enumerate(imagens)})
         with self.estado.trava:
-            self.estado.atelie[sessao] = {"dono": self._dono, "recortador": arquivos}
+            # Cada folha guarda os recortes crus na memoria: so as ultimas
+            # RECORTADOR_SESSOES deste aparelho ficam (antes nada saia).
+            minhas = [s for s, d in self.estado.atelie.items()
+                      if d.get("dono") == self._dono and "recortador" in d]
+            for velha in minhas[:max(0, len(minhas) - RECORTADOR_SESSOES + 1)]:
+                self.estado.atelie.pop(velha, None)
+            self.estado.atelie[sessao] = {"dono": self._dono, "recortador": arquivos,
+                                          "recortes": resultado.recortes}
         raiz = f"/api/sprites/recortar/arquivo/{sessao}"
-        return self._json({"sessao": sessao, "fundo": resultado.fundo,
+        return self._json({"sessao": sessao, "fundo": resultado.fundo, "juncao": nivel,
                            "avisos": resultado.avisos, "limpa": f"{raiz}/limpa",
-                           "folha": f"{raiz}/marcada",
+                           "folha": f"{raiz}/marcada", "olhos_padrao": _olhos_padrao(),
                            "recortes": [{"id": i, "caixa": list(r.caixa), "area": r.area,
                                          "tamanho": [int(q.shape[1]), int(q.shape[0])],
+                                         "tipo": r.tipo, "orientacao": r.orientacao,
                                          "url": f"{raiz}/recorte-{i}"}
                                         for i, (r, q) in enumerate(zip(resultado.recortes, imagens))]})
 

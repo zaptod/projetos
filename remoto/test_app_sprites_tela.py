@@ -177,9 +177,10 @@ def test_anexar_trocar_desfazer_apagar_pelo_seletor_de_verdade(sprites_isolados,
         page.wait_for_function("() => document.querySelectorAll('#modular-expressoes button').length === 6")
         page.locator("#modular-todas").click()
         page.wait_for_function("() => document.querySelectorAll('#modular-expressoes button').length === 24")
-        page.locator("#modular-expressoes button", has_text="tonto").click()
+        page.locator("#modular-expressoes button", has_text="tonta").click()   # a carinha: "tonta"
         escolhida = page.locator("#modular-expressoes button.escolhida")
-        assert escolhida.count() == 1 and "tonto" in escolhida.inner_text()
+        assert escolhida.count() == 1 and escolhida.inner_text() == "✓ tonta"
+        assert page.locator("#modular-expressao-nome").inner_text() == "tonta"   # rótulo = botão
         assert escolhida.get_attribute("aria-pressed") == "true"
         assert "Herdando" in _cartao(page, "Olhos · tonto").inner_text()   # cai no neutro comum
         _anexar_pelo_seletor(page, _cartao(page, "Olhos · tonto"), "Anexar", olhos_tonto)

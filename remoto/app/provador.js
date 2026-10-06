@@ -183,7 +183,7 @@ function provadorExpressoes() {
     if (!Provador.todas && !expressao.representante && expressao.id !== Provador.expressao) continue;
     const escolhida = expressao.id === Provador.expressao;
     const botao = el("button", {class: "acao modular-expressao" + (escolhida ? " escolhida" : ""), type: "button",
-      "aria-pressed": escolhida ? "true" : "false"}, (escolhida ? "✓ " : "") + expressao.nome);
+      "aria-pressed": escolhida ? "true" : "false"}, (escolhida ? "✓ " : "") + modularCarinha(expressao.nome));
     botao.addEventListener("click", () => { Provador.expressao = expressao.id; provadorCarregar(); });
     caixa.append(botao);
   }
@@ -290,31 +290,18 @@ async function provadorVerGodot() {
   const caminho = Provador.dados.godot, lutador = Provador.lutador, chave = provadorCombinacao();
   const botao = $("provador-ver-godot"); botao.disabled = true;
   provadorTexto("provador-aviso", "montando no Godot…");
-  const token = localStorage.getItem(TOKEN);
+  // Trocou de lutador: a espera desta folha acaba ali (o aviso já é do outro).
+  const vivo = () => Provador.lutador === lutador;
   try {
-    for (let tentativa = 0; tentativa < 90; tentativa++) {
-      const resposta = await fetch(caminho, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
-      if (resposta.status === 202) {
-        const dados = await resposta.json().catch(() => ({}));
-        if (Provador.lutador === lutador) provadorTexto("provador-aviso", dados.mensagem || "montando no Godot…");
-        await new Promise((ok) => setTimeout(ok, 1000)); continue;
-      }
-      if (!resposta.ok) {
-        const dados = await resposta.json().catch(() => ({}));
-        throw new Error(dados.erro || "o Godot não conseguiu desenhar a folha");
-      }
-      const url = provadorUrl("folha", await resposta.blob());
-      if (Provador.lutador === lutador) {
-        Provador.folhaChave = chave;
-        $("provador-folha").src = url;
-        $("provador-folha").classList.toggle("oculto", chave !== provadorCombinacao());
-        provadorTexto("provador-aviso", `Folha montada no Godot: ${Provador.dados.lutador.nome} nas seis carinhas, com esta combinação.`);
-        $("provador-folha").scrollIntoView({behavior: "smooth", block: "start"});
-      }
-      return;
-    }
-    throw new Error("o Godot demorou mais do que o esperado; tente de novo");
-  } catch (erro) { provadorTexto("provador-aviso", "Não deu para ver no Godot: " + erro.message); }
+    const blob = await godotEsperar(caminho, (texto) => { if (vivo()) provadorTexto("provador-aviso", texto); }, vivo);
+    if (!blob || !vivo()) return;
+    const url = provadorUrl("folha", blob);
+    Provador.folhaChave = chave;
+    $("provador-folha").src = url;
+    $("provador-folha").classList.toggle("oculto", chave !== provadorCombinacao());
+    provadorTexto("provador-aviso", `Folha montada no Godot: ${Provador.dados.lutador.nome} nas seis carinhas, com esta combinação.`);
+    $("provador-folha").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (erro) { if (vivo()) provadorTexto("provador-aviso", "Não deu para ver no Godot: " + erro.message); }
   finally { botao.disabled = false; }
 }
 

@@ -693,11 +693,14 @@
           <div><strong id="provador-nome"></strong><span id="provador-classe-nome" class="fraco"></span></div>
           <button class="acao" id="provador-trocar" type="button">Trocar de lutador</button>
         </div>
-        <div id="provador-palco-caixa" class="oculto">
+        <div id="provador-palco-caixa" class="provador-palco-caixa oculto">
+          <!-- O lutador montado fica PRESO à vista (em pé no topo, deitado à
+               esquerda): apertar ‹ › lá embaixo não o tira da tela. -->
           <figure class="provador-palco">
             <img id="provador-previa" class="provador-previa" alt="O lutador montado com a combinação atual">
             <figcaption id="provador-legenda" class="fraco"></figcaption>
           </figure>
+          <div class="provador-mesa">
           <p class="fraco">Carinha: <strong id="provador-expressao-nome">neutra</strong></p>
           <div class="modular-expressoes" id="provador-expressoes" role="group" aria-label="Carinhas do provador"></div>
           <button class="acao modular-todas" id="provador-todas" type="button" aria-expanded="false">Ver todas as 24</button>
@@ -711,6 +714,7 @@
             <button class="acao" id="provador-ver-godot" type="button">Ver no Godot</button>
           </div>
           <img id="provador-folha" class="modular-folha oculto" alt="Folha das seis carinhas deste lutador montada no Godot">
+          </div>
         </div>
         <p id="provador-aviso" class="fraco" role="status"></p>
       </div>
@@ -737,7 +741,7 @@
       <div class="botoes modular-previacao"><button class="acao" id="modular-ver-godot" type="button">Ver no Godot</button></div>
       <img id="modular-folha" class="modular-folha oculto" alt="Folha das seis carinhas montada no Godot">
       <div id="modular-expressoes-caixa" class="oculto">
-        <p class="fraco">Carinha: <strong id="modular-expressao-nome">neutro</strong></p>
+        <p class="fraco">Carinha: <strong id="modular-expressao-nome">neutra</strong></p>
         <div class="modular-expressoes" id="modular-expressoes" role="group" aria-label="Carinhas"></div>
         <button class="acao modular-todas" id="modular-todas" type="button" aria-expanded="false">Ver todas as 24</button>
       </div>
@@ -751,8 +755,18 @@
       <p class="fraco">Folha da IA com fundo verde ou magenta. Cada desenho vira uma variante nova.</p>
       <input id="recortador-arquivo" type="file" accept="image/png,image/jpeg,image/*">
       <div class="campos atelie-campos">
-        <label>Juntar pedaços <select id="recortador-juncao"><option value="pouco">pouco</option><option value="medio" selected>médio</option><option value="muito">muito</option></select></label>
+        <label>Juntar pedaços <select id="recortador-juncao"><option value="pouco">pouco</option><option value="medio" selected>médio</option><option value="muito">muito</option><option value="pares">pares de olhos</option></select></label>
         <label>Mandar para <select id="recortador-destino"></select></label>
+      </div>
+      <div id="recortador-olhos-caixa" class="oculto">
+        <div class="campos atelie-campos">
+          <label>Par de olhos <select id="recortador-olhos">
+            <option value="separar">separar: cada olho no seu lugar</option>
+            <option value="girar">girar o par 90°</option>
+            <option value="vista-de-cima">já desenhado visto de cima</option>
+          </select></label>
+        </div>
+        <p class="fraco">A IA desenha os olhos lado a lado; no jogo, visto de cima, eles ficam um em cima do outro.</p>
       </div>
       <div class="botoes"><button class="acao" id="recortador-refazer" type="button">Refazer</button><button class="acao primario" id="recortador-mandar" type="button">Mandar selecionados</button></div>
       <p id="recortador-aviso" class="fraco" role="status"></p>

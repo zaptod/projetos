@@ -4,7 +4,39 @@
 const Atelie = {catalogo: null, sujeito: "", slot: null, arquivo: null, urls: []};
 const Modular = {dados: null, grupo: "lutador", alvo: "_", slot: null, expressao: "neutro", todas: false,
   pedido: 0, pedidoPrevia: 0, versao: 0, folhas: {}, blobs: {}, nova: false};
-const Recortador = {arquivo: null, dados: null, selecionados: new Set(), urls: []};
+const Recortador = {arquivo: null, dados: null, selecionados: new Set(), urls: [], pedido: 0, olhosMexeu: false};
+
+// "Ver no Godot" (painel e Provador): com o PC ocupado a folha levou 62 s
+// (conferente, 06/10); o servidor para o Godot em 150 s e a tela espera até
+// 3 min. `vivo()` falso (fechou o Ateliê, trocou de lutador ou de estilo)
+// cancela a espera sem mexer no aviso de ninguém.
+const GODOT_ESPERA_MS = 180000;
+const GODOT_OCUPADO_MS = 8000;
+let GodotGeracao = 0;               // sobe ao fechar o Ateliê: toda espera aberta para
+async function godotEsperar(caminho, avisar, vivo) {
+  const token = localStorage.getItem(TOKEN);
+  const geracao = GodotGeracao, inicio = Date.now();
+  const segue = () => geracao === GodotGeracao && vivo();
+  while (Date.now() - inicio < GODOT_ESPERA_MS) {
+    if (!segue()) return null;
+    const resposta = await fetch(caminho, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+    if (!segue()) return null;
+    if (resposta.status === 202) {
+      const dados = await resposta.json().catch(() => ({}));
+      avisar(dados.situacao === "na_fila" ? dados.mensagem
+        : Date.now() - inicio >= GODOT_OCUPADO_MS ? "montando… o PC está ocupado, pode levar 1–2 min"
+        : (dados.mensagem || "montando no Godot…"));
+      await new Promise((ok) => setTimeout(ok, 1500));
+      continue;
+    }
+    if (!resposta.ok) {
+      const dados = await resposta.json().catch(() => ({}));
+      throw new Error(dados.erro || "o Godot não conseguiu desenhar a folha");
+    }
+    return await resposta.blob();
+  }
+  throw new Error("o Godot passou de 3 minutos; tente de novo quando o PC estiver mais livre");
+}
 
 // As imagens do painel modular tem chave propria (previa, folha:<estilo>,
 // mini:<lugar>): a troca de tela do app revoga Atelie.urls, e a folha
@@ -136,7 +168,7 @@ function atelieTrocarModo(modo) {
 }
 
 function atelieMostrar() { atelieTrocarModo(atelieModo()); }
-function atelieParar() { atelieLimparUrls(); recortadorLimparUrls(); }
+function atelieParar() { atelieLimparUrls(); recortadorLimparUrls(); GodotGeracao++; }
 
 // ------------------------------------------------------------ Montar sprites
 // O servidor responde so o pedido (grupo + para quem). Cada carga leva um
@@ -199,12 +231,13 @@ function modularExpressoes() {
   $("modular-expressoes-caixa").classList.toggle("oculto", !lista.length);
   const atual = lista.find((e) => e.id === Modular.expressao) || lista[0];
   if (!atual) return;
-  modularTexto("modular-expressao-nome", atual.nome);
+  // O rótulo e os botões falam igual: "Carinha: neutra" e "✓ neutra".
+  modularTexto("modular-expressao-nome", modularCarinha(atual.nome));
   for (const expressao of lista) {
     if (!Modular.todas && !expressao.representante && expressao.id !== Modular.expressao) continue;
     const escolhida = expressao.id === Modular.expressao;
     const botao = el("button", {class: "acao modular-expressao" + (escolhida ? " escolhida" : ""), type: "button",
-      "aria-pressed": escolhida ? "true" : "false"}, (escolhida ? "✓ " : "") + expressao.nome);
+      "aria-pressed": escolhida ? "true" : "false"}, (escolhida ? "✓ " : "") + modularCarinha(expressao.nome));
     botao.addEventListener("click", () => { Modular.expressao = expressao.id; modularDesenhar(); });
     caixa.append(botao);
   }
@@ -345,17 +378,29 @@ function modularDesenhar() {
   if (lutador) modularPrevia();
 }
 
+// "Mandar para": uma lista por peça (optgroup), cada opção com a peça e a
+// carinha com acento ("Olhos · fúria"); peça sem carinha fica só o nome.
+function recortadorDestinoTexto(slot) {
+  const [peca, carinha] = slot.rotulo.split(" · ");
+  return carinha ? `${peca} · ${modularCarinha(carinha)}` : peca;
+}
+
 function recortadorDestinos() {
   const seletor = $("recortador-destino");
   if (!seletor || !Modular.dados) return;
   const antes = seletor.value;
   seletor.replaceChildren();
-  const slots = Modular.dados.slots.filter((slot) => slot.parte);
-  for (const slot of slots) {
-    const rotulo = slot.rotulo + (slot.estado ? ` · ${modularCarinha(slot.estado)}` : "");
-    seletor.append(el("option", {value: slot.id, "data-parte": slot.parte}, rotulo));
+  const grupos = new Map();
+  for (const slot of Modular.dados.slots.filter((s) => s.parte)) {
+    const peca = slot.rotulo.split(" · ")[0];
+    if (!grupos.has(peca)) grupos.set(peca, el("optgroup", {label: peca}));
+    grupos.get(peca).append(el("option", {value: slot.id, "data-parte": slot.parte}, recortadorDestinoTexto(slot)));
   }
+  for (const grupo of grupos.values()) seletor.append(grupo);
   if ([...seletor.options].some((opcao) => opcao.value === antes)) seletor.value = antes;
+  // O modo do par de olhos abre na resposta do Adrian (Grimório), até ele mexer.
+  if (!Recortador.olhosMexeu && Modular.dados.recortador_olhos) $("recortador-olhos").value = Modular.dados.recortador_olhos;
+  recortadorOlhosCaixa();
 }
 
 function recortadorParte() {
@@ -363,37 +408,94 @@ function recortadorParte() {
   return opcao ? opcao.dataset.parte : "";
 }
 
-async function recortadorDesenhar(dados) {
+function recortadorOlhosCaixa() { $("recortador-olhos-caixa").classList.toggle("oculto", recortadorParte() !== "olhos"); }
+
+// Destino Olhos junta os olhos em PARES (a IA desenha o par lado a lado);
+// saiu dos olhos, volta ao médio. Com folha na tela, recorta de novo.
+function recortadorTrocouDestino() {
+  recortadorOlhosCaixa();
+  const olhos = recortadorParte() === "olhos", juncao = $("recortador-juncao");
+  const antes = juncao.value;
+  if (olhos && antes !== "pares") juncao.value = "pares";
+  else if (!olhos && antes === "pares") juncao.value = "medio";
+  if (juncao.value !== antes && Recortador.arquivo) recortadorEnviar();
+}
+
+function recortadorNome(recorte, i) {
+  const tipo = recorte.tipo === "par" ? " · par de olhos" : recorte.tipo === "um" ? " · um olho só" : "";
+  return `Recorte ${i + 1} · ${recorte.tamanho[0]}×${recorte.tamanho[1]} px${tipo}`;
+}
+
+function recortadorResumo(dados) {
+  const n = dados.recortes.length, pares = dados.recortes.filter((r) => r.tipo === "par").length;
+  const soltos = dados.recortes.filter((r) => r.tipo === "um").length;
+  if (dados.juncao === "pares") {
+    const partes = [];
+    if (pares) partes.push(pares === 1 ? "1 par de olhos" : `${pares} pares de olhos`);
+    if (soltos) partes.push(soltos === 1 ? "1 olho sozinho" : `${soltos} olhos sozinhos`);
+    return `Fundo ${dados.fundo} · ${partes.join(" e ") || "nenhum olho achado"}`;
+  }
+  return `Fundo ${dados.fundo} · ${n === 1 ? "1 recorte" : `${n} recortes`}`;
+}
+
+// Esquece a folha da tela: uma recusa não deixa a anterior pronta para mandar.
+function recortadorEsquecer() {
+  Recortador.dados = null; Recortador.selecionados = new Set();
+  recortadorLimparUrls();
+  $("recortador-lista").replaceChildren();
+  $("recortador-limpa").removeAttribute("src");
+  $("recortador-fundo").textContent = "";
+  $("recortador-folha-caixa").classList.add("oculto");
+}
+
+async function recortadorDesenhar(dados, pedido) {
   recortadorLimparUrls();
   const lista = $("recortador-lista"); lista.replaceChildren();
-  $("recortador-limpa").src = await recortadorBlob(dados.folha || dados.limpa);
+  const folha = await recortadorBlob(dados.folha || dados.limpa);
+  if (pedido !== Recortador.pedido) return;
+  $("recortador-limpa").src = folha;
   $("recortador-folha-caixa").classList.remove("oculto");
-  $("recortador-fundo").textContent = `Fundo ${dados.fundo} · ${dados.recortes.length} recorte(s)`;
-  for (const recorte of dados.recortes) {
+  $("recortador-fundo").textContent = recortadorResumo(dados);
+  for (const [i, recorte] of dados.recortes.entries()) {
     const marcado = Recortador.selecionados.has(recorte.id);
+    const nome = recortadorNome(recorte, i);
     const caixa = el("label", {class: "recortador-item" + (marcado ? " escolhido" : "")});
-    const marcar = el("input", {type: "checkbox", "data-recorte": recorte.id}); marcar.checked = marcado;
+    const marcar = el("input", {type: "checkbox", "data-recorte": recorte.id, "aria-label": nome}); marcar.checked = marcado;
     marcar.addEventListener("change", () => {
       if (marcar.checked) Recortador.selecionados.add(recorte.id); else Recortador.selecionados.delete(recorte.id);
       caixa.classList.toggle("escolhido", marcar.checked);
     });
-    const imagem = el("img", {alt: `Recorte ${recorte.id + 1}`}); imagem.src = await recortadorBlob(recorte.url);
-    caixa.append(marcar, imagem, el("span", {}, `#${recorte.id + 1} · ${recorte.tamanho[0]}×${recorte.tamanho[1]}`));
+    const imagem = el("img", {alt: nome});
+    const url = await recortadorBlob(recorte.url);
+    if (pedido !== Recortador.pedido) return;
+    imagem.src = url;
+    caixa.append(marcar, imagem, el("span", {}, nome));
     lista.append(caixa);
   }
 }
 
 async function recortadorEnviar() {
   if (!Recortador.arquivo) return;
+  const pedido = ++Recortador.pedido;
   $("recortador-aviso").textContent = "recortando no PC…";
+  $("recortador-mandar").disabled = true;
   const dados = new FormData(); dados.append("imagem", Recortador.arquivo);
-  dados.append("opcoes", JSON.stringify({juncao: $("recortador-juncao").value, parte: recortadorParte()}));
+  dados.append("opcoes", JSON.stringify({juncao: $("recortador-juncao").value}));
   try {
-    Recortador.dados = await api("/api/sprites/recortar", {method: "POST", body: dados});
-    Recortador.selecionados = new Set(Recortador.dados.recortes.map((r) => r.id));
-    await recortadorDesenhar(Recortador.dados);
-    $("recortador-aviso").textContent = Recortador.dados.avisos.join(" · ") || "Toque nos recortes que quer mandar.";
-  } catch (erro) { $("recortador-aviso").textContent = "Não deu: " + erro.message; }
+    const resposta = await api("/api/sprites/recortar", {method: "POST", body: dados});
+    if (pedido !== Recortador.pedido) return;
+    Recortador.dados = resposta;
+    Recortador.selecionados = new Set(resposta.recortes.map((r) => r.id));
+    await recortadorDesenhar(resposta, pedido);
+    if (pedido !== Recortador.pedido) return;
+    $("recortador-aviso").textContent = resposta.avisos.join(" · ") || "Toque nos recortes que quer mandar.";
+  } catch (erro) {
+    if (pedido !== Recortador.pedido) return;
+    recortadorEsquecer();
+    $("recortador-aviso").textContent = "Não deu: " + erro.message;
+  } finally {
+    if (pedido === Recortador.pedido) $("recortador-mandar").disabled = false;
+  }
 }
 
 async function recortadorMandar() {
@@ -401,11 +503,16 @@ async function recortadorMandar() {
   const escolhidos = Recortador.dados?.recortes.filter((r) => Recortador.selecionados.has(r.id)) || [];
   if (!destino || !escolhidos.length) return $("recortador-aviso").textContent = "Escolha pelo menos um recorte e uma peça.";
   $("recortador-mandar").disabled = true;
+  // O encaixe no gabarito é do DESTINO, feito agora pelo PC (06/10: era feito
+  // ao subir a folha, com a peça do seletor naquela hora, e olhos caíram na
+  // zona da sombra). Nos olhos vai junto o modo do par.
+  const consulta = `?destino=${encodeURIComponent(destino)}` +
+    (recortadorParte() === "olhos" ? `&olhos=${encodeURIComponent($("recortador-olhos").value)}` : "");
   try {
     for (const recorte of escolhidos) {
       const token = localStorage.getItem(TOKEN);
-      const resposta = await fetch(recorte.url, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
-      if (!resposta.ok) throw new Error("não consegui abrir o recorte");
+      const resposta = await fetch(recorte.url + consulta, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+      if (!resposta.ok) throw new Error("não consegui encaixar o recorte");
       const dados = new FormData(); dados.append("imagem", await resposta.blob(), `recorte-${recorte.id + 1}.png`);
       dados.append("opcoes", JSON.stringify({nova: true}));
       // nova=1: o guarda-roupa cria a proxima variante (vNN) sem trocar a arte base.
@@ -485,31 +592,20 @@ async function modularVerGodot() {
   const alvo = Modular.alvo;
   const botao = $("modular-ver-godot"); botao.disabled = true;
   modularTexto("modular-aviso", "montando no Godot…");
-  const token = localStorage.getItem(TOKEN);
   try {
-    for (let tentativa = 0; tentativa < 60; tentativa++) {
-      const resposta = await fetch(`/api/sprites/modulares/previa?godot=1&alvo=${encodeURIComponent(alvo)}`,
-        {headers: token ? {Authorization: `Bearer ${token}`} : {}});
-      if (resposta.status === 202) {
-        const dados = await resposta.json().catch(() => ({}));
-        if (Modular.alvo === alvo) modularTexto("modular-aviso", dados.mensagem || "montando no Godot…");
-        await new Promise((ok) => setTimeout(ok, 1000)); continue;
-      }
-      if (!resposta.ok) {
-        const dados = await resposta.json().catch(() => ({}));
-        throw new Error(dados.erro || "o Godot não conseguiu desenhar a folha");
-      }
-      const url = modularUrl("folha:" + alvo, await resposta.blob());
-      Modular.folhas[alvo] = url;
-      if (Modular.alvo === alvo) {
-        $("modular-folha").src = url; $("modular-folha").classList.remove("oculto");
-        modularTexto("modular-aviso", "Folha montada no Godot: as seis carinhas como vão aparecer na luta.");
-        $("modular-folha").scrollIntoView({behavior: "smooth", block: "start"});
-      }
-      return;
+    // O estilo trocado no meio: a folha continua sendo montada (fica guardada
+    // para quando ele voltar), mas o aviso é do estilo que está na tela.
+    const blob = await godotEsperar(`/api/sprites/modulares/previa?godot=1&alvo=${encodeURIComponent(alvo)}`,
+      (texto) => { if (Modular.alvo === alvo) modularTexto("modular-aviso", texto); }, () => true);
+    if (!blob) return;                      // fechou o Ateliê: a espera foi cancelada
+    const url = modularUrl("folha:" + alvo, blob);
+    Modular.folhas[alvo] = url;
+    if (Modular.alvo === alvo) {
+      $("modular-folha").src = url; $("modular-folha").classList.remove("oculto");
+      modularTexto("modular-aviso", "Folha montada no Godot: as seis carinhas como vão aparecer na luta.");
+      $("modular-folha").scrollIntoView({behavior: "smooth", block: "start"});
     }
-    throw new Error("o Godot demorou mais do que o esperado; tente de novo");
-  } catch (erro) { modularTexto("modular-aviso", "Não deu para ver no Godot: " + erro.message); }
+  } catch (erro) { if (Modular.alvo === alvo) modularTexto("modular-aviso", "Não deu para ver no Godot: " + erro.message); }
   finally { botao.disabled = false; }
 }
 
@@ -562,6 +658,8 @@ $("atelie-nome").addEventListener("change", () => atelieCarregar());
 $("atelie-arquivo").addEventListener("change", () => { Atelie.arquivo = $("atelie-arquivo").files[0] || null; atelieEnviar(); });
 $("recortador-arquivo").addEventListener("change", () => { Recortador.arquivo = $("recortador-arquivo").files[0] || null; recortadorEnviar(); });
 $("recortador-refazer").addEventListener("click", () => recortadorEnviar());
+$("recortador-destino").addEventListener("change", () => recortadorTrocouDestino());
+$("recortador-olhos").addEventListener("change", () => { Recortador.olhosMexeu = true; });
 $("recortador-mandar").addEventListener("click", () => recortadorMandar());
 $("atelie-refazer").addEventListener("click", () => atelieEnviar());
 $("atelie-salvar").addEventListener("click", () => atelieEnviar(true));

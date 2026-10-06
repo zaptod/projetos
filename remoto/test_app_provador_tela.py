@@ -103,7 +103,7 @@ def provador_isolado(sprites_isolados, tmp_path, monkeypatch):  # noqa: F811
     monkeypatch.setattr(api_http, "_PEDIDOS_GODOT", {})
     chamadas = []
     if not sprites_isolados["godot_real"]:
-        def godot(classe, personagem, biblioteca, saida):
+        def godot(classe, personagem, biblioteca, saida, cor=None):
             chamadas.append((classe, personagem, sorted(
                 str(p.relative_to(biblioteca)).replace("\\", "/") for p in Path(biblioteca).rglob("*.png"))))
             Image.new("RGBA", (540, 960), (27, 30, 39, 255)).save(saida)
@@ -217,6 +217,15 @@ def test_variantes_recortador_e_provador_pela_tela(provador_isolado, tema):
         page.wait_for_function("() => document.querySelectorAll('#recortador-lista .recortador-item').length === 2")
         assert "magenta" in page.locator("#recortador-fundo").inner_text()
         page.locator("#recortador-destino").select_option(OLHOS)
+        # destino Olhos: a tela junta os desenhos em PARES sozinha (os dois
+        # discos lado a lado viram um par); aqui ele volta ao médio à mão e
+        # cada desenho vira um olho sozinho (o mesmo olho nas duas posições).
+        page.wait_for_function("() => document.querySelectorAll('#recortador-lista .recortador-item').length === 1"
+                               " && document.querySelector('#recortador-lista').innerText.includes('par de olhos')")
+        page.locator("#recortador-juncao").select_option("medio")
+        page.locator("#recortador-refazer").click()
+        page.wait_for_function("() => document.querySelectorAll('#recortador-lista .recortador-item').length === 2"
+                               " && !document.querySelector('#recortador-lista').innerText.includes('par de olhos')")
         page.locator("#recortador-folha").scroll_into_view_if_needed()
         foto(page, "02_recortador_folha")
         page.locator("#recortador-mandar").click()

@@ -905,6 +905,12 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .recortador-item img { grid-column: 2; width: 100%; height: 112px; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
 .recortador-item span { grid-column: 1 / -1; font-size: .85em; }
 #recortador-folha .acao, #recortador-folha select, #recortador-folha input[type="file"] { min-height: 44px; font: inherit; }
+/* O `input` global (o código de pareamento) espaça e centraliza as letras: no
+   seletor de arquivo o nome saía "f o l h a _ …" (conferente, 06/10). */
+input[type="file"] { letter-spacing: normal; text-align: left; }
+#recortador-olhos-caixa p { margin: 4px 0 8px; }
+/* O "Ateliê antigo" recolhido: o toque tinha 22 px de altura. */
+#atelie-montar > details > summary { min-height: 44px; box-sizing: border-box; padding: 11px 4px; cursor: pointer; }
 .modular-previa-caixa { margin: 10px 0 0; text-align: center; }
 .modular-previa { display: block; width: min(100%, 300px); aspect-ratio: 1; object-fit: contain; margin: 0 auto 6px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; border-radius: 16px; }
 #modular-hoje { background: #1b1e27; }
@@ -951,9 +957,21 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .provador-quem { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
 .provador-quem strong { display: block; font-size: 1.1em; }
 .provador-quem .acao { flex: none; }
-.provador-palco { margin: 8px 0 0; text-align: center; }
-.provador-previa { display: block; width: min(100%, 320px); aspect-ratio: 1; object-fit: contain; margin: 0 auto 6px;
+/* O lutador montado PRESO à vista (conferente, 06/10: com ‹ › lá embaixo a
+   prévia ficava 47 px acima do topo em pé e 270 px deitado). Em pé ele gruda
+   logo abaixo do cabeçalho (o mesmo -10 px do interruptor do Claude); deitado
+   ele vai para a coluna da esquerda e os controles rolam à direita. */
+.provador-palco { margin: 8px -6px 0; padding: 4px 6px 2px; text-align: center; position: sticky; top: -10px;
+  z-index: 2; background: var(--cartao); border-radius: 0 0 14px 14px; box-shadow: 0 8px 8px -8px rgba(60, 40, 20, .35); }
+.provador-palco figcaption { margin: 0; }
+.provador-previa { display: block; width: min(100%, 230px, 30vh); aspect-ratio: 1; object-fit: contain; margin: 0 auto 4px;
   border-radius: 18px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; }
+@media (orientation: landscape) and (min-width: 560px) {
+  .provador-palco-caixa:not(.oculto) { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
+    gap: 12px; align-items: start; }
+  .provador-palco { margin: 8px 0 0; box-shadow: none; border-radius: 14px; }
+  .provador-previa { width: min(100%, calc(100vh - 120px)); }
+}
 .provador-pecas { display: grid; gap: 8px; margin-top: 12px; }
 .provador-peca { border: 1px solid var(--linha); border-left-width: 5px; border-radius: 12px; padding: 8px 10px;
   background: var(--cartao); }

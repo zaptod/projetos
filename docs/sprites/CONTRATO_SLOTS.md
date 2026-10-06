@@ -175,9 +175,22 @@ dentro de algum desenho.
 
 Cada componente conectado vira uma peça; `pouco`, `médio` e `muito` escolhem
 a distância usada para juntar pupilas, sobrancelhas e outros pedaços próximos.
-Poeira isolada é descartada. A prévia mantém a caixa justa com margem e, ao
-escolher uma peça do lutador, encaixa proporcionalmente no gabarito 1024×1024
-na zona de §2.3 (por exemplo, o par de olhos em 480..645 × 340..684).
+Poeira isolada é descartada. O recorte fica cru (caixa justa com margem). O
+encaixe acontece só **na hora de mandar**, para a peça de DESTINO
+(`recortador.encaixar`): a peça do lutador vai para a zona de §2.3, e as
+outras vão para o quadro inteiro do slot (arma 1024×256, por exemplo). Até
+06/10/2026 o encaixe era feito ao subir a folha, com a peça que estava no
+seletor, e olhos caíam na zona da sombra.
+
+**Olhos.** A IA desenha o par de frente (lado a lado). A junção `pares` casa
+dois desenhos parecidos e alinhados, com o vão de até 3× a largura de um
+olho. O modo vem da decisão `builds/recortador-par-de-olhos` (padrão
+`separar`):
+- `separar`: cada olho no seu centro do jogo, (563, 420) e (563, 604), na
+  mesma escala (maior lado 122 px) e sem girar. O olho da direita da imagem
+  é o esquerdo do rosto e vai para cima. Olho sozinho vira o par;
+- `girar`: o par gira 90° anti-horário e encaixa em 480..645 × 340..684;
+- `vista-de-cima`: encaixa como veio, em 480..645 × 340..684.
 
 Mandar recortes cria **variantes**, nunca troca a arte-base: o cliente usa
 `POST /api/sprites/modulares/<slot>/anexar?nova=1` com PNG transparente. A
