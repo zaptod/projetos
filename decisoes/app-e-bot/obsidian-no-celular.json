@@ -3,7 +3,15 @@
   "contexto": "06/10 pelo chat: 'quero conectar meu app com meu obsidian ... não existe um cofre do obsidian, por isso quero achar alguma forma de fazer uma conexao direta com o app oficial, para eu ter no meu celular'. O plano: criar um cofre (uma pasta de notas .md) no PC, que o sistema atualiza sozinho; o Obsidian desenha diagramas (Mermaid) dentro da nota, então o diagrama do fluxo vira uma nota viva. O app oficial do Obsidian NÃO tem API para outro programa escrever nele: o que existe é sincronizar a PASTA do cofre com o celular. Serve para escolher esse caminho.",
   "criado": "2026-10-06T03:00:29.646924",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-06T03:03:07",
+      "opcao": "syncthing",
+      "origem": "app"
+    }
+  ],
   "id": "obsidian-no-celular",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Quero o sistema escrevendo notas no Obsidian (diagrama do fluxo das histórias, decisões do Grimório, relatórios do dia) para eu ler no app oficial do Obsidian no celular. Como as notas vão do PC para o celular?",
   "projeto": "app-e-bot",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Obsidian no celular: como o PC chega lá",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-06T03:03:07",
+    "opcao": "syncthing"
+  }
 }
