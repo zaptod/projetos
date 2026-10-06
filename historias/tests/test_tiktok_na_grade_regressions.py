@@ -398,8 +398,10 @@ class QuedaDeEnergiaTests(unittest.TestCase):
     def test_a_checagem_de_rede_vem_ANTES_de_publicar(self):
         fonte = POSTAR.read_text(encoding="utf-8")
         corpo = fonte[fonte.index("def main("):]
+        # Desde 06/10/2026 os canais rodam em `rodados` (e a volta final
+        # monta `resultados` depois): a ancora e o primeiro canal publicado.
         self.assertLess(corpo.index("esperar_a_rede()"),
-                        corpo.index("resultados = []"))
+                        corpo.index("rodados = []"))
 
 
 class TikTokSoNaGradeDeleTests(unittest.TestCase):

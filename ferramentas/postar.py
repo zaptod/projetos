@@ -2783,9 +2783,22 @@ def _anotar_falha_do_tiktok(ficha: dict, falha: dict) -> None:
 # espera, confere a rede e roda o MESMO canal de novo — as guardas de
 # um-por-horario por destino fazem o resto (o destino que ja saiu nao sai de
 # novo; o que caiu leva o mesmo video, ou o proximo).
+#
+# A VOLTA FINAL (06/10/2026). Em 06/10, 06:37, a historia_00044 p06 (limpa)
+# caiu nas 3 tentativas: Studio em branco 160/107/151 s, TikTok sem abrir
+# 6 vezes e o envio sem chegar a 100% na 3a — das 06:37:04 as 07:05:50. Os
+# builds rodaram logo depois e sairam nos dois destinos (147 s e 80 s): a
+# rede tinha voltado, e o horario de historias ficou vazio porque historias
+# roda PRIMEIRO e repete na hora, ainda dentro da rede ruim. Agora o canal
+# que a rede derrubou ganha UMA volta no fim da rodada, depois dos canais que
+# rodaram atras dele, e so se um deles publicou sem queda de rede (a prova de
+# que ela voltou). A volta das 07:10 estaria a 33 min do comeco: a janela de
+# 25 min a barrava, por isso 40 — o menor buraco da grade e de 60 min
+# (20:37 -> 21:37 ... 23:37 -> 00:37), e a volta que comeca aos 40 termina
+# por volta dos 52 (uma tentativa inteira levou 12 min, 06:53:54 -> 07:05:50).
 TENTATIVAS_POR_REDE = 2              # tentativas EXTRAS, por canal
 PAUSA_ANTES_DE_REPOR_S = 60.0
-JANELA_DE_REPOSICAO_MIN = 25         # contados do comeco da rodada
+JANELA_DE_REPOSICAO_MIN = 40         # contados do comeco da rodada
 ESPERA_DE_REDE_NA_REPOSICAO_S = 120.0
 # O que diz "foi a rede" — e so isso: login vencido, perfil ocupado ou video
 # recusado nao melhoram tentando de novo daqui a um minuto.
@@ -2928,6 +2941,51 @@ def _publicar_canal(canal: str, funcao, *, so_ver: bool,
             # derrubada, a volta seguinte rodava o canal de novo.
             break
     return [r] + extras
+
+
+def _publicou_sem_queda(ficha: dict) -> bool:
+    """A ficha prova que a rede voltou: publicou e nada caiu por rede."""
+    return bool(ficha.get("feito")) and not _derrubados_pela_rede(ficha)
+
+
+def _volta_final(rodados: list, *, so_ver: bool, comeco: float,
+                 slot: int) -> list:
+    """As fichas da rodada, com UMA volta final do canal que a rede derrubou.
+
+    `rodados`: `[(canal, funcao, fichas)]` na ordem em que rodaram. Um canal
+    volta se, depois das reposicoes de `_publicar_canal`, a ficha dele ainda
+    tem destino derrubado pela rede E algum canal que rodou DEPOIS dele
+    publicou sem queda — a prova de que a rede voltou. Sem essa prova (os dois
+    cairam, ou o canal e o ultimo), nao ha volta: seria so mais uma tentativa
+    na mesma rede ruim. Mesmo `grade.slot` e mesma janela das reposicoes; as
+    guardas de um por horario por destino fazem o resto. Medido em 06/10,
+    06:37: historias caiu 3x, builds publicou as 07:05-07:10, a volta teria
+    comecado aos 33 min (ver `JANELA_DE_REPOSICAO_MIN`).
+
+    Nunca volta: no `--ver`, com pedaco de parte ja no YouTube
+    (`youtube_meio_no_ar`) nem quando a reposicao ja levou OUTRO video ao
+    horario (mais de uma ficha do canal).
+    """
+    saida = []
+    for i, (canal, funcao, fichas) in enumerate(rodados):
+        fichas = list(fichas)
+        depois = [f for _c, _f, outras in rodados[i + 1:] for f in outras]
+        r = fichas[0] if fichas else {}
+        if (not so_ver and len(fichas) == 1
+                and not r.get("youtube_meio_no_ar")
+                and _derrubados_pela_rede(r)
+                and any(_publicou_sem_queda(f) for f in depois)
+                and _ainda_no_horario(comeco, slot)
+                and esperar_a_rede(limite=ESPERA_DE_REDE_NA_REPOSICAO_S)):
+            caidos = _derrubados_pela_rede(r)
+            _linha(f"[postar] {canal}: {' e '.join(caidos)} tinha caido por "
+                   "REDE e o canal seguinte publicou; volta final neste "
+                   "horario.")
+            nova = _rodar_canal(canal, funcao, False)
+            r, extra = _juntar_reposicao(r, nova)
+            fichas = [r] + ([extra] if extra else [])
+        saida.extend(fichas)
+    return saida
 
 
 def _builds_prontos(config=None, *, medir_audio: bool = True,
@@ -4063,7 +4121,7 @@ def main(argv=None) -> int:
     from datetime import datetime as _datetime
     comeco_da_rodada = _time.monotonic()
     slot_da_rodada = grade.slot(_datetime.now())
-    resultados = []
+    rodados = []
     for canal, funcao in (("historias", postar_historia),
                           ("builds", postar_build)):
         if args.so not in (None, canal):
@@ -4071,9 +4129,13 @@ def main(argv=None) -> int:
         # Cada canal passa por `_rodar_canal` (que nunca levanta e avisa a
         # cota no Telegram) e, se a REDE derrubou um destino, e reposto
         # neste mesmo horario (`_publicar_canal`, 05/10/2026).
-        resultados.extend(_publicar_canal(
+        rodados.append((canal, funcao, _publicar_canal(
             canal, funcao, so_ver=args.ver, comeco=comeco_da_rodada,
-            slot=slot_da_rodada))
+            slot=slot_da_rodada)))
+    # E o que a rede derrubou volta UMA vez no fim, se um canal de depois
+    # publicou sem queda (`_volta_final`, 06/10/2026).
+    resultados = _volta_final(rodados, so_ver=args.ver,
+                              comeco=comeco_da_rodada, slot=slot_da_rodada)
     # O TikTok que acabou de cair por REDE nao e chamado de novo nesta
     # rodada pela recuperacao nem pela reserva: em 05/10/2026, as 09:4x, a
     # recuperacao rodou segundos depois do timeout, no mesmo processo, e

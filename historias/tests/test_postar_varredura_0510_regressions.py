@@ -671,10 +671,132 @@ class ReporNoMesmoHorarioTests(unittest.TestCase):
         agora = datetime(2026, 10, 5, 9, 50)
         self.assertTrue(m._ainda_no_horario(0.0, 9, agora=agora,
                                             relogio=lambda: 60.0))
+        # 06/10, 06:37: a volta final das 07:10 estava a 33 min do comeco
+        # (a janela de 25 a barrava); 40 min e o limite.
+        self.assertTrue(m._ainda_no_horario(0.0, 9, agora=agora,
+                                            relogio=lambda: 33 * 60.0))
         self.assertFalse(m._ainda_no_horario(0.0, 9, agora=agora,
-                                             relogio=lambda: 26 * 60.0))
+                                             relogio=lambda: 40 * 60.0))
         self.assertFalse(m._ainda_no_horario(0.0, 6, agora=agora,
                                              relogio=lambda: 60.0))
+
+
+class VoltaFinalTests(unittest.TestCase):
+    """`main` de verdade com `_publicar_canal` de verdade: a volta final.
+
+    Medido em 06/10/2026, 06:37: a historia_00044 p06 (limpa) caiu 3x por
+    rede das 06:37:04 as 07:05:50 (Studio em branco 160/107/151 s; TikTok sem
+    abrir 6x e, na 3a, o envio sem chegar a 100%); os builds publicaram logo
+    depois nos dois destinos (07:05:57-07:10:12) e o horario de historias
+    ficou vazio. Agora historias volta UMA vez depois dos builds.
+    """
+
+    CAIU = {"canal": "historias", "feito": False,
+            "alvo": "historia_00044:celular:p06", "youtube_falhou": True,
+            "motivo": "YouTube falhou: YouTubeWebFalhou: infraestrutura: a "
+                      "pagina de upload abriu e ficou em branco",
+            "tiktok": "", "tiktok_falha": "TikTokFalhou: infraestrutura: a "
+                                          "pagina do TikTok nao abriu"}
+    # A 3a de 06/10: YouTube em branco de novo, TikTok com o botao preso
+    # (nao e rede) — o YouTube continua derrubado pela rede.
+    CAIU_3A = dict(CAIU, tiktok_falha="TikTokFalhou: o botao de publicar nao "
+                                      "ficou clicavel em 2 min")
+    SAIU = {"canal": "historias", "feito": True,
+            "alvo": "historia_00044:celular:p06",
+            "url": "publicado no YouTube", "tiktok": "publicado no TikTok"}
+    BUILD_SAIU = {"canal": "builds", "feito": True,
+                  "alvo": "generation_00095:estreia:celular",
+                  "url": "publicado no YouTube",
+                  "tiktok": "publicado no TikTok"}
+    BUILD_CAIU = {"canal": "builds", "feito": False,
+                  "alvo": "generation_00095:estreia:celular",
+                  "youtube_falhou": True,
+                  "motivo": "YouTube falhou: infraestrutura: nao abriu",
+                  "tiktok": "", "tiktok_falha": "infraestrutura: nao abriu"}
+
+    def setUp(self):
+        self.m = _postar()
+        m = self.m
+        m._linha = lambda *_a, **_k: None
+        m._dormir = lambda s: None
+        m.esperar_a_rede = lambda **k: True
+        m._ainda_no_horario = lambda comeco, slot, **k: True
+        m.avisar = lambda r: None
+        m.avisar_lote_nao_fechou = lambda *a, **k: None
+        m.estoque_do_lote = lambda *a, **k: {}
+        m.linhas_do_estoque = lambda lote: []
+        m.retidos_por_canal = lambda: {}
+        m.reserva_do_tiktok = lambda *a, **k: []
+        m.recuperar_no_tiktok = lambda so_ver=False, canal="historias": {
+            "fila": 0}
+        m.recuperar_no_youtube = lambda **k: {"fila": 0}
+        m.publicar_da_reserva = lambda so_ver=False: {}
+        from builds.publicar import tiktok
+        _trocar(self, tiktok, "confirmado",
+                lambda estado: str(estado).startswith("publicado no TikTok"))
+        self.ordem = []
+
+    def _canal(self, nome, respostas):
+        def funcao(so_ver=False):
+            self.ordem.append(nome)
+            vezes = self.ordem.count(nome)
+            return dict(respostas[min(vezes, len(respostas)) - 1])
+        return funcao
+
+    def _rodada(self, historias, builds):
+        self.m.postar_historia = self._canal("historias", historias)
+        self.m.postar_build = self._canal("builds", builds)
+        return self.m.main([])
+
+    def test_historias_cai_3x_e_builds_publica_volta_uma_vez_depois(self):
+        saida = self._rodada([self.CAIU, self.CAIU, self.CAIU_3A, self.SAIU],
+                             [self.BUILD_SAIU])
+        self.assertEqual(["historias"] * 3 + ["builds", "historias"],
+                         self.ordem)
+        self.assertEqual(0, saida)
+
+    def test_caso_zero_os_dois_caem_nenhuma_volta(self):
+        saida = self._rodada([self.CAIU], [self.BUILD_CAIU])
+        self.assertEqual(["historias"] * 3 + ["builds"] * 3, self.ordem)
+        self.assertEqual(1, saida, "tentou e nada saiu")
+
+    def test_volta_que_cai_de_novo_nao_vira_laco(self):
+        self._rodada([self.CAIU], [self.BUILD_SAIU])
+        self.assertEqual(["historias"] * 3 + ["builds", "historias"],
+                         self.ordem)
+
+    def test_fora_da_janela_nao_volta(self):
+        janela = iter([True, True, True, True, False])
+        self.m._ainda_no_horario = lambda comeco, slot, **k: next(janela,
+                                                                  False)
+        self._rodada([self.CAIU], [self.BUILD_SAIU])
+        self.assertEqual(["historias"] * 3 + ["builds"], self.ordem)
+
+    def test_historias_que_saiu_nao_volta(self):
+        self._rodada([self.SAIU], [self.BUILD_SAIU])
+        self.assertEqual(["historias", "builds"], self.ordem)
+
+    def test_o_ultimo_canal_nunca_volta(self):
+        self._rodada([self.SAIU], [self.BUILD_CAIU])
+        self.assertEqual(["historias"] + ["builds"] * 3, self.ordem)
+
+    def test_so_vendo_nunca_volta(self):
+        fichas = self.m._volta_final(
+            [("historias", self._canal("historias", [self.SAIU]),
+              [dict(self.CAIU)]),
+             ("builds", self._canal("builds", [self.BUILD_SAIU]),
+              [dict(self.BUILD_SAIU)])],
+            so_ver=True, comeco=0.0, slot=6)
+        self.assertEqual([], self.ordem)
+        self.assertEqual(2, len(fichas))
+
+    def test_pedaco_no_ar_nunca_volta(self):
+        meio = dict(self.CAIU, youtube_meio_no_ar=True)
+        self.m._volta_final(
+            [("historias", self._canal("historias", [self.SAIU]), [meio]),
+             ("builds", None, [dict(self.BUILD_SAIU)])],
+            so_ver=False, comeco=0.0, slot=6)
+        self.assertEqual([], self.ordem)
 
 
 class RecuperacaoNaoRepeteOTimeoutTests(unittest.TestCase):

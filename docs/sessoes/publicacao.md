@@ -93,9 +93,16 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    (`_derrubados_pela_rede`: "infraestrutura", `net::err`, SSL, timeout de
    conexão — nunca login, cota ou legenda), espera 60 s, confere a rede e
    roda o canal de novo, até 2 vezes, só dentro do mesmo `grade.slot` e de
-   25 min do começo da rodada. As guardas por destino fazem o resto. Nunca
-   repõe a ficha com pedaço de parte já no YouTube (`youtube_meio_no_ar`):
-   repor roda o canal inteiro, e o pedaço 1 subiria de novo.
+   40 min do começo da rodada (`JANELA_DE_REPOSICAO_MIN`). As guardas por
+   destino fazem o resto. Nunca repõe a ficha com pedaço de parte já no
+   YouTube (`youtube_meio_no_ar`): repor roda o canal inteiro, e o pedaço 1
+   subiria de novo. **Volta final** (`_volta_final`, 06/10): se, esgotadas
+   as reposições, o canal ainda tem destino derrubado pela rede e um canal
+   que rodou **depois** dele publicou sem queda (a prova de que a rede
+   voltou), ele roda **uma** vez mais no fim, na mesma janela e no mesmo
+   slot. Os dois caíram, ou o canal é o último: não há volta. Nem no
+   `--ver`, nem com pedaço no ar, nem quando a reposição já levou outro
+   vídeo ao horário.
 4. Depois, e nunca no lugar: **recuperação do TikTok** (1 por canal, saiu no
    YouTube e nunca chegou lá), **recuperação do YouTube** (1, ficou privado no
    canal) e **reserva do TikTok** (só se builds não levou nada lá neste horário).
@@ -433,6 +440,21 @@ diário.
   `random_builds/tests/test_parede_no_criar_regressions.py`. Achado junto:
   `6-APf13ZQXc` (h46 p01, 20:37 de 05/10) segue `uploadStatus: uploaded`,
   `processingStatus: processing`, 0 views, 4h40 depois do envio.
+- **Histórias vazio no 06:37 de 06/10 com a parte limpa na mão**: a
+  `historia_00044:celular:p06` (aprovada) caiu nas 3 tentativas das
+  06:37:04 às 07:05:50 — Studio em branco 160/107/151 s, TikTok sem abrir 6
+  vezes e, na 3ª, envio sem chegar a 100% e botão preso. Os builds rodaram
+  em seguida e saíram nos dois destinos (07:05:57–07:10:12, 147 s e 80 s):
+  a rede tinha voltado, mas histórias roda primeiro e repete na hora, ainda
+  dentro da rede ruim. Não era o detector de recusa do 87b9b43 (0 de 306
+  partes marcadas), nem o teto (a h44 tinha 0 saídas no dia 06/10), nem a
+  válvula (havia parte limpa). → **volta final** (§1 passo 3) e janela de
+  25 → 40 min: a volta das 07:10 estaria a 33 min do começo. O menor buraco
+  da grade é de 60 min, e uma tentativa inteira levou 12 min (06:53:54 →
+  07:05:50), então a volta que começa aos 40 termina perto dos 52. Testes:
+  `VoltaFinalTests` em `historias/tests/test_postar_varredura_0510_regressions.py`
+  (histórias cai 3x e builds publica → ordem `h,h,h,b,h`; os dois caem →
+  `h,h,h,b,b,b` e saída 1).
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
