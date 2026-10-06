@@ -673,6 +673,26 @@
     </div>
   </section>
   <section id="tela-atelie" class="oculto livro atelie" aria-label="Ateliê de sprites">
+    <div class="cartao" id="sprites-modulares">
+      <h2>🎨 Montar sprites</h2>
+      <p class="fraco">Cada desenho é uma parte parada. O jogo junta tudo e faz o movimento.</p>
+      <div class="campos atelie-campos">
+        <label>O que montar <select id="modular-grupo">
+          <option value="lutador">Lutador</option><option value="arma">Armas</option>
+          <option value="skill">Habilidades</option><option value="efeito">Efeitos</option>
+          <option value="arena">Arenas</option><option value="hud">HUD</option>
+        </select></label>
+        <label id="modular-alvo-caixa">Estilo <select id="modular-alvo"></select></label>
+      </div>
+      <div id="modular-progresso" class="fraco"></div>
+      <img id="modular-previa" class="modular-previa oculto" alt="Prévia da bolinha montada">
+      <div class="botoes" id="modular-expressoes"></div>
+      <div id="modular-slots" class="modular-slots"></div>
+      <input id="modular-arquivo" class="oculto" type="file" accept="image/png" capture="environment">
+      <p id="modular-aviso" class="fraco"></p>
+    </div>
+    <details class="cartao">
+      <summary>Ateliê antigo (animação de lado)</summary>
     <div class="cartao">
       <h2>🖌️ Ateliê</h2>
       <div class="fraco">Escolha um passo, importe o seu sprite e confira antes de salvar.</div>
@@ -696,6 +716,7 @@
       <div id="atelie-aviso" class="fraco"></div>
       <div id="atelie-previas" class="atelie-previas"></div>
     </div>
+    </details>
   </section>
   <section id="tela-relatorios" class="oculto livro pergaminho" aria-label="Pergaminhos">
     <div class="abas" id="abas-relatorio"></div>

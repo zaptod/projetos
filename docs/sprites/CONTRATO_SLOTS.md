@@ -292,7 +292,9 @@ Cadeia: arena → tema (17) → padrão.
 
 ## 7. O manifesto é GERADO da engine (cada estado novo aparece sozinho)
 
-O manifesto **não é escrito à mão**. Um gerador (proposto: `random_builds/builds/palco/manifesto.py`, comando `main.py palco manifesto`) importa os catálogos e monta a lista.
+O manifesto **não é escrito à mão**. O gerador é
+`python -m neural_fights.tools.manifesto_sprites`; ele importa os catálogos e
+troca `palco/biblioteca/manifesto_slots.json` de uma vez só.
 
 O protótipo usado para as contagens deste documento roda e está no scratchpad desta sessão. Ele importou cada lista da tabela abaixo.
 

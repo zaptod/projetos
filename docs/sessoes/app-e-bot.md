@@ -2450,6 +2450,21 @@ As lutas ficam em `random_builds/outputs/_palco/arena/<id>/`. A tela mostra as
 20 mais recentes, incluindo falhas e vencedor; o MP4 toca inline por Range. O
 token vai em `?t=` somente nessa URL de vídeo, porque `<video>` não envia o
 cabeçalho Authorization.
+## Painel de partes de sprite (06/10/2026)
+
+No topo do Ateliê há agora **Montar sprites**. Ele separa Lutador, Armas,
+Habilidades, Efeitos, Arenas e HUD em lugares simples para anexar PNG. A
+bolinha é mostrada montada; os nove lugares do lutador usam o gabarito
+1024×1024 e as seis carinhas representantes. O Ateliê antigo fica recolhido,
+para não apagar o catálogo de animação de lado.
+
+Rotas autenticadas: `GET /api/sprites/modulares` lista os lugares e seu
+estado; `POST /api/sprites/modulares/<id>/anexar` anexa ou troca mediante
+confirmação; `POST .../desfazer` e `POST .../apagar` guardam a versão anterior;
+`GET /api/sprites/modulares/previa` monta a prévia no servidor. A prévia do
+Godot ainda depende do comando do palco: enquanto ele não existir, o botão
+não aparece.
+
 # Aba Equipe
 
 Em Agora, a aba **Equipe** lista os trabalhadores do servidor e abre a

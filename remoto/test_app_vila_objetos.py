@@ -143,8 +143,9 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v42 = a caixinha do gerente salva na hora e o recarregar nao a desfaz (05/10);
     # v43 = a aba 🧭 Fluxo da Biblioteca, o caminho de um pedido (05/10);
     # v44 = pedido honesto v2: Responder no pedido, rótulos novos, teto da semana (05/10);
-    # v45 = a conversa responde como gente, com "pensando…" (06/10).
-    assert "painel-casca-v45" in sw
+    # v45 = a conversa responde como gente, com "pensando…" (06/10);
+    # v46 = o Ateliê anexa sprite por slot do manifesto (06/10).
+    assert "painel-casca-v46" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

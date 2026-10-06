@@ -128,6 +128,8 @@ def _esperar_tela(page, nome):
     if nome == "sprites":
         page.wait_for_function("""() => [...document.querySelectorAll('#sprites-lista img')]
             .some((img) => img.src.startsWith('blob:'))""")
+    if nome == "atelie":
+        page.locator("#modular-slots button").first.wait_for(state="visible")
     page.wait_for_function("""() => [...document.images].filter((img) =>
         img.getClientRects().length && img.getBoundingClientRect().width).every((img) => img.complete)""")
 
@@ -138,7 +140,7 @@ def _imagens_visiveis_quebradas(page):
         .map((img) => img.alt || img.src)""")
 
 
-def _abrir_todas_as_telas(page, tamanho):
+def _abrir_todas_as_telas(page, tamanho, tema="light"):
     CAPTURAS.mkdir(parents=True, exist_ok=True)
     quebradas = []
 
@@ -153,7 +155,7 @@ def _abrir_todas_as_telas(page, tamanho):
                 "cartoes => cartoes.forEach((cartao) => { cartao.open = true; })")
             assert page.locator("#tela-equipe").evaluate("tela => tela.scrollWidth <= tela.clientWidth")
         quebradas.extend(f"{nome}: {imagem}" for imagem in _imagens_visiveis_quebradas(page))
-        page.screenshot(path=str(CAPTURAS / f"{tamanho[0]}x{tamanho[1]}-{nome}.png"),
+        page.screenshot(path=str(CAPTURAS / f"{tamanho[0]}x{tamanho[1]}-{tema}-{nome}.png"),
                         full_page=True)
 
     capturar("vila")
@@ -170,8 +172,9 @@ def _abrir_todas_as_telas(page, tamanho):
     return quebradas
 
 
-@pytest.mark.parametrize("tamanho", [(390, 844), (844, 390)])
-def test_o_app_abre_vila_objetos_e_abas_sem_erros_de_tela(tela_isolada, tamanho):
+@pytest.mark.parametrize("tamanho,tema", [((390, 844), "light"), ((390, 844), "dark"),
+                                            ((844, 390), "light")])
+def test_o_app_abre_vila_objetos_e_abas_sem_erros_de_tela(tela_isolada, tamanho, tema):
     """Console, CSP, imagens e respostas de API sao parte da tela entregue."""
     if not NAVEGADOR:
         pytest.skip("so com NF_TESTE_NAVEGADOR=1")
@@ -184,7 +187,7 @@ def test_o_app_abre_vila_objetos_e_abas_sem_erros_de_tela(tela_isolada, tamanho)
     with sync_playwright() as pw:
         nav = pw.chromium.launch(channel="chrome", headless=True)
         ctx = nav.new_context(viewport={"width": tamanho[0], "height": tamanho[1]},
-                              is_mobile=True, has_touch=True, service_workers="block")
+                              is_mobile=True, has_touch=True, service_workers="block", color_scheme=tema)
         ctx.set_default_timeout(5000)
         page = ctx.new_page()
         page.on("pageerror", lambda erro: pageerrors.append(str(erro)))
@@ -208,7 +211,7 @@ def test_o_app_abre_vila_objetos_e_abas_sem_erros_de_tela(tela_isolada, tamanho)
         page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
         page.reload(wait_until="domcontentloaded")
         page.wait_for_function("document.body.classList.contains('pareado')")
-        imagens_quebradas = _abrir_todas_as_telas(page, tamanho)
+        imagens_quebradas = _abrir_todas_as_telas(page, tamanho, tema)
         # As promessas de fetch da ultima aba ainda podem terminar depois do clique.
         time.sleep(0.4)
         assert not pageerrors, pageerrors

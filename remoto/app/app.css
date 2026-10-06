@@ -897,6 +897,11 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .atelie-espelho { display: inline-block; margin: 8px 0; }
 .atelie-previas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
 .atelie-previas img { width: 100%; max-height: 120px; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
+.modular-previa { display: block; width: min(100%, 310px); aspect-ratio: 1; object-fit: contain; margin: 10px auto; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; border-radius: 16px; }
+.modular-slots { display: grid; gap: 8px; margin-top: 10px; }
+.modular-slot { min-height: 58px; text-align: left; display: grid; gap: 3px; font: inherit; }
+.modular-slot strong { text-transform: capitalize; }
+@media (prefers-color-scheme: dark) { .modular-previa { background-color: #26303a; } }
 
 /* ---- o interruptor do Claude (29/09): no topo, preso ao rolar. Compacto
    (uma faixa de ~52 px), para não cobrir a Mesa quando fica preso. */

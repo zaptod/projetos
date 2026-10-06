@@ -165,6 +165,44 @@ def test_atelie_limita_corpo_antes_de_ler(servidor):
     assert resposta.status == 413
 
 
+def _png_rgba(cor, tamanho=(1024, 1024)):
+    imagem = Image.new("RGBA", tamanho, cor)
+    imagem.putpixel((0, 0), (0, 0, 0, 0))
+    saida = io.BytesIO()
+    imagem.save(saida, "PNG")
+    return base64.b64encode(saida.getvalue()).decode("ascii")
+
+
+def test_sprites_modulares_anexa_substitui_desfaz_e_monta_previa(servidor, mundo, monkeypatch):
+    """A peca de cima precisa vencer o pixel e a troca precisa ter volta."""
+    raiz = mundo.tmp / "palco" / "biblioteca"
+    manifesto = raiz / "manifesto_slots.json"
+    destino = "palco/biblioteca/partes/lutador/pele/comum/_/base.png"
+    olho = "palco/biblioteca/partes/lutador/olhos/comum/_/neutro.png"
+    manifesto.parent.mkdir(parents=True)
+    manifesto.write_text(json.dumps({"resumo": {"por_grupo": {"lutador": 2}}, "slots": [
+        {"id": "pele", "rotulo": "Pele", "grupo": "lutador", "parte": "pele", "alvo": {"chave": "_", "rotulo": "Comum"}, "estado": "base", "camada_z": 20, "tamanho_px": [1024, 1024], "obrigatorio": True, "reserva": "corpo", "destino": destino, "fallback": []},
+        {"id": "olhos", "rotulo": "Olhos", "grupo": "lutador", "parte": "olhos", "alvo": {"chave": "_", "rotulo": "Comum"}, "estado": "neutro", "camada_z": 40, "tamanho_px": [1024, 1024], "obrigatorio": True, "reserva": "rosto", "destino": olho, "fallback": []}
+    ]}), encoding="utf-8")
+    monkeypatch.setattr(api_http, "PARTES_BIBLIOTECA", raiz)
+    monkeypatch.setattr(api_http, "MANIFESTO_SPRITES", manifesto)
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    pedido = {"imagem": _png_rgba((255, 0, 0, 255)), "opcoes": {}}
+    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/anexar", pedido, token)[0].status == 200
+    pedido["imagem"] = _png_rgba((0, 255, 0, 255))
+    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/anexar", pedido, token)[0].status == 409
+    pedido["opcoes"] = {"substituir": True}
+    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/anexar", pedido, token)[0].status == 200
+    pedido = {"imagem": _png_rgba((0, 0, 255, 255)), "opcoes": {}}
+    assert _pedir(servidor, "POST", "/api/sprites/modulares/olhos/anexar", pedido, token)[0].status == 200
+    previa, bruto = _pedir(servidor, "GET", "/api/sprites/modulares/previa", token=token)
+    assert previa.status == 200 and Image.open(io.BytesIO(bruto)).getpixel((512, 512))[:3] == (0, 0, 255)
+    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/desfazer", {}, token)[0].status == 200
+    imagem = Image.open(raiz.parent.parent / destino)
+    assert imagem.getpixel((512, 512))[:3] == (255, 0, 0)
+
+
 def test_assembleia_exige_pareamento_e_acoes(servidor, monkeypatch):
     """Consultar e convocar seguem as mesmas trancas da bancada."""
     from ias import assembleia

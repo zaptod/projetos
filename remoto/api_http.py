@@ -88,6 +88,9 @@ CORPO_MAX = 4096
 CORPO_CORREIO_MAX = 12 * 1024 * 1024
 ATELIE_MAX = sprites_importar.MAX_BYTES
 ATELIE_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca" / "sprites_usuario"
+PARTES_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca"
+MANIFESTO_SPRITES = PARTES_BIBLIOTECA / "manifesto_slots.json"
+SPRITE_MAX = 20 * 1024 * 1024
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -952,6 +955,10 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({"lutas": lutas})
             if rota == "/api/atelie":
                 return self._atelie_catalogo(consulta)
+            if rota == "/api/sprites/modulares":
+                return self._sprites_modulares_catalogo(consulta)
+            if rota == "/api/sprites/modulares/previa":
+                return self._sprites_modulares_previa(consulta)
             achado = re.fullmatch(r"/api/atelie/arquivo/([a-z0-9_-]{8,40})/(original|limpa|folha|previa|quadro-\d+)", rota)
             if achado:
                 return self._atelie_arquivo(*achado.groups())
@@ -1175,6 +1182,9 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._responder_decisao()
         if rota == "/api/atelie/importar":
             return self._atelie_importar()
+        achado = re.fullmatch(r"/api/sprites/modulares/(.+)/(anexar|apagar|desfazer)", rota)
+        if achado:
+            return self._sprites_modulares_mutar(unquote(achado.group(1)), achado.group(2))
         achado = re.fullmatch(r"/api/sprites/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/(aprovar|refazer|descartar)", rota)
         if achado:
             return self._acao_sprite(*achado.groups())
@@ -1233,6 +1243,147 @@ class Manipulador(BaseHTTPRequestHandler):
             self.estado.falhou(self.client_address[0])
             return self._erro(403, "codigo errado ou vencido")
         return self._json({"token": token})
+
+    # --------------------------------------------------- sprites modulares
+    @staticmethod
+    def _manifesto_sprites() -> dict:
+        try:
+            dados = json.loads(MANIFESTO_SPRITES.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return dados if isinstance(dados, dict) and isinstance(dados.get("slots"), list) else {}
+
+    @staticmethod
+    def _slot_publico(slot: dict, estado: str, aviso: str = "") -> dict:
+        """O telefone recebe o lugar da peca, nunca o caminho do PC."""
+        return {chave: slot[chave] for chave in ("id", "rotulo", "grupo", "parte", "alvo",
+                "estado", "camada_z", "tamanho_px", "obrigatorio", "reserva") if chave in slot} | {
+                    "situacao": estado, "aviso": aviso}
+
+    @staticmethod
+    def _arquivo_do_slot(slot: dict) -> Path | None:
+        try:
+            destino = Path(str(slot["destino"]))
+        except (KeyError, TypeError):
+            return None
+        # O manifesto e a unica autoridade para destino; ainda assim a API
+        # confere que um manifesto corrompido nao a faca sair da biblioteca.
+        raiz = PARTES_BIBLIOTECA.resolve()
+        caminho = (PARTES_BIBLIOTECA.parent.parent / destino).resolve()
+        try:
+            caminho.relative_to(raiz)
+        except ValueError:
+            return None
+        return caminho
+
+    def _estado_slot(self, slot: dict, todos: dict[str, dict]) -> tuple[str, str]:
+        arquivo = self._arquivo_do_slot(slot)
+        if arquivo is not None and arquivo.is_file():
+            return "anexado", ""
+        for outro_id in slot.get("fallback") or []:
+            outro = todos.get(outro_id)
+            outro_arquivo = self._arquivo_do_slot(outro) if outro else None
+            if outro_arquivo is not None and outro_arquivo.is_file():
+                return "herdando", "usa uma peca que ja existe"
+        return "vazio", ""
+
+    def _sprites_modulares_catalogo(self, consulta: dict):
+        manifesto = self._manifesto_sprites()
+        todos = {str(slot.get("id")): slot for slot in manifesto.get("slots", []) if isinstance(slot, dict)}
+        grupo = str((consulta.get("grupo") or [""])[0])
+        if grupo and grupo not in {"lutador", "arma", "skill", "efeito", "camada_estado", "arena", "hud"}:
+            return self._erro(400, "grupo desconhecido")
+        slots = []
+        for slot in todos.values():
+            if grupo and slot.get("grupo") != grupo:
+                continue
+            estado, aviso = self._estado_slot(slot, todos)
+            slots.append(self._slot_publico(slot, estado, aviso))
+        return self._json({"grupos": manifesto.get("resumo", {}).get("por_grupo", {}),
+                           "slots": slots, "godot_previa": False})
+
+    def _sprites_modulares_previa(self, consulta: dict):
+        manifesto = self._manifesto_sprites()
+        alvo = str((consulta.get("alvo") or ["_"])[0])
+        slots = [s for s in manifesto.get("slots", []) if isinstance(s, dict)
+                 and s.get("grupo") == "lutador"
+                 and s.get("alvo", {}).get("chave") in ("_", alvo)
+                 and s.get("estado") in ("base", "neutro")]
+        quadro = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+        for slot in sorted(slots, key=lambda s: s.get("camada_z", 0)):
+            arquivo = self._arquivo_do_slot(slot)
+            if arquivo is None or not arquivo.is_file():
+                continue
+            try:
+                with Image.open(arquivo) as imagem:
+                    peca = imagem.convert("RGBA")
+                    if peca.size != (1024, 1024):
+                        peca.thumbnail((1024, 1024))
+                    quadro.alpha_composite(peca, ((1024 - peca.width) // 2, (1024 - peca.height) // 2))
+            except (OSError, ValueError):
+                continue
+        saida = io.BytesIO()
+        quadro.save(saida, "PNG", optimize=True)
+        return self._bytes(saida.getvalue(), "image/png")
+
+    def _sprites_modulares_mutar(self, slot_id: str, acao: str):
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        manifesto = self._manifesto_sprites()
+        slot = next((s for s in manifesto.get("slots", []) if s.get("id") == slot_id), None)
+        arquivo = self._arquivo_do_slot(slot) if isinstance(slot, dict) else None
+        if arquivo is None:
+            return self._erro(404, "peca desconhecida")
+        if acao == "anexar":
+            pedido = self._atelie_corpo()
+            if pedido is None:
+                return
+            bruto, opcoes = pedido
+            if len(bruto) > SPRITE_MAX:
+                return self._erro(413, "a imagem passa de 20 MB")
+            if arquivo.exists() and not bool(opcoes.get("substituir")):
+                return self._erro(409, "ja ha uma imagem aqui; toque em Trocar de novo para confirmar")
+            try:
+                with Image.open(io.BytesIO(bruto)) as aberta:
+                    if aberta.format != "PNG":
+                        return self._erro(400, "mande uma imagem PNG")
+                    imagem = aberta.convert("RGBA")
+            except (OSError, ValueError):
+                return self._erro(400, "nao consegui abrir esta imagem")
+            if imagem.getchannel("A").getextrema()[0] == 255:
+                return self._erro(400, "a imagem precisa ter fundo transparente")
+            esperado = tuple(slot.get("tamanho_px") or (1024, 1024))
+            proporcao = imagem.width / imagem.height
+            if abs(proporcao - esperado[0] / esperado[1]) > .02:
+                return self._erro(400, "o formato nao combina com este lugar; use o gabarito")
+            avisos = []
+            if imagem.size != esperado:
+                imagem = imagem.resize(esperado, Image.Resampling.LANCZOS)
+                avisos.append("ajustei o tamanho para caber no gabarito")
+            if arquivo.exists():
+                historico = arquivo.with_suffix(arquivo.suffix + ".historico")
+                historico.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(arquivo, historico / f"{int(time.time() * 1000)}.png")
+            arquivo.parent.mkdir(parents=True, exist_ok=True)
+            temporario = arquivo.with_suffix(".novo.png")
+            imagem.save(temporario, "PNG", optimize=True)
+            os.replace(temporario, arquivo)
+            return self._json({"feito": True, "avisos": avisos})
+        if acao == "desfazer":
+            historico = arquivo.with_suffix(arquivo.suffix + ".historico")
+            versoes = sorted(historico.glob("*.png")) if historico.is_dir() else []
+            if not versoes:
+                return self._erro(404, "nao ha uma versao anterior")
+            os.replace(versoes[-1], arquivo)
+            return self._json({"feito": True})
+        if not arquivo.is_file():
+            return self._erro(404, "este lugar ja esta vazio")
+        historico = arquivo.with_suffix(arquivo.suffix + ".historico")
+        historico.mkdir(parents=True, exist_ok=True)
+        os.replace(arquivo, historico / f"{int(time.time() * 1000)}.png")
+        return self._json({"feito": True})
 
     # ------------------------------------------------------------ atelie
     def _atelie_catalogo(self, consulta):
