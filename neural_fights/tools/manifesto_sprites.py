@@ -638,6 +638,21 @@ def migrar_variantes(biblioteca: Path = PADRAO.parent) -> list[Path]:
         if antigo_json.exists() and not destino.with_suffix(".json").exists():
             os.replace(antigo_json, destino.with_suffix(".json"))
         movidos.append(destino)
+    # Peca APAGADA no formato antigo: o PNG ja saiu, mas o historico fica
+    # (e o Desfazer que a traz de volta). Sem mover, o Desfazer some na v01.
+    for historico in list(raiz.glob("*/*/*/*.png.historico")):
+        if not historico.is_dir() or historico.parent.parent.parent.parent != raiz:
+            continue
+        arquivo = historico.with_name(historico.name[:-len(".historico")])
+        if arquivo.exists():
+            continue
+        destino = arquivo.parent / "v01" / arquivo.name
+        novo_historico = pasta_de_versoes(destino)
+        if destino.exists() or novo_historico.exists():
+            continue
+        novo_historico.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(historico, novo_historico)
+        movidos.append(novo_historico)
     return movidos
 
 

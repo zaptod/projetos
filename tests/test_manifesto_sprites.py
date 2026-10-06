@@ -156,6 +156,21 @@ def test_migracao_legacy_move_png_e_historico_para_v01(tmp_path):
     assert (pasta_de_versoes(novo) / "00000000000000000001.png").is_file()
 
 
+def test_migracao_leva_o_historico_da_peca_apagada_para_v01(tmp_path):
+    # O capacete do disco real: apagado (so o historico ficou). Sem mover o
+    # historico, o Desfazer dele sumiria depois da migracao.
+    from neural_fights.tools.manifesto_sprites import migrar_variantes, pasta_de_versoes
+    antigo = tmp_path / "partes/lutador/acessorio_cabeca/classe/berserker_furia/base.png"
+    historia = pasta_de_versoes(antigo)
+    historia.mkdir(parents=True)
+    Image.new("RGBA", (2, 2), (5, 6, 7, 8)).save(historia / "00000000000000000001.png")
+    novo = antigo.parent / "v01" / "base.png"
+    assert migrar_variantes(tmp_path) == [pasta_de_versoes(novo)]
+    assert not novo.exists() and not historia.exists()
+    assert (pasta_de_versoes(novo) / "00000000000000000001.png").is_file()
+    assert migrar_variantes(tmp_path) == []
+
+
 def test_gabarito_aparece_em_fundo_claro_e_escuro():
     import io
     from neural_fights.tools.manifesto_sprites import gabarito_lutador
