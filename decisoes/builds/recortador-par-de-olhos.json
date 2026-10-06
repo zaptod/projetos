@@ -3,7 +3,15 @@
   "contexto": "Conferência de 06/10: numa folha realista (6 pares, 40 px entre os olhos) o recortador fazia 12 recortes soltos ou encaixava o par deitado no meio do rosto. Zonas do jogo: olho de cima em (563,420) e de baixo em (563,604) no gabarito 1024. Serve para o recortador encaixar sozinho os olhos que você gera.",
   "criado": "2026-10-06T13:17:12.804990",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-06T13:42:15",
+      "opcao": "separar",
+      "origem": "app"
+    }
+  ],
   "id": "recortador-par-de-olhos",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "A IA desenha o par de olhos lado a lado (de frente), mas no jogo (visto de cima, olhando para a direita) os dois olhos ficam um em cima do outro. O que o recortador faz com um par de olhos?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Recortador: par de olhos desenhado de frente",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-06T13:42:15",
+    "opcao": "separar"
+  }
 }
