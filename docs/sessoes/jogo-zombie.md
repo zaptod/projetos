@@ -43,6 +43,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Sim, aplica sozinho (02/10/2026) `vigia-aplica-sozinho`
 - ✅ **Liberar espaço: arquivar os vídeos no Google Drive** — Google Drive para computador (recomendado) (04/10/2026) `arquivo-de-videos`
 - ✅ **Ligar o gerente da equipe (a fila anda sozinha)?** — Ligar (recomendado) (04/10/2026) `gerente-ligado`
+- ✅ **PicassoIA fora da roda de imagens** — Tirar o PicassoIA de vez (06/10/2026) · “06/10 pelo chat: 'aparentemente o picasso morreu tambem, não podemos mais contar com ele.'” `picasso-fora-da-roda`
 
 **Jogo zombie**
 - ✅ **Formato do 1º vídeo** — Duelo (27/09/2026) `formato-do-primeiro-video`

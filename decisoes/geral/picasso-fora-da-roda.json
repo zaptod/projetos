@@ -1,0 +1,41 @@
+{
+  "comentario": false,
+  "contexto": "06/10 02:2x, pelo chat: o Adrian viu que o PicassoIA morreu. Ele era um dos geradores das imagens das histórias (rodízio com Gemini e ChatGPT; teto diário próprio) e a rodada da madrugada parou de escrever no log às 01:44. Serve para tirar o PicassoIA de toda a roda (histórias, builds, carteiro) e deixar Gemini e ChatGPT fazerem as imagens.",
+  "criado": "2026-10-06T02:23:12.909598",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "06/10 pelo chat: 'aparentemente o picasso morreu tambem, não podemos mais contar com ele.'",
+      "em": "2026-10-06T02:23:14",
+      "opcao": "tirar",
+      "origem": "cli"
+    }
+  ],
+  "id": "picasso-fora-da-roda",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Gemini e ChatGPT fazem todas as imagens; o PicassoIA só volta se eu pedir",
+      "id": "tirar",
+      "pede_comentario": false,
+      "rotulo": "Tirar o PicassoIA de vez"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Tira agora, mas reavalia com uma geração de verdade",
+      "id": "pausar",
+      "pede_comentario": false,
+      "rotulo": "Pausar e testar de novo amanhã"
+    }
+  ],
+  "pergunta": "O PicassoIA morreu: ainda contamos com ele para gerar imagens?",
+  "projeto": "geral",
+  "situacao": "decidida",
+  "titulo": "PicassoIA fora da roda de imagens",
+  "vigente": {
+    "comentario": "06/10 pelo chat: 'aparentemente o picasso morreu tambem, não podemos mais contar com ele.'",
+    "em": "2026-10-06T02:23:14",
+    "opcao": "tirar"
+  }
+}
