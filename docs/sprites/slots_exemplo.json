@@ -1,0 +1,1432 @@
+{
+ "_leia": "EXEMPLO do manifesto de slots (docs/sprites/CONTRATO_SLOTS.md). Gerado da engine em 06/10/2026 por um prototipo; 'amostra' traz alguns slots reais, 'resumo' as contagens de todos. O manifesto de verdade sera regerado por main.py palco manifesto.",
+ "versao": 1,
+ "convencoes": {
+  "imagem": "PNG RGBA estatico (1 quadro); o Godot mexe",
+  "vista": "de cima, olhando para +x (direita)",
+  "estilo": "contorno #14141A, cel de 2 tons, luz do alto a esquerda",
+  "gabarito_lutador": "1024x1024, centro = centro da bolinha, corpo = circulo de diametro 512",
+  "gabarito_arma": "1024x256, mao na borda esquerda (meio), ponta na borda direita",
+  "destino": "palco/biblioteca/partes/<grupo>/<parte>/<nivel>/<alvo>/<estado>.png (+ .json de origem)",
+  "slug": "palco/nucleo/util.gd:45 (sem acento, minusculo, _ no lugar de espaco e parenteses)",
+  "niveis_lutador": [
+   "personagem",
+   "classe",
+   "comum"
+  ],
+  "regra_dono": "o nivel mais especifico com qualquer arte da parte e o dono; dentro dele: expressao -> representante -> neutro; sem arte em nivel nenhum: reserva (desenho de hoje)"
+ },
+ "partes_lutador": [
+  {
+   "parte": "sombra",
+   "niveis": [
+    "comum"
+   ],
+   "eixo_estado": null,
+   "camada_z": 0,
+   "quadro": "mundo",
+   "tingir": "nenhum",
+   "papel": "recomendado"
+  },
+  {
+   "parte": "acessorio_costas",
+   "niveis": [
+    "classe",
+    "personagem"
+   ],
+   "eixo_estado": null,
+   "camada_z": 10,
+   "quadro": "olhar",
+   "tingir": "nenhum",
+   "papel": "opcional"
+  },
+  {
+   "parte": "pele",
+   "niveis": [
+    "comum",
+    "classe",
+    "personagem"
+   ],
+   "eixo_estado": null,
+   "camada_z": 20,
+   "quadro": "tela",
+   "tingir": "cor_personagem",
+   "papel": "obrigatorio"
+  },
+  {
+   "parte": "marcas",
+   "niveis": [
+    "classe",
+    "personagem"
+   ],
+   "eixo_estado": null,
+   "camada_z": 25,
+   "quadro": "olhar",
+   "tingir": "nenhum",
+   "papel": "opcional"
+  },
+  {
+   "parte": "olhos",
+   "niveis": [
+    "comum",
+    "classe",
+    "personagem"
+   ],
+   "eixo_estado": "expressao",
+   "camada_z": 40,
+   "quadro": "olhar",
+   "tingir": "nenhum",
+   "papel": "obrigatorio"
+  },
+  {
+   "parte": "sobrancelhas",
+   "niveis": [
+    "comum",
+    "classe",
+    "personagem"
+   ],
+   "eixo_estado": "expressao",
+   "camada_z": 45,
+   "quadro": "olhar",
+   "tingir": "nenhum",
+   "papel": "opcional"
+  },
+  {
+   "parte": "boca",
+   "niveis": [
+    "comum",
+    "classe",
+    "personagem"
+   ],
+   "eixo_estado": "expressao",
+   "camada_z": 50,
+   "quadro": "olhar",
+   "tingir": "nenhum",
+   "papel": "obrigatorio"
+  },
+  {
+   "parte": "detalhe_rosto",
+   "niveis": [
+    "comum"
+   ],
+   "eixo_estado": "expressao_extra",
+   "camada_z": 55,
+   "quadro": "olhar",
+   "tingir": "nenhum",
+   "papel": "opcional"
+  },
+  {
+   "parte": "acessorio_cabeca",
+   "niveis": [
+    "classe",
+    "personagem"
+   ],
+   "eixo_estado": null,
+   "camada_z": 60,
+   "quadro": "olhar",
+   "tingir": "nenhum",
+   "papel": "opcional"
+  }
+ ],
+ "familias_expressao": {
+  "neutro": "neutro",
+  "focado": "neutro",
+  "glacial": "neutro",
+  "concentrado": "neutro",
+  "firmeza": "neutro",
+  "tedio": "neutro",
+  "furia": "furia",
+  "determinado": "furia",
+  "berserk": "furia",
+  "esforco": "furia",
+  "limite": "furia",
+  "animado": "animado",
+  "confiante": "animado",
+  "euforico": "animado",
+  "extase": "animado",
+  "panico": "panico",
+  "nervoso": "panico",
+  "desespero": "panico",
+  "alerta": "panico",
+  "confuso": "panico",
+  "dor": "dor",
+  "tonto": "dor",
+  "tristeza": "dor",
+  "morto": "morto"
+ },
+ "extras_rosto": [
+  "panico",
+  "nervoso",
+  "desespero",
+  "limite",
+  "tristeza",
+  "furia",
+  "berserk",
+  "alerta",
+  "extase"
+ ],
+ "tratamento_flag": {
+  "atacando": "godot",
+  "morto": "godot",
+  "atordoado": "camada",
+  "congelado": "camada",
+  "invencivel": "godot",
+  "canalizando": "godot",
+  "adrenalina": "camada",
+  "agarrado": "camada",
+  "dash": "godot",
+  "intangivel": "godot",
+  "super_armor": "camada",
+  "bloqueando": "camada",
+  "tempo_parado": "camada",
+  "dormindo": "camada",
+  "transformado": "godot",
+  "lancado": "godot",
+  "oculto": "godot",
+  "no_ar": "godot"
+ },
+ "partes_skill": {
+  "PROJETIL": [
+   "projetil"
+  ],
+  "AREA": [
+   "area_chao",
+   "area_borda"
+  ],
+  "BEAM": [
+   "feixe_corpo",
+   "feixe_ponta"
+  ],
+  "SUMMON": [
+   "invocacao"
+  ],
+  "TRAP": [
+   "estrutura"
+  ],
+  "DASH": [
+   "portal"
+  ],
+  "BUFF": [],
+  "CHANNEL": [],
+  "TRANSFORM": []
+ },
+ "resumo": {
+  "total_slots": 1867,
+  "por_grupo": {
+   "lutador": 1299,
+   "camada_estado": 70,
+   "arma": 101,
+   "skill": 224,
+   "efeito": 74,
+   "arena": 95,
+   "hud": 4
+  },
+  "por_grupo_nivel": {
+   "lutador/comum": 83,
+   "lutador/classe": 1216,
+   "camada_estado/comum": 38,
+   "camada_estado/skill": 32,
+   "arma/tipo": 15,
+   "arma/estilo": 60,
+   "arma/forma": 4,
+   "arma/raridade": 5,
+   "arma/encantamento": 12,
+   "arma/arquetipo": 5,
+   "skill/comum": 8,
+   "skill/elemento": 96,
+   "skill/skill": 120,
+   "efeito/comum": 2,
+   "efeito/elemento": 24,
+   "efeito/tipo": 17,
+   "efeito/variante": 31,
+   "arena/arena": 40,
+   "arena/tipo": 44,
+   "arena/clima": 11,
+   "hud/comum": 4
+  },
+  "lutador_moldes_por_alvo": 86,
+  "lutador_slots_por_classe": 76,
+  "lutador_slots_por_personagem_se_aberto": 76,
+  "personagens_no_banco": 106,
+  "minimo_obrigatorio": [
+   "lutador/pele/comum/_/base",
+   "lutador/olhos/comum/_/neutro",
+   "lutador/boca/comum/_/neutro"
+  ],
+  "contagens_engine": {
+   "classes": 16,
+   "elementos": 12,
+   "expressoes": 24,
+   "flags": 18,
+   "skills": 118,
+   "skills_por_tipo": {
+    "PROJETIL": 34,
+    "AREA": 33,
+    "BEAM": 6,
+    "SUMMON": 4,
+    "BUFF": 26,
+    "TRAP": 3,
+    "TRANSFORM": 3,
+    "DASH": 6,
+    "CHANNEL": 3
+   },
+   "tipos_arma": 8,
+   "estilos_arma": 54,
+   "status": 29,
+   "arenas": 20,
+   "tipos_obstaculo": 22,
+   "climas": 11,
+   "eventos_com_vfx": 17
+  }
+ },
+ "amostra": [
+  {
+   "id": "lutador/sombra/comum/_/base",
+   "grupo": "lutador",
+   "parte": "sombra",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "base",
+   "camada_z": 0,
+   "quadro": "mundo",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/lutador/sombra/comum/_/base.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": null,
+   "fallback": [],
+   "reserva": "a sombra por codigo (lutador_padrao.gd:128-135)"
+  },
+  {
+   "id": "lutador/pele/comum/_/base",
+   "grupo": "lutador",
+   "parte": "pele",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "base",
+   "camada_z": 20,
+   "quadro": "tela",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "cor_personagem",
+   "papel": "obrigatorio",
+   "destino": "palco/biblioteca/partes/lutador/pele/comum/_/base.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": null,
+   "fallback": [],
+   "reserva": "o corpo por codigo (lutador_padrao.gd:152-166)"
+  },
+  {
+   "id": "lutador/olhos/comum/_/neutro",
+   "grupo": "lutador",
+   "parte": "olhos",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "neutro",
+   "camada_z": 40,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "obrigatorio",
+   "destino": "palco/biblioteca/partes/lutador/olhos/comum/_/neutro.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [],
+   "reserva": "rosto.gd: o olho da expressao"
+  },
+  {
+   "id": "lutador/olhos/comum/_/furia",
+   "grupo": "lutador",
+   "parte": "olhos",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "furia",
+   "camada_z": 40,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/lutador/olhos/comum/_/furia.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/olhos/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: o olho da expressao"
+  },
+  {
+   "id": "lutador/olhos/comum/_/berserk",
+   "grupo": "lutador",
+   "parte": "olhos",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "berserk",
+   "camada_z": 40,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/olhos/comum/_/berserk.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/olhos/comum/_/furia",
+    "lutador/olhos/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: o olho da expressao"
+  },
+  {
+   "id": "lutador/sobrancelhas/comum/_/neutro",
+   "grupo": "lutador",
+   "parte": "sobrancelhas",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "neutro",
+   "camada_z": 45,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/sobrancelhas/comum/_/neutro.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [],
+   "reserva": "rosto.gd: a sobrancelha da expressao"
+  },
+  {
+   "id": "lutador/sobrancelhas/comum/_/furia",
+   "grupo": "lutador",
+   "parte": "sobrancelhas",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "furia",
+   "camada_z": 45,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/sobrancelhas/comum/_/furia.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/sobrancelhas/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a sobrancelha da expressao"
+  },
+  {
+   "id": "lutador/sobrancelhas/comum/_/berserk",
+   "grupo": "lutador",
+   "parte": "sobrancelhas",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "berserk",
+   "camada_z": 45,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/sobrancelhas/comum/_/berserk.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/sobrancelhas/comum/_/furia",
+    "lutador/sobrancelhas/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a sobrancelha da expressao"
+  },
+  {
+   "id": "lutador/boca/comum/_/neutro",
+   "grupo": "lutador",
+   "parte": "boca",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "neutro",
+   "camada_z": 50,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "obrigatorio",
+   "destino": "palco/biblioteca/partes/lutador/boca/comum/_/neutro.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [],
+   "reserva": "rosto.gd: a boca da expressao"
+  },
+  {
+   "id": "lutador/boca/comum/_/furia",
+   "grupo": "lutador",
+   "parte": "boca",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "furia",
+   "camada_z": 50,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/lutador/boca/comum/_/furia.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/boca/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a boca da expressao"
+  },
+  {
+   "id": "lutador/boca/comum/_/berserk",
+   "grupo": "lutador",
+   "parte": "boca",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "berserk",
+   "camada_z": 50,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/boca/comum/_/berserk.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/boca/comum/_/furia",
+    "lutador/boca/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a boca da expressao"
+  },
+  {
+   "id": "lutador/detalhe_rosto/comum/_/furia",
+   "grupo": "lutador",
+   "parte": "detalhe_rosto",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "furia",
+   "camada_z": 55,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/detalhe_rosto/comum/_/furia.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao_extra",
+   "fallback": [],
+   "reserva": "rosto.gd: suor/lagrima/veia/faiscas/brilho"
+  },
+  {
+   "id": "lutador/acessorio_costas/classe/berserker_furia/base",
+   "grupo": "lutador",
+   "parte": "acessorio_costas",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "base",
+   "camada_z": 10,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/lutador/acessorio_costas/classe/berserker_furia/base.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": null,
+   "fallback": [],
+   "reserva": "nada (acessorio ausente)"
+  },
+  {
+   "id": "lutador/pele/classe/berserker_furia/base",
+   "grupo": "lutador",
+   "parte": "pele",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "base",
+   "camada_z": 20,
+   "quadro": "tela",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "cor_personagem",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/pele/classe/berserker_furia/base.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": null,
+   "fallback": [
+    "lutador/pele/comum/_/base"
+   ],
+   "reserva": "o corpo por codigo (lutador_padrao.gd:152-166)"
+  },
+  {
+   "id": "lutador/marcas/classe/berserker_furia/base",
+   "grupo": "lutador",
+   "parte": "marcas",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "base",
+   "camada_z": 25,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/marcas/classe/berserker_furia/base.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": null,
+   "fallback": [],
+   "reserva": "nada (acessorio ausente)"
+  },
+  {
+   "id": "lutador/olhos/classe/berserker_furia/neutro",
+   "grupo": "lutador",
+   "parte": "olhos",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "neutro",
+   "camada_z": 40,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/olhos/classe/berserker_furia/neutro.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/olhos/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: o olho da expressao"
+  },
+  {
+   "id": "lutador/olhos/classe/berserker_furia/berserk",
+   "grupo": "lutador",
+   "parte": "olhos",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "berserk",
+   "camada_z": 40,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/olhos/classe/berserker_furia/berserk.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/olhos/classe/berserker_furia/furia",
+    "lutador/olhos/classe/berserker_furia/neutro",
+    "lutador/olhos/comum/_/berserk",
+    "lutador/olhos/comum/_/furia",
+    "lutador/olhos/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: o olho da expressao"
+  },
+  {
+   "id": "lutador/sobrancelhas/classe/berserker_furia/neutro",
+   "grupo": "lutador",
+   "parte": "sobrancelhas",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "neutro",
+   "camada_z": 45,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/sobrancelhas/classe/berserker_furia/neutro.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/sobrancelhas/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a sobrancelha da expressao"
+  },
+  {
+   "id": "lutador/sobrancelhas/classe/berserker_furia/berserk",
+   "grupo": "lutador",
+   "parte": "sobrancelhas",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "berserk",
+   "camada_z": 45,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/sobrancelhas/classe/berserker_furia/berserk.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/sobrancelhas/classe/berserker_furia/furia",
+    "lutador/sobrancelhas/classe/berserker_furia/neutro",
+    "lutador/sobrancelhas/comum/_/berserk",
+    "lutador/sobrancelhas/comum/_/furia",
+    "lutador/sobrancelhas/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a sobrancelha da expressao"
+  },
+  {
+   "id": "lutador/boca/classe/berserker_furia/neutro",
+   "grupo": "lutador",
+   "parte": "boca",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "neutro",
+   "camada_z": 50,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/boca/classe/berserker_furia/neutro.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/boca/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a boca da expressao"
+  },
+  {
+   "id": "lutador/boca/classe/berserker_furia/berserk",
+   "grupo": "lutador",
+   "parte": "boca",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "berserk",
+   "camada_z": 50,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/lutador/boca/classe/berserker_furia/berserk.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": "expressao",
+   "fallback": [
+    "lutador/boca/classe/berserker_furia/furia",
+    "lutador/boca/classe/berserker_furia/neutro",
+    "lutador/boca/comum/_/berserk",
+    "lutador/boca/comum/_/furia",
+    "lutador/boca/comum/_/neutro"
+   ],
+   "reserva": "rosto.gd: a boca da expressao"
+  },
+  {
+   "id": "lutador/acessorio_cabeca/classe/berserker_furia/base",
+   "grupo": "lutador",
+   "parte": "acessorio_cabeca",
+   "alvo": {
+    "nivel": "classe",
+    "chave": "berserker_furia",
+    "rotulo": "Berserker (Fúria)"
+   },
+   "estado": "base",
+   "camada_z": 60,
+   "quadro": "olhar",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/lutador/acessorio_cabeca/classe/berserker_furia/base.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/lutadores/lutador_padrao.gd + rosto.gd",
+   "eixo_estado": null,
+   "fallback": [],
+   "reserva": "nada (acessorio ausente)"
+  },
+  {
+   "id": "camada_estado/estado/comum/_/atordoado",
+   "grupo": "camada_estado",
+   "parte": "estado",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "atordoado",
+   "camada_z": 70,
+   "quadro": "mundo",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/camada_estado/estado/comum/_/atordoado.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/recording/timeline.py:98 FLAGS",
+   "destino_tscn": "palco/biblioteca/lutadores/estados/atordoado.tscn",
+   "reserva": "o desenho de hoje em lutador_padrao.gd (anel/estrelas/tinta) ou nada",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "tamanho_m": 4.0,
+    "girar": false
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "camada_estado/status/comum/_/queimando",
+   "grupo": "camada_estado",
+   "parte": "status",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "queimando",
+   "camada_z": 72,
+   "quadro": "mundo",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/camada_estado/status/comum/_/queimando.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/core/status_runtime.py:117 STATUS_VISUAL",
+   "destino_tscn": "palco/biblioteca/lutadores/status/queimando.tscn",
+   "reserva": "o desenho de hoje em lutador_padrao.gd (anel/estrelas/tinta) ou nada",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "tamanho_m": 4.0,
+    "girar": false
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "camada_estado/transformacoes/skill/avatar_de_gelo/base",
+   "grupo": "camada_estado",
+   "parte": "transformacoes",
+   "alvo": {
+    "nivel": "skill",
+    "chave": "avatar_de_gelo",
+    "rotulo": "Avatar de Gelo"
+   },
+   "estado": "base",
+   "camada_z": 74,
+   "quadro": "mundo",
+   "ancora": "gabarito",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/camada_estado/transformacoes/skill/avatar_de_gelo/base.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/core/skills.py SKILL_DB",
+   "destino_tscn": "palco/biblioteca/lutadores/transformacoes/avatar_de_gelo.tscn",
+   "reserva": "o desenho de hoje em lutador_padrao.gd (anel/estrelas/tinta) ou nada",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "tamanho_m": 4.0,
+    "girar": false
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "arma/arma/tipo/reta/base",
+   "grupo": "arma",
+   "parte": "arma",
+   "alvo": {
+    "nivel": "tipo",
+    "chave": "reta",
+    "rotulo": "Reta"
+   },
+   "estado": "base",
+   "camada_z": 30,
+   "quadro": "arma",
+   "ancora": "empunhadura",
+   "tamanho_px": [
+    1024,
+    256
+   ],
+   "tingir": "nenhum",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/arma/arma/tipo/reta/base.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/models/constants.py:111 TIPOS_ARMA",
+   "destino_tscn": "palco/biblioteca/armas/tipos/reta.tscn",
+   "reserva": "arma_padrao.gd (silhueta por tipo)",
+   "eixo_estado": null
+  },
+  {
+   "id": "arma/arma/estilo/katana/base",
+   "grupo": "arma",
+   "parte": "arma",
+   "alvo": {
+    "nivel": "estilo",
+    "chave": "katana",
+    "rotulo": "Katana"
+   },
+   "estado": "base",
+   "camada_z": 30,
+   "quadro": "arma",
+   "ancora": "empunhadura",
+   "tamanho_px": [
+    1024,
+    256
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/arma/arma/estilo/katana/base.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/tools/gerador_database.py:79 ESTILOS_ARMA",
+   "tipo_arma": "Reta",
+   "destino_tscn": "palco/biblioteca/armas/estilos/katana.tscn",
+   "reserva": "arma_padrao.gd (silhueta por tipo)",
+   "eixo_estado": null
+  },
+  {
+   "id": "arma/arma/estilo/kusarigama/base",
+   "grupo": "arma",
+   "parte": "arma",
+   "alvo": {
+    "nivel": "estilo",
+    "chave": "kusarigama",
+    "rotulo": "Kusarigama"
+   },
+   "estado": "base",
+   "camada_z": 30,
+   "quadro": "arma",
+   "ancora": "empunhadura",
+   "tamanho_px": [
+    1024,
+    256
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/arma/arma/estilo/kusarigama/base.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/tools/gerador_database.py:79 ESTILOS_ARMA",
+   "tipo_arma": "Corrente",
+   "destino_tscn": "palco/biblioteca/armas/estilos/kusarigama.tscn",
+   "reserva": "arma_padrao.gd (silhueta por tipo)",
+   "eixo_estado": null
+  },
+  {
+   "id": "arma/corrente_cabeca/estilo/bola_espinhos/base",
+   "grupo": "arma",
+   "parte": "corrente_cabeca",
+   "alvo": {
+    "nivel": "estilo",
+    "chave": "bola_espinhos",
+    "rotulo": "bola_espinhos"
+   },
+   "estado": "base",
+   "camada_z": 31,
+   "quadro": "arma",
+   "ancora": "empunhadura",
+   "tamanho_px": [
+    1024,
+    256
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/arma/corrente_cabeca/estilo/bola_espinhos/base.png",
+   "godot_le_hoje": false,
+   "fonte": "neural_fights/recording/timeline.py:245 CABECA_POR_ESTILO",
+   "reserva": "arma_padrao.gd (silhueta por tipo)",
+   "eixo_estado": null
+  },
+  {
+   "id": "skill/projetil/comum/_/base",
+   "grupo": "skill",
+   "parte": "projetil",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "base",
+   "camada_z": 35,
+   "quadro": "objeto",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "elemento",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/skill/projetil/comum/_/base.png",
+   "godot_le_hoje": true,
+   "fonte": "palco/nucleo/biblioteca.gd:101 objeto()",
+   "reserva": "objeto_cc0.gd (mascara CC0 tingida pelo elemento)",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "escala_raio": 1.0,
+    "girar": true,
+    "tingir": ""
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "skill/projetil/elemento/fogo/base",
+   "grupo": "skill",
+   "parte": "projetil",
+   "alvo": {
+    "nivel": "elemento",
+    "chave": "fogo",
+    "rotulo": "FOGO"
+   },
+   "estado": "base",
+   "camada_z": 35,
+   "quadro": "objeto",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/skill/projetil/elemento/fogo/base.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/utils/palette.py:23 ELEMENT_PALETTES",
+   "tipo_skill": "PROJETIL",
+   "reserva": "objeto_cc0.gd (mascara CC0 tingida pelo elemento)",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "escala_raio": 1.0,
+    "girar": true,
+    "tingir": ""
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "skill/projetil/skill/bola_de_fogo/base",
+   "grupo": "skill",
+   "parte": "projetil",
+   "alvo": {
+    "nivel": "skill",
+    "chave": "bola_de_fogo",
+    "rotulo": "Bola de Fogo"
+   },
+   "estado": "base",
+   "camada_z": 35,
+   "quadro": "objeto",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/skill/projetil/skill/bola_de_fogo/base.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/core/skills.py:24 SKILL_DB",
+   "tipo_skill": "PROJETIL",
+   "elemento": "FOGO",
+   "reserva": "objeto_cc0.gd (mascara CC0 tingida pelo elemento)",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "escala_raio": 1.0,
+    "girar": true,
+    "tingir": ""
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "skill/area_chao/skill/nevasca/base",
+   "grupo": "skill",
+   "parte": "area_chao",
+   "alvo": {
+    "nivel": "skill",
+    "chave": "nevasca",
+    "rotulo": "Nevasca"
+   },
+   "estado": "base",
+   "camada_z": 35,
+   "quadro": "objeto",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/skill/area_chao/skill/nevasca/base.png",
+   "godot_le_hoje": true,
+   "fonte": "neural_fights/core/skills.py:24 SKILL_DB",
+   "tipo_skill": "AREA",
+   "elemento": "GELO",
+   "reserva": "objeto_cc0.gd (mascara CC0 tingida pelo elemento)",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "escala_raio": 1.0,
+    "girar": true,
+    "tingir": ""
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "skill/area_borda/skill/nevasca/base",
+   "grupo": "skill",
+   "parte": "area_borda",
+   "alvo": {
+    "nivel": "skill",
+    "chave": "nevasca",
+    "rotulo": "Nevasca"
+   },
+   "estado": "base",
+   "camada_z": 35,
+   "quadro": "objeto",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/skill/area_borda/skill/nevasca/base.png",
+   "godot_le_hoje": false,
+   "fonte": "neural_fights/core/skills.py:24 SKILL_DB",
+   "tipo_skill": "AREA",
+   "elemento": "GELO",
+   "reserva": "objeto_cc0.gd (mascara CC0 tingida pelo elemento)",
+   "embrulho": {
+    "script": "res://biblioteca/efeitos/folha_animada.gd",
+    "escala_raio": 1.0,
+    "girar": true,
+    "tingir": ""
+   },
+   "eixo_estado": null
+  },
+  {
+   "id": "efeito/conjuracao/elemento/fogo/base",
+   "grupo": "efeito",
+   "parte": "conjuracao",
+   "alvo": {
+    "nivel": "elemento",
+    "chave": "fogo",
+    "rotulo": "FOGO"
+   },
+   "estado": "base",
+   "camada_z": 80,
+   "quadro": "evento",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/efeito/conjuracao/elemento/fogo/base.png",
+   "godot_le_hoje": true,
+   "fonte": "palco/nucleo/biblioteca.gd:110 candidatos_evento",
+   "reserva": "vfx_padrao.gd",
+   "eixo_estado": null
+  },
+  {
+   "id": "efeito/impacto/elemento/fogo/base",
+   "grupo": "efeito",
+   "parte": "impacto",
+   "alvo": {
+    "nivel": "elemento",
+    "chave": "fogo",
+    "rotulo": "FOGO"
+   },
+   "estado": "base",
+   "camada_z": 80,
+   "quadro": "evento",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/efeito/impacto/elemento/fogo/base.png",
+   "godot_le_hoje": true,
+   "fonte": "palco/nucleo/biblioteca.gd:110 candidatos_evento",
+   "reserva": "vfx_padrao.gd",
+   "eixo_estado": null
+  },
+  {
+   "id": "efeito/evento/tipo/acerto/base",
+   "grupo": "efeito",
+   "parte": "evento",
+   "alvo": {
+    "nivel": "tipo",
+    "chave": "acerto",
+    "rotulo": "acerto"
+   },
+   "estado": "base",
+   "camada_z": 80,
+   "quadro": "evento",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "recomendado",
+   "destino": "palco/biblioteca/partes/efeito/evento/tipo/acerto/base.png",
+   "godot_le_hoje": true,
+   "fonte": "palco/nucleo/timeline.gd:19 EVENTOS_COM_VFX",
+   "reserva": "vfx_padrao.gd",
+   "eixo_estado": null
+  },
+  {
+   "id": "arena/chao/arena/salao_da_torre/base",
+   "grupo": "arena",
+   "parte": "chao",
+   "alvo": {
+    "nivel": "arena",
+    "chave": "salao_da_torre",
+    "rotulo": "Salao da Torre"
+   },
+   "estado": "base",
+   "camada_z": -100,
+   "quadro": "mundo",
+   "ancora": "canto",
+   "tamanho_px": [
+    1024,
+    1024
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/arena/chao/arena/salao_da_torre/base.png",
+   "godot_le_hoje": false,
+   "fonte": "neural_fights/core/arena.py:53 ARENAS",
+   "reserva": "desenho por codigo de hoje",
+   "eixo_estado": null
+  },
+  {
+   "id": "arena/parede/arena/salao_da_torre/base",
+   "grupo": "arena",
+   "parte": "parede",
+   "alvo": {
+    "nivel": "arena",
+    "chave": "salao_da_torre",
+    "rotulo": "Salao da Torre"
+   },
+   "estado": "base",
+   "camada_z": -90,
+   "quadro": "mundo",
+   "ancora": "canto",
+   "tamanho_px": [
+    1024,
+    256
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/arena/parede/arena/salao_da_torre/base.png",
+   "godot_le_hoje": false,
+   "fonte": "neural_fights/core/arena.py:53 ARENAS",
+   "reserva": "desenho por codigo de hoje",
+   "eixo_estado": null
+  },
+  {
+   "id": "arena/obstaculo/tipo/pilar/base",
+   "grupo": "arena",
+   "parte": "obstaculo",
+   "alvo": {
+    "nivel": "tipo",
+    "chave": "pilar",
+    "rotulo": "pilar"
+   },
+   "estado": "base",
+   "camada_z": -50,
+   "quadro": "mundo",
+   "ancora": "centro",
+   "tamanho_px": [
+    512,
+    512
+   ],
+   "tingir": "nenhum",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/arena/obstaculo/tipo/pilar/base.png",
+   "godot_le_hoje": false,
+   "fonte": "neural_fights/core/arena.py Obstaculo",
+   "reserva": "desenho por codigo de hoje",
+   "eixo_estado": null
+  },
+  {
+   "id": "hud/placa_nome/comum/_/base",
+   "grupo": "hud",
+   "parte": "placa_nome",
+   "alvo": {
+    "nivel": "comum",
+    "chave": "_",
+    "rotulo": "comum"
+   },
+   "estado": "base",
+   "camada_z": 200,
+   "quadro": "tela",
+   "ancora": "canto",
+   "tamanho_px": [
+    1024,
+    128
+   ],
+   "tingir": "cor_lado",
+   "papel": "opcional",
+   "destino": "palco/biblioteca/partes/hud/placa_nome/comum/_/base.png",
+   "godot_le_hoje": false,
+   "fonte": "palco/biblioteca/hud/hud_padrao.gd",
+   "reserva": "desenho por codigo de hoje",
+   "eixo_estado": null
+  }
+ ]
+}
