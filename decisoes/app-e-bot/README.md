@@ -16,3 +16,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Liberar o Claude com a sessão fechada** — Rodar o orquestrador sem janela (01/10/2026) · “Quero que seja tudo automatizado” `liberar-sem-sessao-aberta`
 - ✅ **ChatGPT: baixar pelo Compartilhar ou pelo visualizador?** — Visualizador (recomendado) (02/10/2026) `chatgpt-baixar-por`
 - ✅ **App: reorganizar as telas** — 4 objetos, um por pergunta (02/10/2026) `app-reorganizar`
+- ⏳ **Obsidian no celular: como o PC chega lá** — Quero o sistema escrevendo notas no Obsidian (diagrama do fluxo das histórias, decisões do Grimório, relatórios do dia) para eu ler no app oficial do Obsidian no celular. Como as notas vão do PC para o celular? `obsidian-no-celular`
