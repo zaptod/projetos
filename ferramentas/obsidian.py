@@ -8,6 +8,7 @@ escrevem as areas geradas (04, 05 e a nota Agora).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -62,10 +63,16 @@ def instalar(cofre=None, modelos=MODELOS) -> bool:
                     dirs_exist_ok=True)
     origem_99, destino_99 = modelos / "99 🧩 Modelos", cofre / "99 🧩 Modelos"
     destino_99.mkdir(exist_ok=True)
+    estado = _ler_estado_obsidian()
+    hashes = estado.get("moldes", {})
     for molde in origem_99.iterdir():
         alvo = destino_99 / molde.name
-        if not alvo.exists():
+        chave = str(alvo.relative_to(cofre)).replace("\\", "/")
+        antigo = hashes.get(chave)
+        instalado_pelo_sistema = antigo and alvo.is_file() and _hash_arquivo(alvo) == antigo
+        if not alvo.exists() or instalado_pelo_sistema:
             shutil.copy2(molde, alvo)
+            hashes[chave] = _hash_arquivo(molde)
     base_origem = modelos / "01 💡 Ideias" / "Ideias.base"
     base_destino = cofre / "01 💡 Ideias" / "Ideias.base"
     if base_origem.is_file() and not base_destino.exists():
@@ -78,12 +85,68 @@ def instalar(cofre=None, modelos=MODELOS) -> bool:
             if linha and linha not in atual.splitlines():
                 atual += ("" if not atual or atual.endswith("\n") else "\n") + linha + "\n"
         escrever_atomico(cofre / ".stignore", atual)
+    _favoritar_notas_do_sistema(cofre)
+    estado["moldes"] = hashes
+    _escrever_estado_obsidian(estado)
     return True
+
+
+def _runtime_dir() -> Path:
+    return Path(os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR",
+                               Path(os.environ.get("LOCALAPPDATA", "")) / "neural-fights"))
+
+
+def _caminho_estado_obsidian() -> Path:
+    return _runtime_dir() / "obsidian.json"
+
+
+def _ler_estado_obsidian() -> dict:
+    try:
+        dados = json.loads(_caminho_estado_obsidian().read_text(encoding="utf-8"))
+        return dados if isinstance(dados, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _escrever_estado_obsidian(estado: dict) -> None:
+    caminho = _caminho_estado_obsidian()
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    escrever_atomico(caminho, json.dumps(estado, ensure_ascii=False))
+
+
+def _hash_arquivo(caminho: Path) -> str:
+    return hashlib.sha256(caminho.read_bytes()).hexdigest()
+
+
+def _favoritar_notas_do_sistema(cofre: Path) -> None:
+    """Acrescenta os atalhos sem mexer nos favoritos pessoais."""
+    caminho = cofre / ".obsidian" / "bookmarks.json"
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        dados = {"items": []}
+    itens = dados.get("items") if isinstance(dados, dict) else None
+    if not isinstance(itens, list):
+        itens = []
+        dados = {"items": itens}
+    existentes = {item.get("path") for item in itens if isinstance(item, dict)}
+    for nota in ("00 Início.md", "📊 Agora.md"):
+        if nota not in existentes:
+            itens.append({"type": "file", "path": nota})
+    escrever_atomico(caminho, json.dumps(dados, ensure_ascii=False, indent=2) + "\n")
 
 
 def data_br(valor: str) -> str:
     valor = (valor or "")[:10]
     return f"{valor[8:10]}/{valor[5:7]}/{valor[:4]}" if re.fullmatch(r"\d{4}-\d{2}-\d{2}", valor) else ""
+
+
+def texto_para_leitor(texto) -> str:
+    """Tira identificadores de sistema da parte que aparece aberta."""
+    texto = re.sub(r"`[^`]+`", "", str(texto or ""))
+    texto = re.sub(r"\b(?:PID\s+\d+|generation_\d+|(?:branch|commit)\s+\S+|\d{2}[A-Z])\b",
+                   "", texto, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", texto).strip(" —:;,")
 
 
 def ler_decisoes(raiz=RAIZ) -> dict[str, list[dict]]:
@@ -116,20 +179,24 @@ def ler_decisoes(raiz=RAIZ) -> dict[str, list[dict]]:
 
 
 def bloco_decisao(item: dict) -> list[str]:
-    linhas = [f"### {item['titulo']}", "", f"**Pergunta:** {item['pergunta']}", ""]
+    titulo = texto_para_leitor(item["titulo"])
+    linhas = [f"### {titulo}", "", f"**Pergunta:** {texto_para_leitor(item['pergunta'])}", ""]
     if item["pendente"]:
-        linhas += ["**Ainda falta escolher.**", "Opções: " + " · ".join(item["opcoes"]),
-                   "Use o botão **Responder** no app."]
+        opcoes = [texto_para_leitor(opcao) for opcao in item["opcoes"]]
+        linhas += ["**Ainda falta escolher.**", "Opções: " + " · ".join(opcoes),
+                   "No app, abra **📖 Decidir → Responder**."]
     else:
-        escolha = item["escolha"] + (f" — {item['descricao']}" if item["descricao"] else "")
+        escolha = texto_para_leitor(item["escolha"])
+        if item["descricao"]:
+            escolha += f" — {texto_para_leitor(item['descricao'])}"
         linhas += [f"**Você escolheu:** {escolha}"]
-        if item["comentario"]:
-            linhas.append(f"**Seu comentário:** “{item['comentario']}”")
         if data_br(item["quando"]):
             linhas.append(f"_Decidido em {data_br(item['quando'])}._")
     detalhes = [f"Registro: {item['arquivo']}"]
     if item["contexto"]:
         detalhes.append(item["contexto"])
+    if item["comentario"]:
+        detalhes.append("Comentário: " + item["comentario"])
     linhas += ["", "> [!info]- Detalhes do sistema (toque para abrir)"]
     for detalhe in detalhes:
         for linha in detalhe.splitlines() or [""]:
@@ -148,7 +215,7 @@ def decisoes(cofre=None, raiz=RAIZ, tempo=None) -> bool:
     resumo += [f"## ⏳ Esperando você ({len(pendentes)})", ""]
     if pendentes:
         for nome, item in pendentes:
-            resumo.append(f"- **{item['titulo']}** — [[04 🧭 Decisões/{nome}|{nome}]]")
+            resumo.append(f"- **{texto_para_leitor(item['titulo'])}** — [[04 🧭 Decisões/{nome}|{nome}]]")
     else:
         resumo.append("Nada esperando você agora. 🎉")
     resumo += ["", "## Por assunto", "", "| Assunto | Escolhidas | Esperando |", "|---|---:|---:|"]
@@ -183,37 +250,127 @@ def _jsonl(caminho: Path) -> list[dict]:
     return itens
 
 
-def _texto_registro(item: dict) -> str:
-    return " ".join(str(v) for v in item.values() if isinstance(v, (str, int, float))).lower()
+def _instante_local(valor) -> datetime | None:
+    """Converte o `quando` do ledger para a hora local do computador."""
+    try:
+        instante = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return instante.astimezone().replace(tzinfo=None) if instante.tzinfo else instante
 
 
-def _eventos_do_dia(raiz: Path, dia: str) -> list[str]:
-    """Leitura tolerante dos dois ledgers: os campos antigos nao sao iguais."""
-    arquivos = [raiz / "historias" / "outputs" / "_publicar" / "publicados.jsonl"]
-    arquivos += list((raiz / "builds").rglob("*.jsonl")) if (raiz / "builds").is_dir() else []
-    runtime = Path(os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR",
-                                  Path(os.environ.get("LOCALAPPDATA", "")) / "neural-fights"))
-    arquivos.append(runtime / "atividade.jsonl")
-    saida = []
-    for arquivo in arquivos:
-        for item in _jsonl(arquivo):
-            texto = _texto_registro(item)
-            if dia not in texto:
+def _grade():
+    """A grade de horarios pelo caminho do arquivo.
+
+    Mesmo defeito do `_postar`: `python ferramentas/obsidian.py` nao tem a
+    raiz no sys.path e `from random_builds.builds import grade` caia com
+    ModuleNotFoundError (06/10, prova do Diario no real).
+    """
+    try:
+        from random_builds.builds import grade
+        return grade
+    except ImportError:
+        pass
+    if "_nf_grade" in sys.modules:
+        return sys.modules["_nf_grade"]
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "_nf_grade", RAIZ / "random_builds" / "builds" / "grade.py")
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules["_nf_grade"] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
+def _chave_do_horario(instante: datetime) -> tuple[str, str]:
+    """Dia de grade e horario que uma tentativa cobriu, em hora local."""
+    grade = _grade()
+    minutos = instante.hour * 60 + instante.minute
+    grade_minutos = [hora * 60 + minuto for hora, minuto in grade.GRADE]
+    if minutos < grade_minutos[0]:
+        indice = len(grade.GRADE) - 1
+        dia = instante.date().fromordinal(instante.date().toordinal() - 1)
+    else:
+        dia = instante.date()
+        indice = max(i for i, valor in enumerate(grade_minutos) if valor <= minutos)
+    hora, minuto = grade.GRADE[indice]
+    return dia.isoformat(), f"{hora:02d}:{minuto:02d}"
+
+
+def _publicado(item: dict) -> bool:
+    return bool(item.get("publicado")) if "publicado" in item else bool(item.get("url"))
+
+
+def _causas_do_log(raiz: Path, dia: str) -> dict[tuple[str, str, str], str]:
+    """Motivos humanos do log, sem usa-lo como prova de publicacao."""
+    caminho = Path(raiz) / "outputs" / "postar.txt"
+    causas = {}
+    if not caminho.is_file():
+        return causas
+    padrao = re.compile(r"(\d{4}-\d{2}-\d{2})[^0-9]{0,3}(\d{2}:\d{2})")
+    for linha in caminho.read_text(encoding="utf-8", errors="replace").splitlines():
+        achado = padrao.search(linha)
+        if not achado:
+            continue
+        instante = _instante_local(f"{achado.group(1)}T{achado.group(2)}")
+        if instante is None:
+            continue
+        dia_grade, horario = _chave_do_horario(instante)
+        if dia_grade != dia:
+            continue
+        baixo = linha.lower()
+        canal = "historias" if "historia" in baixo else "builds" if "build" in baixo else ""
+        destino = "youtube" if "youtube" in baixo else "tiktok" if "tiktok" in baixo else ""
+        if not canal or not any(palavra in baixo for palavra in ("falhou", "erro", "nao subiu", "não subiu", "nao ha", "não há")):
+            continue
+        motivo = re.sub(r"^.*?\]\s*", "", linha).strip().rstrip(".")
+        for plataforma in ((destino,) if destino else ("youtube", "tiktok")):
+            causas.setdefault((horario, canal, plataforma), motivo[:220])
+    return causas
+
+
+def _eventos_grade_do_dia(raiz: Path, dia: str, ate: datetime | None = None) -> list[str]:
+    """Cada horario da grade, pelos dois unicos ledgers de publicacao.
+
+    Horario que ainda nao chegou (depois de `ate`) nao e "nao saiu": o diario
+    roda de hora em hora e as 10:00 acusava o 12:07 como falha (06/10).
+    """
+    saidas = {}
+    ledgers = {
+        "historias": Path(raiz) / "historias" / "outputs" / "_publicar" / "publicados.jsonl",
+        "builds": Path(raiz) / "random_builds" / "outputs" / "_publicar" / "publicados.jsonl",
+    }
+    for canal, caminho in ledgers.items():
+        for item in _jsonl(caminho):
+            instante = _instante_local(item.get("quando"))
+            plataforma = str(item.get("plataforma") or "youtube").lower()
+            if instante is None or plataforma not in ("youtube", "tiktok"):
                 continue
-            hora = re.search(r"T(\d\d:\d\d)|\b(\d\d:\d\d)\b", texto)
-            quando = (hora.group(1) or hora.group(2)) if hora else "sem horário"
-            canal = "histórias" if "hist" in texto else "builds" if "build" in texto else "vídeo"
-            destinos = []
-            if "youtube" in texto: destinos.append("YouTube")
-            if "tiktok" in texto: destinos.append("TikTok")
-            if not destinos: destinos = ["publicação"]
-            falhou = any(p in texto for p in ("falhou", "erro", "error", "failed"))
-            status = "falhou" if falhou else "saiu"
-            causa = ""
-            if falhou:
-                causa = "; " + str(item.get("erro") or item.get("motivo") or "a postagem não terminou")
-            saida.append(f"- {quando}: {canal} {status} em {', '.join(destinos)}{causa}.")
-    return sorted(set(saida))
+            dia_grade, horario = _chave_do_horario(instante)
+            if dia_grade == dia and _publicado(item):
+                saidas[(horario, canal, plataforma)] = (instante, item)
+
+    causas = _causas_do_log(raiz, dia)
+    linhas = []
+    for hora, minuto in _grade().GRADE:
+        horario = f"{hora:02d}:{minuto:02d}"
+        linhas += [f"### {horario}", ""]
+        futuro = ate is not None and datetime.fromisoformat(f"{dia}T{horario}") > ate
+        if futuro and not any(chave[0] == horario for chave in saidas):
+            linhas += ["- Ainda não chegou.", ""]
+            continue
+        for canal, nome in (("historias", "Histórias"), ("builds", "Builds")):
+            for plataforma, destino in (("youtube", "YouTube"), ("tiktok", "TikTok")):
+                saida = saidas.get((horario, canal, plataforma))
+                if saida:
+                    instante, item = saida
+                    titulo = str(item.get("titulo") or "vídeo sem título no registro")
+                    linhas.append(f"- {nome} — {destino}: saiu às {instante:%H:%M} — {titulo}.")
+                else:
+                    causa = causas.get((horario, canal, plataforma))
+                    linhas.append(f"- {nome} — {destino}: não saiu" + (f" — {causa}." if causa else "."))
+        linhas.append("")
+    return linhas
 
 
 def diario(cofre=None, raiz=RAIZ, dia=None, tempo=None) -> bool:
@@ -222,24 +379,10 @@ def diario(cofre=None, raiz=RAIZ, dia=None, tempo=None) -> bool:
         return False
     t = agora(tempo)
     dia = dia or t.strftime("%Y-%m-%d")
-    eventos = _eventos_do_dia(Path(raiz), dia)
-    log = Path(raiz) / "outputs" / "postar.txt"
-    if log.is_file():
-        for linha in log.read_text(encoding="utf-8", errors="replace").splitlines():
-            if dia in linha and any(p in linha.lower() for p in ("falhou", "erro", "public")):
-                eventos.append("- " + re.sub(r"^.*?(\d\d:\d\d)", r"\1", linha).strip()[:240])
-    # Esta madrugada teve duas causas trocadas no primeiro diario. O registro
-    # corrigido evita transformar falha de rede em defeito de pagina.
-    if dia == "2026-10-06":
-        eventos = [e for e in eventos if not any(h in e for h in ("23:37", "00:37"))]
-        eventos += [
-            "- 23:37: histórias não chegaram ao YouTube nas duas tentativas; rede/Chrome não respondeu.",
-            "- 23:37: builds não publicou neste horário.",
-            "- 00:37: a página demorou e o botão de publicar ficou coberto; a tentativa não terminou.",
-        ]
+    eventos = _eventos_grade_do_dia(Path(raiz), dia, ate=t)
     linhas = cabecalho(t) + [f"# Hoje — {dia[8:10]}/{dia[5:7]}/{dia[:4]}", ""]
     linhas += ["## Publicações e falhas", ""]
-    linhas += sorted(set(eventos)) if eventos else ["Ainda não há registro de publicação neste dia."]
+    linhas += eventos if eventos else ["Ainda não há registro de publicação neste dia."]
     linhas += ["", "## Decisões do dia", ""]
     escolhas = []
     for itens in ler_decisoes(raiz).values():
@@ -254,7 +397,7 @@ def _postar():
 
     `python ferramentas/obsidian.py` roda com a pasta `ferramentas/` no
     sys.path, sem a raiz: `from ferramentas import postar` falhava e o Agora
-    dizia "não consegui medir" (06/10 05:12) com a fila cheia de builds.
+    dizia "não consegui medir" com a fila cheia de builds.
     """
     if "postar" in sys.modules:
         return sys.modules["postar"]
@@ -277,15 +420,22 @@ def medir_estoque() -> dict:
 
 
 def proximos_posts() -> list[str]:
-    """Primeiros candidatos, sem chamar nenhuma rotina que publica ou marca."""
+    """A escolha que o ``postar.py --ver`` faria, sem marcar nem publicar."""
     try:
         postar = _postar()
-        historias = [getattr(v, "id", "história sem nome") for v in postar.fila_de_historias()
-                     if not postar._retencao(v)]
-        builds = [getattr(v, "id", "build sem nome") for v in postar._builds_prontos()]
-        fila = ([f"Histórias: {v}" for v in historias] +
-                [f"Builds: {v}" for v in builds])
-        return fila[:3]
+        historia, _recusadas = postar.proxima_historia()
+        build = postar.proximo_build(marcar=False)
+        fila = []
+        for nome, alvo in (("Histórias", historia), ("Builds", build)):
+            if alvo is None:
+                fila.append(f"{nome}: nenhum vídeo pode sair agora.")
+                continue
+            titulo = str(getattr(alvo, "titulo", "vídeo sem título"))
+            texto = f"{nome}: {titulo}"
+            if nome == "Histórias" and postar._retencao(alvo):
+                texto += " — retida; sai só para o horário não ficar vazio."
+            fila.append(texto)
+        return fila
     except Exception:
         return []
 
@@ -297,12 +447,16 @@ def agora_nota(cofre=None, raiz=RAIZ, tempo=None, medicao=None) -> bool:
     dados = medicao if medicao is not None else medir_estoque()
     pendentes, retidas, consertadas = (dados.get("pendentes", {}), dados.get("retidas", {}), dados.get("consertadas", {}))
     linhas = cabecalho(tempo) + ["# 📊 Agora", ""]
-    linhas += ["## Estoque", "", "| Fila | Prontos | Retidas | Consertadas |", "|---|---:|---:|---:|"]
+    linhas += ["## Estoque", "", "| Fila | Prontos |", "|---|---:|"]
     for canal in ("historias", "builds"):
         nome = "Histórias" if canal == "historias" else "Builds"
-        linhas.append(f"| {nome} | {pendentes.get(canal, 'não consegui medir')} | {retidas.get(canal, 0)} | {consertadas.get(canal, 0)} |")
-    linhas += ["", "Retidas são vídeos que aguardam a checagem de qualidade; consertadas já foram ajustadas, mas ainda aguardam essa checagem.",
-               "", "## Próximos 3 posts", ""]
+        linhas.append(f"| {nome} | {pendentes.get(canal, 'não consegui medir')} |")
+    retidas_historias = retidas.get("historias", 0)
+    consertadas_historias = consertadas.get("historias", 0)
+    linhas += ["", f"Histórias retidas: {retidas_historias}. Destas, {consertadas_historias} foram consertadas; a decisão é uma passada só, então ninguém vai assistir de novo. Elas só saem para o horário não ficar vazio."]
+    if isinstance(pendentes.get("historias"), int) and pendentes["historias"] < 20:
+        linhas += ["", "> [!warning] Histórias abaixo do piso", "> Há menos de 20 vídeos prontos; a reposição precisa agir."]
+    linhas += ["", "## Próximos posts", ""]
     proximos = proximos_posts()
     linhas += [f"{n}. {post}" for n, post in enumerate(proximos, 1)] or ["Não consegui ler a fila agora."]
     escrever_atomico(cofre / "📊 Agora.md", "\n".join(linhas) + "\n")
@@ -318,30 +472,27 @@ def atualizar_automaticamente(raiz=RAIZ, cofre=None, tempo=None) -> bool:
     cofre = Path(cofre or cofre_padrao())
     if not cofre.is_dir():
         return False
-    runtime = Path(os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR", Path(os.environ.get("LOCALAPPDATA", "")) / "neural-fights"))
-    estado = runtime / "obsidian.json"
-    try:
-        anterior = json.loads(estado.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        anterior = {}
+    anterior = _ler_estado_obsidian()
     # Pergunta nova NAO grava no _eventos.jsonl (remoto/decisoes.py): a marca
     # e o arquivo de decisao mais novo, senao pendencia nova nunca chegava ao
-    # cofre (conferente, 06/10 06:00).
+    # cofre.
     jsons = list((Path(raiz) / "decisoes").glob("*/*.json"))
-    postagem = Path(raiz) / "outputs" / "postar.txt"
+    # So os dois ledgers marcam a postagem, nao o postar.txt: o log cresce a
+    # cada poucos segundos durante uma postagem e cada pulso refaria o Agora,
+    # que pergunta ao postar.py a proxima historia (ate 6 ffprobe + decode de
+    # audio, ~7 s medidos em 06/10) — no meio do upload.
+    postagem = [Path(raiz) / "historias" / "outputs" / "_publicar" / "publicados.jsonl",
+                Path(raiz) / "random_builds" / "outputs" / "_publicar" / "publicados.jsonl"]
     marcas = {"decisoes": max((p.stat().st_mtime for p in jsons), default=0),
-              "postagem": postagem.stat().st_mtime if postagem.exists() else 0}
+              "postagem": max((p.stat().st_mtime for p in postagem if p.exists()), default=0)}
     t = agora(tempo)
     hora = t.strftime("%Y-%m-%dT%H")
     if marcas["decisoes"] != anterior.get("decisoes"):
         decisoes(cofre, raiz, t)
     if marcas["postagem"] != anterior.get("postagem") or hora != anterior.get("hora"):
-        # O Diario automatico fica PARADO: lia o atividade.jsonl inteiro como
-        # se fosse publicacao ("53:01: historias saiu", 540 linhas as 06:00).
-        # Volta quando for gerado so dos dois ledgers de publicacao.
+        diario(cofre, raiz, tempo=t)
         agora_nota(cofre, raiz, t)
-    runtime.mkdir(parents=True, exist_ok=True)
-    escrever_atomico(estado, json.dumps({**marcas, "hora": hora}, ensure_ascii=False))
+    _escrever_estado_obsidian({**anterior, **marcas, "hora": hora})
     return True
 
 

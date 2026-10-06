@@ -28,17 +28,18 @@ Você fala com **um** só: o orquestrador. Ele funciona como um gerente: entende
 
 ## Como um pedido seu vira trabalho
 ```mermaid
+%%{init: {'themeVariables': {'fontSize': '14px'}} }%%
 flowchart TD
-    A["💬 Você pede<br/>app, Telegram ou chat"] --> B{"É pergunta curta<br/>ou conversa?"}
-    B -- sim --> C["🧠 Cérebro responde<br/>em segundos"]
-    B -- não --> D["🧾 Recibo na hora<br/>o que entendi e quando começa"]
-    D --> E["🧭 Orquestrador<br/>divide o trabalho"]
+    A["💬 Você pede"] --> B{"Pergunta curta?"}
+    B -- sim --> C["🧠 Resposta rápida"]
+    B -- não --> D["🧾 Recibo"]
+    D --> E["🧭 Orquestrador divide"]
     E --> F["👷 Agente da parte<br/>ou Codex"]
     F --> G["🧪 Vigia testa e aplica"]
-    G --> H["🔍 Conferente olha<br/>tela, caminho real, imagens"]
+    G --> H["🔍 Conferente confere"]
     H -- aprovado --> I["✅ Resposta curta para você"]
     H -- defeito --> F
-    E -. escolha de produto .-> J["📖 Vira pergunta no Grimório"]
+    E -. escolha .-> J["📖 Pergunta no Grimório"]
     J -. você responde .-> E
 ```
 
@@ -57,13 +58,13 @@ flowchart TD
 ## A Mesa
 - É o painel de comando da equipe. Desde 02/10 ele está espalhado pelo app: **Agora** mostra quem está trabalhando, a fila e o Codex; **Mandar** tem as mensagens e o interruptor do Claude.
 - **A fila** é uma lista de cartões. Você arrasta para mudar a ordem.
-- **Capacidade:** quantos agentes rodam ao mesmo tempo. Desde 06/10, **até 2 em paralelo** (decisão sua). O que você muda no app vira regra (28/09).
+- **Capacidade:** quantos agentes rodam ao mesmo tempo. Agora são **até 3 em paralelo**. O que você muda no app vira regra (28/09).
 - **Teto de uso do Claude:** passou de 50% da janela de 5 horas, para tudo (29/09).
 - **Interruptor do Claude:** proibido quer dizer que **só o Claude e os agentes dele param**, num ponto seguro.
 
 ## Renovar o chat
 Um chat longo piora: esquece decisões, repete erros e deixa entrega parada.
-- O chat principal é renovado depois de duas compactações, de umas 4 horas de trabalho, ou quando você disser que está ruim.
+- O chat principal é renovado depois de dois resumos, de umas 4 horas de trabalho, ou quando você disser que está ruim.
 - O chat que sai deixa uma **nota de passagem**: o que estava em andamento, o próximo passo e as armadilhas.
 - O chat que entra lê essa nota e um **retrato** medido do disco antes de qualquer coisa.
 

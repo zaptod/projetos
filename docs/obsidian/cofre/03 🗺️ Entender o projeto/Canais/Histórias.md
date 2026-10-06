@@ -18,12 +18,9 @@ O caminho completo, com o desenho, está em [[Fluxo das histórias]].
 
 Tempos medidos em 27/09 (ainda com o PicassoIA): uma história de 3 partes levou 47 min; uma de 6 partes levou 1 h 22 min. Sem o PicassoIA, as imagens ficaram cerca de 4x mais lentas.
 
-## Situação\n\nOs números de estoque e retenção mudam; veja [[📊 Agora|Agora]].
-Números da nota de fluxo daquela noite:
-- **Acervo:** 58 histórias, 300 partes.
-- **Estoque pronto:** de 0 a 1 vídeo. O piso que você decidiu é 20.
-- **Retidas:** 50 partes, das quais 33 já consertadas. Elas só saem quando um horário ia ficar vazio.
-- **Ritmo das imagens:** cerca de 1 parte por hora com um gerador por vez. Para ir de 1 a 20 vídeos prontos, umas 19 a 20 horas de trabalho.
+## Situação
+
+Estoque, retenções e ritmo mudam durante o dia; veja [[📊 Agora|Agora]]. O piso é 20 vídeos prontos. Retidas só saem para o horário não ficar vazio.
 
 ### O que está travando
 - **O estoque limpo quase não existe.** Quase tudo que sai hoje é retida: a IA reprovou, o conserto refez as cenas, mas ninguém assistiu de novo (você decidiu assim, ver abaixo).
@@ -39,14 +36,14 @@ Números da nota de fluxo daquela noite:
 - **Gemini na conta gratuita** (28/09).
 - **Um gerador de imagem por história** (03/10), para o rosto não mudar no meio da série.
 - **PicassoIA fora de vez** (06/10): só volta se você pedir.
-- **Duas histórias ao mesmo tempo**, uma no Gemini e outra no ChatGPT (06/10).
+- **Duas histórias ao mesmo tempo**, uma no Gemini e outra no ChatGPT: decidido em 06/10; ainda não está rodando.
 - **Título sem o nome da série repetido** (06/10).
-- **Parte que caiu só no YouTube** sobe depois no YouTube, a mesma parte (06/10).
+- **Parte que caiu só no YouTube** sobe depois no YouTube, a mesma parte: decidido em 06/10; ainda não está rodando.
 - **Produção em lote** de segunda a quarta, das 07h às 22h; de quinta a domingo só repõe se o estoque cair abaixo de 20 (30/09).
 - **Tom das descrições:** limpo e convidativo, CAPS só no título, no máximo um emoji. Nunca dizer "narrado por IA"; a linha "os personagens são invenção minha" fica.
 
 Todas as decisões deste canal: [[04 🧭 Decisões/Histórias|Decisões de Histórias]].
 
 ## Audiência
-- YouTube (27/09): 18 inscritos, 176 vídeos, 4.317 views. 93% do tráfego vem do feed de Shorts.
-- TikTok (27/09): um único vídeo tinha 12.568 views, 86% de todas as views do canal de histórias lá.
+
+Os números atuais ficam em [[📊 Agora|Agora]].

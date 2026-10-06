@@ -6,21 +6,21 @@ Como nasce um vídeo de luta, da roleta ao post.
 
 ```mermaid
 flowchart TD
-    R["🎰 Roleta<br/>sorteia personagem e arma<br/>dá nota e narra"] --> P["📇 Personagem novo<br/>entra no banco de lutadores"]
+    R["🎰 Roleta<br/>personagem, arma e narração"] --> P["📇 Novo lutador<br/>entra no banco"]
     P --> ES["⚔️ Estreia<br/>a primeira luta dele, melhor de 3"]
-    D["🥊 Duelo<br/>luta quem apareceu menos<br/>nos últimos 20 duelos"] --> L
-    ES --> L["🎮 Luta gravada<br/>o jogo calcula golpe a golpe<br/>com o som de verdade"]
+    D["🥊 Duelo<br/>quem apareceu menos"] --> L
+    ES --> L["🎮 Luta gravada<br/>golpe a golpe, com som"]
     R --> L
     L --> M["🎬 Montagem<br/>vídeo em pé e vídeo deitado<br/>corte das partes paradas"]
-    M --> V{"🔍 Guardas<br/>tem som na luta?<br/>falta alguma peça?<br/>título já está no ar?"}
+    M --> V{"🔍 Guardas<br/>som, peças e título"}
     V -- tudo certo --> S["📦 Estoque"]
     V -- barrado --> X["⏸️ Fora da fila<br/>até alguém consertar"]
-    S --> H["📤 Publicação<br/>duelo 4 · build 3 · estreia 1"]
-    G["🎨 Palco Godot<br/>visual novo, em teste"] -. ainda não publica .-> M
+    S --> H["📤 Publicação<br/>mistura de formatos"]
+    G["🎨 Palco Godot<br/>visual novo"] -. ainda não publica .-> M
 
-    style S fill:#e3f0ff,stroke:#36c,color:#222
-    style X fill:#fff1c2,stroke:#b80,color:#222
-    style G fill:#eeeeee,stroke:#888,color:#222
+    style S fill:#e3f0ff,stroke:#36c,color:#222,font-size:14px
+    style X fill:#fff1c2,stroke:#b80,color:#222,font-size:14px
+    style G fill:#eeeeee,stroke:#888,color:#222,font-size:14px
 ```
 
 ## Cada passo, em palavras
@@ -39,7 +39,7 @@ flowchart TD
 ## Quando a fábrica trabalha
 | Modo | Quando | O que faz |
 |---|---|---|
-| Lote | segunda a quarta, 07h–22h | gera até cobrir a semana; na segunda o alvo é 90 vídeos (45 duelos, 34 builds e 12 estreias) |
+| Lote | segunda a quarta, 07h–22h | gera até cobrir a semana e o piso; o retrato atual fica em [[📊 Agora]] |
 | Reposição | quinta a domingo, 07h–22h | só gera se o canal cair abaixo de 20 vídeos (2 dias) |
 | Estoque zero | fora do horário, sem nenhum vídeo | libera tudo até o piso |
 | Noite | fora do horário, com estoque | não faz nada |

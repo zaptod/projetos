@@ -36,7 +36,7 @@ Um juiz automático aplica os três em cada clipe.
   - o zumbi que nascia preso no canto agora sai andando;
   - o gravador não morre mais quando um arquivo é salvo no meio;
   - cada clipe sai com o próprio veredito.
-- **MVP decidido em 03/10: o pacote mínimo do duelo elaborado.** Ele traz:
+- **Primeira versão decidida em 03/10: o pacote mínimo do duelo elaborado.** Ele traz:
   - 3 planos escolhidos pelo país (lanças; isca e emboscada; armadilhas);
   - elenco misto, com civis para proteger;
   - balões de texto e efeitos;
@@ -61,7 +61,7 @@ Um juiz automático aplica os três em cada clipe.
   - o país muda só cor, nomes, adereço e idioma;
   - sem voz, só balões de texto;
   - arte no palco Godot.
-- **Quando fazer o elaborado:** "depois da estabilização" (28/09). A escolha do MVP em 03/10 traz parte disso para agora, e a documentação diz que esse ponto precisa ser revisto.
+- **Quando fazer o elaborado:** "depois da estabilização" (28/09). A escolha da primeira versão em 03/10 traz parte disso para agora, e a documentação diz que esse ponto precisa ser revisto.
 - **Autorização permanente** (17/09): o que a sessão do zombie propuser fazer, o orquestrador aprova sem te perguntar. Ficam de fora publicar, contas, envio para a internet e decisão de produto.
 
 Todas as decisões deste canal: [[04 🧭 Decisões/Zombie|Decisões do Zombie]].

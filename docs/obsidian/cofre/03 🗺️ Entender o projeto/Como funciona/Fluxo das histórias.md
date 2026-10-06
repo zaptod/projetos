@@ -22,6 +22,6 @@ A [[03 🗺️ Entender o projeto/Glossário#IA de texto|IA de texto]] escreve a
 
 ## Quando trabalha
 
-A produção de madrugada, entre 01h e 06h, **ainda roda** nesta transição quando o próximo horário precisa de vídeo. A regra futura de produção diurna está decidida, mas ainda não está rodando por inteiro.
+A produção de madrugada, entre 01h e 06h, **ainda roda** nesta transição quando o próximo horário precisa de vídeo. A produção em lote de dia foi decidida em 30/09; ainda não está rodando por inteiro.
 
 Veja [[03 🗺️ Entender o projeto/Como funciona/Publicação|Publicação]] e [[03 🗺️ Entender o projeto/Canais/Histórias|o canal]].

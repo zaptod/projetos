@@ -15,20 +15,14 @@ Lutas entre bolinhas armadas, calculadas golpe a golpe por um jogo próprio. Sã
 **A mistura por horário** é duelo 4, build 3, estreia 1 (são pesos: o duelo fica com metade dos horários). Formato sem estoque cede o horário para outro.
 
 ## Por que o duelo é o formato principal
-A retenção tem duas medidas: porcentagem média assistida e segundos médios vistos. Os valores atuais ficam em [[📊 Agora|Agora]].
-- duelo **51,5%**;
-- build 25,4%;
-- estreia 10,7%.
-
-O duelo também é o mais barato de fazer (uns 4 minutos cada). Só que havia poucos duelos medidos (5 a 7): a regra é esperar uns 10 medidos antes de aumentar a cota dele.
+A retenção tem duas medidas: porcentagem média assistida e segundos médios vistos. Os números atuais ficam em [[📊 Agora|Agora]]. O duelo também é o formato mais curto de produzir; a mistura só muda quando houver medição suficiente.
 
 ## Como um vídeo nasce
 A roleta cria um personagem novo e grava a estreia dele. O duelo escolhe quem lutou menos nos últimos 20 duelos. O jogo grava a luta com o som de verdade, a máquina monta o vídeo em pé e deitado, e as guardas conferem antes de ir ao estoque.
 O caminho completo, com o desenho, está em [[Fluxo dos builds]].
 
 ## Situação
-- **Produção em lote** desde segunda 05/10, de segunda a quarta, das 07h às 22h. O alvo de segunda é 90 vídeos (45 duelos, 34 builds e 12 estreias). A quarta só trabalha se a terça não fechou o alvo. De quinta a domingo, só repõe abaixo de 20.
-- **O último retrato do estoque que tenho é de 30/09:** 25 vídeos. Dez eram duelos com o som real; 15 eram builds com o som antigo (sintetizado). Não tenho número mais novo nas fontes.
+- **Produção em lote** de segunda a quarta, das 07h às 22h. De quinta a domingo, só repõe abaixo do piso. Estoque e ritmo atuais ficam em [[📊 Agora|Agora]].
 - **Som real da luta** desde 28/09. Antes disso, o som do jogo nunca tinha entrado num vídeo: de 15 a 28/09, 38 de 129 publicações saíram com a luta muda por baixo da música.
 - **Visual novo no palco Godot** (o programa de desenho que substitui o traço feito por código): aprovado para seguir. A troca do duelo de produção espera o ajuste da corrente.
 - **A corrente** está sendo refeita (você pediu em 30/09: "a animação dela é muito feia"). A mecânica nova já existe, mas está desligada; a próxima etapa na fila é a arte, o som e a comparação lado a lado.
@@ -46,10 +40,10 @@ O caminho completo, com o desenho, está em [[Fluxo dos builds]].
 - **Corrente:** bola física com momento; armas pesadas e leves; só para lutas novas (01/10).
 - **Estilo da imagem-mestra:** Anime (02/10).
 - **Lote das builds** de segunda a quarta (01/10).
-- **Parede de planos do Digen:** deixar em espera (05/10).
+- **Planos que dependiam do Digen:** ficam em espera (05/10).
 
 Todas as decisões deste canal: [[04 🧭 Decisões/Neural Fights (builds)|Decisões do Neural Fights]].
 
 ## Audiência
-- YouTube (27/09): 3 inscritos, 135 vídeos, 7.027 views.
-- Um terço das views vinha da **busca** do YouTube, não só do feed de Shorts (64% Shorts, 34% busca).
+
+Os números atuais ficam em [[📊 Agora|Agora]].

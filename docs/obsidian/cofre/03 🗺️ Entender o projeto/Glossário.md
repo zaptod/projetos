@@ -4,6 +4,48 @@ _Escrita pelo Claude a partir da documentação do projeto em 06/10/2026. Pode l
 
 Palavras que aparecem nas conversas, em ordem alfabética. Uma linha cada.
 
+### IA de texto
+IA que escreve ou conversa em palavras, como ChatGPT, Gemini, DeepSeek e Claude.
+
+### Montagem
+Etapa que junta imagens, voz, som e cortes para formar o vídeo final.
+
+### Claude
+IA que organiza a equipe de programação e acompanha os pedidos grandes.
+
+### Cofre
+A pasta de notas do Obsidian deste projeto, sincronizada para o celular.
+
+### Syncthing
+Programa gratuito que copia o cofre entre PC e celular.
+
+### Shorts
+Vídeo curto, vertical, do YouTube.
+
+### MVP
+Primeira versão pequena que já permite testar uma ideia de verdade.
+
+### Banco de lutadores
+Lista dos personagens que já podem lutar no Neural Fights.
+
+### Compactação
+Resumo que um chat deixa para continuar sem perder o contexto.
+
+### Teto de uso
+Limite de uso das IAs; ao alcançá-lo, o trabalho para em segurança.
+
+### Veto
+Parecer da IA que encontrou um problema no vídeo e o tirou da fila limpa.
+
+### Cinema
+Tela do app onde se vê o resultado dos vídeos.
+
+### Biblioteca
+Tela do app que reúne os arquivos e registros do projeto.
+
+### Pergaminhos
+Nome das notas longas de explicação dentro do app.
+
 - **A conferir (lista):** vídeo que fica preso até uma pessoa olhar, porque o clique de publicar não teve confirmação ou porque saiu retido.
 - **Agendador:** o relógio do Windows que dispara as tarefas sozinho (postar, criar, gerar).
 - **Agente:** um ajudante de IA especialista numa parte do sistema. Ver [[A equipe]].

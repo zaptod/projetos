@@ -47,7 +47,7 @@ As regras que já custaram caro. Cada uma traz o porquê em uma frase.
     **Por quê:** ele já pegou defeitos que os testes deixaram passar, como títulos cortados errado e uma parte retida chegando ao TikTok sem marca (05/10).
 19. **Claude proibido quer dizer: só o Claude e os agentes dele param num ponto seguro; os outros serviços seguem.** Antes de qualquer trabalho automático, confere-se o interruptor.
     **Por quê:** em 30/09 você proibiu às 12:11 e os agentes seguiram até 12:57, e até um reinício agendado rodou.
-20. **Passou de 50% do uso da janela de 5 horas do Claude, para tudo** (29/09).
+20. **Passou de 50% do uso da janela de 5 horas do Claude, para tudo** (29/09). O teto atual aparece em [[📊 Agora|Agora]].
     **Por quê:** em 28/09, 11 agentes em paralelo estouraram o limite três vezes e deixaram arquivos pela metade.
 21. **IA que falha duas vezes num papel sai do papel na hora.**
     **Por quê:** o Gemini travava e recusava como juiz de sprite, e insistir nele só atrasava.

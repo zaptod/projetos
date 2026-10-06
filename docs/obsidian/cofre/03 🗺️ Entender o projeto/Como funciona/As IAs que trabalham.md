@@ -19,7 +19,7 @@ O projeto usa dois tipos de IA:
 ### Imagens das histórias, depois do PicassoIA
 - Só o **Gemini** (cerca de 20 fotos por hora) e o **ChatGPT** (cerca de 15 a 30 por hora) desenham.
 - **Um gerador por história** (03/10), para o rosto não mudar no meio da série.
-- **Duas histórias ao mesmo tempo, uma em cada gerador** (06/10).
+- **Duas histórias ao mesmo tempo, uma em cada gerador:** decidido em 06/10; ainda não está rodando.
 - O Gemini vem primeiro no rodízio (29/09).
 
 ### Por que o Gemini é o último a escrever roteiro
