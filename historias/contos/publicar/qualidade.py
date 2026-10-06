@@ -715,6 +715,24 @@ def vistoriar_parte(historia_id: str, parte: int, caminho: Path,
     for motivo in pertinencia.problemas(cenas_da_parte(roteiro, parte)):
         laudo["erros"].append(f"roteiro: {motivo}")
 
+    # A RECUSA DO LLM NAO VAI AO AR (05/10/2026). A h59 p06 tinha como titulo
+    # "Não consigo te ajudar com isso. Sou só um modelo de linguagem..." e o
+    # catalogo, a capa e o mp4 a mostravam (`R.TITULO_RECUSADO`). O titulo tem
+    # conserto sem LLM — o reparo poe o titulo do plano e re-renderiza —, por
+    # isso o erro NAO comeca com "roteiro:". A narracao recusada nao tem: e
+    # "roteiro:", e o reparo a deixa para quem escreve.
+    recusado = R.recusa_no_titulo(roteiro, parte)
+    if recusado:
+        laudo["erros"].append(
+            f"{R.TITULO_RECUSADO}: \"{' '.join(recusado.split())[:90]}\" "
+            "(o reparo poe o titulo do plano e re-renderiza)")
+    recusadas = R.cenas_com_recusa(roteiro, parte)
+    if recusadas:
+        laudo["erros"].append(
+            "roteiro: a narracao da(s) cena(s) "
+            f"{', '.join(str(n) for n in recusadas[:6])} e recusa do LLM; a "
+            "parte precisa ser escrita de novo")
+
     laudo["erros"].extend(_erros_das_imagens(historia_id, roteiro, parte))
     if not _capa_existe(historia_id, roteiro, parte):
         # AVISO e nao erro: a capa melhora o clique, mas um video sem ela

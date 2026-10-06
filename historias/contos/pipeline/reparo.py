@@ -297,6 +297,54 @@ def _nao_da_para_consertar(erros: list) -> list[str]:
     return fora
 
 
+def _titulo_recusado(erros: list) -> bool:
+    """A vistoria achou a recusa do LLM no titulo da parte?"""
+    from ..roteiro import roteiro as R
+    return any(R.TITULO_RECUSADO in str(e) for e in erros or [])
+
+
+def _trocar_titulo_recusado(historia_id: str, parte: int, *,
+                            log=print) -> str:
+    """Poe o titulo do plano no lugar da recusa e grava. Devolve o novo.
+
+    05/10/2026, h59 p06: o titulo era a recusa e as 14 cenas eram normais.
+    O conserto nao precisa de LLM: o titulo que a biblia planejou para a
+    parte (`R.titulo_do_plano`) ou, sem ele, nenhum — `titulo_da_parte` fica
+    `Marca (Parte n/N)`. O titulo recusado fica em `titulo_recusado`.
+    """
+    from ..roteiro import roteiro as R
+    from . import conserto_de_cena as C
+
+    roteiro = R.carregar(historia_id)
+    dados = R.parte_de(roteiro, parte)
+    antigo = str(dados.get("titulo") or "")
+    novo = R.titulo_do_plano(historia_id, parte)
+    dados["titulo_recusado"] = antigo
+    dados["titulo"] = novo
+    C.gravar_roteiro(historia_id, roteiro)
+    log(f"[reparo] {historia_id} p{parte}: titulo recusado trocado por "
+        f"\"{novo or '(so a marca)'}\".")
+    return novo
+
+
+def _voltar_titulo_recusado(historia_id: str, parte: int) -> None:
+    """Desfaz a troca quando o render nao saiu. Nunca levanta.
+
+    Sem isto, o roteiro limpo faria a vistoria aprovar o mp4 VELHO, que
+    ainda tem a recusa desenhada na primeira imagem e na capa.
+    """
+    from ..roteiro import roteiro as R
+    from . import conserto_de_cena as C
+    try:
+        roteiro = R.carregar(historia_id)
+        dados = R.parte_de(roteiro, parte)
+        if "titulo_recusado" in dados:
+            dados["titulo"] = dados.pop("titulo_recusado")
+            C.gravar_roteiro(historia_id, roteiro)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 NOMES_DOS_GERADORES = {"picasso": "PicassoIA", "gemini": "Gemini",
                        "chatgpt": "ChatGPT", "grok": "Grok"}
 
@@ -491,7 +539,21 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
         detalhe = plano_da_ia["detalhe"]
     acao = ""
     try:
-        if colagens:
+        if _titulo_recusado(erros):
+            # O mp4 e a capa trazem o titulo na primeira imagem: trocar so no
+            # roteiro deixaria a recusa queimada no video. Por isso re-render
+            # (que redesenha a capa). Os outros motivos ficam para a proxima
+            # passada: a vistoria abaixo ainda os ve.
+            novo = _trocar_titulo_recusado(historia_id, parte, log=log)
+            try:
+                pipeline.render(historia_id, parte=parte, log=log)
+            except BaseException:
+                _voltar_titulo_recusado(historia_id, parte)
+                raise
+            acao = ("troquei o titulo recusado pelo do plano ("
+                    + (f"\"{novo}\"" if novo else "so a marca")
+                    + ") e re-renderizei")
+        elif colagens:
             porque = {}
             trocadas, guardadas = _refazer_cenas(
                 pipeline, historia_id, parte, colagens,

@@ -169,6 +169,47 @@ def _completar_parte(cliente, texto: str, numero: int, cenas_alvo: int,
     return parcial
 
 
+def _titulo_aceito(titulo: str, plano: dict, numero: int, log=print) -> str:
+    """O titulo que a parte grava: nunca a recusa enlatada.
+
+    05/10/2026, h59 p06: a retomada voltou com "Não consigo te ajudar com
+    isso. Sou só um modelo de linguagem...", `R.parse` a leu como TITULO, as
+    cenas vieram da continuacao e a parte foi gravada assim — e foi ao
+    catalogo, a capa e o mp4. Titulo recusado cai no titulo que a biblia
+    planejou para a parte (o mesmo LLM, antes); se ele tambem for recusa, a
+    parte FALHA (`RecusaEnlatada`) e a retomada a escreve de novo.
+    """
+    from ..llm.texto import e_recusa_enlatada
+
+    escolhido = titulo or (plano or {}).get("titulo") or ""
+    if not e_recusa_enlatada(escolhido):
+        return escolhido
+    reserva = str((plano or {}).get("titulo") or "")
+    log(f"[serie] parte {numero}: o titulo veio com a recusa enlatada "
+        f"({' '.join(escolhido.split())[:80]}); "
+        + (f"fico com o do plano ({reserva})." if reserva
+           and not e_recusa_enlatada(reserva) else "e o plano nao tem outro."))
+    if reserva and not e_recusa_enlatada(reserva):
+        return reserva
+    raise RecusaEnlatada(
+        f"o titulo da parte {numero} e a recusa enlatada e o plano nao tem "
+        "outro: " + " ".join(escolhido.split())[:120])
+
+
+def _sem_recusa_nas_cenas(cenas, numero: int) -> None:
+    """Levanta `RecusaEnlatada` se alguma narracao e a frase de recusa.
+
+    Medido em 05/10/2026: nenhuma das 4110 narracoes do acervo e recusa —
+    isto e a porta, nao uma limpeza. Falha (e a retomada reescreve) em vez
+    de gravar: a narracao vira voz e legenda.
+    """
+    recusadas = R.cenas_recusadas(cenas)
+    if recusadas:
+        raise RecusaEnlatada(
+            f"a narracao da(s) cena(s) {recusadas[:6]} da parte {numero} e a "
+            "recusa enlatada do LLM; a parte nao foi gravada")
+
+
 TENTATIVAS_DE_COERENCIA = 2
 
 
@@ -385,9 +426,11 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
                                         cenas_por_parte, pasta, config,
                                         biblia, log)
             plano = next((p for p in biblia["partes"] if p["n"] == numero), {})
+            _sem_recusa_nas_cenas(parcial["cenas"], numero)
             partes_prontas.append({
                 "n": numero,
-                "titulo": parcial["titulo"] or plano.get("titulo") or "",
+                "titulo": _titulo_aceito(parcial["titulo"], plano, numero,
+                                         log=log),
                 "cliffhanger": plano.get("cliffhanger", ""),
                 "cta": parcial["cta"],
                 "cenas": parcial["cenas"],
@@ -580,9 +623,11 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                                             cenas_por_parte, pasta, config,
                                             biblia, log)
                 plano = next((p for p in biblia["partes"] if p["n"] == numero), {})
+                _sem_recusa_nas_cenas(parcial["cenas"], numero)
                 partes_prontas.append({
                     "n": numero,
-                    "titulo": parcial["titulo"] or plano.get("titulo") or "",
+                    "titulo": _titulo_aceito(parcial["titulo"], plano,
+                                             numero, log=log),
                     "cliffhanger": plano.get("cliffhanger", ""),
                     "cta": parcial["cta"],
                     "cenas": parcial["cenas"],

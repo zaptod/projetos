@@ -290,8 +290,22 @@ def parte_de(roteiro: dict, numero: int) -> dict:
 
 TITULO_MAXIMO = 100
 
+# O "Parte N" que o LLM escreve: com algarismo ou por extenso ("Vila Bela —
+# Parte Um: O Forasteiro", achado do conferente em 05/10/2026). O `\b` depois
+# da palavra e o que impede "Parte Umbigo" de virar "bigo".
+_NUMERO_DA_PARTE = (r"(?:\s*\d+|\s+(?:um|uma|dois|duas|tr[eê]s|quatro|cinco"
+                    r"|seis|sete|oito|nove|dez)\b)(?:\s*(?:/|de)\s*\d+)?")
 
-def limpar_titulo_de_parte(texto: str) -> str:
+
+def _caixa_normal(texto: str) -> str:
+    """CAIXA ALTA INTEIRA vira capitalizacao normal; o resto fica como veio."""
+    letras = [c for c in texto if c.isalpha()]
+    if letras and all(c.isupper() for c in letras):
+        return texto.capitalize()
+    return texto
+
+
+def limpar_titulo_de_parte(texto: str, *, caixa: bool = True) -> str:
     """Tira o que o LLM escreveu por conta propria e nao e titulo.
 
     Medido em 11/09/2026: a parte 3 da `historia_00005` foi ao ar como
@@ -302,21 +316,26 @@ def limpar_titulo_de_parte(texto: str) -> str:
 
     O numero da parte sai daqui porque quem o escreve e `titulo_da_parte`,
     sempre do mesmo jeito, e nao o modelo.
+
+    `caixa=False` deixa a CAIXA ALTA como veio: numa serie, `titulo_da_parte`
+    so normaliza DEPOIS de cortar a marca (05/10/2026: normalizar antes fazia
+    `AS TRÊS COMPORTAS — A CHEIA` virar `As Três Comportas — a cheia`).
     """
     limpo = " ".join(str(texto or "").split())
     # "Parte 1: ...", "Parte 1/6 - ...", e "Parte 1" sozinho (05/10/2026: o
     # `As Três Comportas — Parte 1` sobrava assim depois de tirar a marca).
-    limpo = re.sub(r"^\s*parte\s*\d+(?:\s*(?:/|de)\s*\d+)?\s*(?:[-–—:.]\s*|$)",
+    limpo = re.sub(r"^\s*parte" + _NUMERO_DA_PARTE + r"\s*(?:[-–—:.]\s*|$)",
                    "", limpo, flags=re.I)
-    limpo = re.sub(r"\s*[\(\[]\s*parte\s+\d+(?:\s*(?:/|de)\s*\d+)?\s*[\)\]]\s*$",
-                   "", limpo, flags=re.I)
-    limpo = re.sub(r"\s+[-–—:,]\s*parte\s*\d+(?:\s*(?:/|de)\s*\d+)?\s*$", "",
-                   limpo, flags=re.I)
+    limpo = re.sub(r"\s*[\(\[]\s*parte" + _NUMERO_DA_PARTE
+                   + r"\s*[\)\]]\s*$", "", limpo, flags=re.I)
+    # " - Parte 1", ": Parte 1" e a virgula colada (`Vila Bela, Parte 1`,
+    # 05/10/2026), que nao tem espaco antes.
+    limpo = re.sub(r"(?:\s+[-–—:,]|\s*[,–—:])\s*parte" + _NUMERO_DA_PARTE
+                   + r"\s*$", "", limpo, flags=re.I)
     # CAIXA ALTA INTEIRA vira capitalizacao normal. Em titulo de video ela le
     # como grito, e so uma das seis partes vinha assim.
-    letras = [c for c in limpo if c.isalpha()]
-    if letras and all(c.isupper() for c in letras):
-        limpo = limpo.capitalize()
+    if caixa:
+        limpo = _caixa_normal(limpo)
     return limpo.strip(" -–—:")
 
 
@@ -360,7 +379,8 @@ def _sem_a_marca(proprio: str, marca: str) -> str:
         cortado = proprio
         for sep in _SEPARADOR_DA_MARCA.finditer(proprio):
             if _comparavel(proprio[:sep.start()]) == alvo:
-                cortado = limpar_titulo_de_parte(proprio[sep.end():])
+                cortado = limpar_titulo_de_parte(proprio[sep.end():],
+                                                 caixa=False)
                 break
         if cortado == proprio:
             break
@@ -388,15 +408,23 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
     except KeyError:
         return base
     total = len(roteiro.get("partes") or []) or roteiro.get("partes_esperadas")
-    proprio = limpar_titulo_de_parte(parte.get("titulo") or "")
-    if not roteiro.get("serie"):
+    serie = bool(roteiro.get("serie"))
+    proprio = limpar_titulo_de_parte(parte.get("titulo") or "", caixa=not serie)
+    if not serie:
         return proprio or base
 
     marca = nome_da_serie(roteiro)
     # UM marcador de parte so, o "(Parte n/N)" do fim, e a marca uma vez so:
     # o LLM escreve o titulo da parte ja com a serie e o "Parte N:" na frente
     # (05/10/2026, 30 de 294 titulos — ver `_sem_a_marca`).
-    proprio = _sem_a_marca(proprio, marca)
+    cortado = _sem_a_marca(proprio, marca)
+    # A CAIXA DEPOIS DO CORTE, e o resto comeca com maiuscula (05/10/2026):
+    # `Vila Bela: o forasteiro` sobrava `o forasteiro`, que no titulo virava
+    # `Vila Bela — o forasteiro`. Sem corte, o titulo fica como o LLM o fez.
+    houve_corte = cortado != proprio
+    proprio = _caixa_normal(cortado).strip(" -–—:")
+    if houve_corte and proprio:
+        proprio = proprio[0].upper() + proprio[1:]
     ordem = f"Parte {numero}" + (f"/{total}" if total else "")
     # A marca vem PRIMEIRO: e ela que se repete, e o olho a encontra no fim
     # de uma fileira de miniaturas. O titulo da parte vem depois, porque e o
@@ -411,6 +439,63 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
         curto = proprio[:max(0, folga)].rstrip(" ,;–—-")
         titulo = " — ".join(p for p in (marca, curto) if p) + f" ({ordem})"
     return titulo
+
+
+# A RECUSA DO LLM NO LUGAR DO TEXTO (05/10/2026). A `historia_00059` p06 tinha
+# como titulo "Não consigo te ajudar com isso. Sou só um modelo de linguagem
+# e não tenho capacidade de entender e responder a essa questão." — a retomada
+# das 09:06 voltou com a recusa, o parser a leu como titulo e as cenas vieram
+# da continuacao. O catalogo listava "Vila Bela — Não consigo te ajudar...
+# (Parte 6/6)", e a capa e o mp4 traziam a frase. Medido no acervo inteiro
+# com `e_recusa_enlatada`: 1 titulo em 294 partes, 0 narracoes em 4110 cenas.
+# A pergunta e a mesma do detector ("este texto e a frase fixa de 'isso eu
+# nao faco'?"), so que feita ao pedaco do roteiro que a frase ocupou.
+TITULO_RECUSADO = "o titulo da parte e uma recusa do LLM"
+
+
+def recusa_no_titulo(roteiro: dict, numero: int) -> str:
+    """O titulo cru da parte, se ele e a recusa enlatada; senao `""`."""
+    from ..llm.texto import e_recusa_enlatada
+    try:
+        titulo = str(parte_de(roteiro, numero).get("titulo") or "")
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return ""
+    return titulo if e_recusa_enlatada(titulo) else ""
+
+
+def cenas_recusadas(cenas) -> list[int]:
+    """Os numeros das cenas cuja narracao e a recusa enlatada."""
+    from ..llm.texto import e_recusa_enlatada
+    return [int(c.get("n") or i) for i, c in enumerate(cenas or [], 1)
+            if isinstance(c, dict) and e_recusa_enlatada(c.get("narracao"))]
+
+
+def cenas_com_recusa(roteiro: dict, numero: int) -> list[int]:
+    """As cenas DESTA parte cuja narracao e a recusa enlatada."""
+    try:
+        cenas = parte_de(roteiro, numero).get("cenas")
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return []
+    return cenas_recusadas(cenas)
+
+
+def titulo_do_plano(historia_id: str, numero: int) -> str:
+    """O titulo que a biblia planejou para a parte, se nao for recusa.
+
+    E o que entra no lugar do titulo recusado (reparo): foi o mesmo LLM que
+    o escreveu, na biblia, para esta parte. `""` (so a marca) sem biblia.
+    """
+    from ..llm.texto import e_recusa_enlatada
+    try:
+        with open(OUTPUTS / historia_id / "biblia.json",
+                  encoding="utf-8-sig") as fh:
+            biblia = json.load(fh)
+        plano = next((p for p in biblia.get("partes") or []
+                      if int(p.get("n") or 0) == int(numero)), {})
+    except (OSError, ValueError, TypeError, AttributeError):
+        return ""
+    titulo = str(plano.get("titulo") or "").strip()
+    return "" if e_recusa_enlatada(titulo) else titulo
 
 
 def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,

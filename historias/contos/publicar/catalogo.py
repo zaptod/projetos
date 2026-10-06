@@ -206,6 +206,38 @@ def exportar(video: Video, destino: Path | None = None) -> Path:
     return alvo
 
 
+class RecusaDoLLM(RuntimeError):
+    """A parte tem a recusa enlatada do LLM no titulo ou na narracao."""
+
+
+def barrar_recusa(video) -> None:
+    """Levanta `RecusaDoLLM` se a parte tem a recusa do LLM no roteiro.
+
+    A ULTIMA PORTA (05/10/2026). A h59 p06 tinha como titulo "Não consigo te
+    ajudar com isso. Sou só um modelo de linguagem..." e nada barrava. A
+    vistoria (`qualidade.vistoriar_parte`) ja a tira da escolha e manda ao
+    reparo; esta guarda fica aqui porque todo upload das historias passa por
+    `publicar_youtube`/`publicar_tiktok` (postar, serie, main.py), escolhido
+    pela vistoria ou nao. Sem roteiro legivel nao inventa recusa: aquele
+    video a vistoria ja barra por outro motivo.
+    """
+    from ..roteiro import roteiro as R
+    try:
+        roteiro = R.carregar(video.fonte_id)
+    except Exception:                                          # noqa: BLE001
+        return
+    parte = int(getattr(video, "parte", 1) or 1)
+    titulo = R.recusa_no_titulo(roteiro, parte)
+    cenas = R.cenas_com_recusa(roteiro, parte)
+    if titulo or cenas:
+        onde = (f"titulo \"{' '.join(titulo.split())[:80]}\"" if titulo
+                else "narracao da(s) cena(s) "
+                + ", ".join(str(n) for n in cenas[:6]))
+        raise RecusaDoLLM(
+            f"{getattr(video, 'id', video.fonte_id)}: recusa do LLM no "
+            f"{onde}; nao sobe (o reparo conserta o titulo)")
+
+
 def publicar_youtube(video: Video, visibilidade: str | None = None, *,
                      agendar_para: str | None = None, log=print,
                      provas: list | None = None) -> str:
@@ -220,6 +252,7 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
     horario. Espalhar os pedacos ao longo de dias quebraria a leitura — eles
     sao a mesma parte, e quem assiste o primeiro quer o segundo em seguida.
     """
+    barrar_recusa(video)
     youtube = _rb_publicar_youtube
     cortes = _rb_publicar_cortes
     config = carregar_config()
@@ -244,6 +277,7 @@ def publicar_tiktok(video: Video, *, postar: bool = False, log=print,
                     prova: dict | None = None) -> str:
     """Sobe no TikTok pela conta do canal `historias` (para antes de postar
     quando `postar` e False — publicar sozinho nao e decisao de ferramenta)."""
+    barrar_recusa(video)
     tiktok = _rb_publicar_tiktok
     # `postar or None` fazia `False` virar `None`, e `None` significa "use o
     # config" — ou seja, nao dava para dizer "NAO poste" a partir daqui.

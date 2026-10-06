@@ -360,7 +360,29 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   continuam com o título antigo na primeira imagem até um re-render. Junto: a capa
   (`capa.sem_o_selo`) só tirava "(Parte 6)" e não "(Parte 1/6)", e a h54 p01 saiu com o
   selo "PARTE 1" e "(PARTE 1/6)" embaixo; agora tira os dois. Testes:
-  `tests/test_titulo_sem_serie_repetida_regressions.py`.
+  `tests/test_titulo_sem_serie_repetida_regressions.py`. **Bordas** (05/10, noite, achadas
+  pelo conferente): a caixa alta era normalizada **antes** do corte (`AS TRÊS COMPORTAS — A
+  CHEIA` virava `As Três Comportas — a cheia`) — agora `limpar_titulo_de_parte(caixa=False)`
+  e `_caixa_normal` depois do corte, e o resto cortado começa com maiúscula (`Vila Bela: o
+  forasteiro` → `Vila Bela — O forasteiro`); `Vila Bela, Parte 1` (vírgula colada) e
+  `Parte Um:` (por extenso, `_NUMERO_DA_PARTE`) saem. A marca em CAPS fica como veio. No
+  acervo: 0 dos 294 títulos mudou com isso.
+- **Recusa do LLM como título** (05/10/2026): a `historia_00059` p06 tinha como título "Não
+  consigo te ajudar com isso. Sou só um modelo de linguagem…" (a retomada das 09:06 voltou
+  com a recusa, antes de `_perguntar_sem_recusa`; o parser a leu como título e as cenas
+  vieram do `cont1`). Catálogo, capa e mp4 a mostravam; nada barrava. Medido com
+  `e_recusa_enlatada` no acervo inteiro: **1 título em 294 partes, 0 narrações em 4110
+  cenas**, 0 no ledger. Agora: `roteiro.recusa_no_titulo` / `cenas_com_recusa` (a mesma
+  pergunta do detector, feita ao pedaço do roteiro); a **vistoria** dá erro
+  (`R.TITULO_RECUSADO`, sem "roteiro:" — tem conserto) e o **reparo** põe o título do plano
+  da bíblia (`R.titulo_do_plano`; sem ele, só a marca), guarda o velho em
+  `titulo_recusado` e re-renderiza (mp4 e capa; render que falha devolve o título velho, senão
+  a vistoria aprovaria o mp4 antigo com a recusa desenhada); narração recusada é erro "roteiro:" (sem
+  conserto automático). O **catálogo** (`barrar_recusa` em `publicar_youtube` e
+  `publicar_tiktok`, por onde passa todo upload das histórias) levanta `RecusaDoLLM`. Na
+  **geração**, `gerar._titulo_aceito` troca o título recusado pelo do plano (os dois
+  recusados = `RecusaEnlatada`) e `_sem_recusa_nas_cenas` falha a parte. Testes:
+  `tests/test_titulo_recusa_do_llm_regressions.py`.
 - **Reparo que desfaz diz por quê** (05/10/2026): `reparo._refazer_cenas(..., motivos=)`
   dá o motivo por cena ("o <gerador> nao devolveu a imagem" / "a imagem do X veio e foi
   recusada: …") no detalhe e no `feito`, e o registro da cena em `imagens.json` volta com
