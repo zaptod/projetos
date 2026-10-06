@@ -263,6 +263,13 @@ palco/biblioteca/partes/lutador/<parte>/<nivel>/<alvo>/<variante>/<estado>.png (
   `opcoes.nova=true` para criar a próxima variante. Isso também é o contrato
   usado pelo recortador de folhas; PNGs múltiplos equivalem a anexos novos
   sucessivos.
+- **Quem grava o `guarda_roupa.json` é o servidor do app** (o Provador do
+  Ateliê): escrita atômica (arquivo novo + `os.replace`), LF, chaves em ordem.
+  Arquivo ilegível nunca é sobrescrito (Fixar responde 409).
+- **Variante apagada** pelo painel vai para `<alvo>/.apagadas/<carimbo de 20
+  dígitos>-vNN/` (o Desfazer a traz de volta). Como não começa com `v`, nem o
+  palco nem `dono_da_parte` a contam; quem a tinha fixa sai do guarda-roupa.
+  Rotas, telas e medidas: `docs/sessoes/app-e-bot.md`, seção "Provador".
 - **Para o que o palco JÁ procura** (arma, skill, evento, camadas de estado), o painel grava também a **cena-embrulho** no caminho de hoje. Ela é uma `.tscn` de 1 quadro com `folha_animada.gd` (ou `peca.gd` + Sprite2D, para a arma), apontando para o PNG da árvore `partes/`. A Oficina já gera esse embrulho (`painel/sprites/exportar.py:256-357`).
   - Com isso, arma, skill, efeito e camada de estado anexados aparecem **sem mudar uma linha do Godot**.
 - **O `sprites_usuario/` do Ateliê** (catálogo por animação de lado, `catalogo.json`) não serve para a bolinha modular. O painel novo usa `partes/`. Ver PERGUNTAS 6.

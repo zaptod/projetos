@@ -120,7 +120,22 @@ async function atelieCarregar() {
   } catch (erro) { $("atelie-slots").textContent = "falhou: " + erro.message; conexao(false, erro); }
 }
 
-function atelieMostrar() { atelieCarregar(); }
+// O Ateliê tem dois modos: montar as peças (anexo, recortador, antigo) e o
+// Provador (o jogo de vestir). O último usado volta na próxima abertura.
+const ATELIE_MODO = "painel.atelie.modo";
+function atelieModo() { return localStorage.getItem(ATELIE_MODO) === "provador" ? "provador" : "montar"; }
+
+function atelieTrocarModo(modo) {
+  localStorage.setItem(ATELIE_MODO, modo);
+  $("atelie-montar").classList.toggle("oculto", modo !== "montar");
+  $("atelie-provador").classList.toggle("oculto", modo !== "provador");
+  $("atelie-modo-montar").setAttribute("aria-pressed", String(modo === "montar"));
+  $("atelie-modo-provador").setAttribute("aria-pressed", String(modo === "provador"));
+  if (modo === "provador" && typeof provadorMostrar === "function") provadorMostrar();
+  else atelieCarregar();
+}
+
+function atelieMostrar() { atelieTrocarModo(atelieModo()); }
 function atelieParar() { atelieLimparUrls(); recortadorLimparUrls(); }
 
 // ------------------------------------------------------------ Montar sprites
@@ -202,7 +217,8 @@ function modularCartao(slot) {
   const anexado = slot.situacao === "anexado";
   const situacao = anexado ? "Anexado" : slot.situacao === "herdando" ? "Herdando" : "Vazio";
   const anexar = el("button", {class: "acao", type: "button"}, anexado ? "Trocar" : "Anexar");
-  anexar.addEventListener("click", () => { Modular.slot = slot; $("modular-arquivo").click(); });
+  // `nova` desliga aqui: um "+ Nova variante" cancelado não vira o próximo Anexar.
+  anexar.addEventListener("click", () => { Modular.slot = slot; Modular.nova = false; $("modular-arquivo").click(); });
   const botoes = el("div", {class: "botoes modular-acoes"}, anexar);
   if (slot.tem_anterior) {
     const desfazer = el("button", {class: "acao", type: "button"}, "Desfazer");
@@ -225,18 +241,93 @@ function modularCartao(slot) {
     el("div", {class: "modular-slot-topo"}, miniatura,
       el("div", {}, el("strong", {}, slot.rotulo),
         el("span", {class: "modular-situacao"}, situacao + (slot.aviso ? ` · ${slot.aviso}` : "")))),
-    botoes);
+    botoes, modularGaleria(slot));
+}
+
+// A galeria de variantes do cartão: cada desenho da coleção (o jogo sorteia
+// um por lutador), com Apagar a variante inteira e o Desfazer da última.
+function modularGaleria(slot) {
+  const variantes = slot.variantes || [];
+  if (Modular.grupo !== "lutador" || (variantes.length < 2 && !slot.variantes_apagadas)) return null;
+  const grade = el("div", {class: "modular-variantes"});
+  variantes.forEach((variante, i) => {
+    const img = el("img", {class: "modular-variante-img oculto", alt: `Variante ${i + 1}`});
+    modularCartaoImagem(img,
+      `/api/sprites/modulares/${encodeURIComponent(slot.id)}/imagem?variante=${variante}&v=${Modular.versao}`)
+      .catch(() => {});
+    const apagar = el("button", {class: "acao", type: "button", "aria-label": `Apagar a variante ${i + 1}`}, "Apagar");
+    apagar.addEventListener("click", () => modularApagarVariante(slot, variante, i + 1));
+    grade.append(el("figure", {class: "modular-variante", "data-variante": variante}, img,
+      el("figcaption", {}, `Variante ${i + 1}`), apagar));
+  });
+  const caixa = el("div", {class: "modular-galeria"},
+    el("p", {class: "fraco"}, variantes.length > 1
+      ? `${variantes.length} variantes: cada lutador recebe uma por sorteio (o Provador fixa).`
+      : "Uma variante só: o jogo usa esta em todos."), grade);
+  // A frase do último Apagar/Desfazer fica AQUI, junto do toque (o aviso do
+  // painel mora no fim da lista, longe da galeria).
+  if (Modular.avisoGaleria && Modular.avisoGaleria.slot === slot.id)
+    caixa.append(el("p", {class: "modular-galeria-aviso", role: "status"}, Modular.avisoGaleria.texto));
+  if (slot.variantes_apagadas) {
+    const desfazer = el("button", {class: "acao modular-desfazer-variante", type: "button"},
+      "Desfazer: trazer a variante apagada");
+    desfazer.addEventListener("click", () => modularDesfazerVariante(slot));
+    caixa.append(desfazer);
+  }
+  return caixa;
+}
+
+async function modularVariantePost(slot, caminho, falhou) {
+  try {
+    const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/variante/${caminho}`,
+      {method: "POST"});
+    Modular.avisoGaleria = {slot: slot.id, texto: resposta.mensagem};
+    modularTexto("modular-aviso", resposta.mensagem);
+    modularAplicar(resposta);
+  } catch (erro) {
+    Modular.avisoGaleria = {slot: slot.id, texto: falhou + erro.message};
+    modularTexto("modular-aviso", falhou + erro.message);
+    modularDesenhar();
+  }
+}
+
+function modularApagarVariante(slot, variante, numero) {
+  const peca = slot.rotulo.split(" · ")[0].toLowerCase();
+  if (!confirm(`Apagar a variante ${numero} de ${peca} inteira (todas as carinhas dela)? ` +
+               "Quem a usava fixa volta ao sorteio. Dá para voltar com Desfazer.")) return;
+  return modularVariantePost(slot, `${variante}/apagar`, "Não deu para apagar: ");
+}
+
+function modularDesfazerVariante(slot) { return modularVariantePost(slot, "desfazer", "Não deu: "); }
+
+// As imagens dos cartões (miniatura e galeria) valem por desenho da lista: a
+// lista é redesenhada duas vezes seguidas (a resposta do anexo e a carga
+// completa), e com uma chave por lugar a resposta atrasada do 1º desenho
+// revogava a imagem do 2º (medido em 06/10: 4 de 5 variantes em branco).
+// Agora a URL só nasce se a <img> ainda está na tela, e cai no redesenho.
+const CartaoUrls = [];
+function modularCartaoUrlsLimpar() { CartaoUrls.splice(0).forEach((url) => URL.revokeObjectURL(url)); }
+
+async function modularCartaoImagem(img, caminho) {
+  const token = localStorage.getItem(TOKEN);
+  const resposta = await fetch(caminho, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+  if (!resposta.ok) throw new Error("não consegui abrir a imagem");
+  const blob = await resposta.blob();
+  if (!img.isConnected) return;
+  const url = URL.createObjectURL(blob);
+  CartaoUrls.push(url);
+  img.src = url; img.classList.remove("oculto");
 }
 
 async function modularMiniatura(slot, img) {
   // A miniatura e a previa do proprio lugar: so ele, sem as outras pecas.
   try {
-    img.src = await modularBlob("mini:" + slot.id, `/api/sprites/modulares/${encodeURIComponent(slot.id)}/imagem?v=${Modular.versao}`);
-    img.classList.remove("oculto");
+    await modularCartaoImagem(img, `/api/sprites/modulares/${encodeURIComponent(slot.id)}/imagem?v=${Modular.versao}`);
   } catch (_) { img.classList.add("oculto"); }
 }
 
 function modularDesenhar() {
+  modularCartaoUrlsLimpar();
   modularAlvos();
   modularProgresso();
   const lutador = Modular.grupo === "lutador";
@@ -320,7 +411,13 @@ async function recortadorMandar() {
       // nova=1: o guarda-roupa cria a proxima variante (vNN) sem trocar a arte base.
       await api(`/api/sprites/modulares/${encodeURIComponent(destino)}/anexar?nova=1`, {method: "POST", body: dados});
     }
-    $("recortador-aviso").textContent = `${escolhidos.length} recorte(s) mandado(s) como variantes novas.`;
+    const rotulo = ($("recortador-destino").selectedOptions[0]?.textContent || "").toLowerCase();
+    $("recortador-aviso").textContent = (escolhidos.length === 1 ? "1 recorte virou variante nova"
+      : `${escolhidos.length} recortes viraram variantes novas`) + ` de ${rotulo}. Veja na galeria do cartão, acima.`;
+    // O cartão de destino fica à vista: a carinha do painel passa a ser a dele.
+    const slot = Modular.dados.slots.find((s) => s.id === destino);
+    if (slot && slot.estado && slot.estado !== "base") Modular.expressao = slot.estado;
+    Modular.versao++;
     modularCarregar();
   } catch (erro) { $("recortador-aviso").textContent = "Não deu: " + erro.message; }
   finally { $("recortador-mandar").disabled = false; }
@@ -416,11 +513,35 @@ async function modularVerGodot() {
   finally { botao.disabled = false; }
 }
 
+// "+ Nova variante" aceita VÁRIOS arquivos de uma vez: cada um vira a próxima
+// variante (antes só o primeiro ia; o seletor já era `multiple`).
+async function modularAnexarVariantes(arquivos) {
+  const slot = Modular.slot;
+  Modular.nova = false;
+  let feitas = 0, resposta = null;
+  try {
+    for (const arquivo of arquivos) {
+      modularTexto("modular-aviso", `enviando a variante ${feitas + 1} de ${arquivos.length}…`);
+      const dados = new FormData(); dados.append("imagem", arquivo);
+      dados.append("opcoes", JSON.stringify({nova: true}));
+      resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/anexar`, {method: "POST", body: dados});
+      feitas++;
+    }
+    modularTexto("modular-aviso", feitas === 1 ? "Variante nova anexada." : `${feitas} variantes novas anexadas.`);
+  } catch (erro) {
+    modularTexto("modular-aviso", (feitas ? `${feitas} de ${arquivos.length} anexadas; ` : "") +
+      "não deu para anexar: " + erro.message);
+  }
+  if (resposta) modularAplicar(resposta);
+}
+
 async function modularAnexar(arquivoRecebido = null) {
-  const arquivo = arquivoRecebido || $("modular-arquivo").files[0];
+  const lista = arquivoRecebido ? [arquivoRecebido] : [...$("modular-arquivo").files];
+  const arquivo = lista[0];
   $("modular-arquivo").value = "";
   const slot = Modular.slot;
   if (!arquivo || !slot) return;
+  if (Modular.nova) return modularAnexarVariantes(lista);
   const trocar = slot.situacao === "anexado" && !Modular.nova;
   if (trocar && !confirm(`Já há um desenho em ${slot.rotulo.toLowerCase()}. Trocar pelo novo? (Desfazer volta o antigo.)`)) return;
   const dados = new FormData(); dados.append("imagem", arquivo);
@@ -434,6 +555,8 @@ async function modularAnexar(arquivoRecebido = null) {
   } catch (erro) { modularTexto("modular-aviso", "Não deu para anexar: " + erro.message); }
 }
 
+$("atelie-modo-montar").addEventListener("click", () => atelieTrocarModo("montar"));
+$("atelie-modo-provador").addEventListener("click", () => atelieTrocarModo("provador"));
 $("atelie-sujeito").addEventListener("change", () => { Atelie.sujeito = $("atelie-sujeito").value; atelieCarregar(); });
 $("atelie-nome").addEventListener("change", () => atelieCarregar());
 $("atelie-arquivo").addEventListener("change", () => { Atelie.arquivo = $("atelie-arquivo").files[0] || null; atelieEnviar(); });
@@ -447,12 +570,12 @@ $("atelie-descartar").addEventListener("click", () => {
   $("atelie-previas").replaceChildren(); $("atelie-editor").classList.add("oculto");
 });
 $("modular-grupo").addEventListener("change", () => {
-  Modular.grupo = $("modular-grupo").value; Modular.alvo = ""; Modular.slot = null;
+  Modular.grupo = $("modular-grupo").value; Modular.alvo = ""; Modular.slot = null; Modular.avisoGaleria = null;
   modularTexto("modular-aviso", "");   // o aviso era do grupo anterior
   $("modular-slots").replaceChildren(); modularCarregar();
 });
 $("modular-alvo").addEventListener("change", () => {
-  Modular.alvo = $("modular-alvo").value; Modular.slot = null;
+  Modular.alvo = $("modular-alvo").value; Modular.slot = null; Modular.avisoGaleria = null;
   $("modular-slots").replaceChildren(); modularCarregar();
 });
 // Tocar na folha abre em tela cheia, com zoom do proprio navegador.

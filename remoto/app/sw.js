@@ -1,8 +1,8 @@
 // Guarda so a CASCA do app (html, icone, manifest) para abrir sem rede.
 // Dados e videos nunca entram no cache: eles vem sempre do PC.
-const CASCA = "painel-casca-v50";
+const CASCA = "painel-casca-v51";
 const ARQUIVOS = ["./", "index.html", "app.js", "vila.js", "comandos.js",
-                  "decisoes.js", "assembleia.js", "orquestrador.js", "coordenador.js", "conversa.js", "oficina.js", "equipe.js", "biblioteca.js", "atelie.js", "app.css", "bolinha_hoje.png",
+                  "decisoes.js", "assembleia.js", "orquestrador.js", "coordenador.js", "conversa.js", "oficina.js", "equipe.js", "biblioteca.js", "atelie.js", "provador.js", "app.css", "bolinha_hoje.png",
                   "manifest.webmanifest", "icones/icone-192.png",
                   "icones/icone-512.png", "icones/icone-maskable-512.png",
                   "icones/apple-touch-icon.png", "icones/favicon-32.png"];

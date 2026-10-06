@@ -890,7 +890,7 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 
 /* Atelie: grade de passos pequena o bastante para 390 px. */
 .atelie-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.atelie-campos input, .atelie-campos select { width: 100%; box-sizing: border-box; }
+.atelie-campos input, .atelie-campos select { width: 100%; box-sizing: border-box; min-height: 44px; }
 .atelie-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
 .atelie-slot { min-height: 58px; text-align: left; font: inherit; overflow: hidden; }
 .atelie-slot img { width: 34px; height: 34px; object-fit: contain; vertical-align: middle; margin-right: 4px; }
@@ -933,6 +933,59 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 @media (prefers-color-scheme: dark) {
   .modular-previa { background-color: #26303a; }
   .modular-mini { background: repeating-conic-gradient(#3a4452 0 25%, #2b333e 0 50%) 50% / 10px 10px; }
+}
+
+/* ---- Ateliê: os dois modos e o Provador, o jogo de vestir (06/10/2026) ----
+   Todo toque com >= 44 px; o fundo xadrez mostra a transparência da peça. */
+.atelie-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.atelie-modos .acao { min-height: 48px; font-weight: 600; }
+.atelie-modos .acao[aria-pressed="true"] { background: var(--acento); color: #fff; border-color: transparent; }
+#provador .acao, #provador select, #provador input[type="search"] { min-height: 44px; font: inherit; }
+#provador input[type="search"] { padding: 0 10px; border-radius: 8px; }
+.provador-lista { display: grid; gap: 6px; max-height: 340px; overflow-y: auto; margin-top: 8px; }
+.provador-item { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; text-align: left; padding: 6px 12px; }
+.provador-item.escolhido { outline: 3px solid #2f8f5b; outline-offset: -3px; }
+.provador-item-nome { font-weight: 600; }
+.provador-item-classe { grid-column: 1; font-size: .88em; color: var(--fraco); }
+.provador-fixadas { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: .92em; }
+.provador-quem { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
+.provador-quem strong { display: block; font-size: 1.1em; }
+.provador-quem .acao { flex: none; }
+.provador-palco { margin: 8px 0 0; text-align: center; }
+.provador-previa { display: block; width: min(100%, 320px); aspect-ratio: 1; object-fit: contain; margin: 0 auto 6px;
+  border-radius: 18px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; }
+.provador-pecas { display: grid; gap: 8px; margin-top: 12px; }
+.provador-peca { border: 1px solid var(--linha); border-left-width: 5px; border-radius: 12px; padding: 8px 10px;
+  background: var(--cartao); }
+.provador-peca.fixada { border-left-color: #2f8f5b; }
+.provador-peca.sorteio { border-left-color: #b8913a; }
+.provador-peca.experimento { border-left-color: var(--acento); border-style: dashed; border-left-style: solid; }
+.provador-peca-topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.provador-contagem { font-weight: 700; }
+.provador-selo { flex-basis: 100%; font-size: .92em; }
+.provador-controles { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 8px; margin: 6px 0 2px; }
+#provador .provador-seta { min-height: 64px; font-size: 30px; line-height: 1; padding: 0; }
+.provador-mini { justify-self: center; width: 88px; height: 88px; object-fit: contain; border-radius: 12px;
+  background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
+.provador-dono { margin: 2px 0 0; font-size: .88em; }
+.provador-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.provador-acoes .acao { flex: 1 0 96px; }
+.provador-geral { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+/* A galeria de variantes no cartão do painel de anexo. */
+.modular-galeria { border-top: 1px solid var(--linha); padding-top: 6px; }
+.modular-galeria p { margin: 0 0 6px; font-size: .9em; }
+.modular-variantes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.modular-variante { margin: 0; display: grid; gap: 4px; justify-items: center; font-size: .88em; }
+.modular-variante-img { width: 64px; height: 64px; object-fit: contain; border-radius: 10px;
+  background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 10px 10px; }
+.modular-variante .acao, .modular-desfazer-variante { min-height: 44px; width: 100%; font: inherit; }
+.modular-desfazer-variante { margin-top: 6px; }
+.modular-galeria-aviso { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; font-weight: 600;
+  background: rgba(184, 145, 58, .18); }
+@media (prefers-color-scheme: dark) {
+  .provador-previa, .provador-mini, .modular-variante-img {
+    background: repeating-conic-gradient(#3a4452 0 25%, #2b333e 0 50%) 50% / 12px 12px; }
+  .provador-peca.sorteio { border-left-color: #d9b45c; }
 }
 
 /* ---- o interruptor do Claude (29/09): no topo, preso ao rolar. Compacto

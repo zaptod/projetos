@@ -5,7 +5,9 @@
 As partes de lutador agora são coleções em `v01`, `v02` etc. O painel pode
 criar uma variante nova e o resolvedor sorteia a mesma combinação para cada
 personagem até que o guarda-roupa a fixe. O formato, a migração e a API estão
-em `docs/sprites/CONTRATO_SLOTS.md`.
+em `docs/sprites/CONTRATO_SLOTS.md`. O **Provador** do Ateliê (o "jogo de
+vestir", casca v51) é onde ele vê e fixa a combinação de cada lutador: ver
+"Provador" no fim deste documento.
 
 <!-- decisoes:inicio -->
 ## Decisões do Adrian (gerado — não edite à mão)
@@ -2527,6 +2529,117 @@ contrato `anexar?nova=1` (e `opcoes.nova=true`): com o guarda-roupa de
 variantes integrado (casca v50), cada recorte vira a próxima `vNN` da peça,
 sem substituir a arte-base. Peça que não é de lutador não tem coleção: o anexo
 cai no destino único e, se já houver arte, pede confirmação (409) como antes.
+Depois de mandar, a carinha do painel passa a ser a do destino (o cartão fica à
+vista) e o aviso diz "N recortes viraram variantes novas de <peça>".
+
+### Variantes no cartão (06/10/2026, casca v51)
+
+- **"+ Nova variante" com vários arquivos.** O seletor já era `multiple`, mas o
+  `modularAnexar` mandava só `files[0]`: escolher 3 olhos criava 1 variante.
+  Agora cada arquivo vira a próxima `vNN`, em sequência ("3 variantes novas
+  anexadas"). Um "+ Nova variante" cancelado não vira o próximo Anexar.
+- **Galeria no cartão** (lutador, com 2+ variantes ou alguma apagada): a
+  miniatura de cada variante na carinha do cartão (exata → família → neutra,
+  dentro da variante), "Variante N" e **Apagar** (a variante INTEIRA, todas
+  as carinhas, com confirmação). A frase do resultado aparece junto da
+  galeria (o `#modular-aviso` fica no fim da lista, longe do toque).
+- **Apagar variante** move `<alvo>/vNN/` para `<alvo>/.apagadas/<carimbo
+  20 díg>-vNN/` (o palco só lê pastas `v…`; o importador do Godot ignora
+  pasta com ponto). Quem tinha aquela variante FIXA (e é dono dela naquele
+  nível: os olhos de classe do Berserker não contam para quem apagou a v02
+  comum) sai do guarda-roupa, e a tela diz em uma frase: "Júlia a Abençoada
+  usava esta variante fixa e voltou ao sorteio." **Desfazer** traz a última
+  apagada com o nome dela (ou o próximo livre, se uma nova ocupou o número)
+  e devolve a escolha fixa a quem a tinha.
+- **Armadilha medida (06/10):** a lista é redesenhada duas vezes seguidas
+  depois de cada anexo (a resposta do anexo e a carga completa). Com uma
+  chave de blob por lugar, a resposta atrasada do 1º desenho revogava a
+  imagem do 2º: 4 de 5 variantes da galeria ficaram em branco na captura.
+  Agora a URL só nasce se a `<img>` ainda está na tela e é revogada no
+  redesenho seguinte (miniatura do cartão e do Provador também).
+
+### Provador (06/10/2026, casca v51)
+
+Decisão `builds/sprites-guarda-roupa`: cada peça é coleção de variantes, cada
+lutador tem um sorteio fixo, o guarda-roupa fixa escolhas. No Ateliê há dois
+modos no topo, **🧩 Montar peças** (o que já existia) e **👕 Provador**; o
+último usado volta (`painel.atelie.modo`), e o lutador escolhido também
+(`painel.provador.lutador`).
+
+- **Escolher o lutador:** busca pelo nome (sem acento: "julia" acha "Júlia")
+  e filtro por classe; com uma classe, o **lutador de exemplo** dela vem
+  primeiro (sorteia pela classe, como a folha do Godot sem personagem; dá
+  para experimentar, não para fixar). A lista mostra "🔒 N" de quem tem
+  escolha fixada. Até 40 por vez.
+- **O palco:** o lutador montado grande (prévia de 512 px; a pele comum sai
+  tingida pela cor do personagem, como o `modulate` do Godot), as 6 carinhas
+  + "Ver todas as 24", e uma linha por peça com desenho: `‹ miniatura ›`,
+  "Olhos 2 de 5", o selo (🔒 Fixada por você · 🎲 Sorteada pelo jogo · ✋
+  Experimentando: ainda não guardada · 🎨 Um desenho só) e de onde vem
+  ("peça comum", "peça da classe Berserker (Fúria)", "peça só deste
+  lutador"). Embaixo: 🎲 Sortear tudo, 🔒 Fixar tudo (as peças com 2+
+  desenhos), ↩ Tudo ao sorteio (pede confirmação) e Ver no Godot.
+- **O que só a tela guarda:** setas e dado mudam a `escolha` da tela (vai em
+  cada pedido); nada é gravado até **Fixar**. Recarregar volta ao que está
+  fixado.
+- **Mesma regra do palco:** o dono da peça (personagem → classe → comum), a
+  fixada e o sorteio vêm de `manifesto_sprites.dono_da_parte`,
+  `variante_escolhida` e `estado_na_variante` (o espelho Python do
+  `PartesLutador`, que `palco/testes/test_sorteio_variantes.py` compara com o
+  Godot). `remoto/test_provador.py` confere a API contra
+  `resolver_no_disco` (o mesmo espelho lendo o disco e o guarda-roupa).
+- **Ver no Godot deste lutador:** monta uma biblioteca temporária em
+  `<runtime>/previas_sprites/provador/<hash>/` só com a variante escolhida de
+  cada peça e roda a mesma `previa_sprites.tscn` com `--personagem=<nome>
+  --classe=<classe>`. O guarda-roupa de verdade não entra; guarda as 6
+  últimas. Mesma fila do Godot (um por vez, um na fila).
+
+**Rotas** (todas com token; as que gravam exigem `--acoes`):
+
+| rota | o que faz |
+| --- | --- |
+| `GET /api/sprites/provador/lutadores` | id (slug do nome = chave do guarda-roupa), nome, classe, `classe_nome`, `fixadas`; as 16 classes e os 16 exemplos |
+| `GET /api/sprites/provador?lutador=&expressao=&escolha=olhos:v02,…` | a combinação: por peça `ordem`, `atual`, `indice`/`total`, `situacao` (`fixada`/`sorteio`/`experimento`), `dono`, `imagens` (URLs prontas); `escolha` efetiva, `previa`, `godot`, `sem_desenho` |
+| `GET /api/sprites/provador/previa?…` | PNG 512 px da combinação (`X-Previa-Pecas`) |
+| `GET /api/sprites/provador/peca?lutador=&parte=&variante=&expressao=` | miniatura 160 px de uma variante |
+| `GET /api/sprites/provador/godot?…` | 202 montando / 200 PNG / 502 frase |
+| `POST /api/sprites/provador/sortear` `{lutador, escolha, expressao, parte?}` | sorteio SÓ na tela (não grava; vale sem `--acoes`) |
+| `POST /api/sprites/provador/fixar` `{…, parte?}` | grava a peça (ou todas com 2+ desenhos) no guarda-roupa |
+| `POST /api/sprites/provador/desfixar` `{…, parte?}` | tira a peça (ou todas) do guarda-roupa |
+| `GET /api/sprites/modulares/<lugar>/imagem?variante=vNN` | a galeria do cartão |
+| `POST /api/sprites/modulares/<lugar>/variante/<vNN>/apagar` · `…/variante/desfazer` | apagar a variante inteira / trazer de volta |
+
+**Guarda-roupa** (`palco/biblioteca/partes/guarda_roupa.json`, o mesmo que o
+palco lê): escrito só pelo servidor, atômico (arquivo novo + `os.replace`,
+5 tentativas se o Godot estiver lendo), sob trava, LF, chaves em ordem; sem
+mudança, não grava. Ilegível: a tela abre (tudo no sorteio), mas Fixar e
+desfixar respondem 409 "nada foi mudado" e o arquivo fica como estava. O banco
+de personagens é o mesmo par que o jogo lê (o do runtime quando existe, senão
+o do pacote; `api_http.ARQUIVO_PERSONAGENS` nos testes).
+
+**Medido em 06/10** (porta 8980, manifesto real, 110 personagens reais,
+5 olhos + 3 bocas + pele + 2 capacetes): lista 4 ms / 17,6 KB; provador
+4 ms / 4,6 KB; prévia 83 ms / 1,5 KB; miniatura 20 ms; sortear/fixar/
+desfixar 4–5 ms (máx. 29 ms); o catálogo do lutador comum segue 5 ms / 27 KB.
+
+**Provas:** `remoto/test_provador.py` (15: lista, combinação = palco, a galeria
+conta variante como o palco (`base.png` nos olhos não conta), setas →
+fixar → recarregar → desfixar, fixar tudo, sortear só na tela, exemplo não
+fixa, guarda-roupa ilegível intocado, 3 fixações simultâneas, prévia com a
+escolha e a pele tingida, miniaturas, apagar com volta ao sorteio + desfazer,
+nome ocupado no desfazer, Ver no Godot só com a combinação, < 300 ms e < 60 KB)
+e `remoto/test_app_provador_tela.py` (`NF_TESTE_NAVEGADOR=1`, claro e escuro,
+390×844; `NF_TESTE_GODOT=1` usa o Godot de verdade): 3 olhos pelo seletor
+múltiplo → recortador manda 2 recortes → galeria com 5 → Provador: busca, seta
+troca a miniatura (cor medida no canvas), Fixar, recarregar e continua fixada,
+24 carinhas, Ver no Godot, Voltar ao sorteio → apagar a variante fixada (a
+frase) → Desfazer. Toques ≥ 44 px e nenhum id/caminho na tela. Capturas em
+`<TEMP>/tela_app/provador/`.
+
+**Pendências (são do palco, não do app):** a folha do Godot pinta cada bolinha
+com uma cor fixa (`previa_sprites.gd::CORES`), não com a cor do personagem; e
+um nome longo ("Júlia a Abençoada · Berserker (Fúria)") encosta nas bordas do
+título da folha.
 
 # Aba Equipe
 

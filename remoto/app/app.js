@@ -907,7 +907,7 @@ const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
                  ["orquestrador.js", "orquestradorMostrar"], ["coordenador.js", "coordenadorMostrar"],
                  ["conversa.js", "conversaAbrir"],
                  ["oficina.js", "oficinaMostrar"], ["equipe.js", "equipeMostrar"], ["biblioteca.js", "bibliotecaMostrar"],
-                 ["atelie.js", "atelieMostrar"]];
+                 ["atelie.js", "atelieMostrar"], ["provador.js", "provadorMostrar"]];
 
 function modulosQueFaltam() {
   return MODULOS.filter(([, funcao]) => typeof window[funcao] !== "function")
