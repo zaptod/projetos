@@ -17,4 +17,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **ChatGPT: baixar pelo Compartilhar ou pelo visualizador?** — Visualizador (recomendado) (02/10/2026) `chatgpt-baixar-por`
 - ✅ **App: reorganizar as telas** — 4 objetos, um por pergunta (02/10/2026) `app-reorganizar`
 - ✅ **Obsidian no celular: como o PC chega lá** — Syncthing (grátis) (06/10/2026) `obsidian-no-celular`
-- ⏳ **Conversa: pergunta que não está na lista** — Na aba Conversa do app (e no Telegram), quando você escreve uma pergunta que não é saudação nem 'o que você está fazendo?' (ex.: 'por que o vídeo das 17h não saiu?'), o que deve acontecer? `conversa-pergunta-livre`
+- ✅ **Conversa: pergunta que não está na lista** — O modelo decide (06/10/2026) `conversa-pergunta-livre`
