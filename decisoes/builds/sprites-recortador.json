@@ -1,5 +1,17 @@
 {
   "comentario": false,
+  "consequencias": [
+    {
+      "alvo": "pedido-7f7780d0",
+      "em": "2026-10-06T09:31:37",
+      "evento": "2026-10-06T09:31:22",
+      "linha": 133,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "verde-ou-magenta",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "06/10 ~08:15, pelo chat: 'quero algo que pegue cada sprite da spritesheet que não tem fundo transparente e recorte isso, as únicas duas cores retiradas serão ou verde ou magenta'. Já decidido em 30/09 (sprites-ia-fundo): fundo magenta liso, verde nos roxos.",
   "criado": "2026-10-06T09:31:20.401910",
   "depende_de": [],
