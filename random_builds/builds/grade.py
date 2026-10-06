@@ -18,7 +18,7 @@ proprio em cada um, e o TikTok posta em todos.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # (hora, minuto), na ordem do calendario. O 00:37 e o ultimo da noite, mas no
 # calendario e o primeiro do dia — e assim que `vencidos` e `proximo` contam.
@@ -135,8 +135,27 @@ def proximo(agora: datetime | None = None) -> str:
     return f"{horario(HORAS[0])} (amanha)"
 
 
+def proximo_em(agora: datetime | None = None) -> datetime:
+    """O instante do proximo horario da grade, estritamente depois de `agora`.
+
+    `proximo` devolve texto para mostrar; quem precisa MEDIR quanto falta
+    (a reposicao da rodada nao comeca perto do horario seguinte) usa este.
+    Atravessa a meia-noite: depois das 23:37 o proximo e o 00:37 de amanha;
+    entre 00:00 e 00:37, o 00:37 de hoje.
+    """
+    agora = agora or datetime.now()
+    for dias in (0, 1):
+        base = agora + timedelta(days=dias)
+        for h in HORAS:
+            quando = base.replace(hour=h, minute=minuto(h), second=0,
+                                  microsecond=0)
+            if quando > agora:
+                return quando
+    raise ValueError("grade vazia")                      # pragma: no cover
+
+
 __all__ = ["GRADE", "HORAS", "MINUTOS", "MINUTO", "META_DIARIA_POR_CANAL",
            "META_DIARIA_TOTAL", "META_DIARIA_POR_PLATAFORMA",
            "HORAS_POR_PLATAFORMA", "CANAIS", "PLATAFORMAS", "minuto",
            "horario", "horarios", "horas_da_plataforma", "publica_em",
-           "vencidos", "proximo", "slot"]
+           "vencidos", "proximo", "proximo_em", "slot"]

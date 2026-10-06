@@ -25,6 +25,7 @@ import json
 import re
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 from builds import grade
@@ -1008,7 +1009,17 @@ def publicou_neste_horario(canal: str, plataforma: str = "youtube",
     agora = agora or datetime.now()
     alvo = str(plataforma).lower()
     horario = conferencia.chave_do_horario(agora, alvo)
-    for linha in _publicados_do_canal(canal):
+    # FALHA FECHADA (conferente do 4e8df2b, 06/10/2026). Ate aqui o ledger
+    # ilegivel virava lista vazia, e "nao sei" virava "nao publiquei": com o
+    # ledger preso na volta final, o YouTube da mesma p06 subia de novo. Esta
+    # e a guarda contra a REPETICAO, e repetir e pior que nao postar (17/09):
+    # sem ledger, a resposta e "ja foi" — com a marca `ledger_ilegivel`, que
+    # os chamadores transformam em "nao publico neste horario" e avisam.
+    try:
+        linhas = _publicados_do_canal(canal)
+    except Exception as exc:                                   # noqa: BLE001
+        return _ledger_ilegivel(canal, alvo, exc)
+    for linha in linhas:
         # Linha antiga, de antes de o registro guardar plataforma, conta como
         # YouTube: era o unico destino que existia.
         if str(linha.get("plataforma") or "youtube").lower() != alvo:
@@ -1019,15 +1030,62 @@ def publicou_neste_horario(canal: str, plataforma: str = "youtube",
     return None
 
 
+class LedgerIlegivel(RuntimeError):
+    """O ledger do canal nao pode ser lido agora ("nao sei", e nao "vazio")."""
+
+
 def _publicados_do_canal(canal: str) -> list:
+    """As linhas do ledger do canal. Levanta `LedgerIlegivel` se nao der.
+
+    Ate 06/10/2026 devolvia [] em qualquer excecao, e cada chamador herdava
+    a decisao sem saber. Agora cada um escolhe: os crivos de fila (teto,
+    titulo, recuperacao) ja tinham o seu `try` e deixam passar, por decisao;
+    a guarda de um por horario (`publicou_neste_horario`) falha FECHADA.
+    Ledger que nao existe e vazio de verdade, e nao erro.
+    """
     try:
         if canal == "historias":
             from contos.publicar import serie
             return serie.publicados()
         from builds.publicar import metricas
         return metricas.publicados()
+    except Exception as exc:                                   # noqa: BLE001
+        raise LedgerIlegivel(
+            f"{canal}: {type(exc).__name__}: {str(exc)[:160]}") from exc
+
+
+def _ledger_ilegivel(canal: str, plataforma: str, exc: BaseException) -> dict:
+    """A "linha" que a guarda devolve quando nao leu o ledger: BARRA.
+
+    Vai ao log e ao diario (erro), e a rodada transforma em ficha que nao
+    publica (`_ficha_do_ledger_ilegivel`), que o Telegram mostra.
+    """
+    texto = (f"nao consegui ler o ledger de {canal} para saber se o "
+             f"{plataforma} ja saiu neste horario ({exc}); NAO publico — "
+             "'nao sei' nao vira 'nao publiquei'")
+    _linha(f"[postar] {texto}")
+    try:
+        from builds import atividade
+        atividade.registrar("publicacao", atividade.ERRO, texto, canal,
+                            etapa="publicar.guarda")
     except Exception:                                          # noqa: BLE001
-        return []
+        pass
+    return {"ledger_ilegivel": texto, "plataforma": plataforma,
+            "video_id": None, "quando": None}
+
+
+def _ficha_do_ledger_ilegivel(canal: str, *achados) -> dict | None:
+    """A ficha da rodada quando a guarda nao leu o ledger; `None` se leu.
+
+    Barra o CANAL inteiro no horario, e nao so o destino: os dois destinos
+    leem o mesmo arquivo, e levar "so o TikTok" pediria o video do YouTube,
+    que esta justamente no ledger que nao foi lido.
+    """
+    for achado in achados:
+        if achado and achado.get("ledger_ilegivel"):
+            return {"canal": canal, "feito": False, "ledger_ilegivel": True,
+                    "motivo": achado["ledger_ilegivel"]}
+    return None
 
 
 def _ja_foi_neste_horario(canal: str, plataforma: str = "youtube",
@@ -1159,6 +1217,9 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     # mostrar a mesma coisa, e assim o TikTok recupera o atraso sozinho.
     ja_yt = None if so_ver else publicou_neste_horario("historias", "youtube")
     ja_tk = None if so_ver else publicou_neste_horario("historias", "tiktok")
+    ilegivel = _ficha_do_ledger_ilegivel("historias", ja_yt, ja_tk)
+    if ilegivel:
+        return ilegivel
     tiktok_agora = _tiktok_neste_horario()
     if ja_yt and (ja_tk or not tiktok_agora):
         return _ja_foi_neste_horario("historias", "youtube")
@@ -2392,7 +2453,11 @@ def publicar_da_reserva(so_ver: bool = False) -> dict:
     if not _tiktok_neste_horario():
         return {"feito": False, "reserva": 0,
                 "motivo": "este horario nao e da grade do TikTok"}
-    if not so_ver and publicou_neste_horario("builds", "tiktok"):
+    ja_tk = None if so_ver else publicou_neste_horario("builds", "tiktok")
+    if ja_tk and ja_tk.get("ledger_ilegivel"):
+        return {"feito": False, "reserva": 0,
+                "motivo": ja_tk["ledger_ilegivel"]}
+    if ja_tk:
         return {"feito": False, "reserva": 0,
                 "motivo": "builds ja foi ao TikTok neste horario"}
     fila = reserva_do_tiktok()
@@ -2793,12 +2858,25 @@ def _anotar_falha_do_tiktok(ficha: dict, falha: dict) -> None:
 # que a rede derrubou ganha UMA volta no fim da rodada, depois dos canais que
 # rodaram atras dele, e so se um deles publicou sem queda de rede (a prova de
 # que ela voltou). A volta das 07:10 estaria a 33 min do comeco: a janela de
-# 25 min a barrava, por isso 40 — o menor buraco da grade e de 60 min
-# (20:37 -> 21:37 ... 23:37 -> 00:37), e a volta que comeca aos 40 termina
-# por volta dos 52 (uma tentativa inteira levou 12 min, 06:53:54 -> 07:05:50).
+# 25 min a barrava, por isso a volta tem a sua, de 40. A reposicao comum
+# continua com 25: ela roda sem prova de que a rede voltou.
+#
+# O LIMITE QUE VALE E O HORARIO SEGUINTE, nao o comeco da rodada (conferente
+# do 4e8df2b, 06/10/2026). Contar so do comeco deixava uma tentativa comecar
+# a poucos minutos do proximo horario — a rodada atrasada pelo Agendador
+# (`StartWhenAvailable`) ou pela espera da rede comeca tarde — e uma
+# tentativa medida levou 12 min (06:53:54 -> 07:05:50); o conferente mostrou
+# que ela pode passar de 30. Entao NENHUMA tentativa (reposicao ou volta)
+# comeca a menos de `MARGEM_ANTES_DO_PROXIMO_MIN` do proximo horario
+# (`grade.proximo_em`), e isso e conferido de novo depois de cada espera,
+# logo antes de publicar. A margem diminui o encontro de duas rodadas, mas
+# nao o impede (uma tentativa pode durar mais que ela): quem impede e a
+# trava da rodada (`TRAVA_DA_RODADA`, em `main`).
 TENTATIVAS_POR_REDE = 2              # tentativas EXTRAS, por canal
 PAUSA_ANTES_DE_REPOR_S = 60.0
-JANELA_DE_REPOSICAO_MIN = 40         # contados do comeco da rodada
+JANELA_DE_REPOSICAO_MIN = 25         # reposicao comum, do comeco da rodada
+JANELA_DA_VOLTA_FINAL_MIN = 40       # volta final (com prova de rede boa)
+MARGEM_ANTES_DO_PROXIMO_MIN = 20     # nada comeca mais perto que isto
 ESPERA_DE_REDE_NA_REPOSICAO_S = 120.0
 # O que diz "foi a rede" — e so isso: login vencido, perfil ocupado ou video
 # recusado nao melhoram tentando de novo daqui a um minuto.
@@ -2820,7 +2898,8 @@ def _derrubados_pela_rede(r: dict) -> list:
     Ficha inteira que nao saiu por excecao de rede (o canal levantou antes de
     publicar) conta como os dois.
     """
-    if not r or r.get("repetido") or r.get("veria"):
+    if (not r or r.get("repetido") or r.get("veria")
+            or r.get("ledger_ilegivel")):
         return []
     caidos = []
     # Pedaco da parte ja no YouTube (`ParteMeioNoAr`): o YouTube desta ficha
@@ -2839,19 +2918,27 @@ def _derrubados_pela_rede(r: dict) -> list:
 
 
 def _ainda_no_horario(comeco: float, slot: int, agora=None,
-                      relogio=None) -> bool:
-    """A reposicao ainda cabe NESTE horario da grade?
+                      relogio=None, janela_min=None) -> bool:
+    """Uma tentativa (reposicao ou volta final) ainda pode COMECAR agora?
 
-    Dentro de `JANELA_DE_REPOSICAO_MIN` do comeco da rodada E no mesmo
-    `grade.slot` — o menor buraco da grade e de 60 min, entao repor nunca
-    invade o horario seguinte.
+    Tres condicoes, todas: dentro de `janela_min` do comeco da rodada
+    (`JANELA_DE_REPOSICAO_MIN` por padrao; a volta passa
+    `JANELA_DA_VOLTA_FINAL_MIN`), no mesmo `grade.slot`, e a pelo menos
+    `MARGEM_ANTES_DO_PROXIMO_MIN` do proximo horario (`grade.proximo_em`).
+    A ultima e a que segura os horarios de 60 min (20:37 ... 00:37) e a
+    rodada que comecou atrasada.
     """
     import time
-    from datetime import datetime
+    from datetime import datetime, timedelta
     relogio = relogio or time.monotonic
-    if relogio() - comeco >= JANELA_DE_REPOSICAO_MIN * 60:
+    janela = JANELA_DE_REPOSICAO_MIN if janela_min is None else janela_min
+    if relogio() - comeco >= janela * 60:
         return False
-    return grade.slot(agora or datetime.now()) == slot
+    agora = agora or datetime.now()
+    if grade.slot(agora) != slot:
+        return False
+    falta = grade.proximo_em(agora) - agora
+    return falta >= timedelta(minutes=MARGEM_ANTES_DO_PROXIMO_MIN)
 
 
 def _juntar_reposicao(r: dict, nova: dict) -> tuple:
@@ -2927,6 +3014,10 @@ def _publicar_canal(canal: str, funcao, *, so_ver: bool,
             break
         if not esperar_a_rede(limite=ESPERA_DE_REDE_NA_REPOSICAO_S):
             break
+        # De novo, LOGO ANTES de publicar: a espera da rede pode ter levado
+        # 120 s e empurrado a tentativa para perto do horario seguinte.
+        if not _ainda_no_horario(comeco, slot):
+            break
         nova = _rodar_canal(canal, funcao, False)
         r, extra = _juntar_reposicao(r, nova)
         if extra:
@@ -2955,12 +3046,15 @@ def _volta_final(rodados: list, *, so_ver: bool, comeco: float,
     `rodados`: `[(canal, funcao, fichas)]` na ordem em que rodaram. Um canal
     volta se, depois das reposicoes de `_publicar_canal`, a ficha dele ainda
     tem destino derrubado pela rede E algum canal que rodou DEPOIS dele
-    publicou sem queda — a prova de que a rede voltou. Sem essa prova (os dois
-    cairam, ou o canal e o ultimo), nao ha volta: seria so mais uma tentativa
-    na mesma rede ruim. Mesmo `grade.slot` e mesma janela das reposicoes; as
+    publicou sem queda — a prova de que a rede voltou. "Sem queda" e nos DOIS
+    destinos: builds com o YouTube no ar e o TikTok derrubado pela rede nao
+    prova nada. Sem essa prova (os dois cairam, ou o canal e o ultimo), nao
+    ha volta: seria so mais uma tentativa na mesma rede ruim. Mesmo
+    `grade.slot`, janela propria (`JANELA_DA_VOLTA_FINAL_MIN`) e a margem
+    antes do proximo horario, conferida antes e depois da espera da rede; as
     guardas de um por horario por destino fazem o resto. Medido em 06/10,
     06:37: historias caiu 3x, builds publicou as 07:05-07:10, a volta teria
-    comecado aos 33 min (ver `JANELA_DE_REPOSICAO_MIN`).
+    comecado aos 33 min.
 
     Nunca volta: no `--ver`, com pedaco de parte ja no YouTube
     (`youtube_meio_no_ar`) nem quando a reposicao ja levou OUTRO video ao
@@ -2975,8 +3069,11 @@ def _volta_final(rodados: list, *, so_ver: bool, comeco: float,
                 and not r.get("youtube_meio_no_ar")
                 and _derrubados_pela_rede(r)
                 and any(_publicou_sem_queda(f) for f in depois)
-                and _ainda_no_horario(comeco, slot)
-                and esperar_a_rede(limite=ESPERA_DE_REDE_NA_REPOSICAO_S)):
+                and _ainda_no_horario(comeco, slot,
+                                      janela_min=JANELA_DA_VOLTA_FINAL_MIN)
+                and esperar_a_rede(limite=ESPERA_DE_REDE_NA_REPOSICAO_S)
+                and _ainda_no_horario(comeco, slot,
+                                      janela_min=JANELA_DA_VOLTA_FINAL_MIN)):
             caidos = _derrubados_pela_rede(r)
             _linha(f"[postar] {canal}: {' e '.join(caidos)} tinha caido por "
                    "REDE e o canal seguinte publicou; volta final neste "
@@ -3159,6 +3256,9 @@ def postar_build(*, so_ver: bool = False) -> dict:
     # hora nao pode cancelar o TikTok.
     ja_yt = None if so_ver else publicou_neste_horario("builds", "youtube")
     ja_tk = None if so_ver else publicou_neste_horario("builds", "tiktok")
+    ilegivel = _ficha_do_ledger_ilegivel("builds", ja_yt, ja_tk)
+    if ilegivel:
+        return ilegivel
     tiktok_agora = _tiktok_neste_horario()
     if ja_yt and (ja_tk or not tiktok_agora):
         return _ja_foi_neste_horario("builds", "youtube")
@@ -4035,6 +4135,78 @@ def escoar_historias(*, limite: int = 0, so_ver: bool = False) -> dict:
     return {"total": len(fila), "postados": feitos, "falhas": falhas}
 
 
+# --------------------------------------------------------- uma rodada por vez
+# DUAS RODADAS NUNCA PUBLICAM JUNTAS (conferente do 4e8df2b, 06/10/2026). A
+# rodada que estoura o seu horario (rede ruim, volta final, Studio lento) e
+# a do horario seguinte, disparada pelo Agendador no minuto certo, rodavam
+# lado a lado: brigavam pelo perfil `youtube_web` (os dois canais usam a
+# MESMA pasta; `PerfilOcupado` tira o YouTube de um deles), podiam escolher
+# a MESMA parte (a linha da velha so e gravada no fim do upload, e a guarda
+# da nova nao a ve) e a linha atrasada caia no horario seguinte do ledger.
+# Agora toda rodada que PUBLICA segura `TRAVA_DA_RODADA` (trava de arquivo
+# entre processos, `builds.travas`). A nova espera a velha ate
+# `ESPERA_PELA_RODADA_ANTERIOR_S`; se ela nao terminar, a nova NAO publica
+# nada (nunca sobe a parte que esta em voo), sai 1 e avisa no Telegram e no
+# diario. O `--ver` e o `--instalar` nao publicam e nao esperam. A trava e
+# reentrante por THREAD (memoria criacao-automatica-de-historias): dentro do
+# mesmo processo ela nao separa nada, e nao precisa — o que ela separa sao
+# os processos do Agendador.
+TRAVA_DA_RODADA = "postar__rodada"
+ESPERA_PELA_RODADA_ANTERIOR_S = 15 * 60.0
+
+
+@contextmanager
+def _trava_da_rodada(esperar: float | None = None):
+    """`with _trava_da_rodada() as minha:` — True se esta rodada pode publicar.
+
+    Tenta na hora; ocupada, diz no log que espera e tenta ate o prazo. Erro
+    da propria trava (pasta de travas inacessivel) e "nao sei se ha outra
+    rodada": falha FECHADA, como a guarda de um por horario.
+    """
+    from contextlib import ExitStack
+    from builds import travas
+    prazo = ESPERA_PELA_RODADA_ANTERIOR_S if esperar is None else esperar
+    # So a AQUISICAO fica dentro do `try`: uma excecao da rodada (que chega
+    # pelo `yield`) nao pode ser confundida com erro da trava.
+    pilha = ExitStack()
+    try:
+        minha = pilha.enter_context(travas.trava(TRAVA_DA_RODADA))
+        if not minha:
+            pilha.close()
+            _linha(f"[postar] outra rodada ainda esta publicando; espero "
+                   f"ate {prazo / 60:.0f} min por ela.")
+            pilha = ExitStack()
+            minha = pilha.enter_context(
+                travas.trava(TRAVA_DA_RODADA, esperar=prazo))
+    except OSError as exc:
+        pilha.close()
+        _linha(f"[postar] nao consegui a trava da rodada ({exc}); nao "
+               "publico.")
+        minha = False
+    with pilha:
+        yield minha
+
+
+def _rodada_presa(prazo: float) -> int:
+    """A rodada anterior nao terminou no prazo: nada sai, e todo mundo sabe."""
+    texto = (f"a rodada anterior ainda estava publicando depois de "
+             f"{prazo / 60:.0f} min de espera; este horario NAO publicou "
+             "(nunca subo a parte que esta em voo)")
+    _linha(f"[postar] {texto}")
+    try:
+        from builds import atividade
+        atividade.registrar("publicacao", atividade.ERRO, texto, "builds",
+                            etapa="publicar.rodada")
+    except Exception:                                          # noqa: BLE001
+        pass
+    try:
+        avisar([{"canal": c, "feito": False, "motivo": texto}
+                for c in ("historias", "builds")])
+    except Exception:                                          # noqa: BLE001
+        pass
+    return 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="postar",
                                      description="uma postagem por dia")
@@ -4060,6 +4232,17 @@ def main(argv=None) -> int:
                              "a vistoria (com --ver, so confere)")
     args = parser.parse_args(argv)
 
+    if args.ver or args.instalar:
+        return _main(args)          # nao publica: nao espera ninguem
+    prazo = ESPERA_PELA_RODADA_ANTERIOR_S
+    with _trava_da_rodada(prazo) as minha:
+        if not minha:
+            return _rodada_presa(prazo)
+        return _main(args)
+
+
+def _main(args) -> int:
+    """O `main` de antes, ja com a trava da rodada (quando publica)."""
     if args.so_youtube:
         r = subir_so_no_youtube(args.so_youtube, so_ver=args.ver)
         _linha(json.dumps(r, ensure_ascii=False, default=str))
@@ -4111,16 +4294,20 @@ def main(argv=None) -> int:
     # A REDE ANTES DE QUALQUER NAVEGADOR. Abrir o Chrome para descobrir que o
     # DNS nao resolve custa minutos e termina em `ERR_NAME_NOT_RESOLVED`;
     # resolver um nome custa milissegundos e responde a mesma pergunta.
+    #
+    # O COMECO DA RODADA E MARCADO ANTES da espera da rede (ate 300 s): as
+    # janelas de reposicao contam o tempo que a rodada ja gastou, e a espera
+    # e tempo gasto (conferente do 4e8df2b, 06/10/2026).
+    import time as _time
+    from datetime import datetime as _datetime
+    comeco_da_rodada = _time.monotonic()
+    slot_da_rodada = grade.slot(_datetime.now())
     if not args.ver and not esperar_a_rede():
         avisar([{"canal": c, "feito": False,
                  "motivo": "a rede nao voltou a tempo deste horario"}
                 for c in ("historias", "builds")])
         return 1
 
-    import time as _time
-    from datetime import datetime as _datetime
-    comeco_da_rodada = _time.monotonic()
-    slot_da_rodada = grade.slot(_datetime.now())
     rodados = []
     for canal, funcao in (("historias", postar_historia),
                           ("builds", postar_build)):

@@ -671,12 +671,20 @@ class ReporNoMesmoHorarioTests(unittest.TestCase):
         agora = datetime(2026, 10, 5, 9, 50)
         self.assertTrue(m._ainda_no_horario(0.0, 9, agora=agora,
                                             relogio=lambda: 60.0))
-        # 06/10, 06:37: a volta final das 07:10 estava a 33 min do comeco
-        # (a janela de 25 a barrava); 40 min e o limite.
+        # A reposicao comum continua com 25 min.
         self.assertTrue(m._ainda_no_horario(0.0, 9, agora=agora,
-                                            relogio=lambda: 33 * 60.0))
+                                            relogio=lambda: 24 * 60.0))
         self.assertFalse(m._ainda_no_horario(0.0, 9, agora=agora,
-                                             relogio=lambda: 40 * 60.0))
+                                             relogio=lambda: 25 * 60.0))
+        # 06/10, 06:37: a volta final das 07:10 estava a 33 min do comeco
+        # (a janela de 25 a barrava); a da volta e 40.
+        volta = m.JANELA_DA_VOLTA_FINAL_MIN
+        self.assertTrue(m._ainda_no_horario(0.0, 9, agora=agora,
+                                            relogio=lambda: 33 * 60.0,
+                                            janela_min=volta))
+        self.assertFalse(m._ainda_no_horario(0.0, 9, agora=agora,
+                                             relogio=lambda: 40 * 60.0,
+                                             janela_min=volta))
         self.assertFalse(m._ainda_no_horario(0.0, 6, agora=agora,
                                              relogio=lambda: 60.0))
 
@@ -766,11 +774,71 @@ class VoltaFinalTests(unittest.TestCase):
                          self.ordem)
 
     def test_fora_da_janela_nao_volta(self):
-        janela = iter([True, True, True, True, False])
-        self.m._ainda_no_horario = lambda comeco, slot, **k: next(janela,
-                                                                  False)
+        volta = self.m.JANELA_DA_VOLTA_FINAL_MIN
+        self.m._ainda_no_horario = (
+            lambda comeco, slot, janela_min=None, **k: janela_min != volta)
         self._rodada([self.CAIU], [self.BUILD_SAIU])
         self.assertEqual(["historias"] * 3 + ["builds"], self.ordem)
+
+    def test_janela_que_fecha_DURANTE_a_espera_da_rede_nao_volta(self):
+        """Conferida de novo depois de `esperar_a_rede`, logo antes de
+        publicar: a espera (ate 120 s) pode empurrar para perto do horario
+        seguinte."""
+        volta = self.m.JANELA_DA_VOLTA_FINAL_MIN
+        estado = {"esperou": False}
+
+        def esperar(**k):
+            # So a espera DA VOLTA (com `limite`) conta; a do comeco da
+            # rodada (`esperar_a_rede()`) nao.
+            if "limite" in k:
+                estado["esperou"] = True
+            return True
+        self.m.esperar_a_rede = esperar
+        self.m._ainda_no_horario = (
+            lambda comeco, slot, janela_min=None, **k:
+            not (janela_min == volta and estado["esperou"]))
+        # Sem reposicoes: so a volta espera a rede.
+        self.m.TENTATIVAS_POR_REDE = 0
+        self._rodada([self.CAIU], [self.BUILD_SAIU])
+        self.assertTrue(estado["esperou"], "a volta chegou a esperar a rede")
+        self.assertEqual(["historias", "builds"], self.ordem)
+
+    def test_o_caso_das_06_37_as_07_10_volta_pela_janela_de_40(self):
+        """O relogio de verdade do caso medido: 07:10, 33 min de rodada.
+        A reposicao comum (25 min) ja fechou; a volta (40) ainda cabe."""
+        from datetime import datetime
+        # O `_ainda_no_horario` de VERDADE (o `setUp` troca o deste modulo
+        # por um que diz sempre sim).
+        original = _postar()._ainda_no_horario
+        self.m._ainda_no_horario = (
+            lambda comeco, slot, janela_min=None, **k: original(
+                0.0, 6, agora=datetime(2026, 10, 6, 7, 10),
+                relogio=lambda: 33 * 60.0, janela_min=janela_min))
+        self._rodada([self.CAIU, self.SAIU], [self.BUILD_SAIU])
+        self.assertEqual(["historias", "builds", "historias"], self.ordem)
+
+    def test_builds_com_tiktok_derrubado_pela_rede_nao_prova_nada(self):
+        """`_publicou_sem_queda`: o YouTube dos builds saiu, o TikTok caiu
+        por rede. Isso NAO e "a rede voltou", e historias nao volta."""
+        meio = dict(self.BUILD_SAIU, tiktok="",
+                    tiktok_falha="TikTokFalhou: infraestrutura: nao abriu")
+        so_tk = dict(meio, so_tiktok=True)
+        self._rodada([self.CAIU], [meio, so_tk])
+        self.assertEqual(["historias"] * 3 + ["builds"] * 3, self.ordem)
+
+    def test_reposicao_que_ja_levou_outro_video_nao_volta(self):
+        """`len(fichas) == 1`: o YouTube da p03 caiu (o TikTok tinha ido) e a
+        reposicao levou a p04 ao YouTube — o horario esta coberto, mesmo com
+        a primeira ficha ainda "derrubada"."""
+        p03 = {"canal": "historias", "feito": True, "alvo": "h:p03",
+               "youtube_falhou": True,
+               "motivo": "YouTube falhou: YouTubeWebFalhou: infraestrutura: "
+                         "nao abriu",
+               "tiktok": "publicado no TikTok"}
+        p04 = {"canal": "historias", "feito": True, "alvo": "h:p04",
+               "url": "publicado no YouTube", "tiktok": ""}
+        self._rodada([p03, p04, self.SAIU], [self.BUILD_SAIU])
+        self.assertEqual(["historias", "historias", "builds"], self.ordem)
 
     def test_historias_que_saiu_nao_volta(self):
         self._rodada([self.SAIU], [self.BUILD_SAIU])

@@ -93,16 +93,32 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    (`_derrubados_pela_rede`: "infraestrutura", `net::err`, SSL, timeout de
    conexão — nunca login, cota ou legenda), espera 60 s, confere a rede e
    roda o canal de novo, até 2 vezes, só dentro do mesmo `grade.slot` e de
-   40 min do começo da rodada (`JANELA_DE_REPOSICAO_MIN`). As guardas por
-   destino fazem o resto. Nunca repõe a ficha com pedaço de parte já no
-   YouTube (`youtube_meio_no_ar`): repor roda o canal inteiro, e o pedaço 1
-   subiria de novo. **Volta final** (`_volta_final`, 06/10): se, esgotadas
-   as reposições, o canal ainda tem destino derrubado pela rede e um canal
-   que rodou **depois** dele publicou sem queda (a prova de que a rede
-   voltou), ele roda **uma** vez mais no fim, na mesma janela e no mesmo
-   slot. Os dois caíram, ou o canal é o último: não há volta. Nem no
-   `--ver`, nem com pedaço no ar, nem quando a reposição já levou outro
-   vídeo ao horário.
+   25 min do começo da rodada (`JANELA_DE_REPOSICAO_MIN`; o começo é
+   marcado **antes** da espera da rede). As guardas por destino fazem o
+   resto. Nunca repõe a ficha com pedaço de parte já no YouTube
+   (`youtube_meio_no_ar`): repor roda o canal inteiro, e o pedaço 1 subiria
+   de novo. **Volta final** (`_volta_final`, 06/10): se, esgotadas as
+   reposições, o canal ainda tem destino derrubado pela rede e um canal que
+   rodou **depois** dele publicou sem queda **nos dois destinos** (a prova
+   de que a rede voltou — builds com o TikTok derrubado não prova), ele
+   roda **uma** vez mais no fim, no mesmo slot e dentro de 40 min do começo
+   (`JANELA_DA_VOLTA_FINAL_MIN`). Os dois caíram, ou o canal é o último:
+   não há volta. Nem no `--ver`, nem com pedaço no ar, nem quando a
+   reposição já levou outro vídeo ao horário. **Margem do horário
+   seguinte**: nenhuma tentativa (reposição ou volta) **começa** a menos de
+   `MARGEM_ANTES_DO_PROXIMO_MIN` (20) de `grade.proximo_em`, conferido de
+   novo depois de cada espera, logo antes de publicar — é o que segura os
+   horários de 60 min (20:37 → 00:37) e a rodada que começou atrasada. A
+   margem não garante que a tentativa termine antes do horário seguinte
+   (uma levou 12 min em 06/10; o conferente mostrou que pode passar de 30);
+   quem impede duas rodadas juntas é a trava abaixo.
+   **Uma rodada por vez** (`TRAVA_DA_RODADA` = `postar__rodada`, trava de
+   arquivo entre processos em `builds.travas`, segurada por todo caminho do
+   `main` que publica; `--ver` e `--instalar` não esperam): a rodada nova
+   espera a anterior até `ESPERA_PELA_RODADA_ANTERIOR_S` (15 min); se ela
+   não terminar, a nova **não publica nada** (nunca sobe a parte em voo),
+   sai 1, e avisa no Telegram e no diário (`publicar.rodada`). A trava é
+   reentrante por thread: só separa processos, que é o caso do Agendador.
 4. Depois, e nunca no lugar: **recuperação do TikTok** (1 por canal, saiu no
    YouTube e nunca chegou lá), **recuperação do YouTube** (1, ficou privado no
    canal) e **reserva do TikTok** (só se builds não levou nada lá neste horário).
@@ -154,7 +170,9 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 
 | Guarda | Onde mora |
 | --- | --- |
-| Um por horário **por plataforma** | `postar.publicou_neste_horario` (identidade do horário = `conferencia.chave_do_horario`, nunca a hora do relógio; fonte = ledger; linha sem data não barra) |
+| Um por horário **por plataforma** | `postar.publicou_neste_horario` (identidade do horário = `conferencia.chave_do_horario`, nunca a hora do relógio; fonte = ledger; linha sem data não barra; ledger **ilegível barra** — `LedgerIlegivel`, falha fechada desde 06/10) |
+| Duas rodadas ao mesmo tempo | `postar.TRAVA_DA_RODADA` (`_trava_da_rodada`, entre processos): a nova espera a velha até 15 min; se não, não publica, sai 1 e avisa (`_rodada_presa`) |
+| Tentativa perto do horário seguinte | `postar._ainda_no_horario`: janela (25 reposição / 40 volta) + mesmo slot + `MARGEM_ANTES_DO_PROXIMO_MIN` (20) de `grade.proximo_em`, conferida depois de cada espera |
 | Upload avulso (`--so-youtube`) que atravessa uma rodada | `postar._horario_que_a_linha_tomaria`: recusa se uma rodada da grade **começa** dentro dos `DURACAO_DE_UM_UPLOAD_MIN = 20` min do upload (22:20 → "22:37"; 22:04 → livre) |
 | Título já publicado (fecha a fila) | `postar._sem_titulo_repetido`/`titulo_repetido`; regra em `titulos.chave/repetido` |
 | Variante A/B (`:B` tem o mesmo título) | `postar.VARIANTES`, `_e_variante`, e a própria chave de título |
@@ -183,9 +201,11 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Desistência após 3 falhas | `_anotar_falha_no_tiktok`, `FALHAS_ATE_DESISTIR=3` |
 | Cota do YouTube não mata o TikTok | `_e_limite_diario` + `try/except` por destino |
 
-Só **uma** guarda falha fechada (erro ⇒ não publica): a lista "a conferir". As
-outras, em dúvida, deixam passar — "não sei" nunca barra vídeo, mas vira erro no
-diário.
+Três guardas falham fechadas (erro ⇒ não publica): a lista "a conferir", a de
+um por horário (ledger ilegível ⇒ o canal não publica no horário, desde
+06/10) e a trava da rodada (erro da trava ⇒ não publica). São as que impedem
+**repetição**, e repetir é pior que não postar. As outras, em dúvida, deixam
+passar — "não sei" nunca barra vídeo, mas vira erro no diário.
 
 ## 3. As leis (decisões do dono)
 
@@ -448,13 +468,35 @@ diário.
   a rede tinha voltado, mas histórias roda primeiro e repete na hora, ainda
   dentro da rede ruim. Não era o detector de recusa do 87b9b43 (0 de 306
   partes marcadas), nem o teto (a h44 tinha 0 saídas no dia 06/10), nem a
-  válvula (havia parte limpa). → **volta final** (§1 passo 3) e janela de
-  25 → 40 min: a volta das 07:10 estaria a 33 min do começo. O menor buraco
-  da grade é de 60 min, e uma tentativa inteira levou 12 min (06:53:54 →
-  07:05:50), então a volta que começa aos 40 termina perto dos 52. Testes:
-  `VoltaFinalTests` em `historias/tests/test_postar_varredura_0510_regressions.py`
-  (histórias cai 3x e builds publica → ordem `h,h,h,b,h`; os dois caem →
-  `h,h,h,b,b,b` e saída 1).
+  válvula (havia parte limpa). → **volta final** (§1 passo 3), com janela
+  própria de 40 min: a volta das 07:10 estaria a 33 min do começo, e a
+  reposição comum (25) a barrava. Testes: `VoltaFinalTests` em
+  `historias/tests/test_postar_varredura_0510_regressions.py` (histórias cai
+  3x e builds publica → ordem `h,h,h,b,h`; os dois caem → `h,h,h,b,b,b` e
+  saída 1; o relógio das 07:10 com 33 min de rodada volta).
+  **Conferente do 4e8df2b** (mesmo dia), três defeitos, consertados com
+  testes em `historias/tests/test_postar_rodada_segura_regressions.py`:
+  (1) a janela contava só do começo da rodada — marcado ainda depois da
+  espera da rede — e a 1ª versão subiu a reposição comum para 40 e escrevia
+  aqui que "a volta termina perto dos 52": falso, uma tentativa pode passar
+  de 30 min e a rodada atrasada começa perto do horário seguinte. → margem
+  de 20 min do próximo horário em toda tentativa, conferida depois de cada
+  espera; reposição comum de volta a 25 (os quatro pares de 60 min e o
+  disparo das 20:37 que só rodou às 21:20 estão nos testes). (2) Duas
+  rodadas publicavam juntas (perfil `youtube_web` disputado, a mesma parte
+  escolhida duas vezes, linha atrasada no horário seguinte). → trava da
+  rodada, testada com um **segundo processo** de verdade. Limite que fica:
+  uma tentativa que passe do horário seguinte ainda grava a linha dela
+  naquele horário (o ledger guarda a hora da escrita, não a da rodada); a
+  rodada nova espera e, ao ler, vê esse horário como ocupado. (3) A guarda
+  de um por horário falhava **aberta** (`_publicados_do_canal` devolvia
+  `[]` em qualquer erro): com o ledger preso na volta, o YouTube da mesma
+  p06 subia de novo. → `_publicados_do_canal` levanta `LedgerIlegivel`;
+  `publicou_neste_horario` falha **fechada** (o canal não publica naquele
+  horário, erro no diário `publicar.guarda`, motivo no Telegram, e a ficha
+  não é reposta). Os crivos de fila (teto, título, recuperação) continuam
+  deixando passar, como antes. As oito regras resistem à mutação (cada uma
+  derrubada derruba pelo menos um teste).
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois

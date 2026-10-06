@@ -290,7 +290,9 @@ class EstoqueDoLoteTests(unittest.TestCase):
         self.assertIn("alvo 64 -> cobre", texto)
 
     def test_o_ver_imprime_as_linhas_e_o_frescor(self):
-        fonte = inspect.getsource(self.m.main)
+        # O corpo da rodada mora em `_main` desde 06/10/2026 (`main` so
+        # segura a trava da rodada e chama).
+        fonte = inspect.getsource(self.m._main)
         self.assertIn("linhas_do_estoque(estoque_do_lote())", fonte)
         self.assertIn("frescor_do_estoque()", fonte)
 
@@ -451,7 +453,9 @@ class LoteNaoFechouTests(unittest.TestCase):
                          m._arquivo_do_aviso_do_lote("historias").parent)
 
     def test_so_a_rodada_de_verdade_avisa(self):
-        fonte = inspect.getsource(self.m.main)
+        # O corpo da rodada mora em `_main` desde 06/10/2026 (`main` so
+        # segura a trava da rodada e chama).
+        fonte = inspect.getsource(self.m._main)
         trecho = fonte[fonte.index("if not args.ver:\n        avisar("):]
         self.assertIn("avisar_lote_nao_fechou()", trecho[:600])
 
