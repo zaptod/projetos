@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-4d99bb1b",
+      "em": "2026-10-06T02:45:33",
+      "evento": "2026-10-06T02:45:15",
+      "linha": 125,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "duas-historias",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Medido em 06/10 no correio (8 dias): PicassoIA fazia 65-76 imagens/h; Gemini ~20/h (falhou em 24% nas últimas 48 h) e ChatGPT ~15-30/h (~2 min por imagem). Cada parte tem 14 imagens e o dia precisa de 10 partes (~150 imagens). Hoje a rodada faz uma história por vez com UM gerador (decisão imagens-divisao: o rosto não muda no meio), então só uma conta trabalha: ~1 parte por hora. A madrugada (01h-06h) faz ~5 das 10 partes; o resto depende da janela de dia. O estoque está em 1 (piso 20).",
   "criado": "2026-10-06T02:43:31.526700",
   "depende_de": [
