@@ -68,6 +68,7 @@ from esteira_sprites import aprovar as sprites_aprovar
 from esteira_sprites import config as sprites_config
 from esteira_sprites import juiz as sprites_juiz
 from painel.sprites import importar as sprites_importar
+from neural_fights.tools import manifesto_sprites
 
 PORTA_PADRAO = 8931
 PORTAS_PROIBIDAS = {8765}                # OAuth do YouTube
@@ -90,6 +91,8 @@ ATELIE_MAX = sprites_importar.MAX_BYTES
 ATELIE_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca" / "sprites_usuario"
 PARTES_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca"
 MANIFESTO_SPRITES = PARTES_BIBLIOTECA / "manifesto_slots.json"
+GODOT_PREVIA = Path("E:/ferramentas/godot/Godot_v4.7.2-stable_win64_console.exe")
+GODOT_RAIZ = Path(__file__).resolve().parents[1] / "palco"
 SPRITE_MAX = 20 * 1024 * 1024
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
@@ -292,6 +295,8 @@ ESTATICOS = {
     "/equipe.js": ("equipe.js", "text/javascript; charset=utf-8"),
     "/biblioteca.js": ("biblioteca.js", "text/javascript; charset=utf-8"),
     "/atelie.js": ("atelie.js", "text/javascript; charset=utf-8"),
+    # o desenho de hoje da bolinha (folha do Godot sem pecas), para a previa vazia
+    "/bolinha_hoje.png": ("bolinha_hoje.png", "image/png"),
 }
 
 
@@ -754,6 +759,228 @@ def _inteiro(consulta: dict, chave: str, padrao: int) -> int:
         return padrao
 
 
+# ============================================================ sprites modulares
+# Indice em memoria do que existe no disco: o manifesto (1.867 lugares) e
+# lido uma vez por versao do arquivo, e o que existe sai de UMA varredura da
+# arvore partes/ (em 06/10 cada pedido fazia 1.299 is_file + heranca e levava
+# 2,8-3,0 s). Anexar, apagar e desfazer atualizam o indice na hora; quem mexe
+# no disco por fora (importar-antigas) aparece em ate INDICE_VALIDADE_S.
+GRUPOS_SPRITES = ("lutador", "arma", "skill", "efeito", "camada_estado", "arena", "hud")
+INDICE_VALIDADE_S = 20.0
+_INDICE_SPRITES: dict = {"chave": None, "base": None, "existe": None, "quando": 0.0, "geracao": 0}
+_TRAVA_INDICE = threading.Lock()
+
+
+def _base_do_indice(chave) -> dict:
+    try:
+        dados = json.loads(MANIFESTO_SPRITES.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        dados = {}
+    if not isinstance(dados, dict) or not isinstance(dados.get("slots"), list):
+        dados = {"slots": []}
+    por_id, id_por_arquivo, por_alvo, alvos = {}, {}, {}, {}
+    raiz = os.path.normcase(os.path.abspath(PARTES_BIBLIOTECA))
+    for slot in dados["slots"]:
+        if not isinstance(slot, dict) or not slot.get("id"):
+            continue
+        sid = str(slot["id"])
+        por_id[sid] = slot
+        partes = Path(str(slot.get("destino", "")).replace("\\", "/")).parts
+        if "biblioteca" in partes:
+            relativo = os.path.join(*partes[partes.index("biblioteca") + 1:])
+            id_por_arquivo[os.path.normcase(os.path.join(raiz, relativo))] = sid
+        grupo = str(slot.get("grupo", ""))
+        alvo = slot.get("alvo") or {}
+        chave_alvo = str(alvo.get("chave", "_"))
+        por_alvo.setdefault((grupo, chave_alvo), []).append(slot)
+        lista = alvos.setdefault(grupo, {})
+        if chave_alvo not in lista:
+            lista[chave_alvo] = {"chave": chave_alvo, "nivel": alvo.get("nivel"),
+                                 "rotulo": manifesto_sprites.nome_do_alvo(alvo, grupo)}
+    for grupo, lista in alvos.items():
+        # O comum primeiro; o resto na ordem do manifesto.
+        alvos[grupo] = sorted(lista.values(), key=lambda a: a["chave"] != "_")
+    return {"chave": chave, "manifesto": dados, "por_id": por_id, "id_por_arquivo": id_por_arquivo,
+            "por_alvo": por_alvo, "alvos": alvos, "raiz": raiz}
+
+
+def _varrer_existentes(base: dict) -> tuple[set, set]:
+    existe, com_versao = set(), set()
+    mapa = base["id_por_arquivo"]
+    for pasta, subpastas, arquivos in os.walk(os.path.join(base["raiz"], "partes")):
+        if pasta.lower().endswith(".png.historico"):
+            subpastas[:] = []
+            if any(a.lower().endswith(".png") for a in arquivos):
+                sid = mapa.get(os.path.normcase(pasta[:-len(".historico")]))
+                if sid:
+                    com_versao.add(sid)
+            continue
+        for nome in arquivos:
+            if nome.lower().endswith(".png"):
+                sid = mapa.get(os.path.normcase(os.path.join(pasta, nome)))
+                if sid:
+                    existe.add(sid)
+    return existe, com_versao
+
+
+def _indice_sprites(mudou: str | None = None) -> dict:
+    """O indice atual; `mudou` = id de um lugar que esta resposta acabou de mexer."""
+    try:
+        marca = MANIFESTO_SPRITES.stat().st_mtime_ns
+    except OSError:
+        marca = None
+    chave = (str(PARTES_BIBLIOTECA), str(MANIFESTO_SPRITES), marca)
+    with _TRAVA_INDICE:
+        estado = _INDICE_SPRITES
+        if estado["chave"] != chave:
+            estado.update({"chave": chave, "base": _base_do_indice(chave), "existe": None})
+        base = estado["base"]
+        agora = time.monotonic()
+        if estado["existe"] is None or agora - estado["quando"] > INDICE_VALIDADE_S:
+            estado["existe"], estado["com_versao"] = _varrer_existentes(base)
+            estado["quando"] = agora
+        if mudou and mudou in base["por_id"]:
+            try:
+                arquivo = manifesto_sprites.arquivo_do_destino(
+                    PARTES_BIBLIOTECA, str(base["por_id"][mudou]["destino"]))
+            except (KeyError, ValueError):
+                arquivo = None
+            if arquivo is not None:
+                (estado["existe"].add if arquivo.is_file() else estado["existe"].discard)(mudou)
+                (estado["com_versao"].add if manifesto_sprites.versoes(arquivo)
+                 else estado["com_versao"].discard)(mudou)
+            estado["geracao"] += 1
+        return {**base, "existe": set(estado["existe"]), "com_versao": set(estado["com_versao"]),
+                "geracao": estado["geracao"]}
+
+
+def _existe_no_indice(indice: dict):
+    existe = indice["existe"]
+    return lambda parte, nivel, alvo, estado: f"lutador/{parte}/{nivel}/{alvo}/{estado}" in existe
+
+
+# "Carinha" e feminino: "a carinha neutra", nao "neutro". Os nomes que sao
+# substantivos (fúria, pânico, dor) ficam como estao.
+_CARINHA_FEMININA = {
+    "neutro": "neutra", "focado": "focada", "determinado": "determinada", "animado": "animada",
+    "eufórico": "eufórica", "nervoso": "nervosa", "morto": "morta", "tonto": "tonta",
+    "confuso": "confusa", "concentrado": "concentrada",
+}
+
+
+def _situacao_do_slot(slot: dict, indice: dict) -> tuple[str, str]:
+    """anexado | herdando | vazio. 'Herdando' so quando o jogo de fato usa
+    outra peca no lugar desta (a regra do palco, partes_lutador.gd)."""
+    sid = str(slot.get("id"))
+    if sid in indice["existe"]:
+        return "anexado", ""
+    alvo = slot.get("alvo") or {}
+    if slot.get("grupo") == "lutador":
+        parte = str(slot.get("parte"))
+        estado = str(slot.get("estado") or "base")
+        classe = str(alvo.get("chave")) if alvo.get("nivel") == "classe" else ""
+        achado = manifesto_sprites.resolver_parte(
+            parte, classe, estado if estado != "base" else "neutro", _existe_no_indice(indice))
+        if achado is None:
+            return "vazio", ""
+        if achado["nivel"] != alvo.get("nivel"):
+            return "herdando", "o jogo usa a peça comum"
+        nome = manifesto_sprites.nome_do_estado(achado["estado"]) or "base"
+        return "herdando", f"o jogo usa a carinha {_CARINHA_FEMININA.get(nome, nome)} deste estilo"
+    for outro in slot.get("fallback") or []:
+        if outro in indice["existe"]:
+            outro_slot = indice["por_id"].get(outro) or {}
+            nome = manifesto_sprites.nome_do_alvo(outro_slot.get("alvo") or {}, str(slot.get("grupo")))
+            return "herdando", f"o jogo usa a peça de {nome.lower()}"
+    return "vazio", ""
+
+
+def _progresso_sprites(indice: dict) -> dict:
+    """Os tres contadores do topo, pela tabela 'Quantos o Adrian precisa'
+    do CONTRATO_SLOTS.md: 3 basicos, 14 do rosto que reage, 16 classes."""
+    existe = indice["existe"]
+    basico = ["lutador/pele/comum/_/base", "lutador/olhos/comum/_/neutro", "lutador/boca/comum/_/neutro"]
+    rosto = ["lutador/pele/comum/_/base", "lutador/sombra/comum/_/base"] + [
+        f"lutador/{parte}/comum/_/{e}" for parte in ("olhos", "boca")
+        for e in manifesto_sprites.REPRESENTANTES]
+    classes = [a["chave"] for a in indice["alvos"].get("lutador", []) if a.get("nivel") == "classe"]
+    com_identidade = [c for c in classes if any(
+        f"lutador/{parte}/classe/{c}/base" in existe for parte in ("acessorio_cabeca", "acessorio_costas"))]
+    return {"basico": [sum(s in existe for s in basico), len(basico)],
+            "rosto": [sum(s in existe for s in rosto), len(rosto)],
+            "classes": [len(com_identidade), len(classes)]}
+
+
+# A previa do Godot (~2-7 s): uma por vez, mais UMA na fila. O estado e por
+# estilo (alvo): pedir a folha do Berserker nao devolve a do comum. Uma folha
+# pronta vale enquanto a geracao do indice for a mesma (anexou: refaz).
+_PREVIAS_GODOT: dict[str, dict] = {}
+_FILA_GODOT: list[str] = []
+_TRAVA_PREVIA_GODOT = threading.Lock()
+_GODOT_OCUPADO = {"alvo": None}
+
+
+def pedir_previa_godot(alvo: str) -> tuple[str, object]:
+    """('pronta', bytes) | ('erro', frase) | ('montando'|'na_fila', None)."""
+    geracao = _indice_sprites()["geracao"]
+    with _TRAVA_PREVIA_GODOT:
+        atual = _PREVIAS_GODOT.get(alvo)
+        if atual and atual["estado"] in ("montando", "na_fila"):
+            return atual["estado"], None
+        if atual and atual.get("geracao") == geracao:
+            if atual["estado"] == "pronta":
+                with contextlib.suppress(OSError):
+                    return "pronta", Path(atual["arquivo"]).read_bytes()
+            elif atual["estado"] == "erro":
+                _PREVIAS_GODOT.pop(alvo, None)   # o proximo toque tenta de novo
+                return "erro", atual["erro"]
+        if _GODOT_OCUPADO["alvo"] is None:
+            _GODOT_OCUPADO["alvo"] = alvo
+            _PREVIAS_GODOT[alvo] = {"estado": "montando", "geracao": geracao}
+            threading.Thread(target=_trabalhar_previas_godot, args=(alvo,), daemon=True).start()
+            return "montando", None
+        for antigo in _FILA_GODOT:          # fila de 1: o pedido novo toma o lugar
+            _PREVIAS_GODOT.pop(antigo, None)
+        _FILA_GODOT[:] = [alvo]
+        _PREVIAS_GODOT[alvo] = {"estado": "na_fila", "geracao": geracao}
+        return "na_fila", None
+
+
+def _trabalhar_previas_godot(alvo: str) -> None:
+    while alvo is not None:
+        geracao = _indice_sprites()["geracao"]
+        resultado = _rodar_previa_godot(alvo, PARTES_BIBLIOTECA)
+        with _TRAVA_PREVIA_GODOT:
+            _PREVIAS_GODOT[alvo] = {**resultado, "geracao": geracao}
+            alvo = _FILA_GODOT.pop(0) if _FILA_GODOT else None
+            _GODOT_OCUPADO["alvo"] = alvo
+            if alvo is not None:
+                _PREVIAS_GODOT[alvo] = {"estado": "montando", "geracao": geracao}
+
+
+def _rodar_previa_godot(alvo: str, biblioteca: Path) -> dict:
+    """Roda a folha das seis carinhas no Godot e devolve o estado final."""
+    try:
+        pasta = runtime_dir() / "previas_sprites"
+        pasta.mkdir(parents=True, exist_ok=True)
+        saida = pasta / f"folha_{re.sub(r'[^a-z0-9_]', '_', alvo.lower()) or 'comum'}.png"
+        with contextlib.suppress(OSError):
+            saida.unlink()
+        cmd = [str(GODOT_PREVIA), "--path", str(GODOT_RAIZ),
+               "res://ferramentas/previa_sprites.tscn", "--",
+               f"--classe={'' if alvo == '_' else alvo}", "--personagem=",
+               f"--biblioteca={biblioteca}", f"--saida={saida}"]
+        processo = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", timeout=45, creationflags=NO_WINDOW)
+        if processo.returncode == 0 and saida.is_file():
+            return {"estado": "pronta", "arquivo": str(saida)}
+        return {"estado": "erro", "erro": "o Godot não conseguiu desenhar a folha; tente de novo daqui a pouco"}
+    except subprocess.TimeoutExpired:
+        return {"estado": "erro", "erro": "o Godot demorou demais e foi parado; tente de novo"}
+    except (OSError, subprocess.SubprocessError):
+        return {"estado": "erro", "erro": "não consegui abrir o Godot neste PC"}
+
+
 class Manipulador(BaseHTTPRequestHandler):
     server_version = "painel-celular"
     sys_version = ""
@@ -959,6 +1186,12 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._sprites_modulares_catalogo(consulta)
             if rota == "/api/sprites/modulares/previa":
                 return self._sprites_modulares_previa(consulta)
+            achado = re.fullmatch(r"/api/sprites/modulares/(.+)/imagem", rota)
+            if achado:
+                return self._sprites_modulares_imagem(unquote(achado.group(1)))
+            achado = re.fullmatch(r"/api/sprites/modulares/(.+)/gabarito", rota)
+            if achado:
+                return self._sprites_modulares_gabarito(unquote(achado.group(1)))
             achado = re.fullmatch(r"/api/atelie/arquivo/([a-z0-9_-]{8,40})/(original|limpa|folha|previa|quadro-\d+)", rota)
             if achado:
                 return self._atelie_arquivo(*achado.groups())
@@ -1247,95 +1480,153 @@ class Manipulador(BaseHTTPRequestHandler):
     # --------------------------------------------------- sprites modulares
     @staticmethod
     def _manifesto_sprites() -> dict:
-        try:
-            dados = json.loads(MANIFESTO_SPRITES.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        return dados if isinstance(dados, dict) and isinstance(dados.get("slots"), list) else {}
-
-    @staticmethod
-    def _slot_publico(slot: dict, estado: str, aviso: str = "") -> dict:
-        """O telefone recebe o lugar da peca, nunca o caminho do PC."""
-        return {chave: slot[chave] for chave in ("id", "rotulo", "grupo", "parte", "alvo",
-                "estado", "camada_z", "tamanho_px", "obrigatorio", "reserva") if chave in slot} | {
-                    "situacao": estado, "aviso": aviso}
+        return _indice_sprites()["manifesto"]
 
     @staticmethod
     def _arquivo_do_slot(slot: dict) -> Path | None:
-        try:
-            destino = Path(str(slot["destino"]))
-        except (KeyError, TypeError):
-            return None
         # O manifesto e a unica autoridade para destino; ainda assim a API
         # confere que um manifesto corrompido nao a faca sair da biblioteca.
-        raiz = PARTES_BIBLIOTECA.resolve()
-        caminho = (PARTES_BIBLIOTECA.parent.parent / destino).resolve()
         try:
-            caminho.relative_to(raiz)
-        except ValueError:
+            return manifesto_sprites.arquivo_do_destino(PARTES_BIBLIOTECA, str(slot["destino"]))
+        except (KeyError, TypeError, ValueError):
             return None
-        return caminho
 
-    def _estado_slot(self, slot: dict, todos: dict[str, dict]) -> tuple[str, str]:
-        arquivo = self._arquivo_do_slot(slot)
-        if arquivo is not None and arquivo.is_file():
-            return "anexado", ""
-        for outro_id in slot.get("fallback") or []:
-            outro = todos.get(outro_id)
-            outro_arquivo = self._arquivo_do_slot(outro) if outro else None
-            if outro_arquivo is not None and outro_arquivo.is_file():
-                return "herdando", "usa uma peca que ja existe"
-        return "vazio", ""
+    @staticmethod
+    def _slot_publico(slot: dict, indice: dict) -> dict:
+        """O telefone recebe o lugar da peca, nunca o caminho do PC."""
+        situacao, aviso = _situacao_do_slot(slot, indice)
+        sid = str(slot.get("id"))
+        return {"id": sid, "rotulo": manifesto_sprites.rotulo_humano(slot),
+                "parte": slot.get("parte"), "estado": slot.get("estado"),
+                "nivel": (slot.get("alvo") or {}).get("nivel"), "papel": slot.get("papel"),
+                "situacao": situacao, "aviso": aviso,
+                "tem_anterior": sid in indice["com_versao"]}
 
     def _sprites_modulares_catalogo(self, consulta: dict):
-        manifesto = self._manifesto_sprites()
-        todos = {str(slot.get("id")): slot for slot in manifesto.get("slots", []) if isinstance(slot, dict)}
-        grupo = str((consulta.get("grupo") or [""])[0])
-        if grupo and grupo not in {"lutador", "arma", "skill", "efeito", "camada_estado", "arena", "hud"}:
+        indice = _indice_sprites()
+        grupo = str((consulta.get("grupo") or ["lutador"])[0]) or "lutador"
+        if grupo not in GRUPOS_SPRITES:
             return self._erro(400, "grupo desconhecido")
-        slots = []
-        for slot in todos.values():
-            if grupo and slot.get("grupo") != grupo:
-                continue
-            estado, aviso = self._estado_slot(slot, todos)
-            slots.append(self._slot_publico(slot, estado, aviso))
-        return self._json({"grupos": manifesto.get("resumo", {}).get("por_grupo", {}),
-                           "slots": slots, "godot_previa": False})
+        alvos = indice["alvos"].get(grupo, [])
+        chaves = [a["chave"] for a in alvos]
+        alvo = str((consulta.get("alvo") or [""])[0])
+        if alvo not in chaves:
+            alvo = "_" if "_" in chaves else (chaves[0] if chaves else "_")
+        slots = [self._slot_publico(slot, indice) for slot in indice["por_alvo"].get((grupo, alvo), [])]
+        resposta = {"grupo": grupo, "alvo": alvo, "alvos": alvos, "slots": slots,
+                    "godot_previa": grupo == "lutador" and GODOT_PREVIA.is_file()}
+        if grupo == "lutador":
+            resposta["progresso"] = _progresso_sprites(indice)
+            resposta["expressoes"] = [
+                {"id": e, "nome": manifesto_sprites.NOMES_DAS_EXPRESSOES[e],
+                 "familia": manifesto_sprites.FAMILIA[e],
+                 "representante": e in manifesto_sprites.REPRESENTANTES}
+                # Por familia (as 6 principais na ordem do contrato), a principal primeiro.
+                for e in sorted(manifesto_sprites.EXPRESSOES, key=lambda e: (
+                    manifesto_sprites.REPRESENTANTES.index(manifesto_sprites.FAMILIA[e]),
+                    e not in manifesto_sprites.REPRESENTANTES))]
+        return self._json(resposta)
+
+    def _sprites_modulares_gabarito(self, slot_id: str):
+        slot = _indice_sprites()["por_id"].get(slot_id)
+        if not isinstance(slot, dict) or slot.get("grupo") != "lutador":
+            return self._erro(404, "não há gabarito para esta peça")
+        parte = str(slot.get("parte", ""))
+        corpo = manifesto_sprites.gabarito_lutador(parte)
+        if self._saiu:
+            return
+        try:
+            self.send_response(200)
+            self._cabecalhos_comuns("image/png", len(corpo))
+            self.send_header("Content-Disposition", f'attachment; filename="gabarito_{parte}.png"')
+            self.end_headers()
+            self.wfile.write(corpo)
+        except CLIENTE_SAIU:
+            self._cliente_saiu()
+
+    def _sprites_modulares_imagem(self, slot_id: str):
+        """A miniatura do cartao: so a peca deste lugar, em 160 px."""
+        slot = _indice_sprites()["por_id"].get(slot_id)
+        arquivo = self._arquivo_do_slot(slot) if isinstance(slot, dict) else None
+        if arquivo is None or not arquivo.is_file():
+            return self._erro(404, "este lugar não tem desenho")
+        try:
+            with Image.open(arquivo) as imagem:
+                peca = imagem.convert("RGBA")
+        except (OSError, ValueError):
+            return self._erro(404, "não consegui abrir este desenho")
+        peca.thumbnail((160, 160))
+        saida = io.BytesIO()
+        peca.save(saida, "PNG", optimize=True)
+        return self._bytes(saida.getvalue(), "image/png")
 
     def _sprites_modulares_previa(self, consulta: dict):
-        manifesto = self._manifesto_sprites()
+        if str((consulta.get("godot") or [""])[0]) == "1":
+            return self._sprites_modulares_previa_godot(consulta)
+        indice = _indice_sprites()
         alvo = str((consulta.get("alvo") or ["_"])[0])
-        slots = [s for s in manifesto.get("slots", []) if isinstance(s, dict)
-                 and s.get("grupo") == "lutador"
-                 and s.get("alvo", {}).get("chave") in ("_", alvo)
-                 and s.get("estado") in ("base", "neutro")]
+        expressao = str((consulta.get("expressao") or ["neutro"])[0])
+        if expressao not in manifesto_sprites.FAMILIA:
+            expressao = "neutro"
         quadro = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
-        for slot in sorted(slots, key=lambda s: s.get("camada_z", 0)):
-            arquivo = self._arquivo_do_slot(slot)
-            if arquivo is None or not arquivo.is_file():
+        pecas = 0
+        for parte in sorted(manifesto_sprites.CAMADA_Z, key=manifesto_sprites.CAMADA_Z.get):
+            achado = manifesto_sprites.resolver_parte(parte, alvo, expressao, _existe_no_indice(indice))
+            if achado is None:
+                continue
+            slot = indice["por_id"].get(f"lutador/{parte}/{achado['nivel']}/{achado['alvo']}/{achado['estado']}")
+            arquivo = self._arquivo_do_slot(slot) if slot else None
+            if arquivo is None:
                 continue
             try:
                 with Image.open(arquivo) as imagem:
                     peca = imagem.convert("RGBA")
-                    if peca.size != (1024, 1024):
-                        peca.thumbnail((1024, 1024))
-                    quadro.alpha_composite(peca, ((1024 - peca.width) // 2, (1024 - peca.height) // 2))
             except (OSError, ValueError):
                 continue
+            if peca.size != (1024, 1024):
+                peca.thumbnail((1024, 1024))
+            quadro.alpha_composite(peca, ((1024 - peca.width) // 2, (1024 - peca.height) // 2))
+            pecas += 1
         saida = io.BytesIO()
-        quadro.save(saida, "PNG", optimize=True)
-        return self._bytes(saida.getvalue(), "image/png")
+        quadro.resize((512, 512), Image.Resampling.LANCZOS).save(saida, "PNG", optimize=True)
+        corpo = saida.getvalue()
+        if self._saiu:
+            return
+        try:
+            self.send_response(200)
+            self._cabecalhos_comuns("image/png", len(corpo))
+            # Zero pecas: o telefone diz que o jogo ainda usa o desenho de hoje.
+            self.send_header("X-Previa-Pecas", str(pecas))
+            self.end_headers()
+            self.wfile.write(corpo)
+        except CLIENTE_SAIU:
+            self._cliente_saiu()
+
+    def _sprites_modulares_previa_godot(self, consulta: dict):
+        if not GODOT_PREVIA.is_file():
+            return self._erro(503, "a prévia do Godot não está instalada neste PC")
+        alvo = str((consulta.get("alvo") or ["_"])[0])
+        if alvo not in {a["chave"] for a in _indice_sprites()["alvos"].get("lutador", [])}:
+            return self._erro(400, "estilo desconhecido")
+        situacao, dado = pedir_previa_godot(alvo)
+        if situacao == "pronta":
+            return self._bytes(dado, "image/png")
+        if situacao == "erro":
+            return self._erro(502, dado)
+        texto = ("na fila: o Godot está montando outro estilo…" if situacao == "na_fila"
+                 else "montando no Godot…")
+        return self._json({"situacao": situacao, "mensagem": texto}, 202)
 
     def _sprites_modulares_mutar(self, slot_id: str, acao: str):
         if self._aparelho() is None:
             return
         if not self.estado.com_acoes:
-            return self._erro(403, "as acoes estao desligadas neste servidor")
-        manifesto = self._manifesto_sprites()
-        slot = next((s for s in manifesto.get("slots", []) if s.get("id") == slot_id), None)
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        slot = _indice_sprites()["por_id"].get(slot_id)
         arquivo = self._arquivo_do_slot(slot) if isinstance(slot, dict) else None
         if arquivo is None:
-            return self._erro(404, "peca desconhecida")
+            return self._erro(404, "peça desconhecida")
+        avisos: list[str] = []
         if acao == "anexar":
             pedido = self._atelie_corpo()
             if pedido is None:
@@ -1344,46 +1635,46 @@ class Manipulador(BaseHTTPRequestHandler):
             if len(bruto) > SPRITE_MAX:
                 return self._erro(413, "a imagem passa de 20 MB")
             if arquivo.exists() and not bool(opcoes.get("substituir")):
-                return self._erro(409, "ja ha uma imagem aqui; toque em Trocar de novo para confirmar")
+                return self._erro(409, "já há um desenho aqui; confirme a troca")
             try:
                 with Image.open(io.BytesIO(bruto)) as aberta:
                     if aberta.format != "PNG":
                         return self._erro(400, "mande uma imagem PNG")
                     imagem = aberta.convert("RGBA")
             except (OSError, ValueError):
-                return self._erro(400, "nao consegui abrir esta imagem")
+                return self._erro(400, "não consegui abrir esta imagem")
             if imagem.getchannel("A").getextrema()[0] == 255:
                 return self._erro(400, "a imagem precisa ter fundo transparente")
             esperado = tuple(slot.get("tamanho_px") or (1024, 1024))
-            proporcao = imagem.width / imagem.height
-            if abs(proporcao - esperado[0] / esperado[1]) > .02:
-                return self._erro(400, "o formato nao combina com este lugar; use o gabarito")
-            avisos = []
+            if abs(imagem.width / imagem.height - esperado[0] / esperado[1]) > .02:
+                return self._erro(400, "o formato não combina com este lugar; use o gabarito")
             if imagem.size != esperado:
                 imagem = imagem.resize(esperado, Image.Resampling.LANCZOS)
                 avisos.append("ajustei o tamanho para caber no gabarito")
-            if arquivo.exists():
-                historico = arquivo.with_suffix(arquivo.suffix + ".historico")
-                historico.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(arquivo, historico / f"{int(time.time() * 1000)}.png")
+            manifesto_sprites.guardar_versao(arquivo)
             arquivo.parent.mkdir(parents=True, exist_ok=True)
             temporario = arquivo.with_suffix(".novo.png")
             imagem.save(temporario, "PNG", optimize=True)
             os.replace(temporario, arquivo)
-            return self._json({"feito": True, "avisos": avisos})
-        if acao == "desfazer":
-            historico = arquivo.with_suffix(arquivo.suffix + ".historico")
-            versoes = sorted(historico.glob("*.png")) if historico.is_dir() else []
-            if not versoes:
-                return self._erro(404, "nao ha uma versao anterior")
-            os.replace(versoes[-1], arquivo)
-            return self._json({"feito": True})
-        if not arquivo.is_file():
-            return self._erro(404, "este lugar ja esta vazio")
-        historico = arquivo.with_suffix(arquivo.suffix + ".historico")
-        historico.mkdir(parents=True, exist_ok=True)
-        os.replace(arquivo, historico / f"{int(time.time() * 1000)}.png")
-        return self._json({"feito": True})
+        elif acao == "desfazer":
+            anteriores = manifesto_sprites.versoes(arquivo)
+            if not anteriores:
+                return self._erro(404, "não há versão anterior")
+            if arquivo.is_file():
+                # O desenho desfeito nao some: fica guardado fora da fila.
+                desfeitos = manifesto_sprites.pasta_de_versoes(arquivo) / "desfeitos"
+                desfeitos.mkdir(parents=True, exist_ok=True)
+                os.replace(arquivo, manifesto_sprites.nome_de_versao(desfeitos))
+            arquivo.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(anteriores[-1], arquivo)
+        else:
+            if not arquivo.is_file():
+                return self._erro(404, "este lugar já está vazio")
+            manifesto_sprites.guardar_versao(arquivo, mover=True)
+        indice = _indice_sprites(mudou=slot_id)
+        return self._json({"feito": True, "avisos": avisos,
+                           "slot": self._slot_publico(slot, indice),
+                           "progresso": _progresso_sprites(indice)})
 
     # ------------------------------------------------------------ atelie
     def _atelie_catalogo(self, consulta):

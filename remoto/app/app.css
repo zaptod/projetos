@@ -897,11 +897,35 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .atelie-espelho { display: inline-block; margin: 8px 0; }
 .atelie-previas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
 .atelie-previas img { width: 100%; max-height: 120px; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
-.modular-previa { display: block; width: min(100%, 310px); aspect-ratio: 1; object-fit: contain; margin: 10px auto; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; border-radius: 16px; }
+.modular-previa-caixa { margin: 10px 0 0; text-align: center; }
+.modular-previa { display: block; width: min(100%, 300px); aspect-ratio: 1; object-fit: contain; margin: 0 auto 6px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; border-radius: 16px; }
+#modular-hoje { background: #1b1e27; }
+.modular-folha { display: block; width: 100%; height: auto; margin: 10px 0; border-radius: 14px; background: #1b1e27; }
+.modular-progresso { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.modular-contador { padding: 6px 10px; border-radius: 999px; background: rgba(127, 127, 127, .16); font-size: .92em; }
+.modular-contador.completo { background: rgba(46, 160, 90, .22); }
+.modular-expressoes { display: flex; flex-wrap: wrap; gap: 6px; }
+.modular-expressoes .acao, .modular-todas, .modular-previacao .acao, #sprites-modulares select { min-height: 44px; font: inherit; }
+.modular-expressao { flex: 1 0 auto; min-width: 72px; padding: 0 12px; }
+.modular-expressao.escolhida { outline: 3px solid #2f8f5b; outline-offset: -3px; font-weight: 700; }
+.modular-todas { width: 100%; margin-top: 8px; }
 .modular-slots { display: grid; gap: 8px; margin-top: 10px; }
-.modular-slot { min-height: 58px; text-align: left; display: grid; gap: 3px; font: inherit; }
-.modular-slot strong { text-transform: capitalize; }
-@media (prefers-color-scheme: dark) { .modular-previa { background-color: #26303a; } }
+.modular-slot { min-height: 58px; text-align: left; display: grid; gap: 7px; font: inherit; cursor: default; }
+.modular-slot.anexado { border-left: 5px solid #2f8f5b; }
+.modular-slot-topo { display: flex; align-items: center; gap: 10px; }
+.modular-slot-topo strong { display: block; }
+.modular-situacao { display: block; font-size: .9em; opacity: .8; }
+.modular-mini { width: 56px; height: 56px; flex: 0 0 56px; object-fit: contain; border-radius: 10px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 10px 10px; }
+.modular-acoes { display: flex; flex-wrap: wrap; gap: 7px; }
+.modular-acoes .acao { min-height: 44px; flex: 1 0 96px; font: inherit; }
+.modular-acoes .modular-gabarito { flex-basis: 100%; }
+.modular-folha { cursor: zoom-in; }
+.modular-previacao { margin-top: 10px; }
+.modular-previacao .acao { width: 100%; }
+@media (prefers-color-scheme: dark) {
+  .modular-previa { background-color: #26303a; }
+  .modular-mini { background: repeating-conic-gradient(#3a4452 0 25%, #2b333e 0 50%) 50% / 10px 10px; }
+}
 
 /* ---- o interruptor do Claude (29/09): no topo, preso ao rolar. Compacto
    (uma faixa de ~52 px), para não cobrir a Mesa quando fica preso. */

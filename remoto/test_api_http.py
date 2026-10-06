@@ -11,6 +11,7 @@ import http.client
 import base64
 import io
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -173,34 +174,259 @@ def _png_rgba(cor, tamanho=(1024, 1024)):
     return base64.b64encode(saida.getvalue()).decode("ascii")
 
 
-def test_sprites_modulares_anexa_substitui_desfaz_e_monta_previa(servidor, mundo, monkeypatch):
+MANIFESTO_REAL = Path(__file__).resolve().parents[1] / "palco" / "biblioteca" / "manifesto_slots.json"
+
+
+@pytest.fixture
+def biblioteca_sprites(mundo, monkeypatch):
+    """Biblioteca temporaria com o manifesto REAL (1.867 lugares)."""
+    raiz = mundo.tmp / "palco" / "biblioteca"
+    raiz.mkdir(parents=True)
+    manifesto = raiz / "manifesto_slots.json"
+    manifesto.write_bytes(MANIFESTO_REAL.read_bytes())
+    monkeypatch.setattr(api_http, "PARTES_BIBLIOTECA", raiz)
+    monkeypatch.setattr(api_http, "MANIFESTO_SPRITES", manifesto)
+    monkeypatch.setattr(api_http, "_INDICE_SPRITES",
+                        {"chave": None, "base": None, "existe": None, "quando": 0.0, "geracao": 0})
+    return raiz
+
+
+def _rota_slot(slot_id, acao):
+    from urllib.parse import quote
+    return f"/api/sprites/modulares/{quote(slot_id, safe='')}/{acao}"
+
+
+def _anexar(srv, token, slot_id, cor, substituir=False):
+    return _pedir(srv, "POST", _rota_slot(slot_id, "anexar"),
+                  {"imagem": _png_rgba(cor), "opcoes": {"substituir": substituir}}, token)
+
+
+def _catalogo(srv, token, grupo="lutador", alvo="_"):
+    resposta, bruto = _pedir(srv, "GET", f"/api/sprites/modulares?grupo={grupo}&alvo={alvo}", token=token)
+    assert resposta.status == 200
+    return json.loads(bruto), len(bruto)
+
+
+def _slot(dados, slot_id):
+    return next(s for s in dados["slots"] if s["id"] == slot_id)
+
+
+def test_sprites_modulares_anexa_substitui_desfaz_e_monta_previa(servidor, biblioteca_sprites):
     """A peca de cima precisa vencer o pixel e a troca precisa ter volta."""
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    pele, olhos = "lutador/pele/comum/_/base", "lutador/olhos/comum/_/neutro"
+    resposta, bruto = _pedir(servidor, "GET", _rota_slot(olhos, "gabarito"), token=token)
+    assert resposta.status == 200 and Image.open(io.BytesIO(bruto)).size == (1024, 1024)
+    assert 'filename="gabarito_olhos.png"' in resposta.getheader("Content-Disposition")
+    resposta, bruto = _anexar(servidor, token, pele, (255, 0, 0, 255))
+    assert resposta.status == 200
+    # O cartao muda na hora: a resposta ja traz o lugar como ficou.
+    assert json.loads(bruto)["slot"]["situacao"] == "anexado"
+    assert json.loads(bruto)["slot"]["tem_anterior"] is False
+    resposta, bruto = _anexar(servidor, token, pele, (0, 255, 0, 255))
+    assert resposta.status == 409 and "confirme" in json.loads(bruto)["erro"]
+    assert _anexar(servidor, token, pele, (0, 255, 0, 255), substituir=True)[0].status == 200
+    assert _anexar(servidor, token, olhos, (0, 0, 255, 255))[0].status == 200
+    previa, bruto = _pedir(servidor, "GET", "/api/sprites/modulares/previa", token=token)
+    assert previa.status == 200 and previa.getheader("X-Previa-Pecas") == "2"
+    assert Image.open(io.BytesIO(bruto)).getpixel((256, 256))[:3] == (0, 0, 255)
+    resposta, bruto = _pedir(servidor, "GET", _rota_slot(olhos, "imagem"), token=token)
+    assert resposta.status == 200 and max(Image.open(io.BytesIO(bruto)).size) == 160
+    dados, _ = _catalogo(servidor, token)
+    assert _slot(dados, pele)["tem_anterior"] is True and _slot(dados, olhos)["tem_anterior"] is False
+    assert _pedir(servidor, "POST", _rota_slot(pele, "desfazer"), {}, token)[0].status == 200
+    arquivo = biblioteca_sprites / "partes/lutador/pele/comum/_/base.png"
+    assert Image.open(arquivo).getpixel((512, 512))[:3] == (255, 0, 0)
+    # Sem versao anterior, o desfazer responde em portugues e nao mexe em nada.
+    resposta, bruto = _pedir(servidor, "POST", _rota_slot(pele, "desfazer"), {}, token)
+    assert resposta.status == 404 and json.loads(bruto)["erro"] == "não há versão anterior"
+
+
+def test_sprites_modulares_apagar_tem_volta_e_heranca_so_com_de_quem_herdar(servidor, biblioteca_sprites):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    olhos_comum = "lutador/olhos/comum/_/neutro"
+    olhos_classe = "lutador/olhos/classe/berserker_furia/neutro"
+    dados, _ = _catalogo(servidor, token, alvo="berserker_furia")
+    assert _slot(dados, olhos_classe)["situacao"] == "vazio"       # ninguem para herdar
+    assert _anexar(servidor, token, olhos_comum, (9, 9, 9, 255))[0].status == 200
+    dados, _ = _catalogo(servidor, token, alvo="berserker_furia")
+    assert _slot(dados, olhos_classe)["situacao"] == "herdando"
+    assert _slot(dados, olhos_classe)["aviso"] == "o jogo usa a peça comum"
+    # Apagar: o lugar fica vazio e o Desfazer traz o desenho de volta.
+    resposta, bruto = _pedir(servidor, "POST", _rota_slot(olhos_comum, "apagar"), {}, token)
+    slot = json.loads(bruto)["slot"]
+    assert resposta.status == 200 and slot["situacao"] == "vazio" and slot["tem_anterior"] is True
+    assert _pedir(servidor, "POST", _rota_slot(olhos_comum, "desfazer"), {}, token)[0].status == 200
+    dados, _ = _catalogo(servidor, token)
+    assert _slot(dados, olhos_comum)["situacao"] == "anexado"
+    # Carinha que a classe nao tem: o jogo usa o neutro DELA (regra do palco).
+    assert _anexar(servidor, token, olhos_classe, (1, 2, 3, 255))[0].status == 200
+    dados, _ = _catalogo(servidor, token, alvo="berserker_furia")
+    assert _slot(dados, "lutador/olhos/classe/berserker_furia/tonto")["aviso"] == \
+        "o jogo usa a carinha neutra deste estilo"
+
+
+def test_sprites_modulares_versoes_em_ordem_pelo_carimbo(servidor, biblioteca_sprites):
+    """Importacao e API usam o mesmo carimbo: o desfazer volta a MAIS nova."""
+    from neural_fights.tools import manifesto_sprites
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    slot = "lutador/boca/comum/_/neutro"
+    for cor in ((10, 0, 0, 255), (20, 0, 0, 255), (30, 0, 0, 255)):
+        assert _anexar(servidor, token, slot, cor, substituir=True)[0].status == 200
+    arquivo = biblioteca_sprites / "partes/lutador/boca/comum/_/neutro.png"
+    nomes = [v.name for v in manifesto_sprites.versoes(arquivo)]
+    assert len(nomes) == 2 and nomes == sorted(nomes) and all(len(n) == 24 for n in nomes)
+    assert _pedir(servidor, "POST", _rota_slot(slot, "desfazer"), {}, token)[0].status == 200
+    assert Image.open(arquivo).getpixel((512, 512))[0] == 20
+
+
+def test_sprites_modulares_contadores_seguem_o_contrato(servidor, biblioteca_sprites):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    dados, _ = _catalogo(servidor, token)
+    assert dados["progresso"] == {"basico": [0, 3], "rosto": [0, 14], "classes": [0, 16]}
+    # Os 14 do rosto: pele, sombra, olhos e boca nas 6 carinhas principais.
+    rosto = ["lutador/pele/comum/_/base", "lutador/sombra/comum/_/base"] + [
+        f"lutador/{p}/comum/_/{e}" for p in ("olhos", "boca")
+        for e in ("neutro", "furia", "animado", "panico", "dor", "morto")]
+    for slot in rosto:
+        assert _anexar(servidor, token, slot, (200, 200, 200, 255))[0].status == 200
+    # Sobrancelha e carinha extra NAO contam no rosto que reage.
+    assert _anexar(servidor, token, "lutador/sobrancelhas/comum/_/neutro", (1, 1, 1, 255))[0].status == 200
+    assert _anexar(servidor, token, "lutador/olhos/comum/_/tonto", (1, 1, 1, 255))[0].status == 200
+    # Classe com identidade: acessorio de cabeca OU de costas; a pele nao conta.
+    assert _anexar(servidor, token, "lutador/acessorio_cabeca/classe/berserker_furia/base", (5, 5, 5, 255))[0].status == 200
+    assert _anexar(servidor, token, "lutador/acessorio_costas/classe/mago_arcano/base", (5, 5, 5, 255))[0].status == 200
+    resposta, bruto = _anexar(servidor, token, "lutador/pele/classe/ninja_velocidade/base", (5, 5, 5, 255))
+    assert json.loads(bruto)["progresso"] == {"basico": [3, 3], "rosto": [14, 14], "classes": [2, 16]}
+
+
+def test_sprites_modulares_resposta_curta_e_rapida(servidor, biblioteca_sprites):
+    """06/10: o lutador inteiro levava 2,8-3,0 s e 503 KB por pedido."""
+    token = _parear(servidor)
+    _catalogo(servidor, token)                       # monta o indice
+    for alvo in ("_", "berserker_furia", "monge_chi"):
+        inicio = time.perf_counter()
+        dados, tamanho = _catalogo(servidor, token, alvo=alvo)
+        gasto = time.perf_counter() - inicio
+        assert dados["alvo"] == alvo
+        assert {s["id"].split("/")[3] for s in dados["slots"]} == {alvo}
+        assert tamanho < 60_000, tamanho
+        assert gasto < 0.3, gasto
+    assert len(dados["alvos"]) == 17 and dados["alvos"][0]["rotulo"] == "Comum (todos)"
+    assert len(dados["expressoes"]) == 24
+    assert [e["id"] for e in dados["expressoes"] if e["representante"]] ==         ["neutro", "furia", "animado", "panico", "dor", "morto"]
+    # Texto humano, com acento e sem "· Comum · Base".
+    rotulos = {s["rotulo"] for s in _catalogo(servidor, token)[0]["slots"]}
+    assert "Detalhe do rosto · pânico" in rotulos and "Pele (o corpo)" in rotulos
+    assert not any("Comum" in r or "Base" in r or "base" in r for r in rotulos)
+    habilidades, _ = _catalogo(servidor, token, grupo="skill")
+    assert "Área no chão" in {s["rotulo"] for s in habilidades["slots"]}
+
+
+def test_sprites_modulares_previa_usa_a_carinha_escolhida(servidor, biblioteca_sprites):
+    """Exata -> familia -> neutro, a mesma regra de palco/nucleo/partes_lutador.gd."""
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    _anexar(servidor, token, "lutador/olhos/comum/_/neutro", (0, 0, 255, 255))
+    _anexar(servidor, token, "lutador/olhos/comum/_/furia", (255, 0, 0, 255))
+    _anexar(servidor, token, "lutador/olhos/comum/_/limite", (0, 255, 0, 255))
+
+    def cor(expressao, alvo="_"):
+        resposta, bruto = _pedir(servidor, "GET",
+                                 f"/api/sprites/modulares/previa?alvo={alvo}&expressao={expressao}", token=token)
+        return resposta.getheader("X-Previa-Pecas"), Image.open(io.BytesIO(bruto)).getpixel((256, 256))[:3]
+    assert cor("limite") == ("1", (0, 255, 0))       # a exata
+    assert cor("berserk") == ("1", (255, 0, 0))      # a familia (furia)
+    assert cor("tonto") == ("1", (0, 0, 255))        # o neutro
+    assert cor("dor", "berserker_furia") == ("1", (0, 0, 255))   # os olhos comuns valem para a classe
+    vazia, _ = _pedir(servidor, "GET", "/api/sprites/modulares/previa?alvo=monge_chi&expressao=morto", token=token)
+    assert vazia.getheader("X-Previa-Pecas") == "1"
+
+
+def test_sprites_modulares_previa_do_godot_e_por_estilo(servidor, biblioteca_sprites, monkeypatch, tmp_path):
+    """Pedir o Berserker nao devolve a folha do comum; um Godot por vez, fila de 1."""
+    rodados, liberar = [], threading.Event()
+
+    def rodar(alvo, biblioteca):
+        rodados.append(alvo)
+        liberar.wait(5)
+        saida = tmp_path / f"folha{len(rodados)}.png"
+        Image.new("RGBA", (4, 4), (len(alvo), 0, 0, 255)).save(saida)
+        return {"estado": "pronta", "arquivo": str(saida)}
+    monkeypatch.setattr(api_http, "_rodar_previa_godot", rodar)
+    monkeypatch.setattr(api_http, "GODOT_PREVIA", Path(__file__))
+    monkeypatch.setattr(api_http, "_PREVIAS_GODOT", {})
+    monkeypatch.setattr(api_http, "_FILA_GODOT", [])
+    monkeypatch.setattr(api_http, "_GODOT_OCUPADO", {"alvo": None})
+    token = _parear(servidor)
+    assert _pedir(servidor, "GET", "/api/sprites/modulares/previa?godot=1&alvo=_", token=token)[0].status == 202
+    resposta, bruto = _pedir(servidor, "GET", "/api/sprites/modulares/previa?godot=1&alvo=berserker_furia", token=token)
+    assert resposta.status == 202 and json.loads(bruto)["situacao"] == "na_fila"
+    liberar.set()
+    for _ in range(100):
+        resposta, bruto = _pedir(servidor, "GET", "/api/sprites/modulares/previa?godot=1&alvo=berserker_furia", token=token)
+        if resposta.status == 200:
+            break
+        time.sleep(0.05)
+    assert Image.open(io.BytesIO(bruto)).getpixel((0, 0))[0] == len("berserker_furia")
+    resposta, bruto = _pedir(servidor, "GET", "/api/sprites/modulares/previa?godot=1&alvo=_", token=token)
+    assert resposta.status == 200 and Image.open(io.BytesIO(bruto)).getpixel((0, 0))[0] == 1
+    assert rodados == ["_", "berserker_furia"]
+    resposta, bruto = _pedir(servidor, "GET", "/api/sprites/modulares/previa?godot=1&alvo=inventado", token=token)
+    assert resposta.status == 400
+
+
+@pytest.mark.skipif(not Path("E:/ferramentas/godot/Godot_v4.7.2-stable_win64_console.exe").is_file()
+                    or os.environ.get("NF_TESTE_GODOT") != "1",
+                    reason="Godot nao encontrado ou teste visual nao solicitado")
+def test_sprites_modulares_api_chega_na_previa_do_godot(servidor, mundo, monkeypatch):
+    """Regressao ponta a ponta: POST no destino do manifesto -> pixel azul no Godot."""
+    godot = Path("E:/ferramentas/godot/Godot_v4.7.2-stable_win64_console.exe")
+    if not godot.is_file():
+        pytest.skip("Godot nao encontrado")
     raiz = mundo.tmp / "palco" / "biblioteca"
     manifesto = raiz / "manifesto_slots.json"
-    destino = "palco/biblioteca/partes/lutador/pele/comum/_/base.png"
-    olho = "palco/biblioteca/partes/lutador/olhos/comum/_/neutro.png"
+    slots = []
+    for parte, estado in (("pele", "base"), ("olhos", "neutro")):
+        destino = f"palco/biblioteca/partes/lutador/{parte}/comum/_/{estado}.png"
+        slots.append({"id": parte, "rotulo": parte, "grupo": "lutador", "parte": parte,
+                      "alvo": {"nivel": "comum", "chave": "_", "rotulo": "comum"},
+                      "estado": estado, "camada_z": 20 if parte == "pele" else 40,
+                      "tamanho_px": [1024, 1024], "obrigatorio": True, "reserva": "", "destino": destino,
+                      "fallback": []})
     manifesto.parent.mkdir(parents=True)
-    manifesto.write_text(json.dumps({"resumo": {"por_grupo": {"lutador": 2}}, "slots": [
-        {"id": "pele", "rotulo": "Pele", "grupo": "lutador", "parte": "pele", "alvo": {"chave": "_", "rotulo": "Comum"}, "estado": "base", "camada_z": 20, "tamanho_px": [1024, 1024], "obrigatorio": True, "reserva": "corpo", "destino": destino, "fallback": []},
-        {"id": "olhos", "rotulo": "Olhos", "grupo": "lutador", "parte": "olhos", "alvo": {"chave": "_", "rotulo": "Comum"}, "estado": "neutro", "camada_z": 40, "tamanho_px": [1024, 1024], "obrigatorio": True, "reserva": "rosto", "destino": olho, "fallback": []}
-    ]}), encoding="utf-8")
+    manifesto.write_text(json.dumps({"slots": slots}), encoding="utf-8")
     monkeypatch.setattr(api_http, "PARTES_BIBLIOTECA", raiz)
     monkeypatch.setattr(api_http, "MANIFESTO_SPRITES", manifesto)
     token = _parear(servidor)
     servidor.RequestHandlerClass.estado.com_acoes = True
-    pedido = {"imagem": _png_rgba((255, 0, 0, 255)), "opcoes": {}}
-    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/anexar", pedido, token)[0].status == 200
-    pedido["imagem"] = _png_rgba((0, 255, 0, 255))
-    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/anexar", pedido, token)[0].status == 409
-    pedido["opcoes"] = {"substituir": True}
-    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/anexar", pedido, token)[0].status == 200
-    pedido = {"imagem": _png_rgba((0, 0, 255, 255)), "opcoes": {}}
-    assert _pedir(servidor, "POST", "/api/sprites/modulares/olhos/anexar", pedido, token)[0].status == 200
-    previa, bruto = _pedir(servidor, "GET", "/api/sprites/modulares/previa", token=token)
-    assert previa.status == 200 and Image.open(io.BytesIO(bruto)).getpixel((512, 512))[:3] == (0, 0, 255)
-    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/desfazer", {}, token)[0].status == 200
-    imagem = Image.open(raiz.parent.parent / destino)
-    assert imagem.getpixel((512, 512))[:3] == (255, 0, 0)
+    assert _pedir(servidor, "POST", "/api/sprites/modulares/pele/anexar",
+                  {"imagem": _png_rgba((255, 0, 0, 255)), "opcoes": {}}, token)[0].status == 200
+    # Olhos PEQUENOS, nas zonas do gabarito (CONTRATO 2.3): um quadrado azul
+    # de 1024 cobriria a pele inteira e o verificador acharia vermelho=0.
+    olhos = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    from PIL import ImageDraw
+    for y in (420, 604):
+        ImageDraw.Draw(olhos).ellipse((512, y - 51, 614, y + 51), fill=(0, 0, 255, 255))
+    bruto = io.BytesIO()
+    olhos.save(bruto, "PNG")
+    assert _pedir(servidor, "POST", "/api/sprites/modulares/olhos/anexar",
+                  {"imagem": base64.b64encode(bruto.getvalue()).decode("ascii"), "opcoes": {}},
+                  token)[0].status == 200
+    projeto = Path(__file__).resolve().parents[1] / "palco"
+    saida = mundo.tmp / "folha.png"
+    cmd = [str(godot), "--path", str(projeto), "res://ferramentas/previa_sprites.tscn", "--",
+           f"--biblioteca={raiz.as_posix()}", f"--saida={saida.as_posix()}"]
+    processo = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    assert processo.returncode == 0, processo.stdout + processo.stderr
+    verificador = [str(godot), "--headless", "--path", str(projeto), "--script",
+                   "res://testes/verificar_previa.gd", "--", f"--png={saida.as_posix()}"]
+    processo = subprocess.run(verificador, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
+    assert processo.returncode == 0, processo.stdout + processo.stderr
 
 
 def test_assembleia_exige_pareamento_e_acoes(servidor, monkeypatch):

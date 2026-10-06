@@ -2452,18 +2452,59 @@ token vai em `?t=` somente nessa URL de vídeo, porque `<video>` não envia o
 cabeçalho Authorization.
 ## Painel de partes de sprite (06/10/2026)
 
-No topo do Ateliê há agora **Montar sprites**. Ele separa Lutador, Armas,
-Habilidades, Efeitos, Arenas e HUD em lugares simples para anexar PNG. A
-bolinha é mostrada montada; os nove lugares do lutador usam o gabarito
-1024×1024 e as seis carinhas representantes. O Ateliê antigo fica recolhido,
-para não apagar o catálogo de animação de lado.
+No topo do Ateliê há **Montar sprites**. Ele separa Lutador, Armas,
+Habilidades, Efeitos, "Em volta do lutador", Arenas e Placar em lugares
+simples para anexar PNG. O lutador é mostrado montado; os nove lugares usam o
+gabarito 1024×1024 e as 24 carinhas (6 principais + "Ver todas as 24").
 
-Rotas autenticadas: `GET /api/sprites/modulares` lista os lugares e seu
-estado; `POST /api/sprites/modulares/<id>/anexar` anexa ou troca mediante
-confirmação; `POST .../desfazer` e `POST .../apagar` guardam a versão anterior;
-`GET /api/sprites/modulares/previa` monta a prévia no servidor. A prévia do
-Godot ainda depende do comando do palco: enquanto ele não existir, o botão
-não aparece.
+**Rotas autenticadas** (todas em `remoto/api_http.py`):
+- `GET /api/sprites/modulares?grupo=G&alvo=A` responde SÓ o pedido (um grupo,
+  um "para quem"): `alvos`, `slots` (id, rótulo humano, situação
+  `anexado|herdando|vazio`, aviso, `tem_anterior`), `progresso` e
+  `expressoes` (lutador). Medido em 06/10: antes o lutador inteiro levava
+  2,8–3,0 s e 503 KB; agora ~30–60 ms e ~25–35 KB por estilo
+  (`test_sprites_modulares_resposta_curta_e_rapida` cobra < 300 ms e < 60 KB).
+- Índice em memória (`_indice_sprites`): o manifesto é lido uma vez por
+  versão do arquivo e o que existe sai de UMA varredura de `partes/`
+  (20 s de validade). Anexar, apagar e desfazer atualizam o índice na hora
+  e sobem a `geracao` (a folha do Godot daquela geração deixa de valer).
+- "Herdando" segue a regra do palco (`manifesto_sprites.resolver_parte`,
+  espelho de `palco/nucleo/partes_lutador.gd`; a catraca compara as tabelas
+  pelo texto do `.gd`): só aparece quando o jogo de fato usa outra peça.
+- `POST .../<id>/(anexar|apagar|desfazer)` devolvem o lugar como ficou e o
+  progresso: o cartão vira "Anexado" na hora. Apagar guarda a versão (o
+  Desfazer traz de volta); Desfazer guarda o desenho desfeito em
+  `.historico/desfeitos/`. Versões com carimbo único de 20 dígitos (o mesmo
+  da importação).
+- `GET .../previa?alvo=A&expressao=E` (prévia rápida, 512 px) usa a carinha
+  escolhida pela regra exata → família → neutro e manda `X-Previa-Pecas`; com
+  zero peças a tela mostra "o jogo ainda usa o desenho de hoje" com
+  `bolinha_hoje.png` (recorte da folha do Godot sem peças).
+- `GET .../previa?godot=1&alvo=A`: a folha do Godot (1080×1920, formato em
+  CONTRATO_SLOTS § "Prévia para o painel") é POR estilo; um Godot por vez e
+  uma na fila (o pedido novo toma o lugar). Erro vira frase humana.
+- `GET .../<id>/gabarito` baixa `gabarito_<peça>.png`: linhas com contorno
+  escuro e claro (aparecem em qualquer fundo), legenda escrita, e as zonas do
+  CONTRATO § 2.3. `GET .../<id>/imagem` é a miniatura de 160 px do cartão.
+
+**Contadores** (do CONTRATO § "Quantos o Adrian precisa"): básico = pele +
+olhos neutro + boca neutro (3); rosto que reage = pele, sombra, olhos e boca
+nas 6 principais (14); classes com identidade = classe com acessório de
+cabeça OU de costas (16).
+
+**Armadilha medida (reprovação do conferente, 06/10):** o `change` do seletor
+de arquivo passava o `Event` como arquivo e Anexar/Trocar nunca funcionaram;
+a prova de tela anterior só passava porque usava o caminho do "soltar". O
+seletor também tinha `capture="environment"` (abria a câmera no Android).
+Prova nova: `remoto/test_app_sprites_tela.py` (`NF_TESTE_NAVEGADOR=1`;
+`NF_TESTE_GODOT=1` usa o Godot de verdade) anexa pelo seletor
+(`set_files`) e confere pelo DOM o cartão, a miniatura, os contadores,
+trocar → desfazer → apagar → desfazer, as 24 carinhas, a troca de estilo
+sem resposta atrasada e a folha do Godot. Capturas claro/escuro em
+`<TEMP>/tela_app/sprites/`.
+
+Importar as artes antigas: CONTRATO_SLOTS § "Importar as artes antigas"
+(o capacete do Berserker é acessório de cabeça, encaixado pelo arco).
 
 # Aba Equipe
 

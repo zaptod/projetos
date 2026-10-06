@@ -2,7 +2,24 @@
 // O Atelie nao conhece caminhos do PC: cada imagem da previa e buscada com o
 // token, convertida em blob: e esquecida ao trocar de tentativa.
 const Atelie = {catalogo: null, sujeito: "", slot: null, arquivo: null, urls: []};
-const Modular = {dados: null, grupo: "lutador", alvo: "_", slot: null, expressao: "neutro"};
+const Modular = {dados: null, grupo: "lutador", alvo: "_", slot: null, expressao: "neutro", todas: false,
+  pedido: 0, pedidoPrevia: 0, versao: 0, folhas: {}, blobs: {}};
+
+// As imagens do painel modular tem chave propria (previa, folha:<estilo>,
+// mini:<lugar>): a troca de tela do app revoga Atelie.urls, e a folha
+// guardada de um estilo nao pode virar imagem quebrada na volta.
+function modularUrl(chave, blob) {
+  if (Modular.blobs[chave]) URL.revokeObjectURL(Modular.blobs[chave]);
+  Modular.blobs[chave] = URL.createObjectURL(blob);
+  return Modular.blobs[chave];
+}
+
+async function modularBlob(chave, caminho) {
+  const token = localStorage.getItem(TOKEN);
+  const resposta = await fetch(caminho, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+  if (!resposta.ok) throw new Error("não consegui abrir a imagem");
+  return modularUrl(chave, await resposta.blob());
+}
 
 function atelieLimparUrls() {
   Atelie.urls.forEach((url) => URL.revokeObjectURL(url));
@@ -91,74 +108,243 @@ async function atelieCarregar() {
 function atelieMostrar() { atelieCarregar(); }
 function atelieParar() { atelieLimparUrls(); }
 
-function modularAlvos() {
-  const alvos = new Map();
-  for (const slot of Modular.dados.slots) {
-    if (slot.grupo === Modular.grupo) alvos.set(slot.alvo.chave, slot.alvo.rotulo);
+// ------------------------------------------------------------ Montar sprites
+// O servidor responde so o pedido (grupo + para quem). Cada carga leva um
+// numero: resposta de um pedido antigo (trocou de estilo no meio) e jogada
+// fora, para a tela nunca mostrar os cartoes de outro estilo.
+function modularTexto(id, texto) { $(id).textContent = texto; }
+
+// "Carinha" e feminino: "carinha neutra"; substantivos (fúria, pânico) ficam.
+const MODULAR_FEMININO = {neutro: "neutra", focado: "focada", determinado: "determinada", animado: "animada",
+  "eufórico": "eufórica", nervoso: "nervosa", morto: "morta", tonto: "tonta", confuso: "confusa",
+  concentrado: "concentrada"};
+function modularCarinha(nome) { return MODULAR_FEMININO[nome] || nome; }
+
+function modularCarregando(sim) { $("modular-carregando").classList.toggle("oculto", !sim); }
+
+async function modularCarregar() {
+  const pedido = ++Modular.pedido;
+  modularCarregando(true);
+  try {
+    const dados = await api(`/api/sprites/modulares?grupo=${encodeURIComponent(Modular.grupo)}` +
+      `&alvo=${encodeURIComponent(Modular.alvo)}`);
+    if (pedido !== Modular.pedido) return;      // chegou atrasada: ja e outro pedido
+    // Igual ao que esta na tela (o cartao ja mudou com a resposta do anexo):
+    // nao redesenha, para um toque no meio nao cair num botao trocado.
+    const igual = Modular.dados && JSON.stringify(Modular.dados) === JSON.stringify(dados);
+    Modular.dados = dados; Modular.alvo = dados.alvo;
+    if (!igual) modularDesenhar();
+  } catch (erro) {
+    if (pedido === Modular.pedido) modularTexto("modular-aviso", "Não consegui abrir os lugares: " + erro.message);
+  } finally {
+    if (pedido === Modular.pedido) modularCarregando(false);
   }
-  const seletor = $("modular-alvo"); seletor.replaceChildren();
-  for (const [chave, rotulo] of alvos) seletor.append(el("option", {value: chave}, rotulo));
-  if (!alvos.has(Modular.alvo)) Modular.alvo = alvos.has("_") ? "_" : [...alvos][0]?.[0] || "_";
-  seletor.value = Modular.alvo;
 }
 
-async function modularPrevia() {
-  if (Modular.grupo !== "lutador") { $("modular-previa").classList.add("oculto"); return; }
+function modularAlvos() {
+  const seletor = $("modular-alvo"); seletor.replaceChildren();
+  for (const alvo of Modular.dados.alvos || []) seletor.append(el("option", {value: alvo.chave}, alvo.rotulo));
+  seletor.value = Modular.alvo;
+  $("modular-alvo-caixa").classList.toggle("oculto", (Modular.dados.alvos || []).length < 2);
+}
+
+function modularProgresso() {
+  const p = Modular.dados.progresso;
+  const caixa = $("modular-progresso"); caixa.replaceChildren();
+  if (!p) {
+    const slots = Modular.dados.slots;
+    caixa.append(el("span", {}, `${slots.filter((s) => s.situacao === "anexado").length} de ${slots.length} lugares com desenho aqui.`));
+    return;
+  }
+  for (const [rotulo, [feitos, total]] of [["Lutador básico", p.basico], ["Rosto que reage", p.rosto],
+                                           ["Classes com identidade", p.classes]]) {
+    caixa.append(el("span", {class: "modular-contador" + (feitos >= total ? " completo" : "")},
+      `${rotulo}: ${feitos} de ${total}`));
+  }
+}
+
+function modularExpressoes() {
+  const caixa = $("modular-expressoes"); caixa.replaceChildren();
+  const lista = Modular.dados.expressoes || [];
+  $("modular-expressoes-caixa").classList.toggle("oculto", !lista.length);
+  const atual = lista.find((e) => e.id === Modular.expressao) || lista[0];
+  if (!atual) return;
+  modularTexto("modular-expressao-nome", atual.nome);
+  for (const expressao of lista) {
+    if (!Modular.todas && !expressao.representante && expressao.id !== Modular.expressao) continue;
+    const escolhida = expressao.id === Modular.expressao;
+    const botao = el("button", {class: "acao modular-expressao" + (escolhida ? " escolhida" : ""), type: "button",
+      "aria-pressed": escolhida ? "true" : "false"}, (escolhida ? "✓ " : "") + expressao.nome);
+    botao.addEventListener("click", () => { Modular.expressao = expressao.id; modularDesenhar(); });
+    caixa.append(botao);
+  }
+  const todas = $("modular-todas");
+  todas.textContent = Modular.todas ? "Mostrar só as 6 principais" : `Ver todas as ${lista.length}`;
+  todas.setAttribute("aria-expanded", Modular.todas ? "true" : "false");
+}
+
+function modularCartao(slot) {
+  const anexado = slot.situacao === "anexado";
+  const situacao = anexado ? "Anexado" : slot.situacao === "herdando" ? "Herdando" : "Vazio";
+  const anexar = el("button", {class: "acao", type: "button"}, anexado ? "Trocar" : "Anexar");
+  anexar.addEventListener("click", () => { Modular.slot = slot; $("modular-arquivo").click(); });
+  const botoes = el("div", {class: "botoes modular-acoes"}, anexar);
+  if (slot.tem_anterior) {
+    const desfazer = el("button", {class: "acao", type: "button"}, "Desfazer");
+    desfazer.addEventListener("click", () => modularMutar(slot, "desfazer")); botoes.append(desfazer);
+  }
+  if (anexado) {
+    const apagar = el("button", {class: "acao", type: "button"}, "Apagar");
+    apagar.addEventListener("click", () => modularMutar(slot, "apagar")); botoes.append(apagar);
+  }
+  if (Modular.grupo === "lutador") {
+    const gabarito = el("button", {class: "acao modular-gabarito", type: "button"}, "Baixar gabarito");
+    gabarito.addEventListener("click", () => modularGabarito(slot)); botoes.append(gabarito);
+  }
+  const miniatura = el("img", {class: "modular-mini oculto", alt: ""});
+  if (anexado) modularMiniatura(slot, miniatura);
+  return el("div", {class: "acao modular-slot " + slot.situacao, "data-slot": slot.id},
+    el("div", {class: "modular-slot-topo"}, miniatura,
+      el("div", {}, el("strong", {}, slot.rotulo),
+        el("span", {class: "modular-situacao"}, situacao + (slot.aviso ? ` · ${slot.aviso}` : "")))),
+    botoes);
+}
+
+async function modularMiniatura(slot, img) {
+  // A miniatura e a previa do proprio lugar: so ele, sem as outras pecas.
   try {
-    $("modular-previa").src = await atelieBlob(`/api/sprites/modulares/previa?alvo=${encodeURIComponent(Modular.alvo)}`);
-    $("modular-previa").classList.remove("oculto");
-  } catch (_) { $("modular-previa").classList.add("oculto"); }
+    img.src = await modularBlob("mini:" + slot.id, `/api/sprites/modulares/${encodeURIComponent(slot.id)}/imagem?v=${Modular.versao}`);
+    img.classList.remove("oculto");
+  } catch (_) { img.classList.add("oculto"); }
 }
 
 function modularDesenhar() {
   modularAlvos();
+  modularProgresso();
+  const lutador = Modular.grupo === "lutador";
+  $("modular-ver-godot").classList.toggle("oculto", !lutador || !Modular.dados.godot_previa);
+  $("modular-previa-caixa").classList.toggle("oculto", !lutador);
+  if (lutador) modularExpressoes(); else $("modular-expressoes-caixa").classList.add("oculto");
+  const folha = Modular.folhas[Modular.alvo];
+  $("modular-folha").classList.toggle("oculto", !lutador || !folha);
+  if (lutador && folha) $("modular-folha").src = folha;
   const lista = $("modular-slots"); lista.replaceChildren();
-  const slots = Modular.dados.slots.filter((slot) => slot.grupo === Modular.grupo &&
-    (slot.alvo.chave === Modular.alvo || (Modular.grupo === "lutador" && slot.alvo.chave === "_")) &&
-    (!slot.estado || slot.estado === "base" || slot.estado === Modular.expressao));
-  const anexados = slots.filter((slot) => slot.situacao === "anexado").length;
-  $("modular-progresso").textContent = Modular.grupo === "lutador"
-    ? `Lutador básico: ${anexados} de ${slots.length} peças prontas · Rosto que reage: escolha uma das 6 carinhas.`
-    : `${anexados} de ${slots.length} lugares preenchidos.`;
-  for (const slot of slots) {
-    const texto = slot.situacao === "anexado" ? "Anexado" : slot.situacao === "herdando" ? "Herdando" : "Vazio";
-    const botao = el("button", {class: "acao modular-slot", type: "button"},
-      el("strong", {}, slot.rotulo), el("span", {class: "fraco"}, texto));
-    botao.addEventListener("click", () => {
-      Modular.slot = slot; $("modular-arquivo").click();
-    });
-    lista.append(botao);
-  }
-  const expressoes = $("modular-expressoes"); expressoes.replaceChildren();
-  if (Modular.grupo === "lutador") for (const nome of ["neutro", "furia", "animado", "panico", "dor", "morto"]) {
-    const botao = el("button", {class: "acao", type: "button"}, nome);
-    botao.addEventListener("click", () => { Modular.expressao = nome; modularDesenhar(); }); expressoes.append(botao);
-  }
-  modularPrevia();
+  const slots = Modular.dados.slots.filter((slot) => !lutador || !slot.estado || slot.estado === "base" ||
+    slot.estado === Modular.expressao);
+  for (const slot of slots) lista.append(modularCartao(slot));
+  if (lutador) modularPrevia();
 }
 
-async function modularCarregar() {
+async function modularPrevia() {
+  const pedido = ++Modular.pedidoPrevia;
+  const token = localStorage.getItem(TOKEN);
   try {
-    Modular.dados = await api(`/api/sprites/modulares?grupo=${encodeURIComponent(Modular.grupo)}`);
-    modularDesenhar();
-  } catch (erro) { $("modular-aviso").textContent = "não consegui abrir os lugares: " + erro.message; }
+    const resposta = await fetch(`/api/sprites/modulares/previa?alvo=${encodeURIComponent(Modular.alvo)}` +
+      `&expressao=${encodeURIComponent(Modular.expressao)}&v=${Modular.versao}`,
+      {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+    if (!resposta.ok) throw new Error("sem prévia");
+    const pecas = +(resposta.headers.get("X-Previa-Pecas") || 0);
+    const blob = await resposta.blob();
+    if (pedido !== Modular.pedidoPrevia) return;
+    $("modular-previa").src = modularUrl("previa", blob);
+    $("modular-previa").classList.toggle("oculto", !pecas);
+    $("modular-hoje").classList.toggle("oculto", !!pecas);
+    modularTexto("modular-previa-legenda", pecas
+      ? `Prévia rápida · carinha ${modularCarinha($("modular-expressao-nome").textContent)}`
+      : "Nada anexado aqui ainda: o jogo ainda usa o desenho de hoje.");
+  } catch (_) {
+    if (pedido !== Modular.pedidoPrevia) return;
+    $("modular-previa").classList.add("oculto"); $("modular-hoje").classList.remove("oculto");
+    modularTexto("modular-previa-legenda", "Não consegui montar a prévia; o jogo ainda usa o desenho de hoje.");
+  }
+}
+
+async function modularGabarito(slot) {
+  try {
+    const url = await atelieBlob(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/gabarito`);
+    const a = el("a", {href: url, download: `gabarito_${slot.parte}.png`});
+    document.body.append(a); a.click(); a.remove();
+    modularTexto("modular-aviso", `Gabarito de ${slot.rotulo.toLowerCase()} baixado. Desenhe por cima e anexe aqui.`);
+  } catch (erro) { modularTexto("modular-aviso", "Não consegui baixar o gabarito: " + erro.message); }
+}
+
+// Depois de anexar, apagar ou desfazer, o servidor devolve o lugar como
+// ficou: o cartao muda na hora, e a lista completa vem logo atras.
+function modularAplicar(resposta) {
+  Modular.versao++;
+  Modular.folhas = {};          // a folha do Godot ficou velha: "Ver no Godot" monta outra
+  const slot = resposta.slot;
+  if (slot) Modular.dados.slots = Modular.dados.slots.map((s) => s.id === slot.id ? slot : s);
+  if (resposta.progresso && Modular.dados.progresso) Modular.dados.progresso = resposta.progresso;
+  modularDesenhar();
+  modularCarregar();
+}
+
+async function modularMutar(slot, acao) {
+  if (acao === "apagar" && !confirm(`Apagar o desenho de ${slot.rotulo.toLowerCase()}? Dá para voltar com Desfazer.`)) return;
+  try {
+    const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/${acao}`, {method: "POST"});
+    const novo = resposta.slot || {};
+    modularTexto("modular-aviso", acao === "desfazer" ? "Pronto: voltou a versão anterior."
+      : novo.situacao === "herdando" ? `Desenho apagado; ${novo.aviso}. Desfazer traz de volta.`
+      : "Desenho apagado; o jogo volta ao desenho de hoje. Desfazer traz de volta.");
+    modularAplicar(resposta);
+  } catch (erro) { modularTexto("modular-aviso", "Não deu: " + erro.message); }
+}
+
+async function modularVerGodot() {
+  if (!Modular.dados || !Modular.dados.godot_previa) return;
+  const alvo = Modular.alvo;
+  const botao = $("modular-ver-godot"); botao.disabled = true;
+  modularTexto("modular-aviso", "montando no Godot…");
+  const token = localStorage.getItem(TOKEN);
+  try {
+    for (let tentativa = 0; tentativa < 60; tentativa++) {
+      const resposta = await fetch(`/api/sprites/modulares/previa?godot=1&alvo=${encodeURIComponent(alvo)}`,
+        {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+      if (resposta.status === 202) {
+        const dados = await resposta.json().catch(() => ({}));
+        if (Modular.alvo === alvo) modularTexto("modular-aviso", dados.mensagem || "montando no Godot…");
+        await new Promise((ok) => setTimeout(ok, 1000)); continue;
+      }
+      if (!resposta.ok) {
+        const dados = await resposta.json().catch(() => ({}));
+        throw new Error(dados.erro || "o Godot não conseguiu desenhar a folha");
+      }
+      const url = modularUrl("folha:" + alvo, await resposta.blob());
+      Modular.folhas[alvo] = url;
+      if (Modular.alvo === alvo) {
+        $("modular-folha").src = url; $("modular-folha").classList.remove("oculto");
+        modularTexto("modular-aviso", "Folha montada no Godot: as seis carinhas como vão aparecer na luta.");
+        $("modular-folha").scrollIntoView({behavior: "smooth", block: "start"});
+      }
+      return;
+    }
+    throw new Error("o Godot demorou mais do que o esperado; tente de novo");
+  } catch (erro) { modularTexto("modular-aviso", "Não deu para ver no Godot: " + erro.message); }
+  finally { botao.disabled = false; }
 }
 
 async function modularAnexar(arquivoRecebido = null) {
-  const arquivo = arquivoRecebido || $("modular-arquivo").files[0]; if (!arquivo || !Modular.slot) return;
-  const dados = new FormData(); dados.append("imagem", arquivo);
-  dados.append("opcoes", JSON.stringify({substituir: Modular.slot.situacao === "anexado" &&
-    confirm("Já há um desenho aqui. Trocar pelo novo?")}));
-  try {
-    const resposta = await api(`/api/sprites/modulares/${Modular.slot.id}/anexar`, {method: "POST", body: dados});
-    $("modular-aviso").textContent = resposta.avisos?.join(" · ") || "Desenho colocado.";
-    modularCarregar();
-  } catch (erro) { $("modular-aviso").textContent = erro.message; }
+  const arquivo = arquivoRecebido || $("modular-arquivo").files[0];
   $("modular-arquivo").value = "";
+  const slot = Modular.slot;
+  if (!arquivo || !slot) return;
+  const trocar = slot.situacao === "anexado";
+  if (trocar && !confirm(`Já há um desenho em ${slot.rotulo.toLowerCase()}. Trocar pelo novo? (Desfazer volta o antigo.)`)) return;
+  const dados = new FormData(); dados.append("imagem", arquivo);
+  dados.append("opcoes", JSON.stringify({substituir: trocar}));
+  modularTexto("modular-aviso", "enviando o desenho…");
+  try {
+    const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/anexar`, {method: "POST", body: dados});
+    modularTexto("modular-aviso", (trocar ? "Desenho trocado." : "Desenho anexado.") +
+      (resposta.avisos?.length ? " " + resposta.avisos.join(" · ") : ""));
+    modularAplicar(resposta);
+  } catch (erro) { modularTexto("modular-aviso", "Não deu para anexar: " + erro.message); }
 }
 
 $("atelie-sujeito").addEventListener("change", () => { Atelie.sujeito = $("atelie-sujeito").value; atelieCarregar(); });
-$("atelie-nome").addEventListener("change", atelieCarregar);
+$("atelie-nome").addEventListener("change", () => atelieCarregar());
 $("atelie-arquivo").addEventListener("change", () => { Atelie.arquivo = $("atelie-arquivo").files[0] || null; atelieEnviar(); });
 $("atelie-refazer").addEventListener("click", () => atelieEnviar());
 $("atelie-salvar").addEventListener("click", () => atelieEnviar(true));
@@ -166,13 +352,25 @@ $("atelie-descartar").addEventListener("click", () => {
   Atelie.arquivo = null; $("atelie-arquivo").value = ""; atelieLimparUrls();
   $("atelie-previas").replaceChildren(); $("atelie-editor").classList.add("oculto");
 });
-$("modular-grupo").addEventListener("change", () => { Modular.grupo = $("modular-grupo").value; modularCarregar(); });
-$("modular-alvo").addEventListener("change", () => { Modular.alvo = $("modular-alvo").value; modularDesenhar(); });
-$("modular-arquivo").addEventListener("change", modularAnexar);
+$("modular-grupo").addEventListener("change", () => {
+  Modular.grupo = $("modular-grupo").value; Modular.alvo = ""; Modular.slot = null;
+  modularTexto("modular-aviso", "");   // o aviso era do grupo anterior
+  $("modular-slots").replaceChildren(); modularCarregar();
+});
+$("modular-alvo").addEventListener("change", () => {
+  Modular.alvo = $("modular-alvo").value; Modular.slot = null;
+  $("modular-slots").replaceChildren(); modularCarregar();
+});
+// Tocar na folha abre em tela cheia, com zoom do proprio navegador.
+$("modular-folha").addEventListener("click", () => { if ($("modular-folha").src) window.open($("modular-folha").src, "_blank"); });
+$("modular-todas").addEventListener("click", () => { Modular.todas = !Modular.todas; modularExpressoes(); });
+$("modular-ver-godot").addEventListener("click", () => modularVerGodot());
+// O "change" entrega um Event: o arquivo sai do proprio campo.
+$("modular-arquivo").addEventListener("change", () => modularAnexar());
 $("sprites-modulares").addEventListener("dragover", (evento) => evento.preventDefault());
 $("sprites-modulares").addEventListener("drop", (evento) => {
   evento.preventDefault();
   const arquivo = evento.dataTransfer.files[0];
-  if (!Modular.slot) return $("modular-aviso").textContent = "Toque primeiro no lugar que vai receber o desenho.";
+  if (!Modular.slot) return modularTexto("modular-aviso", "Toque primeiro em Anexar no lugar que vai receber o desenho.");
   modularAnexar(arquivo);
 });

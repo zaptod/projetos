@@ -680,15 +680,27 @@
         <label>O que montar <select id="modular-grupo">
           <option value="lutador">Lutador</option><option value="arma">Armas</option>
           <option value="skill">Habilidades</option><option value="efeito">Efeitos</option>
-          <option value="arena">Arenas</option><option value="hud">HUD</option>
+          <option value="camada_estado">Em volta do lutador</option>
+          <option value="arena">Arenas</option><option value="hud">Placar</option>
         </select></label>
-        <label id="modular-alvo-caixa">Estilo <select id="modular-alvo"></select></label>
+        <label id="modular-alvo-caixa">Para quem <select id="modular-alvo"></select></label>
       </div>
-      <div id="modular-progresso" class="fraco"></div>
-      <img id="modular-previa" class="modular-previa oculto" alt="Prévia da bolinha montada">
-      <div class="botoes" id="modular-expressoes"></div>
+      <div id="modular-progresso" class="modular-progresso"></div>
+      <figure id="modular-previa-caixa" class="modular-previa-caixa">
+        <img id="modular-previa" class="modular-previa oculto" alt="Prévia da bolinha montada">
+        <img id="modular-hoje" class="modular-previa" src="bolinha_hoje.png" alt="A bolinha como o jogo desenha hoje">
+        <figcaption id="modular-previa-legenda" class="fraco">Nada anexado aqui ainda: o jogo ainda usa o desenho de hoje.</figcaption>
+      </figure>
+      <div class="botoes modular-previacao"><button class="acao" id="modular-ver-godot" type="button">Ver no Godot</button></div>
+      <img id="modular-folha" class="modular-folha oculto" alt="Folha das seis carinhas montada no Godot">
+      <div id="modular-expressoes-caixa" class="oculto">
+        <p class="fraco">Carinha: <strong id="modular-expressao-nome">neutro</strong></p>
+        <div class="modular-expressoes" id="modular-expressoes" role="group" aria-label="Carinhas"></div>
+        <button class="acao modular-todas" id="modular-todas" type="button" aria-expanded="false">Ver todas as 24</button>
+      </div>
+      <p id="modular-carregando" class="fraco oculto" role="status">carregando…</p>
       <div id="modular-slots" class="modular-slots"></div>
-      <input id="modular-arquivo" class="oculto" type="file" accept="image/png" capture="environment">
+      <input id="modular-arquivo" class="oculto" type="file" accept="image/png">
       <p id="modular-aviso" class="fraco"></p>
     </div>
     <details class="cartao">
@@ -704,7 +716,7 @@
     </div>
     <div id="atelie-editor" class="cartao oculto">
       <h2 id="atelie-slot-titulo">Importar</h2>
-      <input id="atelie-arquivo" type="file" accept="image/png,image/jpeg,image/webp,image/*" capture="environment">
+      <input id="atelie-arquivo" type="file" accept="image/png,image/jpeg,image/webp,image/*">
       <div class="campos atelie-campos">
         <label>Tolerância <input id="atelie-tolerancia" type="range" min="0" max="128" value="24"></label>
         <label>Corte <select id="atelie-modo"><option value="auto">automático</option><option value="grade">grade</option><option value="tira">tira</option></select></label>
