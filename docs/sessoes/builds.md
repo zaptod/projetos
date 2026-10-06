@@ -80,7 +80,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Sprites modulares e painel de anexo** — Modular: cada parte é um sprite estático e o Godot monta e anima (06/10/2026) · “06/10 pelo chat: animações modulares; sprites estáticos, o Godot cuida do movimento; painel de anexo pronto de manhã” `sprites-modulares-painel`
 - ✅ **Sprites modulares: as 9 escolhas do desenho** — Aceito as 9 (recomendado) (06/10/2026) `sprites-modulares-9-respostas`
 - ✅ **Sprites: guarda-roupa de variantes** — Sorteio fixo por lutador + provador (06/10/2026) · “06/10 pelo chat: 'vários olhos aleatórios ... igual aqueles jogos de colocar roupa' (orquestrador escolheu a recomendada; o Adrian pode trocar no app)” `sprites-guarda-roupa`
-- ⏳ **Sprites: recortador de folha** — Como recortar uma folha de sprites sem fundo transparente? `sprites-recortador`
+- ✅ **Sprites: recortador de folha** — Tira só verde ou magenta e separa cada sprite (06/10/2026) · “06/10 pelo chat (pedido direto do Adrian)” `sprites-recortador`
 
 <!-- decisoes:fim -->
 

@@ -3,7 +3,14 @@
   "contexto": "06/10 ~08:15, pelo chat: 'quero algo que pegue cada sprite da spritesheet que não tem fundo transparente e recorte isso, as únicas duas cores retiradas serão ou verde ou magenta'. Já decidido em 30/09 (sprites-ia-fundo): fundo magenta liso, verde nos roxos.",
   "criado": "2026-10-06T09:31:20.401910",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "06/10 pelo chat (pedido direto do Adrian)",
+      "em": "2026-10-06T09:31:22",
+      "opcao": "verde-ou-magenta",
+      "origem": "cli"
+    }
+  ],
   "id": "sprites-recortador",
   "midias": [],
   "opcoes": [
@@ -17,7 +24,11 @@
   ],
   "pergunta": "Como recortar uma folha de sprites sem fundo transparente?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Sprites: recortador de folha",
-  "vigente": null
+  "vigente": {
+    "comentario": "06/10 pelo chat (pedido direto do Adrian)",
+    "em": "2026-10-06T09:31:22",
+    "opcao": "verde-ou-magenta"
+  }
 }
