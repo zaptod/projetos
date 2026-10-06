@@ -230,7 +230,7 @@ class Supervisor:
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
                  cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None,
-                 gerente_equipe=None, pedidos=None, aplicar_app=None):
+                 gerente_equipe=None, pedidos=None, aplicar_app=None, conversa=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -263,6 +263,10 @@ class Supervisor:
         self.cerebro, self.vigia_trabalho = cerebro, vigia_trabalho
         self.gerente_equipe = gerente_equipe
         self.pedidos = pedidos
+        # a conversa com o Adrian (06/10/2026): thread PROPRIA, para a
+        # resposta nao esperar um `passo` lento dos pedidos (contratar leva ate
+        # ~28 s) nem a fila de trabalho
+        self.conversa = conversa
         self.equipe = {}
         # a esteira de sprites idem: so o `montar()` de producao a liga
         self.esteira = esteira
@@ -633,6 +637,11 @@ class Supervisor:
         if self.pedidos:
             self.em_fundo("pedidos", self.pedidos)
 
+    def processar_conversa(self):
+        """A resposta de conversa (segundos), fora da fila de trabalho."""
+        if self.conversa:
+            self.em_fundo("conversa", self.conversa)
+
     def rodar_esteira(self):
         """Um `ciclo` da esteira (palco e vila) a cada ESTEIRA_INTERVALO_S."""
         if not self.esteira:
@@ -698,6 +707,7 @@ class Supervisor:
         if not processos:
             self.log("[coordenador] lista de processos vazia; pulo a verificacao")
             self.processar_comandos()
+            self.processar_conversa()
             self.avancar_assembleia()
             self.gravar(self.resumo())
             return
@@ -709,6 +719,7 @@ class Supervisor:
                 self.parar_delegado(ident)
         self.processar_comandos()
         self.processar_cerebro()
+        self.processar_conversa()
         self.processar_pedidos()
         self.vigiar_trabalho()
         self.gerenciar_equipe()

@@ -356,10 +356,16 @@ def _ambiente() -> dict:
     return env
 
 
-def rodar_codex(prompt: str, esquema: dict, modelo: str | None = None) -> dict:
+def rodar_codex(prompt: str, esquema: dict, modelo: str | None = None, *,
+                esforco: str = "medium", timeout: float = CODEX_TIMEOUT_S) -> dict:
     """A unica chamada externa: Codex read-only, numa pasta temporaria vazia,
     com o prompt por stdin e a saida presa ao schema. Reaproveita o
-    `delegar.comando_codex` (node + codex.js, sem o cmd.exe no meio)."""
+    `delegar.comando_codex` (node + codex.js, sem o cmd.exe no meio).
+
+    A conversa (`pedidos.conversar_pelo_codex`, 06/10/2026) usa esforco
+    "low": 5,3-7,9 s medidos por resposta curta."""
+    if esforco not in ("low", "medium", "high"):
+        raise ValueError(f"esforço desconhecido: {esforco}")
     from remoto import delegar
     with tempfile.TemporaryDirectory(prefix="nf-cerebro-") as tmp:
         base = Path(tmp) / "vazia"
@@ -368,12 +374,12 @@ def rodar_codex(prompt: str, esquema: dict, modelo: str | None = None) -> dict:
         esquema_arq.write_text(json.dumps(esquema), encoding="utf-8")
         cmd = [*delegar.comando_codex(), "exec", "--sandbox", "read-only", "--ephemeral",
                "--skip-git-repo-check", "-C", str(base), "--output-schema", str(esquema_arq),
-               "-o", str(saida), "-c", 'model_reasoning_effort="medium"']
+               "-o", str(saida), "-c", f'model_reasoning_effort="{esforco}"']
         if modelo:
             cmd += ["-m", str(modelo)]
         cmd.append("-")
         feito = subprocess.run(cmd, input=prompt, text=True, encoding="utf-8",
-                               errors="replace", capture_output=True, timeout=CODEX_TIMEOUT_S,
+                               errors="replace", capture_output=True, timeout=timeout,
                                env=_ambiente(), creationflags=NO_WINDOW)
         if feito.returncode != 0 or not saida.is_file():
             raise RuntimeError(f"o Codex saiu com o código {feito.returncode}")

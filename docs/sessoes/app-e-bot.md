@@ -99,6 +99,23 @@ A conversa do app junta, por hora, as linhas do cérebro e as do orquestrador
 conversa e ao Telegram (`MESA.avisar = supervisor.avisar`, ligado no
 `coordenador/__main__.py`).
 
+**Desde 06/10/2026 a conversa responde como gente** (queixa do Adrian: "o
+orquestrador não está realmente falando comigo"). Medido: "Olá" recebia o
+retrato com ids de pedido, e "Orquestrador?" virava pedido de trabalho parado
+atrás do teto do Claude. Agora (detalhes em `docs/sessoes/coordenador.md`,
+"A conversa responde como gente"):
+- a conversa da lista fixa (agora com "orquestrador", "tudo bem", "o que você
+  está fazendo"…) nunca entra na fila de trabalho. No app a linha dele mostra
+  "pensando…" (`papo` na linha) e a resposta chega em segundos, escrita pelo
+  Codex só leitura do cérebro (esforço baixo, 5–8 s medidos), com o retrato
+  só como contexto; sem ele, uma resposta-modelo curta. O Claude fica de fora;
+- todo pedido de trabalho ganha na hora a linha `recibo`: o que entendi, que
+  aviso quando ficar pronto e quando começa (fila e tempo, ou o limite do
+  Claude com a hora em que libera). Sem id na tela; no Telegram o id só no
+  fim, para o `/responder`;
+- os avisos (toasts) do app não falam mais de "retrato" nem mostram o id.
+  Casca `v45`.
+
 Duas portas de saída para o Adrian comandar o sistema de fora do PC:
 
 | Peça | O que é | Sobe por |

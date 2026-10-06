@@ -72,7 +72,7 @@
     <div id="orq-faixa" class="orq-faixa oculto" role="status"></div>
     <div class="cartao pedir-cartao" id="pedir-cartao">
       <h2>📝 Pedir</h2>
-      <div class="fraco">Cada texto vira um pedido novo, acompanhado aqui (só a saudação ou a pergunta de status da lista fixa e o agradecimento solto, como “ok”, “valeu”, “obrigado”, “beleza”, recebem o retrato). Para continuar um pedido, toque Responder nele.</div>
+      <div class="fraco">Cada texto vira um pedido novo, acompanhado aqui, e eu respondo na hora o que entendi e quando começa (a saudação ou a pergunta de status da lista fixa e o agradecimento solto, como “ok”, “valeu”, “obrigado”, “beleza”, são só conversa: respondo na Conversa, sem abrir pedido). Para continuar um pedido, toque Responder nele.</div>
       <textarea id="pedido-texto" class="pedir-caixa" aria-label="Pedido ao orquestrador" rows="3" maxlength="4000" placeholder="O que você precisa?"></textarea>
       <div class="botoes"><button class="acao primario" id="pedido-enviar" type="button">Pedir</button>
         <button class="acao" id="pedido-conversa" type="button">Ver a conversa</button></div>
@@ -503,7 +503,7 @@
           <div class="fluxo-entrada" role="listitem"><b>📝 App</b>
             <span>Agora › Pedir, ou a Conversa do Coordenador</span></div>
           <div class="fluxo-entrada" role="listitem"><b>✈️ Telegram</b>
-            <span>texto sem “/” é pedido novo (saudação e agradecimento da lista fixa só recebem o retrato); <code>/responder &lt;id&gt;</code> continua um</span></div>
+            <span>texto sem “/” é pedido novo (saudação e agradecimento da lista fixa são só conversa); <code>/responder &lt;id&gt;</code> continua um</span></div>
           <div class="fluxo-entrada" role="listitem"><b>📖 Grimório</b>
             <span>a sua resposta a uma decisão</span></div>
         </div>
@@ -517,12 +517,14 @@
         <ol class="fluxo-passos" id="fluxo-passos">
           <li class="fluxo-passo">
             <div class="fluxo-cabeca"><b>1 · Mesa de pedidos</b><code>MesaPedidos</code></div>
-            <p>Guarda o pedido e responde na hora. Pergunta curta de estado (“o app
+            <p>Guarda o pedido e responde na hora o que entendeu e quando começa (a fila
+              e o que segura). Pergunta curta de estado (“o app
               está no ar?”) não vira pedido: vai ao cérebro, que responde em segundos.
               Saudação ou pergunta de status de uma <b>lista fixa</b> (“oi”, “bom dia”,
-              “coordenador?”, “qual o progresso?”, “alguma novidade?”, “status”) recebe o
-              retrato do servidor; agradecimento solto (“ok”, “valeu”, “obrigado”,
-              “beleza”) recebe o retrato e o lembrete do Responder. A lista é comparada
+              “coordenador?”, “orquestrador?”, “qual o progresso?”, “alguma novidade?”,
+              “status”) é só conversa: nunca entra na fila de trabalho, e a resposta vem em
+              segundos, em português simples; agradecimento solto (“ok”, “valeu”, “obrigado”,
+              “beleza”) recebe um “de nada” e o lembrete do Responder. A lista é comparada
               inteira: qualquer outro texto, mesmo curto (“reinicie o app”, “pode ligar o
               gerente?”), é sempre um pedido <b>novo</b>, e nunca gruda num pedido que já
               existe. Para continuar um pedido (em qualquer situação), toque

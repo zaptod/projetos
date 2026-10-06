@@ -940,15 +940,18 @@ def test_responder_caso_zero_e_erros(mesa):
         mesa.registrar("   ", responde_a=conversa["id"])
 
 
-def test_saudacao_nao_gruda_e_responde_o_retrato(mesa):
+def test_saudacao_nao_gruda_e_responde_como_gente(mesa):
+    """06/10/2026: a resposta e de gente (sem id nem lista); o que espera por
+    ele aparece contado, e o pedido parado nao ganha a mensagem."""
     p = _parado(mesa, "esperando_voce")
     for frase in ("Ola coordenador, como as coisas estão", "Coordenador?"):
         r = mesa.registrar(frase)
         assert r["id"] != p["id"] and r["situacao"] == "respondido"
     assert _pedido(mesa, p["id"])["mensagens"] == 1
+    mesa.atender_conversa()
     final = [c for c in mesa.para_o_app()["conversa"] if c["tipo"] == "final"][-1]["texto"]
-    assert p["id"] in final and "esperando você" in final and "Responder" in final
-    assert "/responder <id>" in final
+    assert final.startswith("Oi, Adrian!") and "1 coisa espera uma resposta sua" in final
+    assert "pedido-" not in final and "Retrato" not in final
 
 
 def test_saudacao_durante_o_trabalho_nao_relanca_o_trabalhador(mesa):
@@ -959,14 +962,16 @@ def test_saudacao_durante_o_trabalho_nao_relanca_o_trabalhador(mesa):
     assert "como está?" not in _pedido(mesa, p["id"])["texto"]
 
 
-def test_saudacao_pelo_telegram_volta_o_retrato_no_item(mesa):
+def test_saudacao_pelo_telegram_volta_a_resposta_no_item(mesa):
     """Conferente 3 (defeito 2): o bot registra no PROCESSO DELE, onde o
-    `avisar` e vazio; o retrato tem de voltar no item, que o bot devolve."""
+    `avisar` e vazio; a resposta tem de voltar no item, que o bot devolve.
+    06/10: a resposta-modelo de gente, na hora (o bot nao roda modelo)."""
     r = mesa.registrar("Coordenador?", "telegram")
     assert r["conversa"] is True and r["situacao"] == "respondido"
-    assert "Retrato do servidor" in r["resposta"]
-    assert "nenhum pedido aberto" in r["resposta"]               # caso zero
+    assert r["papo"] == "respondido" and r["resposta"].startswith("Oi, Adrian!")
+    assert "nenhum trabalho rodando" in r["resposta"]            # caso zero
     assert mesa.avisos == []                                     # nada ao avisar vazio
+    assert mesa.atender_conversa() == []                         # nada fica pensando
 
 
 # ================================================ 4. pid morto e recusa
@@ -1213,17 +1218,19 @@ def test_defeito2_agradecimento_solto_nao_contrata_ninguem(mesa, texto):
     _andar(mesa, 3)
     assert len(mesa.despachante.criados) == criados
     assert r["situacao"] == "respondido" and r["conversa"] is True and r["curto"] is True
-    assert r["resposta"].startswith("Agradecimento solto (ok, valeu, obrigado, beleza) não abre pedido")
-    assert "Responder" in r["resposta"] and cd["id"] in r["resposta"]
+    assert r["resposta"].startswith("De nada!") and "Responder" in r["resposta"]
+    assert cd["id"] not in r["resposta"]                     # 06/10: sem id na conversa
     assert _pedido(mesa, cd["id"])["situacao"] == "esperando_voce"     # nada grudou
 
 
-@pytest.mark.parametrize("texto", ["qual o progresso?", "Coordenador?", "bom dia"])
-def test_saudacao_e_status_respondem_o_retrato_sem_o_aviso(mesa, texto):
+@pytest.mark.parametrize("texto", ["qual o progresso?", "Coordenador?", "bom dia",
+                                   "Orquestrador?", "Orquestrador conversei comigo.",
+                                   "o que você está fazendo?"])
+def test_saudacao_e_status_respondem_como_gente_sem_o_aviso(mesa, texto):
     r = mesa.registrar(texto)
     mesa.passo()
     assert r["situacao"] == "respondido" and r["conversa"] is True and r["curto"] is False
-    assert r["resposta"].startswith("Retrato do servidor") and mesa.despachante.criados == []
+    assert r["resposta"].startswith("Oi, Adrian!") and mesa.despachante.criados == []
 
 
 @pytest.mark.parametrize("texto", [

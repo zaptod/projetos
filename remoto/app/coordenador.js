@@ -384,7 +384,10 @@ function coordConversaDesenhar(dados) {
   // "pensando…" enquanto houver entrada do cerebro sem resposta; a linha do
   // pedido nao conta (o orquestrador responde "recebido" na hora)
   const ultima = conversa[conversa.length - 1];
-  if (cerebro.na_fila > 0 || (ultima && ultima.de === "adrian" && !ultima.entrada && !ultima.pedido)) {
+  // 06/10: a conversa solta ("oi", "orquestrador?") espera a resposta do
+  // modelo leve por alguns segundos; a linha dele leva `papo`
+  if (cerebro.na_fila > 0 || (ultima && ultima.de === "adrian"
+      && ((!ultima.entrada && !ultima.pedido) || ultima.papo))) {
     itens.push(el("div", {class: "coord-msg coordenador fraco"},
       cerebro.na_fila > 1 ? `pensando… (${cerebro.na_fila} na fila)` : "pensando…"));
   }
@@ -413,11 +416,13 @@ function pedidoAvisoDoEnvio(r) {
   if (r.para === "cerebro") return "Pergunta de estado: o cérebro responde na Conversa.";
   // 05/10 (conferente 5): agradecimento solto da lista fixa ("ok", "valeu",
   // "obrigado", "beleza") não contrata ninguém; o resto do texto é pedido
-  if (r.para === "conversa" && r.curto) return "Agradecimento não abre pedido (ninguém foi "
-    + "contratado). Para responder a um pedido, toque Responder no cartão dele; o retrato está na Conversa.";
-  if (r.para === "conversa") return "O retrato do servidor está na Conversa.";
-  return `Pedido novo ${r.id}${r.titulo ? ` («${String(r.titulo).slice(0, 60)}»)` : ""}. `
-    + "Para continuar um pedido, toque Responder nele.";
+  // 06/10: a resposta de verdade está na Conversa, escrita como gente; o
+  // aviso só diz onde (sem id nem retrato)
+  if (r.para === "conversa" && r.curto) return "De nada! Agradecimento não abre pedido; "
+    + "para responder a um pedido, toque Responder nele.";
+  if (r.para === "conversa") return "Respondendo na Conversa…";
+  return `Entendi${r.titulo ? ` («${String(r.titulo).slice(0, 60)}»)` : ""}: vou passar para `
+    + "a equipe. Na Conversa eu digo quando começa.";
 }
 
 async function coordFalar() {

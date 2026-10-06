@@ -371,12 +371,14 @@ def falar_ao_coordenador(texto: str) -> str:
                 f"({type(exc).__name__}). Os comandos com / continuam: /ajuda")
     if item.get("conversa"):
         # 05/10/2026 (conferente 3): a conversa solta ("qual o progresso?")
-        # nasce respondida com o retrato, e o `avisar` do processo do bot e
-        # vazio: o retrato vai AQUI, na resposta, e nao a frase de "recebido"
-        return "🧭 " + str(item.get("resposta") or "sem retrato")[:3500]
-    return (f"🧭 recebido como pedido novo ({item['id']}); um orquestrador do servidor "
-            "vai atender e eu aviso aqui quando estiver conferido. Para continuar um "
-            "pedido: /responder <id> <texto>. Os comandos com / continuam: /ajuda")
+        # nasce respondida, e o `avisar` do processo do bot e vazio: a
+        # resposta vai AQUI. Desde 06/10 e uma resposta de gente, nao o retrato
+        return "🧭 " + str(item.get("resposta") or "Estou aqui.")[:3500]
+    # 06/10/2026: na hora, o que entendi e quando comeca (o recibo); o id so
+    # no fim, porque o /responder precisa dele
+    curto = str(item.get("id") or "").replace("pedido-", "")
+    return ("🧭 " + str(item.get("recibo") or "Entendi; vou passar para a equipe.")
+            + f"\n(para completar este pedido depois: /responder {curto} <texto>)")
 
 
 def responder(args: str = "") -> str:

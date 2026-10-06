@@ -435,6 +435,65 @@ def test_responder_no_cartao_do_pedido_vai_ao_mesmo_pedido(tela_isolada, monkeyp
     assert not erros, erros
 
 
+def test_a_conversa_responde_como_gente_e_o_pedido_ganha_recibo(tela_isolada, monkeypatch):
+    """06/10/2026: "Ola" recebia o retrato com ids e "Orquestrador?" ficava na
+    fila de trabalho sem resposta. Clicando na Conversa: a mensagem mostra
+    "pensando…", a resposta da thread da conversa aparece sozinha (sem id), e
+    o pedido de trabalho ganha na hora o recibo de gente."""
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    from patchright.sync_api import sync_playwright
+
+    from coordenador import pedidos
+    monkeypatch.setattr(tela_isolada.RequestHandlerClass.estado, "com_acoes", True)
+    monkeypatch.setattr(pedidos.MESA, "conversador",
+                        lambda _prompt: "Oi, Adrian! Tô aqui, sem nada rodando agora.")
+    base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    CAPTURAS.mkdir(parents=True, exist_ok=True)
+    erros = []
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True,
+                              has_touch=True, service_workers="block")
+        ctx.set_default_timeout(12000)
+        page = ctx.new_page()
+        page.on("pageerror", lambda erro: erros.append(str(erro)))
+        page.goto(base + "/", wait_until="domcontentloaded")
+        page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("document.body.classList.contains('pareado')")
+        page.evaluate("() => document.querySelector('#obj-agora').click()")
+        page.locator("#tela-agora [data-aba-tela='coordenador']").click()
+        page.locator("#coord-abas [data-aba='conversa']").click()
+        page.locator("#coord-texto").fill("Orquestrador?")
+        page.locator("#coord-enviar").click()
+        mensagens = page.locator("#coord-mensagens")
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('pensando…')")
+        assert "Respondendo na Conversa" in page.locator("#toast").inner_text()
+        assert pedidos.para_o_app()["pedidos"][0]["papo"] == "pensando"
+        pedidos.atender_conversa()                     # a thread `conversa` do pulso
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('Tô aqui, sem nada rodando')")
+        texto = mensagens.inner_text()
+        assert "pensando…" not in texto and "pedido-" not in texto and "Retrato" not in texto
+        page.screenshot(path=str(CAPTURAS / "conversa-gente-390x844.png"))
+        page.locator("#toast.oculto").wait_for(state="attached")
+        page.locator("#coord-texto").fill("arrume o botão Publicar do app")
+        page.locator("#coord-enviar").click()
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('Entendi: «arrume o botão Publicar do app».')")
+        texto = mensagens.inner_text()
+        assert "te aviso aqui quando ficar pronto" in texto and "pedido-" not in texto
+        assert "Entendi" in page.locator("#toast").inner_text()
+        assert "pedido-" not in page.locator("#toast").inner_text()
+        page.locator("#toast.oculto").wait_for(state="attached")
+        mensagens.screenshot(path=str(CAPTURAS / "conversa-recibo-390x844.png"))
+        nav.close()
+    assert not erros, erros
+
+
 @pytest.mark.parametrize("tema", ["light", "dark"])
 def test_permissao_de_estado_no_cartao_tem_permitir_e_nao_responder(tela_isolada, monkeypatch,
                                                                     tmp_path, tema):

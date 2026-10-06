@@ -101,6 +101,15 @@ class BaseTemp(unittest.TestCase):
         comandos.atividade._arquivo = lambda: self.pasta / "atividade.jsonl"
         self.addCleanup(lambda: setattr(comandos.atividade, "_arquivo",
                                         self._arquivo_diario))
+        # o texto solto vira pedido do coordenador: a pasta dele e a do teste.
+        # 06/10/2026: o pedido-8682ee83 "apaga tudo por favor" (Telegram, 02:11)
+        # nasceu no pedidos.json REAL com o texto exato deste arquivo (rodado sem
+        # PYTEST_CURRENT_TEST, como pelo unittest, o `estado.pasta` cai na
+        # pasta real) e virou trabalhador e no do Grimorio
+        coord = mock.patch.dict("os.environ", {"NF_COORDENADOR_PASTA":
+                                               str(self.pasta / "coordenador")})
+        coord.start()
+        self.addCleanup(coord.stop)
         # `_alertar` dispara a APURACAO, que abre uma sessao do Claude Code de
         # verdade. Rodar a suite nao pode gastar sessao nem tocar a maquina —
         # o disparo tem teste proprio (`ApuracaoTests`), com o subprocesso
@@ -180,7 +189,9 @@ class TabelaFechadaTests(BaseTemp):
 
     def test_texto_solto_nao_e_comando(self):
         resposta, _ = comandos.executar("apaga tudo por favor")
-        self.assertIn("/ajuda", resposta)
+        # vira pedido (o recibo "Entendi: ..."), nunca comando do sistema
+        self.assertIn("Entendi: «apaga tudo por favor»", resposta)
+        self.assertNotIn("não conheço", resposta)
 
     def test_a_tabela_nao_tem_nada_de_shell(self):
         proibidos = ("rodar", "exec", "shell", "sh", "cmd", "eval", "python")

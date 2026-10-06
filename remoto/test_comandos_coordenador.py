@@ -30,16 +30,17 @@ def test_texto_livre_vira_pedido_do_orquestrador(cerebro):
     atende, sem o VS Code. /novo abre outro assunto."""
     from coordenador import pedidos
     resposta, _ = comandos.executar("reinicia o carteiro, por favor")
-    assert resposta.startswith("🧭 recebido") and "/ajuda" in resposta
+    # 06/10: o recibo de gente (o que entendi, quando comeca), o id so no fim
+    assert resposta.startswith("🧭 Entendi: «reinicia o carteiro, por favor».")
     assert cerebro.entradas_novas() == []
     lista = pedidos.para_o_app()["pedidos"]
     assert [(p["texto"], p["origem"]) for p in lista] == [
         ("reinicia o carteiro, por favor", "telegram")]
     # 05/10 (conferente 3): texto solto nunca gruda; continuar e explicito
     primeiro = lista[0]["id"]
-    assert primeiro in resposta and "/responder" in resposta
+    assert f"/responder {primeiro[len('pedido-'):]} <texto>" in resposta
     resposta, _ = comandos.executar("e o bot também")
-    assert "pedido novo" in resposta
+    assert resposta.startswith("🧭 Entendi: «e o bot também».")
     assert len(pedidos.para_o_app()["pedidos"]) == 2
     curto = primeiro[len("pedido-"):]
     resposta, _ = comandos.executar(f"/responder {curto} e reinicia o app junto")
@@ -71,12 +72,12 @@ def test_responder_com_quebra_de_linha_depois_do_id(cerebro):
 @pytest.mark.parametrize("texto", ["ok", "valeu", "obrigado", "beleza"])
 def test_mensagem_curta_no_telegram_nao_abre_pedido(cerebro, texto):
     """Conferente 4: "ok" respondia "recebido como pedido novo" e contratava um
-    orquestrador pago. Agradecimento solto (lista fixa, conferente 5): o
-    retrato e o lembrete do /responder."""
+    orquestrador pago. Agradecimento solto (lista fixa, conferente 5): um "de
+    nada" e o lembrete do /responder (06/10: sem o retrato)."""
     from coordenador import pedidos
     resposta, _ = comandos.executar(texto)
-    assert resposta.startswith("🧭 Agradecimento solto (ok, valeu, obrigado, beleza) não abre pedido"), resposta
-    assert "/responder" in resposta and "pedido novo (" not in resposta
+    assert resposta.startswith("🧭 De nada!"), resposta
+    assert "/responder" in resposta and "Entendi" not in resposta
     assert [p.get("conversa") for p in pedidos.para_o_app()["pedidos"]] == [True]
 
 
@@ -87,22 +88,27 @@ def test_texto_curto_fora_da_lista_fixa_e_pedido_no_telegram(cerebro, texto):
     pedidos de verdade. So a lista fixa e conversa; o resto e pedido."""
     from coordenador import pedidos
     resposta, _ = comandos.executar(texto)
-    assert resposta.startswith("🧭 recebido como pedido novo"), resposta
+    # 06/10: o recibo de gente, na hora; o id so no fim, para o /responder
+    assert resposta.startswith("🧭 Entendi: «"), resposta
+    item = pedidos.para_o_app()["pedidos"][0]
+    assert resposta.rstrip().endswith(f"/responder {item['id'][len('pedido-'):]} <texto>)")
     assert [p.get("conversa") for p in pedidos.para_o_app()["pedidos"]] == [None]
 
 
 @pytest.mark.parametrize("texto", ["qual o progresso?", "Coordenador?", "oi",
                                    "bom dia coordenador, qual o progresso?"])
-def test_conversa_solta_no_telegram_devolve_o_retrato(cerebro, texto):
+def test_conversa_solta_no_telegram_responde_como_gente(cerebro, texto):
     """Conferente 3 (05/10/2026): o bot respondia "um orquestrador vai atender"
-    a "qual o progresso?", que nasce respondido sem orquestrador, e o retrato
-    ia ao `avisar` vazio do processo do bot. Agora o retrato e a resposta."""
+    a "qual o progresso?", que nasce respondido sem orquestrador, e a resposta
+    ia ao `avisar` vazio do processo do bot. Desde 06/10 a resposta e de
+    gente (nao o retrato com ids), na hora."""
     from coordenador import pedidos
     comandos.executar("corrija o X do aplicativo agora")
     resposta, _ = comandos.executar(texto)
-    assert resposta.startswith("🧭 Retrato do servidor"), resposta
+    assert resposta.startswith("🧭 Oi, Adrian!"), resposta
     assert "orquestrador do servidor vai atender" not in resposta
-    assert "corrija o X" in resposta                        # o pedido aberto aparece
+    assert "Tem 1 esperando para começar" in resposta       # o pedido aberto conta
+    assert "pedido-" not in resposta and "Retrato" not in resposta
     situacoes = sorted(p["situacao"] for p in pedidos.para_o_app()["pedidos"])
     assert situacoes == ["recebido", "respondido"]
 

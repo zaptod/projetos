@@ -92,6 +92,7 @@ def montar() -> Supervisor:
     # parar, modelos; a mensagem vira pedido), sem a sessao do VS Code
     s = Supervisor(comandos=pendentes, aplicar=aplicado, aplicar_app=aplicar_pelo_servidor,
                    cerebro=cerebro.atender, pedidos=pedidos.passo,
+                   conversa=pedidos.atender_conversa,
                    esteira=ciclo_das_esteiras, assembleia=avancar_assembleia)
     s.vigia_trabalho = VigiaTrabalho(
         avisar=s.avisar, evento=lambda tipo, texto: s.evento("", tipo, texto),
