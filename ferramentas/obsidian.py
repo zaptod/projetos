@@ -324,16 +324,21 @@ def atualizar_automaticamente(raiz=RAIZ, cofre=None, tempo=None) -> bool:
         anterior = json.loads(estado.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         anterior = {}
-    eventos = Path(raiz) / "decisoes" / "_eventos.jsonl"
+    # Pergunta nova NAO grava no _eventos.jsonl (remoto/decisoes.py): a marca
+    # e o arquivo de decisao mais novo, senao pendencia nova nunca chegava ao
+    # cofre (conferente, 06/10 06:00).
+    jsons = list((Path(raiz) / "decisoes").glob("*/*.json"))
     postagem = Path(raiz) / "outputs" / "postar.txt"
-    marcas = {"decisoes": eventos.stat().st_mtime if eventos.exists() else 0,
+    marcas = {"decisoes": max((p.stat().st_mtime for p in jsons), default=0),
               "postagem": postagem.stat().st_mtime if postagem.exists() else 0}
     t = agora(tempo)
     hora = t.strftime("%Y-%m-%dT%H")
     if marcas["decisoes"] != anterior.get("decisoes"):
         decisoes(cofre, raiz, t)
     if marcas["postagem"] != anterior.get("postagem") or hora != anterior.get("hora"):
-        diario(cofre, raiz, tempo=t)
+        # O Diario automatico fica PARADO: lia o atividade.jsonl inteiro como
+        # se fosse publicacao ("53:01: historias saiu", 540 linhas as 06:00).
+        # Volta quando for gerado so dos dois ledgers de publicacao.
         agora_nota(cofre, raiz, t)
     runtime.mkdir(parents=True, exist_ok=True)
     escrever_atomico(estado, json.dumps({**marcas, "hora": hora}, ensure_ascii=False))
