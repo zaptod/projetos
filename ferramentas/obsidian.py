@@ -249,9 +249,26 @@ def diario(cofre=None, raiz=RAIZ, dia=None, tempo=None) -> bool:
     return True
 
 
+def _postar():
+    """O `ferramentas/postar.py` pelo caminho do arquivo.
+
+    `python ferramentas/obsidian.py` roda com a pasta `ferramentas/` no
+    sys.path, sem a raiz: `from ferramentas import postar` falhava e o Agora
+    dizia "não consegui medir" (06/10 05:12) com a fila cheia de builds.
+    """
+    if "postar" in sys.modules:
+        return sys.modules["postar"]
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("postar", RAIZ / "ferramentas" / "postar.py")
+    modulo = importlib.util.module_from_spec(spec)
+    sys.modules["postar"] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo
+
+
 def medir_estoque() -> dict:
     try:
-        from ferramentas import postar
+        postar = _postar()
         pendentes = postar.pendentes_por_canal()
         return {"pendentes": pendentes, "retidas": postar.retidos_por_canal(),
                 "consertadas": postar.consertadas_por_canal()}
@@ -262,7 +279,7 @@ def medir_estoque() -> dict:
 def proximos_posts() -> list[str]:
     """Primeiros candidatos, sem chamar nenhuma rotina que publica ou marca."""
     try:
-        from ferramentas import postar
+        postar = _postar()
         historias = [getattr(v, "id", "história sem nome") for v in postar.fila_de_historias()
                      if not postar._retencao(v)]
         builds = [getattr(v, "id", "build sem nome") for v in postar._builds_prontos()]
