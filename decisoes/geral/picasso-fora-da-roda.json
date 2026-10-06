@@ -27,7 +27,9 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "imagens-dois-geradores-juntos"
+      ],
       "descricao": "Gemini e ChatGPT fazem todas as imagens; o PicassoIA só volta se eu pedir",
       "id": "tirar",
       "pede_comentario": false,
