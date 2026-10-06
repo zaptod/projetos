@@ -165,13 +165,11 @@ class UrlTests(unittest.TestCase):
 
 class PublicarAvisaTests(unittest.TestCase):
     def test_publicar_para_com_recado_util_se_o_envio_nao_abrir(self):
-        fonte = Path(youtube_web.__file__).read_text(encoding="utf-8")
-        i = fonte.index("def publicar(")
-        trecho = fonte[i:i + 6000]
-        self.assertIn("_abrir_dialogo_de_upload(page, passo, envio)", trecho)
-        self.assertIn("falha_do_envio(envio, abertura_s)", trecho)
         # O recado do --sondar mora na frase (`falha_do_envio`), e sai quando
-        # a falha nao e de rede.
+        # a falha nao e de rede. A LIGACAO dentro de `publicar()` (abertura
+        # medida, qual frase sobe) e testada por comportamento em
+        # `test_parede_no_criar_regressions.PublicarLigacaoTests` — ler o
+        # fonte aqui nao pegava nada (conferente de 06/10/2026).
         self.assertIn("--sondar", youtube_web.falha_do_envio({}, 5.0))
 
 

@@ -1076,8 +1076,81 @@ def _ids_da_parte(provas) -> dict:
     return extra
 
 
+# ------------------------------------------------ parte com pedaco ja no ar
+# A PARTE EM PEDACOS QUE CAIU NO MEIO (06/10/2026, conferente do c431c6e).
+# `contos.publicar.catalogo.publicar_youtube` sobe a parte longa pedaco a
+# pedaco, e a linha do ledger so e gravada DEPOIS do ultimo. Com o pedaco 1
+# no ar e o 2 caido por "infraestrutura:", a reposicao por rede rodava o
+# canal de novo, a guarda de um-por-horario nao achava linha, a fila
+# escolhia a MESMA parte e o pedaco 1 subia de novo, PUBLICO — 3 envios do
+# pedaco 1 numa rodada (1 + `TENTATIVAS_POR_REDE`), e mais um no horario
+# seguinte. A porta abaixo e por onde os tres caminhos do postar que sobem
+# parte de historia passam (rodada, `--so-youtube`, `--tudo`): com algum
+# pedaco ja entregue, a falha seguinte nao e "de rede" (nao repoe) e a parte
+# vai a lista "a conferir" do YouTube (a fila nao a repete). Repetir e pior
+# que nao postar (17/09). Quem tira a marca e uma pessoa.
+PREFIXO_DO_PEDACO = "[pedaco] "
+
+
+class ParteMeioNoAr(RuntimeError):
+    """Algum pedaco da parte ja subiu ao YouTube e o seguinte falhou.
+
+    A mensagem NUNCA carrega o texto do erro original — ele pode ter
+    "infraestrutura" ou "SSLError", que `_e_de_rede` leria como "repor".
+    O original fica em `erro`; os ids do que ja subiu, em `ids`.
+    """
+
+    def __init__(self, mensagem: str, *, erro: str = "", ids=()):
+        super().__init__(mensagem)
+        self.erro = erro
+        self.ids = list(ids)
+
+
+def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
+    """`catalogo.publicar_youtube`, com a guarda da parte meio no ar.
+
+    `provas` ganha um laudo por pedaco que SUBIU (o laco do catalogo so o
+    acrescenta depois que `publicar_como_configurado` volta). Se a chamada
+    levantar com laudos novos na lista, algum arquivo ja foi entregue ao
+    Studio: levanta `ParteMeioNoAr` e marca a parte "a conferir" no YouTube.
+    Sem laudo novo, a excecao original sobe intacta (nada foi entregue;
+    repetir nao duplica, e a reposicao por rede segue valendo).
+    """
+    from contos.publicar import catalogo
+    antes = len(provas)
+    try:
+        return catalogo.publicar_youtube(alvo, visibilidade, provas=provas)
+    except Exception as exc:                                   # noqa: BLE001
+        entregues = provas[antes:]
+        if not entregues:
+            raise
+        erro = f"{type(exc).__name__}: {exc}"[:300]
+        ids = [str((p or {}).get("youtube_id") or "?") for p in entregues]
+        _linha(f"[postar] {alvo.id}: {len(entregues)} pedaco(s) ja no "
+               f"YouTube ({', '.join(ids)}) e o seguinte falhou ({erro}).")
+        texto = (f"{len(entregues)} pedaco(s) desta parte ja subiram ao "
+                 f"YouTube ({', '.join(ids)}) e o seguinte falhou. Nao repito "
+                 f"a parte: o pedaco no ar subiria de novo. Precisa de uma "
+                 f"pessoa no canal; tirar esta marca devolve a parte INTEIRA "
+                 f"a fila (todos os pedacos).")
+        try:
+            from builds.publicar import desfecho
+            desfecho.marcar_para_conferir(
+                "historias", alvo.id, PREFIXO_DO_PEDACO + texto, "youtube",
+                etapa="publicar.youtube.pedaco", erro=True,
+                aviso=f"{alvo.id}: {texto}")
+        except Exception as marca:                             # noqa: BLE001
+            # A marca e a guarda da PROXIMA rodada; a desta e a propria
+            # `ParteMeioNoAr` (nao repoe). `marcar_para_conferir` ja avisou
+            # no diario quando a trava ou o arquivo falharam.
+            _linha(f"[postar] {alvo.id}: NAO consegui por na lista a "
+                   f"conferir do YouTube ({type(marca).__name__}); a proxima "
+                   f"rodada pode subir o pedaco de novo.")
+        raise ParteMeioNoAr(texto, erro=erro, ids=ids) from exc
+
+
 def postar_historia(*, so_ver: bool = False) -> dict:
-    from contos.publicar import catalogo, serie
+    from contos.publicar import serie
 
     # UMA GUARDA POR DESTINO, e nao uma para a rodada. Se o YouTube ja saiu
     # nesta hora, o TikTok ainda nao — e a versao que retornava aqui fazia o
@@ -1128,17 +1201,24 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     # diario por CANAL; o TikTok nao tem esse limite. Deixar a excecao subir
     # aqui faria o TikTok ficar vazio pelo motivo errado — que e exatamente o
     # que manteve os dois TikToks zerados por 49 publicacoes.
-    url, cota, falha_yt = "", None, None
+    url, cota, falha_yt, meio_no_ar = "", None, None, None
     provas: list = []
     try:
-        url = catalogo.publicar_youtube(alvo, visibilidade, provas=provas)
+        url = _subir_parte_no_youtube(alvo, visibilidade, provas)
         serie.registrar(alvo, url, "youtube", None,
                         {"por": "postar.py", "visibilidade": visibilidade,
                          "prova": provas,
                          "prova_ok": _prova_ok(provas),
                          **_ids_da_parte(provas)})
     except Exception as exc:                                   # noqa: BLE001
-        if _e_limite_diario(exc):
+        if isinstance(exc, ParteMeioNoAr):
+            # Pedaco no ar: a falha NAO e de rede para a rodada (a mensagem
+            # nao carrega o erro original) e a ficha diz por que nao repor.
+            meio_no_ar = exc
+            falha_yt = f"parte meio no ar: {exc}"[:200]
+            _linha("[postar] historias: YouTube parou no meio da parte. "
+                   "Sigo para o TikTok.")
+        elif _e_limite_diario(exc):
             cota = str(exc)
             _linha(f"[postar] historias: YouTube na cota ({exc}). "
                    "Sigo para o TikTok — ele nao tem esse limite.")
@@ -1164,6 +1244,10 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     if falha_yt:
         ficha["motivo"] = f"YouTube falhou: {falha_yt}"[:200]
         ficha["youtube_falhou"] = True
+    if meio_no_ar is not None:
+        ficha["youtube_meio_no_ar"] = True
+        ficha["youtube_erro"] = meio_no_ar.erro
+        ficha["youtube_ids_no_ar"] = meio_no_ar.ids
     if not tiktok_agora:
         # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
         ficha["tiktok"] = ""
@@ -1266,7 +1350,7 @@ def subir_so_no_youtube(video_id: str, *, so_ver: bool = False) -> dict:
     a mesma da rodada, com `prova` e `youtube_id`, mais `por` dizendo de onde
     veio.
     """
-    from contos.publicar import catalogo, qualidade, serie
+    from contos.publicar import qualidade, serie
     from contos.roteiro import roteiro as R
     from builds import travas
 
@@ -1310,7 +1394,7 @@ def subir_so_no_youtube(video_id: str, *, so_ver: bool = False) -> dict:
         return ficha
     visibilidade = _visibilidade_das_historias()
     provas: list = []
-    url = catalogo.publicar_youtube(alvo, visibilidade, provas=provas)
+    url = _subir_parte_no_youtube(alvo, visibilidade, provas)
     serie.registrar(alvo, url, "youtube", None,
                     {"por": "postar.py --so-youtube",
                      "visibilidade": visibilidade, "prova": provas,
@@ -2726,7 +2810,10 @@ def _derrubados_pela_rede(r: dict) -> list:
     if not r or r.get("repetido") or r.get("veria"):
         return []
     caidos = []
-    if r.get("youtube_falhou") and _e_de_rede(r.get("motivo")):
+    # Pedaco da parte ja no YouTube (`ParteMeioNoAr`): o YouTube desta ficha
+    # nunca e "da rede", diga a frase o que disser.
+    if (r.get("youtube_falhou") and not r.get("youtube_meio_no_ar")
+            and _e_de_rede(r.get("motivo"))):
         caidos.append("youtube")
     if (not r.get("tiktok_fora_da_grade") and not r.get("tiktok_clicou")
             and not _tiktok_confirmado(r.get("tiktok"))
@@ -2805,11 +2892,17 @@ def _rodar_canal(canal: str, funcao, so_ver: bool) -> dict:
 
 def _publicar_canal(canal: str, funcao, *, so_ver: bool,
                     comeco: float, slot: int) -> list:
-    """O canal, com a reposicao do que a rede derrubou. Devolve as fichas."""
+    """O canal, com a reposicao do que a rede derrubou. Devolve as fichas.
+
+    Ficha com pedaco de parte ja no YouTube (`youtube_meio_no_ar`) nunca e
+    reposta, nem pelo TikTok que caiu junto: repor roda o canal INTEIRO, e o
+    YouTube da parte subiria o pedaco de novo (06/10/2026).
+    """
     r = _rodar_canal(canal, funcao, so_ver)
     extras: list = []
     tentativas = 0
     while (not so_ver and tentativas < TENTATIVAS_POR_REDE
+           and not r.get("youtube_meio_no_ar")
            and _derrubados_pela_rede(r) and _ainda_no_horario(comeco, slot)):
         tentativas += 1
         caidos = _derrubados_pela_rede(r)
@@ -2829,6 +2922,11 @@ def _publicar_canal(canal: str, funcao, *, so_ver: bool,
             break
         if nova.get("repetido"):
             break             # o horario ja tem os dois destinos
+        if nova.get("youtube_meio_no_ar"):
+            # A REPOSICAO deixou pedaco no ar (o erro ja foi ao diario, com a
+            # marca). Sem isto, com a ficha de antes "feita" e ainda
+            # derrubada, a volta seguinte rodava o canal de novo.
+            break
     return [r] + extras
 
 
@@ -3835,7 +3933,7 @@ def escoar_historias(*, limite: int = 0, so_ver: bool = False) -> dict:
     significam que a plataforma comecou a recusar, e insistir depois disso
     troca "atraso" por "conta com strike".
     """
-    from contos.publicar import catalogo, serie
+    from contos.publicar import serie
 
     fila = fila_de_historias()
     if limite:
@@ -3848,7 +3946,7 @@ def escoar_historias(*, limite: int = 0, so_ver: bool = False) -> dict:
     for i, alvo in enumerate(fila, 1):
         _linha(f"[escoar] {i}/{len(fila)}  {alvo.id}  {alvo.titulo[:52]}")
         try:
-            url = catalogo.publicar_youtube(alvo, visibilidade)
+            url = _subir_parte_no_youtube(alvo, visibilidade, [])
             serie.registrar(alvo, url, "youtube", None,
                             {"por": "postar.py --tudo",
                              "visibilidade": visibilidade})

@@ -43,6 +43,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Vigia do coordenador: aplica entrega do Codex sozinho?** — Sim, aplica sozinho (02/10/2026) `vigia-aplica-sozinho`
 - ✅ **Liberar espaço: arquivar os vídeos no Google Drive** — Google Drive para computador (recomendado) (04/10/2026) `arquivo-de-videos`
 - ✅ **Ligar o gerente da equipe (a fila anda sozinha)?** — Ligar (recomendado) (04/10/2026) `gerente-ligado`
+- ✅ **PicassoIA fora da roda de imagens** — Tirar o PicassoIA de vez (06/10/2026) · “06/10 pelo chat: 'aparentemente o picasso morreu tambem, não podemos mais contar com ele.'” `picasso-fora-da-roda`
 
 **Publicação**
 - ✅ **As 3 partes só no TikTok (00022:p03, 00027:p01, 00032:p04)** — Subir no YouTube (28/09/2026) `partes-so-no-tiktok`
@@ -91,7 +92,9 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    (`_derrubados_pela_rede`: "infraestrutura", `net::err`, SSL, timeout de
    conexão — nunca login, cota ou legenda), espera 60 s, confere a rede e
    roda o canal de novo, até 2 vezes, só dentro do mesmo `grade.slot` e de
-   25 min do começo da rodada. As guardas por destino fazem o resto.
+   25 min do começo da rodada. As guardas por destino fazem o resto. Nunca
+   repõe a ficha com pedaço de parte já no YouTube (`youtube_meio_no_ar`):
+   repor roda o canal inteiro, e o pedaço 1 subiria de novo.
 4. Depois, e nunca no lugar: **recuperação do TikTok** (1 por canal, saiu no
    YouTube e nunca chegou lá), **recuperação do YouTube** (1, ficou privado no
    canal) e **reserva do TikTok** (só se builds não levou nada lá neste horário).
@@ -164,7 +167,8 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Rodízio favela/normal/babaca | `_no_rodizio_dos_tipos` → `contos.publicar.tipos` |
 | Válvula de qualidade: parte **retida** (veto da IA vencido, parecer só pela folha, ou **consertada** — o reparo refez as cenas depois do veto e ninguém assistiu ao mp4 novo) só sai se o horário fosse ficar vazio | `postar._retencao` (lida de arquivo, não gasta `TENTATIVAS`; a situação vem de `parecer.estado_do_video`, com "consertado"), `proxima_historia` (retidos antes dos vetados e dos fora de ordem no último recurso; entre os retidos, a consertada primeiro); quando sai, `_marcar_retido` põe `[qualidade] ` na lista "a conferir" **só** do destino onde saiu de fato (TikTok só confirmado) — não sai sozinha: quem confere é uma pessoa. A retida que chega ao TikTok **depois** (recuperação, ou "YouTube já saiu nesta hora; levando só para o TikTok") ganha a marca lá e a válvula no diário por `_retida_chegou_ao_tiktok`; as marcas da ficha moram num lugar só, `_valvula_da_parte` |
 | Página do YouTube/TikTok que não abre | `identity.browser.abrir_pagina` (3 tentativas: a aba de sempre com `domcontentloaded` 90 s, depois aba nova com `commit` 60 s; a aba que falhou é fechada assim que a nova existe, e na falha final sobra uma só) e `ir_para` (mesma aba, para quem tem ouvinte nela); `tiktok._abrir`/`youtube_web._abrir` levantam `"infraestrutura: ..."`, que `desfecho.classificar` não conta contra o vídeo |
-| Studio que abre em branco, ou envio que não abre (YouTube) | `youtube_web.falha_da_montagem` (sempre `infraestrutura:`) e `falha_do_envio` (`infraestrutura:` só se abrir+montar passou de `PAGINA_LENTA_S` = 60 s, ou se o diálogo do Studio veio sem o campo); `_abrir_dialogo_de_upload` espera mais `ESPERA_DIALOGO_CARREGANDO_S` (60 s) com o diálogo na tela, e o que cobre o Criar (`_parede_no_criar`) é lido, fotografado e fechado com ESC antes do clique (prazo `CLIQUE_CRIAR_S` = 10 s). O laudo leva `abertura_s` e `envio_nao_abriu` |
+| Studio que abre em branco, ou envio que não abre (YouTube) | `youtube_web.falha_da_montagem` (sempre `infraestrutura:`) e `falha_do_envio` (`infraestrutura:` **só** se abrir+montar levou `PAGINA_LENTA_S` = 60 s ou mais; diálogo sem campo em página rápida é tela, e a frase pede o `--sondar` — na sonda real o campo nasce junto com o diálogo); `_abrir_dialogo_de_upload` espera mais `ESPERA_DIALOGO_CARREGANDO_S` (60 s) com o diálogo na tela, e o que cobre o Criar (`_parede_no_criar`) é lido, fotografado e fechado com ESC antes do clique (prazo `CLIQUE_CRIAR_S` = 10 s). O laudo leva `abertura_s` (só abrir+montar) e `envio_nao_abriu`. Testes por comportamento de `publicar()` em `test_parede_no_criar_regressions` (`PublicarLigacaoTests`) |
+| Parte em pedaços com pedaço já no YouTube | `postar._subir_parte_no_youtube` (a porta dos 3 caminhos do postar: rodada, `--so-youtube`, `--tudo`): pedaço entregue e o seguinte caiu → `ParteMeioNoAr` (mensagem sem o erro original, que fica em `youtube_erro`), marca `[pedaco] ` na lista "a conferir" do YouTube (só uma pessoa tira) e a ficha `youtube_meio_no_ar`, que `_derrubados_pela_rede` e `_publicar_canal` respeitam: o canal **não** é reposto no horário. `historias/main.py publicar` e `serie.py` chamam o catálogo direto e não passam por ela |
 | Legenda do TikTok comida pelo editor | `escrita.escrever` pausa `PAUSA_DEPOIS_DO_ENTER_S` (0,25 s) depois de limpar e de cada Enter; `tiktok._escrever_legenda` tenta 3 modos (`MODOS_DA_LEGENDA`: digitada, colada, digitada devagar) e só escreve depois do envio a 100% (`_esperar_envio`, "Enviado （…MB）" com parêntese de largura cheia — `_sem_acento` faz NFKC antes do NFD —, teto 120 s) |
 | Capa recusada pela conta (403) | `youtube.definir_capa` + `capa_bloqueada`: o 403 marca a conta em `<runtime>/capa_bloqueada.json`, a capa não é pedida de novo no mesmo dia (revalida 1x/dia) e o diário ganha 1 aviso quando o bloqueio começa. Short não procura miniatura no Studio (`youtube_web._e_short`) |
 | Estágio do processamento no Studio | `youtube_web._classificar_rodape`: só o **rodapé** do diálogo classifica (seletor, ou o trecho em volta da contagem regressiva) e vai ao laudo. O último estágio legível vai ao passo, ao laudo (`ultimo_estagio_legivel`) e ao ERRO do diário, mas **não decide o clique**: `desconhecida` no estouro do teto publica (regra de 16/09) — `subindo`/`processando` lidos AGORA continuam segurando |
@@ -435,6 +439,19 @@ diário.
   índice do corte; a linha das histórias ganha `youtube_id` (primeiro
   arquivo) e `youtube_ids` (todos, na ordem), tirados dos laudos —
   `serie.registrar` tirava da URL, que pelo navegador é a frase.
+- **Conferente do c431c6e** (06/10, latente — hoje 0 de 59 partes passam de
+  182 s): (a) com a parte em dois pedaços, o 1 no ar e o 2 caído por
+  `infraestrutura:`, a reposição rodava o canal de novo, a guarda de um por
+  horário não achava linha (`serie.registrar` só roda depois do último
+  pedaço) e a fila escolhia a mesma parte: o pedaço 1 subia **3 vezes**
+  numa rodada (1 + `TENTATIVAS_POR_REDE`), e de novo no horário seguinte se
+  o TikTok também tivesse caído. → `_subir_parte_no_youtube` (ver §2); teste
+  `historias/tests/test_pedaco_no_ar_nao_repoe_regressions.py` (3 → 1
+  envio). (b) "diálogo sem campo" virava `infraestrutura:` sozinho, sem
+  medida: na sonda real o campo nasce junto com o diálogo. Agora só a
+  página lenta (≥ 60 s) é rede. (c) os testes da ligação liam o fonte; agora
+  rodam `publicar()` com o navegador de mentira e prendem o prazo de 10 s
+  do clique no Criar pelo número.
 
 ## 5. O estado de hoje (27/09/2026)
 

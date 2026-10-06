@@ -1164,17 +1164,24 @@ def falha_da_montagem(abertura_s: float, tela: str = "") -> str:
 def falha_do_envio(laudo: dict, abertura_s: float) -> str:
     """A frase de "o envio nao abriu", com o que a tela mostrou. Pura.
 
-    `infraestrutura:` so quando ha prova de que foi a rede: a pagina demorou
-    mais que `PAGINA_LENTA_S` para abrir e montar, ou o dialogo do proprio
-    Studio veio sem o campo (os componentes dele nao chegaram). Pagina rapida
-    sem o botao, ou com uma parede que o ESC nao tirou, e tela mudada — tentar
-    de novo em 60 s nao muda nada, e a frase pede o `--sondar`.
+    `infraestrutura:` so quando ha MEDIDA de que foi a rede: a pagina demorou
+    `PAGINA_LENTA_S` ou mais para abrir e montar. Pagina rapida sem o botao,
+    com uma parede que o ESC nao tirou, ou com o dialogo do Studio sem o
+    campo, e tela mudada — tentar de novo em 60 s nao muda nada, e a frase
+    pede o `--sondar`.
+
+    O "dialogo sem campo" ja contou como rede sozinho (c431c6e), e o
+    conferente derrubou: na sonda da sessao de verdade (amostra a cada
+    0,25 s) o campo nasce JUNTO com o dialogo — nenhuma amostra viu um sem o
+    outro. Sem a pagina lenta, nao ha medida de rede atras dele; e se o
+    Studio mudar o campo, todo horario viraria "rede", com reposicoes a toa
+    e sem a dica do `--sondar`. Ele continua na frase e no laudo.
 
     Caso medido (06/10/2026, 00:37, historias): ~126 s para abrir e montar,
     campo ausente em 20 s, clique no Criar engolido pelo backdrop do dialogo.
     """
     lento = abertura_s >= PAGINA_LENTA_S
-    de_rede = lento or bool(laudo.get("dialogo_sem_campo"))
+    de_rede = lento
     partes = ["nao consegui abrir o envio de video"]
     if laudo.get("motivo"):
         partes.append(f"({laudo['motivo']})")
