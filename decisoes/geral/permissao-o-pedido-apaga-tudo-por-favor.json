@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "pedido de permissao da tarefa pedido-8682ee83",
+  "criado": "2026-10-06T02:44:19.906090",
+  "depende_de": [],
+  "historico": [],
+  "id": "permissao-o-pedido-apaga-tudo-por-favor",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "geral/o-que-apagar",
+      "id": "permitir",
+      "pede_comentario": false,
+      "rotulo": "Permitir"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Encerrar esta tarefa",
+      "id": "negar",
+      "pede_comentario": false,
+      "rotulo": "Negar"
+    }
+  ],
+  "pergunta": "Apagar e irreversivel e 'tudo' pode ser estoque de videos, historico, ledger ou fila; adivinhar o alvo ja custou caro (heuristica de texto fura sempre). So apago depois de saber exatamente o que.",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Permissao: O pedido 'apaga tudo por favor' chegou sem dizer O QUE apaga",
+  "vigente": null
+}

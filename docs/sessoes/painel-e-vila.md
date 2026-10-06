@@ -44,6 +44,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Liberar espaço: arquivar os vídeos no Google Drive** — Google Drive para computador (recomendado) (04/10/2026) `arquivo-de-videos`
 - ✅ **Ligar o gerente da equipe (a fila anda sozinha)?** — Ligar (recomendado) (04/10/2026) `gerente-ligado`
 - ✅ **PicassoIA fora da roda de imagens** — Tirar o PicassoIA de vez (06/10/2026) · “06/10 pelo chat: 'aparentemente o picasso morreu tambem, não podemos mais contar com ele.'” `picasso-fora-da-roda`
+- ⏳ **Permissao: O pedido 'apaga tudo por favor' chegou sem dizer O QUE apaga** — Apagar e irreversivel e 'tudo' pode ser estoque de videos, historico, ledger ou fila; adivinhar o alvo ja custou caro (heuristica de texto fura sempre). So apago depois de saber exatamente o que. `permissao-o-pedido-apaga-tudo-por-favor`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
