@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-88e792fe",
+      "em": "2026-10-06T07:22:48",
+      "evento": "2026-10-06T07:22:45",
+      "linha": 131,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "aceito",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Auditoria da engine de 06/10 (docs/sprites/ENGINE.md e CONTRATO_SLOTS.md): 16 classes, 12 elementos, 24 expressões, 8 tipos de arma (54 estilos), 118 skills, 29 status, 20 arenas, 106 lutadores. Com essas escolhas, um lutador completo pede no mínimo 3 imagens (pele, olhos neutros, boca neutra); 14 para o rosto reagir; +2 por classe para dar identidade. O painel vai começar a ser construído com estas escolhas; trocar depois é mexer em dados, não refazer.",
   "criado": "2026-10-06T04:33:41.313416",
   "depende_de": [],
