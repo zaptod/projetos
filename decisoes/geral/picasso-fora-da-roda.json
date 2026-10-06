@@ -1,5 +1,17 @@
 {
   "comentario": false,
+  "consequencias": [
+    {
+      "alvo": "pedido-65acd8b9",
+      "em": "2026-10-06T02:31:15",
+      "evento": "2026-10-06T02:23:14",
+      "linha": 121,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "tirar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "06/10 02:2x, pelo chat: o Adrian viu que o PicassoIA morreu. Ele era um dos geradores das imagens das histórias (rodízio com Gemini e ChatGPT; teto diário próprio) e a rodada da madrugada parou de escrever no log às 01:44. Serve para tirar o PicassoIA de toda a roda (histórias, builds, carteiro) e deixar Gemini e ChatGPT fazerem as imagens.",
   "criado": "2026-10-06T02:23:12.909598",
   "depende_de": [],
