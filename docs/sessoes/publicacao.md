@@ -101,6 +101,10 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    reposição, e **saída 1** se tentou e nada saiu (era `return 0` fixo, e o
    Agendador registrava sucesso em rodada vazia). Na noite de quarta (22h →
    qui 07h), `avisar_lote_nao_fechou()` (ver §3, lote semanal).
+   `--ver` sai 0, ou 1 só se um canal levantou (a ficha de `_rodar_canal`
+   leva `excecao`). Até 05/10 a regra da rodada valia também no `--ver`, onde
+   nenhuma ficha tem `feito`, e todo retrato saía 1 (o app mostrava "erro /
+   saiu 1"). Teste: `historias/tests/test_postar_ver_saida_regressions.py`.
 
 O registro é assimétrico de propósito: **histórias registram por fora**
 (`serie.registrar`), **builds por dentro** do publicador — porque

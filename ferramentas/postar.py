@@ -2797,7 +2797,9 @@ def _rodar_canal(canal: str, funcao, so_ver: bool) -> dict:
         # avisar justamente na hora em que ele ja esta olhando.
         if _e_limite_diario(exc):
             avisar_limite_diario(f"canal {canal}: {exc}")
+        # `excecao` e o que o `--ver` conta para sair 1 (ver o fim de `main`).
         return {"canal": canal, "feito": False,
+                "excecao": type(exc).__name__,
                 "motivo": f"{type(exc).__name__}: {exc}"[:200]}
 
 
@@ -4158,6 +4160,13 @@ def main(argv=None) -> int:
     # `tentou` e o que separa "falhei" de "nao era comigo": com `--so builds`
     # a lista de historias nem roda, e uma rodada que nao tentou nada nao
     # falhou em nada.
+    #
+    # O `--ver` NAO PUBLICA, entao "nada saiu" nao e falha dele: ate
+    # 05/10/2026 a regra abaixo valia tambem aqui e todo retrato saia 1 (o
+    # app mostrava "erro / saiu 1"). No `--ver`, o 1 diz uma coisa so: um
+    # canal levantou excecao (`_rodar_canal`). Fila vazia e retrato: 0.
+    if args.ver:
+        return 1 if any(r.get("excecao") for r in resultados) else 0
     tentou = bool(resultados)
     if tentou and not any(r.get("feito") for r in resultados):
         return 1
