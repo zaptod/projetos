@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import collections
 import json
-import os
 import sys
 import unicodedata
 
@@ -73,12 +72,8 @@ CLASSES = list(C.LISTA_CLASSES)
 ELEMENTOS = [e for e in ELEMENT_PALETTES if e != "DEFAULT"]
 SKILLS = {n: v for n, v in SKILL_DB.items() if v.get("tipo") != "NADA"}
 
-personagens_runtime = os.path.expandvars(r"%LOCALAPPDATA%\neural-fights\personagens.json")
-try:
-    _p = json.load(open(personagens_runtime, encoding="utf-8"))
-    PERSONAGENS = _p if isinstance(_p, list) else list(_p.values())
-except Exception:
-    PERSONAGENS = json.load(open(r"E:\projetos\neural_fights\data\personagens.json", encoding="utf-8"))
+# O manifesto nao le o banco de personagens: a contagem mudava a cada
+# personagem novo e quebrava a comparacao com o manifesto commitado.
 
 # ------------------------------------------------------------------ moldes
 # grupo, parte, niveis permitidos, eixo de estado, z, quadro, ancora, px, tingir, papel
@@ -303,7 +298,6 @@ resumo = {
     "lutador_moldes_por_alvo": moldes_lutador,
     "lutador_slots_por_classe": sum(por_classe.values()),
     "lutador_slots_por_personagem_se_aberto": sum(por_classe.values()),
-    "personagens_no_banco": len(PERSONAGENS),
     "minimo_obrigatorio": minimo, "lutador_recomendado_comum": recomendado,
     "contagens_engine": {
         "classes": len(CLASSES), "elementos": len(ELEMENTOS), "expressoes": len(EXPRESSOES),

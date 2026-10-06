@@ -4,6 +4,11 @@ extends RefCounted
 ## testes usarem exatamente a mesma heranca.
 
 const RAIZ := "res://biblioteca/partes/lutador"
+static var _biblioteca_externa := ""
+static var _caminhos := {}
+static var _rotulos := {}
+static var _rotulos_palco := {}
+static var _manifesto_lido := false
 const PARTES := {
 	"sombra": {"z": 0, "quadro": "mundo"},
 	"acessorio_costas": {"z": 10, "quadro": "olhar"},
@@ -39,7 +44,69 @@ const NIVEIS := {
 
 
 static func caminho(parte: String, nivel: String, alvo: String, estado: String) -> String:
-	return "%s/%s/%s/%s/%s.png" % [RAIZ, parte, nivel, alvo, estado]
+	_carregar_manifesto()
+	var chave := "%s/%s/%s/%s" % [parte, nivel, alvo, estado]
+	if _caminhos.has(chave):
+		return str(_caminhos[chave])
+	# Com biblioteca externa (previa do painel, testes), nada cai na
+	# biblioteca real do palco: o que nao esta no manifesto e procurado la.
+	var raiz := (_biblioteca_externa + "/partes/lutador") if _biblioteca_externa else RAIZ
+	return "%s/%s/%s/%s/%s.png" % [raiz, parte, nivel, alvo, estado]
+
+
+## O nome humano do alvo ("Berserker (Furia)", com acento), tirado do
+## `alvo.rotulo` do manifesto; aceita o id (berserker_furia) ou o nome.
+## Devolve "" quando o manifesto nao conhece o alvo.
+static func rotulo(nivel: String, alvo: String) -> String:
+	_carregar_manifesto()
+	var chave := nivel + "/" + UtilPalco.slug(alvo)
+	if _rotulos.has(chave) or _biblioteca_externa == "":
+		return str(_rotulos.get(chave, ""))
+	# biblioteca externa sem o alvo no manifesto dela: o nome continua sendo
+	# o da engine, que o manifesto do palco conhece
+	if _rotulos_palco.is_empty():
+		for slot in _slots_do_manifesto("res://biblioteca/manifesto_slots.json"):
+			var a: Dictionary = slot.get("alvo", {})
+			if str(a.get("rotulo", "")) != "":
+				_rotulos_palco["%s/%s" % [a.get("nivel", ""), a.get("chave", "")]] = str(a.get("rotulo"))
+	return str(_rotulos_palco.get(chave, ""))
+
+
+static func _slots_do_manifesto(manifesto: String) -> Array:
+	if not FileAccess.file_exists(manifesto):
+		return []
+	var json := JSON.new()
+	if json.parse(FileAccess.get_file_as_string(manifesto)) != OK or typeof(json.data) != TYPE_DICTIONARY:
+		return []
+	var saida := []
+	for slot in json.data.get("slots", []):
+		if typeof(slot) == TYPE_DICTIONARY and str(slot.get("grupo", "")) == "lutador":
+			saida.append(slot)
+	return saida
+
+
+static func configurar_biblioteca(caminho_biblioteca: String) -> void:
+	_biblioteca_externa = caminho_biblioteca.replace("\\", "/").rstrip("/")
+	_caminhos.clear()
+	_rotulos.clear()
+	_manifesto_lido = false
+
+
+## Le o manifesto uma vez por processo (por biblioteca): o resolvedor pergunta
+## o caminho dezenas de vezes por parte e o manifesto tem ~1.900 slots.
+static func _carregar_manifesto() -> void:
+	if _manifesto_lido:
+		return
+	_manifesto_lido = true
+	var manifesto := (_biblioteca_externa + "/manifesto_slots.json") if _biblioteca_externa else "res://biblioteca/manifesto_slots.json"
+	for slot in _slots_do_manifesto(manifesto):
+		var alvo: Dictionary = slot.get("alvo", {})
+		var chave := "%s/%s/%s/%s" % [slot.get("parte", ""), alvo.get("nivel", ""), alvo.get("chave", ""), slot.get("estado", "base")]
+		if str(alvo.get("rotulo", "")) != "":
+			_rotulos["%s/%s" % [alvo.get("nivel", ""), alvo.get("chave", "")]] = str(alvo.get("rotulo"))
+		var destino := str(slot.get("destino", "")).replace("\\", "/")
+		var relativo := destino.trim_prefix("palco/biblioteca/")
+		_caminhos[chave] = (_biblioteca_externa + "/" + relativo) if _biblioteca_externa else "res://biblioteca/" + relativo
 
 
 static func estados(parte: String, expressao: String) -> Array:
@@ -64,12 +131,23 @@ static func resolver(parte: String, personagem: String, classe: String, expressa
 static func tingir(parte: Dictionary) -> String:
 	if parte.is_empty():
 		return "nenhum"
+	var dados := opcoes(parte)
+	if not dados.is_empty():
+		return str(dados.get("tingir", "nenhum"))
+	return "cor_personagem" if str(parte.get("nivel", "")) == "comum" else "nenhum"
+
+
+## O .json que o painel grava ao lado do PNG (tingir, contorno_proprio,
+## brilho_proprio...); {} quando nao existe ou nao abre.
+static func opcoes(parte: Dictionary) -> Dictionary:
+	if parte.is_empty():
+		return {}
 	var caminho_json := str(parte.get("caminho", "")).get_basename() + ".json"
 	if FileAccess.file_exists(caminho_json):
 		var json := JSON.new()
 		if json.parse(FileAccess.get_file_as_string(caminho_json)) == OK and typeof(json.data) == TYPE_DICTIONARY:
-			return str(json.data.get("tingir", "nenhum"))
-	return "cor_personagem" if str(parte.get("nivel", "")) == "comum" else "nenhum"
+			return json.data
+	return {}
 
 
 ## `existe` deixa a regra verificavel sem criar ou importar PNGs no teste.

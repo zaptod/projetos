@@ -1,14 +1,33 @@
 extends Node2D
-## Folha rapida para o painel revisar as seis familias de expressao.
+## Folha do "Ver no Godot": as seis familias de expressao do lutador montado
+## com as pecas modulares, em 2 colunas x 3 linhas (1080x1920, retrato), para
+## ler no celular sem dar zoom. Cada bolinha tem 340 px de diametro.
 ##
 ## godot --path palco res://ferramentas/previa_sprites.tscn -- \
-##   --classe=berserker --personagem= --saida=E:/tmp/previa.png
+##   --classe=berserker_furia --personagem= --saida=E:/tmp/previa.png
+##   [--biblioteca=E:/tmp/bib]   biblioteca isolada (manifesto + partes/)
+##   [--z=0.6 --esc_x=1.25 --esc_y=0.8 --ang=30]   pose (testes do pulo/squash)
+##
+## O layout (centros, raio) esta em docs/sprites/CONTRATO_SLOTS.md, "Previa".
 
 const REPRESENTANTES := ["neutro", "furia", "animado", "panico", "dor", "morto"]
+const NOMES := {"neutro": "Neutro", "furia": "Fúria", "animado": "Animado", "panico": "Pânico",
+	"dor": "Dor", "morto": "Morto"}
 const CORES := [0xD86565, 0xBD78E8, 0x5DBB8A, 0x6D9BE8, 0xE8B35F, 0xDC7AA3]
+const COLUNAS := 2
+const LARG_CELULA := 540.0
+const ALT_CELULA := 576.0
+const TOPO := 190.0          # faixa do titulo
+const CENTRO_Y := 330.0      # do topo da celula ao centro da bolinha
+const RAIO_M := 1.7          # 170 px de raio: bolinha de 340 px
 
 var args := {}
 var nomes := []
+
+
+## Centro da bolinha (z = 0) da celula k; o teste Python usa as mesmas contas.
+static func centro_celula(k: int) -> Vector2:
+	return Vector2((k % COLUNAS + 0.5) * LARG_CELULA, TOPO + (k / COLUNAS) * ALT_CELULA + CENTRO_Y)
 
 
 func _ready() -> void:
@@ -17,30 +36,49 @@ func _ready() -> void:
 			args[arg.substr(2, arg.find("=") - 2)] = arg.substr(arg.find("=") + 1)
 	RenderingServer.set_default_clear_color(Color8(25, 29, 39))
 	var estilo := load("res://biblioteca/estilo.tres") as EstiloPalco
+	var biblioteca := str(args.get("biblioteca", ""))
+	if biblioteca != "":
+		PartesLutador.configurar_biblioteca(biblioteca)
 	var cena := load("res://biblioteca/lutadores/_padrao.tscn") as PackedScene
 	var classe := str(args.get("classe", ""))
 	var personagem := str(args.get("personagem", ""))
 	for k in REPRESENTANTES.size():
 		var no := cena.instantiate()
-		var coluna := k % 3
-		var linha := k / 3
-		no.position = Vector2(180 + coluna * 360, 500 + linha * 800)
+		no.position = centro_celula(k)
 		add_child(no)
-		no.configurar({"slot": "p1", "nome": personagem, "classe": classe, "cor": CORES[k], "raio_corpo": 1.45},
+		no.configurar({"slot": "p1", "nome": personagem, "classe": classe, "cor": CORES[k], "raio_corpo": RAIO_M},
 			{"estilo": estilo, "zoom": 1.0, "t_jogo": 1.0, "quadro": 0})
-		no.atualizar({"expr": RostoPalco.EXPRESSOES.find(REPRESENTANTES[k]), "ang": 0.0, "esc_x": 1.0, "esc_y": 1.0,
-			"z": 0.0, "flags": 0, "flash": 0.0}, {"estilo": estilo, "zoom": 1.0, "t_jogo": 1.0, "quadro": 0})
+		no.atualizar({"expr": RostoPalco.EXPRESSOES.find(REPRESENTANTES[k]), "ang": float(args.get("ang", 0.0)),
+			"esc_x": float(args.get("esc_x", 1.0)), "esc_y": float(args.get("esc_y", 1.0)),
+			"z": float(args.get("z", 0.0)), "flags": 0, "flash": 0.0},
+			{"estilo": estilo, "zoom": 1.0, "t_jogo": 1.0, "quadro": 0})
 		nomes.append(REPRESENTANTES[k])
 	call_deferred("_salvar")
 
 
+## "Berserker (Fúria)", "Celeste a Impiedosa  ·  Berserker (Fúria)" ou
+## "Comum (todos os lutadores)": nunca o id.
+func _titulo() -> String:
+	var classe := str(args.get("classe", ""))
+	var personagem := str(args.get("personagem", ""))
+	var nome_classe := ""
+	if classe != "":
+		nome_classe = PartesLutador.rotulo("classe", classe)
+		if nome_classe == "":
+			nome_classe = classe.replace("_", " ").capitalize()
+	if personagem != "":
+		return personagem + ("  ·  " + nome_classe if nome_classe != "" else "")
+	return nome_classe if nome_classe != "" else "Comum (todos os lutadores)"
+
+
 func _draw() -> void:
 	var fonte := ThemeDB.fallback_font
-	draw_string(fonte, Vector2(48, 90), "PREVIA MODULAR  |  " + str(args.get("classe", "comum")), HORIZONTAL_ALIGNMENT_LEFT, -1, 42, Color.WHITE)
+	draw_string(fonte, Vector2(0, 72), "Prévia no Godot", HORIZONTAL_ALIGNMENT_CENTER, 1080, 40, Color(0.70, 0.75, 0.84))
+	draw_string(fonte, Vector2(0, 150), _titulo(), HORIZONTAL_ALIGNMENT_CENTER, 1080, 60, Color.WHITE)
 	for k in nomes.size():
-		var coluna := k % 3
-		var linha := k / 3
-		draw_string(fonte, Vector2(70 + coluna * 360, 250 + linha * 800), str(nomes[k]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(0.82, 0.86, 0.93))
+		var c := centro_celula(k)
+		draw_string(fonte, Vector2(c.x - LARG_CELULA / 2.0, c.y - CENTRO_Y + 70), str(NOMES.get(nomes[k], nomes[k])),
+			HORIZONTAL_ALIGNMENT_CENTER, LARG_CELULA, 50, Color(0.86, 0.89, 0.95))
 
 
 func _salvar() -> void:

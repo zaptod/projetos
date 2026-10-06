@@ -183,6 +183,33 @@ func _testar_partes_lutador() -> void:
 		and int(PartesLutador.PARTES["pele"]["z"]) < int(PartesLutador.PARTES["olhos"]["z"])
 		and int(PartesLutador.PARTES["olhos"]["z"]) < int(PartesLutador.PARTES["acessorio_cabeca"]["z"]),
 		"partes: ordem z do contrato")
+	_checar(PartesLutador.rotulo("classe", "berserker_furia") == "Berserker (Fúria)"
+		and PartesLutador.rotulo("classe", "Berserker (Furia)") == "Berserker (Fúria)",
+		"partes: nome humano da classe vem do manifesto (titulo da previa)")
+	PartesLutador.configurar_biblioteca("user://biblioteca_que_nao_existe")
+	_checar(PartesLutador.rotulo("classe", "berserker_furia") == "Berserker (Fúria)",
+		"partes: biblioteca externa sem manifesto ainda da o nome humano")
+	_checar(PartesLutador.caminho("olhos", "comum", "_", "neutro").begins_with("user://biblioteca_que_nao_existe/partes/lutador/"),
+		"partes: biblioteca externa nao cai na biblioteca real do palco")
+	PartesLutador.configurar_biblioteca("")
+	# feicao com peca modular nao ganha o traco antigo por baixo; as outras sim
+	var nenhuma_kenney := true
+	var olhos_ficam := true
+	for expr in RostoPalco.EXPRESSOES:
+		var tudo := RostoPalco.new(RostoPalco.Gravador.new(), 204.0, 1.0, 0, Color.RED, false)
+		tudo.omitir = {"olhos": true, "sobrancelhas": true, "boca": true, "detalhe_rosto": true}
+		tudo.desenhar(expr)
+		nenhuma_kenney = nenhuma_kenney and tudo.ampliacao.is_empty()
+		var so_olhos := RostoPalco.new(RostoPalco.Gravador.new(), 204.0, 1.0, 0, Color.RED, false)
+		so_olhos.omitir = {"sobrancelhas": true, "boca": true, "detalhe_rosto": true}
+		so_olhos.desenhar(expr)
+		olhos_ficam = olhos_ficam and (not so_olhos.ampliacao.is_empty() or expr == "tonto")
+	_checar(nenhuma_kenney, "rosto: com peca nas 4 feicoes nenhum traco antigo sai (24 expressoes)")
+	_checar(olhos_ficam, "rosto: feicao sem peca continua com o traco antigo")
+	var neutro := RostoPalco.new(RostoPalco.Gravador.new(), 204.0, 1.0, 0, Color.RED, false)
+	neutro.omitir = {"olhos": true}
+	neutro.desenhar("neutro")
+	_checar(neutro.ampliacao.keys() == ["mouth_happy"], "rosto: peca de olhos tira so os olhos (neutro: %s)" % [neutro.ampliacao.keys()])
 
 
 func _doc(n: int) -> Dictionary:

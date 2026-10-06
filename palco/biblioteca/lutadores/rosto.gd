@@ -53,6 +53,12 @@ const BOCA_AVANCO := 0.66
 const SOBR_RECUO := 0.36
 const SOBR_INCL := 0.42      # rad de inclinacao por unidade de `incl`
 const SEM_PISCADA := {"morto": true, "tonto": true, "dor": true, "euforico": true, "concentrado": true}
+## As feicoes que uma peca modular (partes/lutador/<feicao>/...) substitui. O
+## lutador marca em `omitir` as que tem peca e o traco antigo delas some:
+## olhos (inclui piscada, pupila e o branco), sobrancelhas, boca e os extras
+## (suor, lagrima, veia, faiscas, brilho na pupila) que o contrato chama de
+## detalhe_rosto.
+const FEICOES := ["olhos", "sobrancelhas", "boca", "detalhe_rosto"]
 
 var ci   # o CanvasItem que desenha (ou o Gravador, nos testes)
 var base := Transform2D.IDENTITY
@@ -68,6 +74,8 @@ var piscando := false
 ## nome da peca -> maior ampliacao usada (px da tela por px do png, com zoom 1):
 ## acima de 1 a peca cresce e fica mole (teste "nitida a 408 px")
 var ampliacao := {}
+## feicao -> true: nao desenhar o traco antigo dela (ha peca modular).
+var omitir := {}
 
 
 ## Um "CanvasItem" que nao desenha: o teste monta as 24 expressoes sem tela
@@ -144,6 +152,8 @@ func _luz(tamanho: float) -> Vector2:
 ## Olho aberto: o disco do Kenney com um brilho branco (o "1 brilho" do
 ## estilo). `olhar` empurra o olho para a frente (para onde ele mira).
 func olho_aberto(i: int, r_mult := 1.0, olhar := 0.0, tremor := 0.0) -> void:
+	if omitir.has("olhos"):
+		return
 	if piscando:
 		olho_fechado(i)
 		return
@@ -157,6 +167,8 @@ func olho_aberto(i: int, r_mult := 1.0, olhar := 0.0, tremor := 0.0) -> void:
 ## Olho arregalado: branco com contorno e sombra (cel de 2 tons) e o disco
 ## do Kenney pequeno como pupila. `pupila` = fracao do diametro do branco.
 func olho_arregalado(i: int, r_mult := 1.2, pupila := 0.45, tremor := 0.0) -> void:
+	if omitir.has("olhos"):
+		return
 	if piscando:
 		olho_fechado(i)
 		return
@@ -177,6 +189,8 @@ func olho_arregalado(i: int, r_mult := 1.2, pupila := 0.45, tremor := 0.0) -> vo
 ## Olho fechado reto (a peca fina deitada) ou em arco: curva > 0 = feliz (^),
 ## curva < 0 = calmo (u).
 func olho_fechado(i: int, curva := 0.0) -> void:
+	if omitir.has("olhos"):
+		return
 	if curva > 0.01:
 		peca("eye_closed_up", olho_c[i], 0.95)
 	elif curva < -0.01:
@@ -188,6 +202,8 @@ func olho_fechado(i: int, curva := 0.0) -> void:
 ## Palpebra baixa: o meio-olho do Kenney (topo reto). `quanto` 0,3..0,6 abaixa
 ## a palpebra (achata o meio-olho).
 func olho_palpebra(i: int, r_mult := 1.0, quanto := 0.4) -> void:
+	if omitir.has("olhos"):
+		return
 	if piscando:
 		olho_fechado(i)
 		return
@@ -199,10 +215,14 @@ func olho_palpebra(i: int, r_mult := 1.0, quanto := 0.4) -> void:
 
 
 func olho_x(i: int) -> void:
+	if omitir.has("olhos"):
+		return
 	peca("eye_x", olho_c[i], 0.95)
 
 
 func olho_espiral(i: int) -> void:
+	if omitir.has("olhos"):
+		return
 	var c := olho_c[i]
 	var r := R * OLHO_DIAM * 0.55
 	if simples:
@@ -220,6 +240,8 @@ func olho_espiral(i: int) -> void:
 
 ## Olho apertado de dor (> <): duas pecas finas em V.
 func olho_apertado(i: int) -> void:
+	if omitir.has("olhos"):
+		return
 	var c := olho_c[i]
 	var lado := -1.0 if i == 0 else 1.0
 	var d := R * OLHO_DIAM * 0.2
@@ -231,6 +253,8 @@ func olho_apertado(i: int) -> void:
 ## `incl` > 0 = brava (ponta de dentro desce), < 0 = triste; `subir` afasta
 ## do olho. `forma`: a (fina), b (inclinada), c (curta), d (grossa).
 func sobrancelha(i: int, incl := 0.0, subir := 0.0, forma := "eyebrow_a", escala := 0.72) -> void:
+	if omitir.has("sobrancelhas"):
+		return
 	if simples:
 		return
 	var lado := -1.0 if i == 0 else 1.0
@@ -246,24 +270,34 @@ func _boca(frente := 0.0) -> Vector2:
 
 
 func boca_linha(larg := 0.7) -> void:
+	if omitir.has("boca"):
+		return
 	peca("eyebrow_a", _boca(), larg * 0.95, 0.0, false, Color(0, 0, 0, 0), 0.85)
 
 
 func boca_sorriso(larg := 1.0, _prof := 0.5) -> void:
+	if omitir.has("boca"):
+		return
 	peca("mouth_happy", _boca(-0.02), larg * 1.0)
 
 
 func boca_triste(larg := 0.85) -> void:
+	if omitir.has("boca"):
+		return
 	peca("mouth_sad", _boca(0.02), larg * 1.0)
 
 
 func boca_smirk() -> void:
+	if omitir.has("boca"):
+		return
 	peca("mouth_smirk", _boca() + Vector2(0, 0.06 * R), 1.05)
 
 
 ## Boca aberta: o meio-disco do Kenney (reto em cima). No grito, o disco
 ## inteiro com a lingua.
 func boca_aberta(r_mult := 0.55, grito := false) -> void:
+	if omitir.has("boca"):
+		return
 	if grito:
 		var c := _boca(0.04)
 		peca("eye_open", c, r_mult * 1.5)
@@ -276,6 +310,8 @@ func boca_aberta(r_mult := 0.55, grito := false) -> void:
 ## Dentes cerrados: barra branca de cel (base + sombra embaixo), contorno do
 ## estilo e as divisoes; a silhueta e a da sobrancelha grossa (eyebrow_d).
 func boca_dentes(larg := 1.0) -> void:
+	if omitir.has("boca"):
+		return
 	if simples:
 		boca_linha(larg * 0.8)
 		return
@@ -293,6 +329,8 @@ func boca_dentes(larg := 1.0) -> void:
 
 
 func boca_onda(larg := 0.9) -> void:
+	if omitir.has("boca"):
+		return
 	if simples:
 		boca_linha(larg * 0.7)
 		return
@@ -307,6 +345,8 @@ func boca_onda(larg := 0.9) -> void:
 
 # ------------------------------------------------------------ extras
 func gota_suor() -> void:
+	if omitir.has("detalhe_rosto"):
+		return
 	if simples:
 		return
 	var queda := fmod(t * 2.0 + semente * 0.13, 1.0) * 0.30
@@ -322,6 +362,8 @@ func gota_suor() -> void:
 
 
 func lagrima(i := 1) -> void:
+	if omitir.has("detalhe_rosto"):
+		return
 	if simples:
 		return
 	var queda := fmod(t * 1.4 + semente * 0.29, 1.0)
@@ -331,6 +373,8 @@ func lagrima(i := 1) -> void:
 
 
 func veia_raiva() -> void:
+	if omitir.has("detalhe_rosto"):
+		return
 	if simples:
 		return
 	var p := F(-0.50, 0.46)
@@ -342,6 +386,8 @@ func veia_raiva() -> void:
 
 
 func brilho_pupila(i: int) -> void:
+	if omitir.has("detalhe_rosto"):
+		return
 	if simples:
 		return
 	var c := olho_c[i]
@@ -355,6 +401,8 @@ func brilho_pupila(i: int) -> void:
 
 
 func faiscas_alerta() -> void:
+	if omitir.has("detalhe_rosto"):
+		return
 	if simples:
 		return
 	for kk in [-1, 0, 1]:

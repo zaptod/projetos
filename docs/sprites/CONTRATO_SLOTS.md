@@ -117,6 +117,51 @@ O nível `elemento` **não existe no lutador**, porque o motor não dá elemento
 - A **pele comum** é uma máscara em tons de cinza que o Godot pinta com a cor do personagem (`cor` do cabeçalho; são 106 personagens, cada um com a sua cor). Uma imagem serve para o jogo inteiro.
 - Pele de classe ou de personagem pode vir colorida (`tingir: "nenhum"`). O painel pergunta na hora de anexar. Ver PERGUNTAS 3.
 
+### 2.3 Zonas do gabarito: onde o rosto do jogo desenha hoje
+
+Medidas tiradas do `RostoPalco` (`palco/biblioteca/lutadores/rosto.gd`) e
+conferidas sobre a folha do Godot (06/10/2026). É por elas que o **gabarito
+baixável** deve desenhar as zonas, para a peça nova cair onde o jogo põe o
+traço antigo.
+
+**Como ler.** Gabarito 1024×1024, centro (512, 512) = centro do corpo, corpo
+de raio **R = 256 px**. Visto de cima, o lutador olha para **+x** (direita da
+imagem); **+y** (para baixo na imagem) é o lado direito do rosto. Em fração de
+R: `px = 512 + f × 256`. As caixas são `x0..x1 × y0..y1`, já com a folga do
+maior caso (olho arregalado do pânico, boca larga do berserk).
+
+| feição | centro (px) | tamanho típico | caixa que cobre todas as expressões | de onde |
+|---|---|---|---|---|
+| olho de cima (lado esquerdo do rosto) | (563, 420) = (0,20R, −0,36R) | disco de 102 px (0,40R) | 480..645 × 340..500 | `OLHO_AVANCO`, `OLHO_LATERAL`, `OLHO_DIAM` |
+| olho de baixo (lado direito do rosto) | (563, 604) = (0,20R, +0,36R) | disco de 102 px | 480..645 × 524..684 | idem |
+| sobrancelha de cima | (410..479, 412) | traço de 123×31 px (grossa: ×49), deitado no eixo y, inclina até 24° | 360..530 × 342..482 | `SOBR_RECUO` 0,36R atrás do olho, sobe até +0,21R |
+| sobrancelha de baixo | (410..479, 612) | idem, espelhada | 360..530 × 542..682 | idem |
+| boca | (681, 512) = (0,66R, 0) | 136×60 px no neutro (sorriso deitado no eixo y) | 640..740 × 405..620 | `BOCA_AVANCO`; o grito é um disco de 95 px em (691, 512) |
+| detalhe: gota de suor | (499..576, 701) cai para +x | gota de 44 px + ponta | 455..600 × 675..727 | `gota_suor` (pânico, nervoso, desespero, limite) |
+| detalhe: lágrima | (619..660, 619) cai para +x | disco de 36 px | 600..680 × 600..640 | `lagrima` (tristeza), sai do olho de baixo |
+| detalhe: veia de raiva | (384, 630) | cruz de 66 px | 350..418 × 597..663 | `veia_raiva` (fúria, berserk) |
+| detalhe: faíscas de alerta | (294..364, 415..609) | 3 riscos na nuca | 294..364 × 415..609 | `faiscas_alerta` (alerta) |
+| detalhe: brilho na pupila | nos dois olhos | estrela de 70 px | as caixas dos olhos | `brilho_pupila` (êxtase) |
+| acessório de cabeça | — (o rosto não desenha) | — | **nuca: x ≤ 360**, pode passar da borda do corpo até a margem (x ≥ 0) | z 60: fica por cima de tudo. Parte OPACA além de x 360 cobre sobrancelhas e olhos (a veia e as faíscas moram na nuca); um capacete de miolo transparente, como o do Berserker, pode envolver o corpo inteiro |
+| acessório de costas | — | — | só aparece **fora** do círculo do corpo (raio > 256) | z 10: fica embaixo da pele |
+| sombra | (512, 640) = 0,5R abaixo do centro | elipse 512×215 px (achatamento 0,42) | 256..768 × 532..748 | a peça segue a de código: fica no chão, some no morto e encolhe no pulo pelo mesmo fator, `max(0,4; 1 − z/4 m)`, em volta de (512, 640); a opacidade não muda com a altura (a de código também não muda) |
+
+**O que gira e o que não gira.** Olhos, sobrancelhas, boca, detalhes,
+marcas e acessórios giram com o olhar (`ang`), então o gabarito inteiro gira:
+quando o lutador olha para a esquerda, a peça aparece de ponta-cabeça (é a
+vista de cima). A pele é desenhada no quadro da tela (não gira) porque a luz
+vem sempre do alto à esquerda: o brilho de código fica em (410, 399) e a lua
+escura embaixo à direita.
+Com pele modular, o Godot ainda desenha esse brilho por cima dela (a mesma
+elipse branca a 55%), a menos que o `.json` da pele traga
+`"brilho_proprio": true`. O tom escuro do cel é da arte.
+
+**Peça substitui traço.** Quando existe peça de olhos, sobrancelhas, boca ou
+detalhe do rosto para o lutador (em qualquer nível da herança, na expressão
+resolvida), o `RostoPalco` não desenha o traço antigo daquela feição
+(`RostoPalco.omitir`); as feições sem peça continuam com o traço antigo. A
+peça de olhos inclui o brilho do olho e a piscada (o Godot não pisca a peça).
+
 ---
 
 ## 3. O esquema de um slot
@@ -152,6 +197,7 @@ Cada slot é um objeto no manifesto. Exemplo completo em `slots_exemplo.json`.
 - `origem`, `autor`, `prova` (a Oficina já recusa exportar sem prova; `painel/sprites/exportar.py:183-216`) e `data`;
 - `tingir`;
 - `contorno_proprio` (bool);
+- `brilho_proprio` (bool, só na pele): `true` desliga o brilho de código por cima dela (a arte já traz o brilho). Sem o campo, o brilho continua;
 - o `slot` de onde veio.
 
 **O id é estável.** Ele só muda se o nome da classe, da skill ou da arma mudar na engine. Os nomes passam pela mesma `slug` do palco (`palco/nucleo/util.gd:45-58`): sem acento, minúsculo, `_` no lugar de espaço e de parênteses.
@@ -182,14 +228,76 @@ representantes com o comando abaixo (o `--import` só é necessário para PNG no
 
 ```powershell
 E:\ferramentas\godot\Godot_v4.7.2-stable_win64_console.exe --headless --path palco --import
-E:\ferramentas\godot\Godot_v4.7.2-stable_win64_console.exe --path palco res://ferramentas/previa_sprites.tscn -- --classe=berserker --personagem= --saida=E:/tmp/previa_berserker.png
+E:\ferramentas\godot\Godot_v4.7.2-stable_win64_console.exe --path palco res://ferramentas/previa_sprites.tscn -- --classe=berserker_furia --personagem= --saida=E:/tmp/previa_berserker.png
 ```
 
-`classe` e `personagem` usam os mesmos nomes da timeline (o resolvedor aplica
-`slug`); `personagem` pode ficar vazio. A folha usa fundo escuro de contraste e
-as expressões `neutro`, `furia`, `animado`, `panico`, `dor` e `morto`.
+`classe` aceita o id do slot (`berserker_furia`) ou o nome da timeline
+(`Berserker (Fúria)`): o resolvedor aplica `slug`. `personagem` pode ficar
+vazio. Argumentos de teste: `--z=0.6 --esc_x=1.25 --esc_y=0.8 --ang=30` põem
+as seis bolinhas no ar, achatadas ou viradas (é assim que os testes conferem
+pulo e squash).
+
+**O formato da folha (para o painel exibir):**
+
+- **Um PNG só, 1080×1920 (retrato, 9:16)**, fundo escuro de contraste
+  `#191D27`. Feito para o celular: mostre em largura total, sem recorte; tocar
+  abre em tela cheia com zoom.
+- **Topo (0–190 px):** linha 1 "Prévia no Godot"; linha 2, em letra grande, o
+  **nome humano** do alvo: `Berserker (Fúria)` (vem do `alvo.rotulo` do
+  manifesto), `Nome do personagem · Classe`, ou `Comum (todos os lutadores)`.
+  Nunca o id.
+- **Grade 2 colunas × 3 linhas**, célula de 540×576 px. A ordem é
+  Neutro, Fúria / Animado, Pânico / Dor, Morto. O rótulo da expressão vem
+  em cima de cada bolinha, com acento.
+- **Cada bolinha tem 340 px de diâmetro** (raio 170 px = `raio_corpo` 1,7 m).
+  Os centros (z = 0) ficam em x = 270 | 810 e y = 520 | 1096 | 1672
+  (`previa_sprites.gd::centro_celula`). Num celular de 390 pt de largura (3×),
+  isso dá cerca de 370 px físicos por bolinha.
+- Escala: 1 px da folha = 1,5 px do gabarito (raio 256 → 170). Cada célula
+  sobra 100 px dos lados da bolinha, então uma peça que passa mais de ~150 px
+  do gabarito além do corpo (asas, capa larga) invade a célula vizinha. É
+  só na prévia; na luta não há vizinho.
+
 Na HD 4600, a segunda linha deve rodar sem `--headless`: o renderer ANGLE
 entrega o PNG em cerca de 7 s; no modo headless a leitura do viewport não fecha.
+O painel chama essa mesma prévia em segundo plano, uma por vez, e mostra
+"montando no Godot..." até a folha estar pronta. Para testar uma biblioteca
+isolada, passe `--biblioteca=E:/tmp/biblioteca`; o resolvedor lê o campo
+`destino` do manifesto dessa biblioteca, que é a mesma autoridade usada pelo
+painel ao gravar o PNG. O que não estiver nesse manifesto é procurado dentro
+da própria biblioteca (`<biblioteca>/partes/lutador/...`), nunca na biblioteca
+real do palco; o nome humano do título, se faltar lá, vem do manifesto do
+palco.
+
+**Teste de pixel** (`palco/testes/verificar_previa.gd`): exige a pele
+vermelha E os olhos azuis na folha. Por isso a peça de olhos do teste tem de
+ser pequena (dois discos na zona dos olhos, §2.3): um quadrado azul de
+1024×1024 cobre a pele inteira e o teste falha com `vermelho=0`.
+
+### Importar as artes antigas
+
+As artes de 02/10 continuam intocadas em `efeitos/folhas/`. Para copiá-las ao
+gabarito modular, preservando a versão anterior no histórico do slot, rode:
+
+```powershell
+python -m neural_fights.tools.manifesto_sprites importar-antigas
+```
+
+- `corpo_bolinha.png` vira a **pele comum**, centralizada pela âncora `(256,259)`.
+- `classe_berserker.png` é um **capacete** com chifres e miolo transparente:
+  vira o **acessório de cabeça** da classe `berserker_furia` (não a pele).
+  Ele é encaixado pelo próprio desenho: o arco fino que fecha o miolo embaixo
+  é a linha do corpo, e o importador ajusta um círculo nele e escala/move até
+  ele cair em cima do círculo de 512 do gabarito (centro 512,512, raio 256;
+  erro medido ≤ 1 px). Sem arco fino (um anel simples), o círculo sai da
+  borda do miolo; sem miolo, vale a âncora `(244,234)`.
+- A versão que já estava no lugar vai para o histórico com o mesmo carimbo da
+  API (`<lugar>.png.historico/<nanossegundos, 20 dígitos>.png`): o Desfazer do
+  painel volta a ela.
+
+`--origem` e `--biblioteca` permitem testar cópias temporárias. Se uma rodada
+antiga já tiver gravado o capacete como `pele/classe/berserker_furia/base.png`,
+apague essa pele pelo painel (Apagar tem volta) ou à mão.
 
 ---
 

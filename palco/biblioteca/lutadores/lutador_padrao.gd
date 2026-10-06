@@ -121,16 +121,27 @@ func _parte(nome: String, expr: String) -> Dictionary:
 	return _partes_modulares[chave]
 
 
-func _desenhar_parte(parte: Dictionary, xf: Transform2D, cor: Color = Color.WHITE) -> bool:
+## A textura da peca, lida do disco UMA vez por lutador (o _draw roda a cada
+## quadro: ler o PNG antes de olhar o cache custava +47% no render com 5
+## pecas). Um PNG que nao abre fica marcado como falho e nao e relido.
+func _textura(parte: Dictionary) -> Texture2D:
 	if parte.is_empty():
-		return false
-	var imagem := Image.load_from_file(ProjectSettings.globalize_path(str(parte.get("caminho", ""))))
+		return null
 	var caminho := str(parte.get("caminho", ""))
-	var tex: Texture2D = _texturas_modulares.get(caminho)
-	if tex == null:
-		tex = ImageTexture.create_from_image(imagem) if imagem != null and not imagem.is_empty() else load(caminho) as Texture2D
-		if tex != null:
-			_texturas_modulares[caminho] = tex
+	if _texturas_modulares.has(caminho):
+		return _texturas_modulares[caminho]
+	var tex: Texture2D = null
+	var imagem := Image.load_from_file(ProjectSettings.globalize_path(caminho))
+	if imagem != null and not imagem.is_empty():
+		tex = ImageTexture.create_from_image(imagem)
+	elif ResourceLoader.exists(caminho):
+		tex = load(caminho) as Texture2D
+	_texturas_modulares[caminho] = tex
+	return tex
+
+
+func _desenhar_parte(parte: Dictionary, xf: Transform2D, cor: Color = Color.WHITE) -> bool:
+	var tex := _textura(parte)
 	if tex == null:
 		return false
 	draw_set_transform_matrix(xf)
@@ -170,7 +181,15 @@ func _draw() -> void:
 	var xf_olhar := Transform2D(Vector2(esc.x, 0), Vector2(0, esc.y), centro) * Transform2D(ang, Vector2.ZERO) * Transform2D(0.0, Vector2.ONE * escala_gabarito, 0.0, Vector2.ZERO)
 
 	# --- sombra de contato (achatada; encolhe com a altura do pulo) ---
-	var sombra_modular := _desenhar_parte(_parte("sombra", expr), xf_mundo, Color(1, 1, 1, alfa))
+	# A peca segue a sombra de codigo: some no morto e encolhe com o pulo pelo
+	# mesmo fator, em volta do mesmo ponto (0,5R abaixo do centro = (512, 640)
+	# no gabarito). A de codigo nao muda de opacidade com z; a peca tambem nao.
+	var sombra_modular := false
+	if not morto:
+		var encolhe := maxf(0.4, 1.0 - z / (4.0 * UtilPalco.PX_POR_M))
+		var pe := Vector2(0, R * 0.5)
+		var xf_sombra := Transform2D(0.0, Vector2.ONE * encolhe, 0.0, pe - pe * encolhe) * xf_mundo
+		sombra_modular = _desenhar_parte(_parte("sombra", expr), xf_sombra, Color(1, 1, 1, alfa))
 	if not sombra_modular and estilo.sombra_alfa > 0.0 and not morto:
 		var larg := R * 2.0 * maxf(0.4, 1.0 - z / (4.0 * UtilPalco.PX_POR_M))
 		var alt := larg * estilo.sombra_achatamento
@@ -196,8 +215,15 @@ func _draw() -> void:
 	# --- acessorio de costas e corpo ---
 	_desenhar_parte(_parte("acessorio_costas", expr), xf_olhar, Color(1, 1, 1, alfa))
 	var parte_pele := _parte("pele", expr)
-	var cor_pele := cor if PartesLutador.tingir(parte_pele) == "cor_personagem" else Color(1, 1, 1, alfa)
+	# o .json ao lado do PNG e lido uma vez (fica guardado na parte resolvida)
+	if not parte_pele.is_empty() and not parte_pele.has("_tingir"):
+		parte_pele["_tingir"] = PartesLutador.tingir(parte_pele)
+	var cor_pele := cor if str(parte_pele.get("_tingir", "")) == "cor_personagem" else Color(1, 1, 1, alfa)
 	var pele_modular := _desenhar_parte(parte_pele, xf_tela, cor_pele)
+	# O corpo por codigo vive no quadro (centro, esc): pulo e squash. Sem esta
+	# linha ele herdava o quadro da ultima peca (ou o da sombra) e descolava do
+	# contorno; e ela que mantem o palco sem pecas igual ao de antes (framemd5).
+	draw_set_transform(centro, 0.0, esc)
 	if not pele_modular and estilo.brilho_corpo > 0.0:
 		# cel de 2 tons + 1 brilho, luz do alto a esquerda (estilo combinado da
 		# 16F): o tom escuro e a lua crescente embaixo-direita que sobra quando
@@ -211,6 +237,16 @@ func _draw() -> void:
 		draw_set_transform(centro, 0.0, esc)
 	elif not pele_modular:
 		draw_circle(Vector2.ZERO, R, cor, true, -1.0, true)
+	elif estilo.brilho_corpo > 0.0:
+		# Pele modular: o brilho continua por codigo (contrato §2), a mesma
+		# elipse e a mesma luz da tela, a menos que o .json da pele diga
+		# "brilho_proprio": true (a arte ja traz o brilho dela).
+		if not parte_pele.has("_brilho_proprio"):
+			parte_pele["_brilho_proprio"] = bool(PartesLutador.opcoes(parte_pele).get("brilho_proprio", false))
+		if not bool(parte_pele["_brilho_proprio"]):
+			draw_set_transform(centro + Vector2(-R * 0.40, -R * 0.44) * esc, -0.6, esc * Vector2(1.0, 0.62))
+			draw_circle(Vector2.ZERO, R * 0.17, Color(1, 1, 1, 0.55 * estilo.brilho_corpo * alfa), true, -1.0, true)
+			draw_set_transform(centro, 0.0, esc)
 	_desenhar_parte(_parte("marcas", expr), xf_olhar, Color(1, 1, 1, alfa))
 
 	# --- rosto (quadro do olhar; o squash vale nos eixos da tela, como no jogo) ---
@@ -218,9 +254,13 @@ func _draw() -> void:
 	if raio_tela >= 7.0:
 		var xf := Transform2D(Vector2(esc.x, 0), Vector2(0, esc.y), centro) * Transform2D(ang, Vector2.ZERO)
 		draw_set_transform_matrix(xf)
-		RostoPalco.new(self, R, t_jogo, semente, cor, raio_tela < 11.0, xf, estilo.cor_contorno).desenhar(expr)
-	# As partes substituem visualmente o desenho de reserva sem impedir que
-	# uma parte ainda ausente continue usando o rosto de hoje.
+		var rosto := RostoPalco.new(self, R, t_jogo, semente, cor, raio_tela < 11.0, xf, estilo.cor_contorno)
+		# A feicao que tem peca (em qualquer nivel da heranca, na expressao
+		# resolvida) nao ganha o traco antigo por baixo; as outras continuam.
+		for feicao in RostoPalco.FEICOES:
+			if _textura(_parte(feicao, expr)) != null:
+				rosto.omitir[feicao] = true
+		rosto.desenhar(expr)
 	for nome_parte in ["olhos", "sobrancelhas", "boca", "detalhe_rosto", "acessorio_cabeca"]:
 		_desenhar_parte(_parte(nome_parte, expr), xf_olhar, Color(1, 1, 1, alfa))
 	draw_set_transform(centro, 0.0, esc)

@@ -37,7 +37,6 @@
     "lutador_moldes_por_alvo": 86,
     "lutador_slots_por_classe": 76,
     "lutador_slots_por_personagem_se_aberto": 76,
-    "personagens_no_banco": 106,
     "minimo_obrigatorio": [
       "lutador/pele/comum/_/base",
       "lutador/olhos/comum/_/neutro",
