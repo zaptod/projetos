@@ -248,13 +248,45 @@ palco/biblioteca/partes/lutador/<parte>/<nivel>/<alvo>/<variante>/<estado>.png (
   modo determinístico, no nível mais específico que tenha variantes
   (personagem → classe → comum).
 - **O sorteio, igual nos dois lados** (`manifesto_sprites._sorteio_variante`
-  e `PartesLutador._sorteio_variante`): `h` = FNV-1a de 32 bits sobre o
-  UTF-8 de `slug(personagem):parte` (sem personagem, `slug(classe)`); índice
-  = `((h >> 16) ^ (h & 0xFFFF)) % n` sobre os ids das variantes em ordem.
+  e `PartesLutador._sorteio_variante`) é **estável** (rendezvous /
+  highest-random-weight): cada variante tem um peso próprio para o lutador e
+  a peça, `peso = fmix32(FNV-1a 32 do UTF-8 de "slug(personagem):parte:vNN")`
+  (sem personagem, `slug(classe)`; `fmix32` é o final do MurmurHash3), e
+  ganha a de **maior peso**; empate fica com o menor id. O peso de uma
+  variante não depende das outras, por isso:
+  - **acrescentar** uma variante só muda quem passa a ter a nova como a de
+    maior peso (~1/n dos lutadores, e todos eles para a nova);
+  - **apagar** uma variante só muda quem a usava; ninguém mais troca de rosto.
+
+  É o que a decisão `sprites-guarda-roupa` pede ("sempre a mesma para ele,
+  luta após luta"). Medido em 06/10/2026 com os 111 lutadores reais × 9 peças:
+
+  | mudança | regra antiga `h % n` | rendezvous |
+  |---|---|---|
+  | 5 → 6 variantes (olhos, 111 lutadores) | 98 trocam | 15 trocam |
+  | 8 → 9 (olhos) | 101 | 6 |
+  | 8 → 7, apagando a v08 (olhos) | 92 | 18 (só quem usava a v08) |
+  | 5 → 6 (as 999 peças) | 82,6% | 15,0% (ideal 16,7%) |
+  | apagar a v03 de 5: trocam sem usá-la | 607 de 999 | 0 |
+  | 8 variantes: peças por variante (ideal 125) | 108–137 | 112–139 |
+
+  O `fmix32` é obrigatório: as variantes só diferem no último byte e o
+  FNV-1a cru mistura mal esse byte (com 8 variantes, o maior FNV cru dava a
+  v08 a 489 de 999 peças). No GDScript a multiplicação é feita em 16 + 16 bits
+  (`PartesLutador._mul32`) para não estourar o int de 64 bits com sinal.
   Conta como variante só a pasta `v...` com pelo menos uma carinha válida da
   peça (um `base.png` nos olhos ou uma pasta vazia não contam).
   `palco/testes/test_sorteio_variantes.py` compara Python × Godot em 19.440
-  casos (06/10/2026: 0 divergências; antes do conserto eram 2.291).
+  casos (06/10/2026: 0 divergências; a regra antiga do Godot contra a nova do
+  Python dá 8.014, então o teste pega a regra trocada de um lado só), mede a
+  estabilidade com os lutadores reais (acrescentar: só para a nova e ≤ 1/(n+1)
+  + 5%; apagar: zero de quem não a usava) e a distribuição (cada variante
+  ±25% de 1/n, ids com buraco incluídos). `palco/ferramentas/testes.gd` tem os
+  vetores do `fmix32` e a trilha da Celeste (v01 até a v04 chegar, v04 dali
+  em diante).
+- **Mudança de 06/10/2026:** a troca de `h % n` para o rendezvous mudou, uma
+  vez, a variante sorteada de quem não tem fixada (a fixada no guarda-roupa
+  não muda). Daqui em diante, a regra só troca rosto nos casos acima.
 - Migração: um PNG antigo em `<alvo>/<estado>.png`, inclusive sua pasta
   `.historico`, vai para `v01/<estado>.png` sem sobrescrever uma `v01` já
   existente. `python -m neural_fights.tools.manifesto_sprites importar-antigas`
@@ -286,19 +318,40 @@ E:\ferramentas\godot\Godot_v4.7.2-stable_win64_console.exe --path palco res://fe
 
 `classe` aceita o id do slot (`berserker_furia`) ou o nome da timeline
 (`Berserker (Fúria)`): o resolvedor aplica `slug`. `personagem` pode ficar
-vazio. Argumentos de teste: `--z=0.6 --esc_x=1.25 --esc_y=0.8 --ang=30` põem
-as seis bolinhas no ar, achatadas ou viradas (é assim que os testes conferem
-pulo e squash).
+vazio. `--cor=#RRGGBB` (ou `r,g,b`) dá a cor do personagem. Argumentos de
+teste: `--z=0.6 --esc_x=1.25 --esc_y=0.8 --ang=30` põem as seis bolinhas no
+ar, achatadas ou viradas (é assim que os testes conferem pulo e squash).
+
+**A cor das bolinhas:**
+
+- **Prévia de um personagem** (`--personagem=` preenchido): as **seis**
+  bolinhas com a cor DELE, a mesma que a luta usa (a pele comum sem `.json`
+  sai tingida por ela, como na luta). A cor vem de `--cor`; sem `--cor`, do
+  banco que o jogo lê, pelo slug do nome: `<runtime>/personagens.json`
+  (`NEURAL_FIGHTS_RUNTIME_DIR`, senão `%LOCALAPPDATA%\neural-fights`) quando o
+  runtime tem `personagens.json` E `armas.json`, senão o snapshot
+  `neural_fights/data/personagens.json`. Só leitura. O servidor do app deve
+  passar `--cor` (ele já tem a cor do lutador): o banco é a reserva.
+- **Classe, comum, ou personagem fora do banco e sem `--cor`:** as seis cores
+  de exemplo (`previa_sprites.gd::CORES`, uma por bolinha), e o título diz
+  **"cores de exemplo"**.
 
 **O formato da folha (para o painel exibir):**
 
 - **Um PNG só, 1080×1920 (retrato, 9:16)**, fundo escuro de contraste
   `#191D27`. Feito para o celular: mostre em largura total, sem recorte; tocar
   abre em tela cheia com zoom.
-- **Topo (0–190 px):** linha 1 "Prévia no Godot"; linha 2, em letra grande, o
-  **nome humano** do alvo: `Berserker (Fúria)` (vem do `alvo.rotulo` do
-  manifesto), `Nome do personagem · Classe`, ou `Comum (todos os lutadores)`.
-  Nunca o id.
+- **Topo (0–190 px), três linhas:** "Prévia no Godot" (pequena); o **nome
+  humano** em letra grande; embaixo, menor, o complemento. Nunca o id.
+  - personagem: `Elektra a Abençoada` / `Paladino (Sagrado)` (+ `· cores de
+    exemplo` se não houver a cor dele);
+  - classe: `Paladino (Sagrado)` / `cores de exemplo` (o nome vem do
+    `alvo.rotulo` do manifesto);
+  - comum: `Comum (todos os lutadores)` / `cores de exemplo`.
+  - Cada linha cabe em 1000 px (40 px de margem): a fonte diminui até caber
+    (58 → 30 px no nome, 40 → 26 no complemento) e, no limite, corta com
+    reticências. Antes de 06/10/2026 era uma linha só de 60 px e
+    "Elektra a Abençoada · Paladino (Sagrado)" saía cortado ("Paladino (Sag").
 - **Grade 2 colunas × 3 linhas**, célula de 540×576 px. A ordem é
   Neutro, Fúria / Animado, Pânico / Dor, Morto. O rótulo da expressão vem
   em cima de cada bolinha, com acento.

@@ -213,16 +213,47 @@ static func _variantes(parte: String, nivel: String, alvo: String, existe: Calla
 	return saida
 
 
-## Igual a manifesto_sprites._sorteio_variante (Python): FNV-1a de 32 bits
-## sobre o UTF-8 de `slug(chave):parte`, dobrado em 16 bits, modulo o numero
-## de variantes, sobre os ids em ordem. `chave` e o nome do personagem (ou a
-## classe, sem personagem). palco/testes/test_sorteio_variantes.py compara os
-## dois lados em ~19 mil casos.
+## Igual a manifesto_sprites._sorteio_variante (Python): rendezvous
+## (highest-random-weight). Cada variante tem um peso proprio por lutador e
+## peca, `mistura32(fnv1a32(slug(chave):parte:variante))`, e ganha a de MAIOR
+## peso; empate fica com o menor id. `chave` e o nome do personagem (ou a
+## classe, sem personagem). Acrescentar uma variante so muda quem passa a ter
+## a nova como a de maior peso (~1/n); apagar uma so muda quem a usava. A
+## regra antiga (`h % n`) trocava o rosto de quase todos a cada variante nova.
+## palco/testes/test_sorteio_variantes.py compara os dois lados em ~19 mil
+## casos e mede a estabilidade com os lutadores reais.
 static func _sorteio_variante(chave: String, parte: String, opcoes: Array) -> String:
-	var h := fnv1a32(UtilPalco.slug(chave) + ":" + parte)
+	var base := UtilPalco.slug(chave) + ":" + parte + ":"
 	var ordenadas := opcoes.duplicate()
 	ordenadas.sort()
-	return str(ordenadas[((h >> 16) ^ (h & 0xFFFF)) % ordenadas.size()])
+	var escolhida := ""
+	var maior := -1
+	for variante in ordenadas:
+		var peso := mistura32(fnv1a32(base + str(variante)))
+		if peso > maior:
+			escolhida = str(variante)
+			maior = peso
+	return escolhida
+
+
+## O final do MurmurHash3 (fmix32), igual a manifesto_sprites.mistura32: o
+## FNV-1a mistura mal o ultimo byte, e as variantes so diferem nele.
+static func mistura32(h: int) -> int:
+	h &= 0xFFFFFFFF
+	h ^= h >> 16
+	h = _mul32(h, 0x85EBCA6B)
+	h ^= h >> 13
+	h = _mul32(h, 0xC2B2AE35)
+	h ^= h >> 16
+	return h
+
+
+## (a * b) mod 2^32 sem passar de 2^63: o int do GDScript tem sinal e
+## a * b inteiro (dois fatores de 32 bits) estouraria. Parte b em 16 + 16 bits.
+static func _mul32(a: int, b: int) -> int:
+	var baixo := a * (b & 0xFFFF)
+	var alto := ((a * (b >> 16)) & 0xFFFF) << 16
+	return (baixo + alto) & 0xFFFFFFFF
 
 
 ## FNV-1a de 32 bits sobre o UTF-8 (o `hash()` do Godot nao tem igual no

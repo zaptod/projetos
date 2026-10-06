@@ -182,16 +182,28 @@ def test_slug_do_python_e_o_do_palco():
 
 
 def test_sorteio_e_fnv1a_explicito_e_espalha():
-    """FNV-1a 32 bits sobre o UTF-8 de `semente:parte`, dobrado em 16 bits.
-    Medido em 06/10/2026 com 200 lutadores x 9 pecas: sem a dobra, com 2
-    variantes, duas pecas do mesmo lutador caem iguais 44% das vezes (o bit
-    baixo do FNV e a paridade dos bytes); com a dobra, 50%."""
+    """Peso de cada variante = fmix32(FNV-1a 32 de `semente:parte:variante`),
+    ganha o maior. As pecas do mesmo lutador sao independentes (duas pecas
+    caem na mesma variante ~1/n das vezes) e cada variante recebe ~1/n.
+    Os vetores sao os mesmos de palco/ferramentas/testes.gd."""
+    assert m.mistura32(0) == 0
+    assert m.mistura32(1) == 0x514E28B7  # fmix32 do MurmurHash3
+    assert m.mistura32(0xFFFFFFFF) == 0x81F16F39
+    assert m.mistura32(0x811C9DC5) == 0xAB3E7C0B
+    assert m._sorteio_variante("Celeste a Impiedosa", "olhos", ["v03", "v01", "v02"]) == "v01"
+    trilha = [m._sorteio_variante("Celeste a Impiedosa", "olhos", [f"v{i:02d}" for i in range(1, n + 1)])
+              for n in range(1, 10)]
+    assert trilha == ["v01"] * 3 + ["v04"] * 6, trilha
     assert m.fnv1a32("") == 0x811C9DC5
     assert m.fnv1a32("a") == 0xE40C292C
     assert m.fnv1a32("foobar") == 0xBF9CF968
     gente = [m.slug(p["nome"]) for p in lutadores()]
-    for n in (2, 3, 5):
-        opcoes = [f"v{i:02d}" for i in range(1, n + 1)]
+    # ids com buraco tambem: o FNV cru (sem fmix32) dava a v08 a 49% das
+    # pecas com 8 variantes; o teste pega a volta desse vies
+    conjuntos = [[f"v{i:02d}" for i in range(1, n + 1)] for n in (2, 3, 5, 8)]
+    conjuntos.append(["v01", "v03", "v10", "v12"])
+    for opcoes in conjuntos:
+        n = len(opcoes)
         contagem = {v: 0 for v in opcoes}
         iguais = pares = 0
         for g in gente:
@@ -203,8 +215,37 @@ def test_sorteio_e_fnv1a_explicito_e_espalha():
                     pares += 1
                     iguais += escolha[i] == escolha[j]
         esperado = len(gente) * len(PARTES) / n
-        assert all(abs(c - esperado) / esperado < 0.2 for c in contagem.values()), (n, contagem)
+        assert all(abs(c - esperado) / esperado < 0.25 for c in contagem.values()), (n, contagem)
         assert abs(iguais / pares - 1 / n) < 0.03, (n, iguais / pares)
+
+
+def _ids(n: int) -> list[str]:
+    return [f"v{i:02d}" for i in range(1, n + 1)]
+
+
+def test_sorteio_estavel_ao_acrescentar_e_apagar_variante():
+    """A decisao `sprites-guarda-roupa`: "sempre a mesma para ele, luta apos
+    luta". Medido em 06/10/2026 com os 111 lutadores reais x 9 pecas: a regra
+    antiga (`h % n`) trocava 82,6% das pecas de 5->6 variantes e 89,7% de
+    8->9 (nos olhos: 98 e 101 de 111 lutadores). Agora:
+    - acrescentar a v(n+1) so muda a peca que passa a usar a NOVA, ~1/(n+1);
+    - apagar uma variante so muda quem a usava (zero dos outros)."""
+    gente = [p["nome"] for p in (_banco() or lutadores())]
+    pecas = [(g, parte) for g in gente for parte in PARTES]
+    for n in range(1, 12):
+        antes = [m._sorteio_variante(g, parte, _ids(n)) for g, parte in pecas]
+        depois = [m._sorteio_variante(g, parte, _ids(n + 1)) for g, parte in pecas]
+        mudou = [d for a, d in zip(antes, depois) if a != d]
+        nova = f"v{n + 1:02d}"
+        assert set(mudou) <= {nova}, (n, set(mudou))  # quem mudou, mudou para a nova
+        assert len(mudou) / len(pecas) <= 1 / (n + 1) + 0.05, (n, len(mudou), len(pecas))
+    for n in (3, 5, 8):
+        for apagada in _ids(n):
+            restantes = [v for v in _ids(n) if v != apagada]
+            for g, parte in pecas:
+                antes = m._sorteio_variante(g, parte, _ids(n))
+                if antes != apagada:
+                    assert m._sorteio_variante(g, parte, restantes) == antes, (g, parte, n, apagada)
 
 
 @pytest.mark.skipif(not GODOT.is_file(), reason="Godot nao encontrado")

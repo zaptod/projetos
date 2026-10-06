@@ -96,18 +96,52 @@ def fnv1a32(texto: str) -> int:
     return h
 
 
+def mistura32(h: int) -> int:
+    """O final do MurmurHash3 (fmix32), igual a `PartesLutador.mistura32`.
+
+    O FNV-1a sozinho mistura mal o ULTIMO byte, e no sorteio as variantes
+    so diferem nele (`...:v01`, `...:v02`): medido em 06/10/2026 com os 111
+    lutadores reais x 9 pecas e 8 variantes, o maior FNV cru dava a v08 a
+    489 de 999 pecas (ideal 125). Com esta mistura: 112-139."""
+    h &= 0xFFFFFFFF
+    h ^= h >> 16
+    h = (h * 0x85EBCA6B) & 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * 0xC2B2AE35) & 0xFFFFFFFF
+    h ^= h >> 16
+    return h
+
+
+def peso_da_variante(chave: str, parte: str, variante: str) -> int:
+    """O peso de UMA variante para um lutador e uma peca: mistura32(FNV-1a de
+    `slug(chave):parte:variante`). Depende so dos tres; as outras variantes
+    da colecao nao entram."""
+    return mistura32(fnv1a32(f"{slug(chave)}:{parte}:{variante}"))
+
+
 def _sorteio_variante(chave: str, parte: str, opcoes: list[str]) -> str:
-    """Igual a PartesLutador._sorteio_variante: FNV-1a de `slug(chave):parte`,
-    dobrado em 16 bits, modulo o numero de variantes, sobre os ids em ordem.
+    """Igual a PartesLutador._sorteio_variante: a variante de MAIOR peso
+    (`peso_da_variante`; rendezvous / highest-random-weight); empate fica com
+    o menor id.
 
     `chave` e o nome do personagem como o jogo o recebe (ou a classe, sem
     personagem); o slug faz "Celeste a Impiedosa" e "celeste_a_impiedosa"
-    sortearem igual. A dobra: sem ela o bit baixo do FNV e a paridade dos
-    bytes, e com 2 variantes duas pecas do mesmo lutador coincidiam 44% das
-    vezes (medido em 06/10/2026, 200 lutadores x 9 pecas; com a dobra, 50%).
+    sortearem igual.
+
+    Por que nao `h % n` (a regra ate 06/10/2026): o indice dependia de
+    QUANTAS variantes havia, e acrescentar uma trocava o rosto de quase todo
+    mundo (111 lutadores reais, olhos: 5->6 trocava 98, 8->9 trocava 101).
+    Aqui cada variante tem um peso proprio por lutador: acrescentar uma so
+    muda quem passa a ter a nova como a de maior peso (~1/n), e apagar uma
+    so muda quem a usava. E o que a decisao `sprites-guarda-roupa` pede:
+    "sempre a mesma para ele, luta apos luta".
     """
-    h = fnv1a32(f"{slug(chave)}:{parte}")
-    return sorted(opcoes)[((h >> 16) ^ (h & 0xFFFF)) % len(opcoes)]
+    escolhida, maior = "", -1
+    for variante in sorted(opcoes):
+        peso = peso_da_variante(chave, parte, variante)
+        if peso > maior:
+            escolhida, maior = variante, peso
+    return escolhida
 
 
 def resolver_parte(parte: str, classe: str, expressao: str, existe, personagem: str = "",
