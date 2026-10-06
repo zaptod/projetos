@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-b288c8fe",
+      "em": "2026-10-06T13:42:27",
+      "evento": "2026-10-06T13:42:15",
+      "linha": 135,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "separar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Conferência de 06/10: numa folha realista (6 pares, 40 px entre os olhos) o recortador fazia 12 recortes soltos ou encaixava o par deitado no meio do rosto. Zonas do jogo: olho de cima em (563,420) e de baixo em (563,604) no gabarito 1024. Serve para o recortador encaixar sozinho os olhos que você gera.",
   "criado": "2026-10-06T13:17:12.804990",
   "depende_de": [],
