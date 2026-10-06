@@ -21,6 +21,7 @@ Tres defeitos achados pelo conferente em 06/10/2026, depois da volta final:
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -306,6 +307,15 @@ class TravaDaRodadaEntreProcessosTests(unittest.TestCase):
         from builds.publicar import tiktok
         _trocar(self, tiktok, "confirmado",
                 lambda e: str(e).startswith("publicado no TikTok"))
+        self.telegram = []
+        m._mandar_no_telegram = lambda texto: self.telegram.append(texto)
+        m.INTERVALO_DE_OLHAR_A_DONA_S = 0.2
+        m._cabe_antes_do_proximo = lambda *a, **k: True
+        # Ficha velha de outro teste nao pode decidir este.
+        try:
+            m._arquivo_da_dona().unlink()
+        except FileNotFoundError:
+            pass
 
     def _outro_processo(self, segundos: float):
         from builds import travas
@@ -329,8 +339,14 @@ class TravaDaRodadaEntreProcessosTests(unittest.TestCase):
         self.assertEqual(1, self.m.main([]))
         self.assertEqual([], self.ordem, "nunca publica junto com a outra")
         self.assertTrue(self.avisos)
-        self.assertIn("rodada anterior", self.avisos[0][0]["motivo"])
-        self.assertTrue(any("rodada anterior" in str(a) for a in self.diario))
+        motivo = self.avisos[0][0]["motivo"]
+        # Sem ficha (a outra pegou a trava crua): diz que nao sabe quem e.
+        self.assertIn("outra publicacao (sem ficha de quem e) ainda estava "
+                      "rodando depois de 1 s de espera", motivo)
+        self.assertNotIn("0 min", motivo)
+        self.assertTrue(any("ainda estava rodando" in str(a)
+                            for a in self.diario))
+        self.assertEqual([], self.telegram, "ninguem foi morto")
 
     def test_rodada_anterior_que_termina_a_tempo_libera_a_nova(self):
         import time
@@ -347,6 +363,192 @@ class TravaDaRodadaEntreProcessosTests(unittest.TestCase):
         self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 30.0
         self.m.main(["--ver"])
         self.assertEqual(["historias", "builds"], self.ordem)
+
+
+# ------------------------------------------------- a dona pendurada (0b5b6a9)
+_PENDURADA = r"""
+import importlib.util, subprocess, sys, time
+spec = importlib.util.spec_from_file_location("postar_pendurado", sys.argv[1])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m._linha = lambda *a, **k: None
+with m._trava_da_rodada(0, sys.argv[2]) as vez:
+    # O "Chrome" dela: um filho que fica, como o que o Playwright abre.
+    filho = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+    print("PEGUEI" if vez["minha"] else "NAO", filho.pid, flush=True)
+    time.sleep(600)
+"""
+
+
+def _vivo(pid) -> bool:
+    return _postar()._criacao_do_processo(pid) is not None
+
+
+class DonaPenduradaTests(unittest.TestCase):
+    """`_pode_matar`, so a decisao: a idade e o horario sao simulados."""
+
+    def setUp(self):
+        self.m = _postar()
+        self.meu = datetime(2026, 10, 6, 21, 37)
+        self.agora = datetime(2026, 10, 6, 21, 48).timestamp()
+
+    def _dona(self, minutos, horario="2026-10-06T20:37", tipo="rodada"):
+        return {"pid": 4242, "criado": 1000.0, "tipo": tipo,
+                "horario": horario, "inicio": self.agora - minutos * 60}
+
+    def _decide(self, dona, criacao=lambda pid: 1000.0):
+        return self.m._pode_matar(dona, agora=self.agora,
+                                  meu_horario=self.meu, criacao=criacao)[0]
+
+    def test_horario_anterior_viva_ha_mais_de_70_min_morre(self):
+        self.assertEqual(70, self.m.RODADA_PENDURADA_MIN)
+        self.assertTrue(self._decide(self._dona(71)))
+
+    def test_69_min_ainda_e_rodada_lenta(self):
+        self.assertFalse(self._decide(self._dona(69)))
+
+    def test_nunca_mata_o_mesmo_horario(self):
+        self.assertFalse(self._decide(self._dona(300,
+                                                 "2026-10-06T21:37")))
+
+    def test_nunca_mata_o_escoar_do_app(self):
+        self.assertFalse(self._decide(self._dona(300, tipo="tudo")))
+
+    def test_pid_reaproveitado_nao_morre(self):
+        self.assertFalse(self._decide(self._dona(300),
+                                      criacao=lambda pid: 5000.0))
+
+    def test_processo_que_ja_morreu_nao_e_morto(self):
+        self.assertFalse(self._decide(self._dona(300),
+                                      criacao=lambda pid: None))
+
+    def test_caso_zero_sem_ficha(self):
+        self.assertFalse(self._decide(None))
+        self.assertFalse(self._decide({"pid": "x"}))
+
+    def test_o_aviso_diz_quem_e_a_dona(self):
+        d = self.m._descrever_dona
+        self.assertIn("escoar' do app", d(self._dona(5, tipo="tudo")))
+        self.assertIn("recuperar video privado",
+                      d(self._dona(5, tipo="recuperar")))
+        self.assertIn("rodada da grade das 20:37", d(self._dona(5)))
+        self.assertNotIn("rodada", d(self._dona(5, tipo="tudo")))
+
+    def test_os_passos_extras_respeitam_a_margem(self):
+        m = self.m
+        m._linha = lambda *_a, **_k: None
+        self.assertTrue(m._cabe_antes_do_proximo(
+            agora=datetime(2026, 10, 6, 21, 16)))
+        self.assertFalse(m._cabe_antes_do_proximo(
+            agora=datetime(2026, 10, 6, 21, 18)))
+
+
+class LimiteDaTarefaTests(unittest.TestCase):
+    """PT72H -> PT2H. O Agendador so encerra o wscript (medido em 06/10: o
+    cmd e o python sobreviveram ao limite de 1 min), mas devolve a tarefa:
+    com IgnoreNew, a pendurada prendia o mesmo horario do dia seguinte."""
+
+    def test_limite_invalido_nem_chega_ao_powershell(self):
+        from builds import tarefas_windows as tw
+        _trocar(self, tw, "_rodar", lambda *a, **k: self.fail("rodou"))
+        self.assertFalse(tw.limitar_execucao("x", "2 horas")["ok"])
+
+    def test_o_script_troca_so_o_limite(self):
+        from builds import tarefas_windows as tw
+        visto = {}
+
+        def rodar(script, nome, timeout):
+            visto.update(script=script, nome=nome)
+            return 0, "", ""
+        _trocar(self, tw, "_rodar", rodar)
+        self.assertTrue(tw.limitar_execucao("NeuralFights_postar_20")["ok"])
+        self.assertIn("$s.ExecutionTimeLimit = 'PT2H'", visto["script"])
+        self.assertEqual("NeuralFights_postar_20", visto["nome"])
+
+    def test_instalar_aplica_o_limite_de_2_horas(self):
+        m = _postar()
+        from builds import tarefas_windows as tw
+        pedidos = []
+        m.escrever_lancador = lambda: "E:/x/postar.cmd"
+        m.subprocess = type("S", (), {
+            "run": staticmethod(lambda *a, **k: type(
+                "P", (), {"returncode": 0, "stdout": b"", "stderr": b""})()),
+            "CREATE_NO_WINDOW": 0})
+        _trocar(self, tw, "endurecer", lambda nome: {"ok": True})
+        _trocar(self, tw, "limitar_execucao",
+                lambda nome, limite: pedidos.append((nome, limite))
+                or {"ok": True})
+        ficha = m.instalar("20:37", nome="NeuralFights_postar_20")
+        self.assertTrue(ficha["limite"])
+        self.assertEqual([("NeuralFights_postar_20", "PT2H")], pedidos)
+
+
+class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
+    """Dois processos de verdade: a dona 'pendurada' dorme segurando a trava,
+    com um filho; a idade e o horario dela sao simulados na ficha."""
+
+    def _pendurada(self, tipo="rodada"):
+        ambiente = dict(os.environ)
+        ambiente["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+        proc = subprocess.Popen(
+            [sys.executable, "-c", _PENDURADA, str(POSTAR), tipo],
+            stdout=subprocess.PIPE, text=True, env=ambiente)
+        estado, filho = proc.stdout.readline().split()
+        filho = int(filho)
+        self.addCleanup(lambda: subprocess.run(
+            ["taskkill", "/F", "/PID", str(filho)], capture_output=True))
+        self.addCleanup(proc.wait, 30)
+        self.addCleanup(proc.kill)
+        self.assertEqual("PEGUEI", estado)
+        dona = self.m._ler_dona()
+        self.assertEqual(proc.pid, dona["pid"])
+        return proc, filho, dona
+
+    def _envelhecer(self, dona, minutos, horario):
+        dona = dict(dona, inicio=dona["inicio"] - minutos * 60,
+                    horario=horario.isoformat(timespec="minutes"))
+        self.m._arquivo_da_dona().write_text(json.dumps(dona),
+                                             encoding="utf-8")
+
+    def test_pendurada_de_horario_anterior_morre_com_o_filho_e_a_nova_publica(
+            self):
+        proc, filho, dona = self._pendurada()
+        anterior = self.m._inicio_do_horario() - timedelta(hours=3)
+        self._envelhecer(dona, 71, anterior)
+        # So os descendentes DELA com este nome morrem junto (no teste o
+        # "Chrome" e um python; na vida, chrome.exe e o node do Playwright).
+        self.m.FILHOS_QUE_MORREM_JUNTO = ("python.exe",)
+        self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 30.0
+        self.assertEqual(0, self.m.main([]))
+        self.assertIsNotNone(proc.wait(15), "a dona morreu")
+        self.assertFalse(_vivo(filho), "o filho que sobrou morreu")
+        self.assertEqual(["historias", "builds"], self.ordem)
+        self.assertEqual(1, len(self.telegram))
+        self.assertIn("matei a rodada da grade", self.telegram[0])
+        self.assertIn(str(filho), self.telegram[0])
+        # A ficha agora e da rodada nova.
+        self.assertEqual(os.getpid(), self.m._ler_dona()["pid"])
+
+    def test_pendurada_do_MESMO_horario_nunca_morre(self):
+        proc, filho, dona = self._pendurada()
+        self._envelhecer(dona, 300, self.m._inicio_do_horario())
+        self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 1.0
+        self.assertEqual(1, self.m.main([]))
+        self.assertIsNone(proc.poll(), "continua viva")
+        self.assertTrue(_vivo(filho))
+        self.assertEqual([], self.ordem)
+        self.assertEqual([], self.telegram)
+        self.assertIn("rodada da grade", self.avisos[0][0]["motivo"])
+
+    def test_escoar_do_app_nao_morre_e_o_aviso_diz_o_que_e(self):
+        proc, filho, dona = self._pendurada("tudo")
+        anterior = self.m._inicio_do_horario() - timedelta(hours=3)
+        self._envelhecer(dona, 300, anterior)
+        self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 1.0
+        self.assertEqual(1, self.m.main([]))
+        self.assertIsNone(proc.poll())
+        motivo = self.avisos[0][0]["motivo"]
+        self.assertIn("o 'escoar' do app (postar.py --tudo)", motivo)
+        self.assertNotIn("rodada anterior", motivo)
 
 
 if __name__ == "__main__":

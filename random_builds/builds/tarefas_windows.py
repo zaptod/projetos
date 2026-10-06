@@ -97,6 +97,42 @@ def endurecer(nome: str, *, timeout: float = 60) -> dict:
             "mensagem": " ".join((saida + erro).split())[:300]}
 
 
+# O LIMITE DE EXECUCAO (06/10/2026). O `/Create` deixa PT72H, e com a regra
+# IgnoreNew a tarefa que pendurou ficava "Em execucao" por tres dias: o mesmo
+# horario do dia seguinte era IGNORADO. MEDIDO no mesmo dia, numa tarefa de
+# teste com a acao de sempre (wscript -> oculto.vbs -> .cmd -> python) e
+# limite de 1 min: o Agendador encerrou a tarefa (resultado 0x41306) e
+# matou SO o wscript; o cmd.exe e o python continuaram vivos. Entao o limite
+# devolve a TAREFA (o proximo disparo dela volta a acontecer), mas nao mata
+# o trabalho pendurado — quem faz isso e o proprio programa (no postar, a
+# dona pendurada da `TRAVA_DA_RODADA`).
+_SCRIPT_LIMITE = """
+$ErrorActionPreference = 'Stop'
+$nome = @NOME@
+$t = Get-ScheduledTask -TaskName $nome
+$s = $t.Settings
+$s.ExecutionTimeLimit = '@LIMITE@'
+Set-ScheduledTask -TaskName $nome -Settings $s | Out-Null
+"""
+
+
+def limitar_execucao(nome: str, limite: str = "PT2H", *,
+                     timeout: float = 60) -> dict:
+    """Troca o `ExecutionTimeLimit` de uma tarefa que JA existe. Nunca levanta."""
+    import re
+    if not re.fullmatch(r"PT\d+[HMS]", str(limite)):
+        return {"ok": False, "tarefa": nome,
+                "mensagem": f"limite invalido: {limite!r} (ex.: PT2H)"}
+    try:
+        codigo, saida, erro = _rodar(
+            _SCRIPT_LIMITE.replace("@LIMITE@", limite), nome, timeout)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "tarefa": nome,
+                "mensagem": f"{type(exc).__name__}: {exc}"}
+    return {"ok": codigo == 0, "tarefa": nome, "limite": limite,
+            "mensagem": " ".join((saida + erro).split())[:300]}
+
+
 def conferir(nome: str, *, timeout: float = 60) -> dict:
     """Como a tarefa esta AGORA. `{}` quando ela nao existe.
 

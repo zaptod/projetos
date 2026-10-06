@@ -903,6 +903,9 @@ class RecuperacaoNaoRepeteOTimeoutTests(unittest.TestCase):
     def test_rodada_sadia_chama_as_duas(self):
         from builds.publicar import tiktok
         _trocar(self, tiktok, "confirmado", lambda e: bool(e))
+        # Longe do horario seguinte (a margem tem teste proprio, com relogio
+        # fixo; aqui o relogio da maquina nao pode decidir).
+        self.m._cabe_antes_do_proximo = lambda *a, **k: True
         self._rodada({"feito": True, "url": "u",
                       "tiktok": "publicado no TikTok"})
         self.assertIn(("recuperar", "historias"), self.chamou)

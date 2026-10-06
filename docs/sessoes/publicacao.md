@@ -117,8 +117,31 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    `main` que publica; `--ver` e `--instalar` não esperam): a rodada nova
    espera a anterior até `ESPERA_PELA_RODADA_ANTERIOR_S` (15 min); se ela
    não terminar, a nova **não publica nada** (nunca sobe a parte em voo),
-   sai 1, e avisa no Telegram e no diário (`publicar.rodada`). A trava é
+   sai 1, e avisa no Telegram e no diário (`publicar.rodada`) dizendo
+   **quem** segura (a rodada da grade das HH:MM, o "escoar" ou o "recuperar
+   vídeo privado" do app, um `--so-youtube`, com pid e hora). A trava é
    reentrante por thread: só separa processos, que é o caso do Agendador.
+   Quem pega a trava grava a **ficha da dona** ao lado dela
+   (`postar__rodada.dona.json`: pid, criação do processo, início, horário
+   da grade, tipo). **Dona pendurada**: a rodada nova mata a dona se ela é
+   de um horário **anterior** (nunca do mesmo), está viva há
+   `RODADA_PENDURADA_MIN` (70) ou mais, o pid ainda é dela (mesma hora de
+   criação) e não é um `--tudo` (o escoar do app dura o que a fila durar).
+   Mata só aquele python (`taskkill /F /PID`, sem /T) e os `chrome.exe` e
+   `node.exe` (driver do Playwright) **descendentes** dele que sobraram,
+   confere que morreu, pega a trava, publica e avisa no Telegram o que
+   matou. Os 70 min: nos ledgers (331 horários desde 15/09) a rodada mais
+   longa gravou a última linha 35,8 min depois do horário; o passo mais
+   longo medido é TikTok 631 s / YouTube 381 s (um canal, 17 min); nada
+   recomeça a menos de 20 min do horário seguinte — também a recuperação e
+   a reserva (`_cabe_antes_do_proximo`) —, então nos horários de 60 min a
+   rodada saudável acaba até ~57 min. As tarefas `NeuralFights_postar_*`
+   têm `ExecutionTimeLimit` de **2 h** (`LIMITE_DA_TAREFA`,
+   `tarefas_windows.limitar_execucao`; era 72 h): medido em 06/10, o
+   Agendador no limite encerra só o `wscript` — o `cmd` e o python
+   continuam vivos —, então o limite devolve a tarefa (com `IgnoreNew`, a
+   pendurada prendia o mesmo horário do dia seguinte) e quem mata o python
+   é a rodada seguinte.
 4. Depois, e nunca no lugar: **recuperação do TikTok** (1 por canal, saiu no
    YouTube e nunca chegou lá), **recuperação do YouTube** (1, ficou privado no
    canal) e **reserva do TikTok** (só se builds não levou nada lá neste horário).
@@ -171,7 +194,8 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Guarda | Onde mora |
 | --- | --- |
 | Um por horário **por plataforma** | `postar.publicou_neste_horario` (identidade do horário = `conferencia.chave_do_horario`, nunca a hora do relógio; fonte = ledger; linha sem data não barra; ledger **ilegível barra** — `LedgerIlegivel`, falha fechada desde 06/10) |
-| Duas rodadas ao mesmo tempo | `postar.TRAVA_DA_RODADA` (`_trava_da_rodada`, entre processos): a nova espera a velha até 15 min; se não, não publica, sai 1 e avisa (`_rodada_presa`) |
+| Duas rodadas ao mesmo tempo | `postar.TRAVA_DA_RODADA` (`_trava_da_rodada`, entre processos): a nova espera a velha até 15 min; se não, não publica, sai 1 e avisa quem segura (`_rodada_presa`, `_descrever_dona`) |
+| Rodada pendurada segurando a trava | `postar._pode_matar` (horário anterior, ≥ `RODADA_PENDURADA_MIN` = 70, mesmo processo, nunca `--tudo`) → `_matar_dona` (python + chrome/node descendentes) → `_avisar_morte`; tarefas com `ExecutionTimeLimit` PT2H (`LIMITE_DA_TAREFA`) |
 | Tentativa perto do horário seguinte | `postar._ainda_no_horario`: janela (25 reposição / 40 volta) + mesmo slot + `MARGEM_ANTES_DO_PROXIMO_MIN` (20) de `grade.proximo_em`, conferida depois de cada espera |
 | Upload avulso (`--so-youtube`) que atravessa uma rodada | `postar._horario_que_a_linha_tomaria`: recusa se uma rodada da grade **começa** dentro dos `DURACAO_DE_UM_UPLOAD_MIN = 20` min do upload (22:20 → "22:37"; 22:04 → livre) |
 | Título já publicado (fecha a fila) | `postar._sem_titulo_repetido`/`titulo_repetido`; regra em `titulos.chave/repetido` |
@@ -485,10 +509,15 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   disparo das 20:37 que só rodou às 21:20 estão nos testes). (2) Duas
   rodadas publicavam juntas (perfil `youtube_web` disputado, a mesma parte
   escolhida duas vezes, linha atrasada no horário seguinte). → trava da
-  rodada, testada com um **segundo processo** de verdade. Limite que fica:
-  uma tentativa que passe do horário seguinte ainda grava a linha dela
-  naquele horário (o ledger guarda a hora da escrita, não a da rodada); a
-  rodada nova espera e, ao ler, vê esse horário como ocupado. (3) A guarda
+  rodada, testada com um **segundo processo** de verdade. **Limite que
+  fica (conhecido, sem conserto)**: uma tentativa que passe do horário
+  seguinte grava a linha dela **nesse** horário, porque o ledger guarda a
+  hora da escrita e não a da rodada (`chave_do_horario`); a rodada nova
+  espera a trava e, ao ler, vê aquele destino como ocupado — o horário
+  anterior fica com um a menos e o novo com o atrasado. É raro com a margem
+  de 20 min, e não vira duplicata: a guarda do TikTok (e a do YouTube) barra
+  o segundo post no mesmo horário. Consertar pediria gravar o horário da
+  rodada na linha (contrato do ledger). (3) A guarda
   de um por horário falhava **aberta** (`_publicados_do_canal` devolvia
   `[]` em qualquer erro): com o ledger preso na volta, o YouTube da mesma
   p06 subia de novo. → `_publicados_do_canal` levanta `LedgerIlegivel`;
@@ -497,6 +526,18 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   não é reposta). Os crivos de fila (teto, título, recuperação) continuam
   deixando passar, como antes. As oito regras resistem à mutação (cada uma
   derrubada derruba pelo menos um teste).
+  **Conferente do 0b5b6a9** (mesmo dia): a rodada pendurada e viva
+  segurava a trava por até 72 h (`ExecutionTimeLimit` das tarefas), e todo
+  horário seguinte esperava 15 min, saía 1 e avisava; e o aviso dizia
+  "rodada anterior" até para o escoar do app, com "espero até 0 min". →
+  ficha da dona, morte da dona pendurada (70 min, só de horário anterior,
+  nunca o `--tudo`), margem também nos passos extras, aviso que diz quem é,
+  prazo em segundos, e tarefas com limite de 2 h. Testes em
+  `test_postar_rodada_segura_regressions.py` (`DonaPenduradaTests`, idade e
+  horário simulados; `DonaPenduradaEntreProcessosTests`, uma dona de
+  verdade dormindo com um filho: morre com o filho e a nova publica; do
+  mesmo horário, ou o escoar, não morre; `LimiteDaTarefaTests`). Mutação:
+  14 regras, 14 derrubam teste.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
