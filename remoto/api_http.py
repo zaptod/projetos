@@ -59,7 +59,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageDraw
 
 from . import (acoes, biblioteca, claude_estado, comandos_app, decisoes, delegar, orquestrador,
                painel_dados, tarefas, vila_dados, vila_nova)
@@ -68,6 +69,7 @@ from esteira_sprites import aprovar as sprites_aprovar
 from esteira_sprites import config as sprites_config
 from esteira_sprites import juiz as sprites_juiz
 from painel.sprites import importar as sprites_importar
+from painel.sprites import recortador as sprites_recortador
 from neural_fights.tools import manifesto_sprites
 
 PORTA_PADRAO = 8931
@@ -804,8 +806,8 @@ def _base_do_indice(chave) -> dict:
             "por_alvo": por_alvo, "alvos": alvos, "raiz": raiz}
 
 
-def _varrer_existentes(base: dict) -> tuple[set, set]:
-    existe, com_versao = set(), set()
+def _varrer_existentes(base: dict) -> tuple[set, set, dict]:
+    existe, com_versao, variantes = set(), set(), {}
     mapa = base["id_por_arquivo"]
     for pasta, subpastas, arquivos in os.walk(os.path.join(base["raiz"], "partes")):
         if pasta.lower().endswith(".png.historico"):
@@ -820,7 +822,14 @@ def _varrer_existentes(base: dict) -> tuple[set, set]:
                 sid = mapa.get(os.path.normcase(os.path.join(pasta, nome)))
                 if sid:
                     existe.add(sid)
-    return existe, com_versao
+                # Variantes alem de v01 nao existem no manifesto: o nome do
+                # diretorio e a autoridade, e o indice continua uma varredura.
+                relativo = Path(pasta).relative_to(base["raiz"]).parts
+                if len(relativo) == 6 and relativo[:2] == ("partes", "lutador") and relativo[5].startswith("v"):
+                    chave = (relativo[2], relativo[3], relativo[4])
+                    variantes.setdefault(chave, {}).setdefault(relativo[5], set()).add(Path(nome).stem)
+                    existe.add("lutador/%s/%s/%s/%s" % (relativo[2], relativo[3], relativo[4], Path(nome).stem))
+    return existe, com_versao, variantes
 
 
 def _indice_sprites(mudou: str | None = None) -> dict:
@@ -837,26 +846,26 @@ def _indice_sprites(mudou: str | None = None) -> dict:
         base = estado["base"]
         agora = time.monotonic()
         if estado["existe"] is None or agora - estado["quando"] > INDICE_VALIDADE_S:
-            estado["existe"], estado["com_versao"] = _varrer_existentes(base)
+            estado["existe"], estado["com_versao"], estado["variantes"] = _varrer_existentes(base)
             estado["quando"] = agora
         if mudou and mudou in base["por_id"]:
-            try:
-                arquivo = manifesto_sprites.arquivo_do_destino(
-                    PARTES_BIBLIOTECA, str(base["por_id"][mudou]["destino"]))
-            except (KeyError, ValueError):
-                arquivo = None
-            if arquivo is not None:
-                (estado["existe"].add if arquivo.is_file() else estado["existe"].discard)(mudou)
-                (estado["com_versao"].add if manifesto_sprites.versoes(arquivo)
-                 else estado["com_versao"].discard)(mudou)
+            # Uma variante nova nao tem id no manifesto; revarrer mantem a
+            # escolha e a galeria coerentes logo na resposta que a criou.
+            estado["existe"], estado["com_versao"], estado["variantes"] = _varrer_existentes(base)
+            estado["quando"] = agora
             estado["geracao"] += 1
         return {**base, "existe": set(estado["existe"]), "com_versao": set(estado["com_versao"]),
+                "variantes": {k: {v: set(e) for v, e in valores.items()} for k, valores in estado.get("variantes", {}).items()},
                 "geracao": estado["geracao"]}
 
 
 def _existe_no_indice(indice: dict):
     existe = indice["existe"]
     return lambda parte, nivel, alvo, estado: f"lutador/{parte}/{nivel}/{alvo}/{estado}" in existe
+
+
+def _variantes_no_indice(indice: dict):
+    return lambda parte, nivel, alvo: indice["variantes"].get((parte, nivel, alvo), {})
 
 
 # "Carinha" e feminino: "a carinha neutra", nao "neutro". Os nomes que sao
@@ -1195,6 +1204,9 @@ class Manipulador(BaseHTTPRequestHandler):
             achado = re.fullmatch(r"/api/atelie/arquivo/([a-z0-9_-]{8,40})/(original|limpa|folha|previa|quadro-\d+)", rota)
             if achado:
                 return self._atelie_arquivo(*achado.groups())
+            achado = re.fullmatch(r"/api/sprites/recortar/arquivo/([A-Za-z0-9_-]{8,40})/(limpa|marcada|recorte-\d+)", rota)
+            if achado:
+                return self._recortador_arquivo(*achado.groups())
             achado = re.fullmatch(r"/api/sprites/arquivo/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/([^/]+)", rota)
             if achado:
                 return self._arquivo_sprite(achado.group(1), achado.group(2), achado.group(3))
@@ -1415,6 +1427,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._responder_decisao()
         if rota == "/api/atelie/importar":
             return self._atelie_importar()
+        if rota == "/api/sprites/recortar":
+            return self._recortador_importar()
         achado = re.fullmatch(r"/api/sprites/modulares/(.+)/(anexar|apagar|desfazer)", rota)
         if achado:
             return self._sprites_modulares_mutar(unquote(achado.group(1)), achado.group(2))
@@ -1483,11 +1497,14 @@ class Manipulador(BaseHTTPRequestHandler):
         return _indice_sprites()["manifesto"]
 
     @staticmethod
-    def _arquivo_do_slot(slot: dict) -> Path | None:
+    def _arquivo_do_slot(slot: dict, variante: str = "v01") -> Path | None:
         # O manifesto e a unica autoridade para destino; ainda assim a API
         # confere que um manifesto corrompido nao a faca sair da biblioteca.
         try:
-            return manifesto_sprites.arquivo_do_destino(PARTES_BIBLIOTECA, str(slot["destino"]))
+            destino = str(slot["destino"])
+            if slot.get("grupo") == "lutador":
+                destino = destino.replace("/v01/", f"/{variante}/")
+            return manifesto_sprites.arquivo_do_destino(PARTES_BIBLIOTECA, destino)
         except (KeyError, TypeError, ValueError):
             return None
 
@@ -1496,11 +1513,14 @@ class Manipulador(BaseHTTPRequestHandler):
         """O telefone recebe o lugar da peca, nunca o caminho do PC."""
         situacao, aviso = _situacao_do_slot(slot, indice)
         sid = str(slot.get("id"))
+        alvo = slot.get("alvo") or {}
+        chave = (str(slot.get("parte", "")), str(alvo.get("nivel", "")), str(alvo.get("chave", "")))
+        variantes = sorted(indice.get("variantes", {}).get(chave, {})) if slot.get("grupo") == "lutador" else []
         return {"id": sid, "rotulo": manifesto_sprites.rotulo_humano(slot),
                 "parte": slot.get("parte"), "estado": slot.get("estado"),
                 "nivel": (slot.get("alvo") or {}).get("nivel"), "papel": slot.get("papel"),
                 "situacao": situacao, "aviso": aviso,
-                "tem_anterior": sid in indice["com_versao"]}
+                "tem_anterior": sid in indice["com_versao"], "variantes": variantes}
 
     def _sprites_modulares_catalogo(self, consulta: dict):
         indice = _indice_sprites()
@@ -1571,11 +1591,13 @@ class Manipulador(BaseHTTPRequestHandler):
         quadro = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
         pecas = 0
         for parte in sorted(manifesto_sprites.CAMADA_Z, key=manifesto_sprites.CAMADA_Z.get):
-            achado = manifesto_sprites.resolver_parte(parte, alvo, expressao, _existe_no_indice(indice))
+            achado = manifesto_sprites.resolver_parte(
+                parte, alvo, expressao, _existe_no_indice(indice), personagem=alvo,
+                variantes=_variantes_no_indice(indice))
             if achado is None:
                 continue
             slot = indice["por_id"].get(f"lutador/{parte}/{achado['nivel']}/{achado['alvo']}/{achado['estado']}")
-            arquivo = self._arquivo_do_slot(slot) if slot else None
+            arquivo = self._arquivo_do_slot(slot, achado.get("variante", "v01")) if slot else None
             if arquivo is None:
                 continue
             try:
@@ -1622,7 +1644,10 @@ class Manipulador(BaseHTTPRequestHandler):
             return
         if not self.estado.com_acoes:
             return self._erro(403, "as ações estão desligadas neste servidor")
-        slot = _indice_sprites()["por_id"].get(slot_id)
+        # O recortador manda `nova=1` na URL (e `nova: true` nas opcoes): os
+        # dois viram variante nova da colecao, nunca troca da arte-base.
+        nova_na_url = (parse_qs(urlsplit(self.path).query).get("nova") or [""])[0] == "1"
+        slot =_indice_sprites()["por_id"].get(slot_id)
         arquivo = self._arquivo_do_slot(slot) if isinstance(slot, dict) else None
         if arquivo is None:
             return self._erro(404, "peça desconhecida")
@@ -1632,6 +1657,22 @@ class Manipulador(BaseHTTPRequestHandler):
             if pedido is None:
                 return
             bruto, opcoes = pedido
+            variante = "v01"
+            if slot.get("grupo") == "lutador":
+                pedido_variante = str(opcoes.get("variante", ""))
+                if opcoes.get("nova") or nova_na_url:
+                    usadas = _variantes_no_indice(_indice_sprites())(
+                        str(slot.get("parte")), str((slot.get("alvo") or {}).get("nivel")),
+                        str((slot.get("alvo") or {}).get("chave")))
+                    numero = 1
+                    while f"v{numero:02d}" in usadas:
+                        numero += 1
+                    variante = f"v{numero:02d}"
+                elif re.fullmatch(r"v[0-9a-z_-]{1,20}", pedido_variante):
+                    variante = pedido_variante
+                arquivo = self._arquivo_do_slot(slot, variante)
+                if arquivo is None:
+                    return self._erro(400, "variante invalida")
             if len(bruto) > SPRITE_MAX:
                 return self._erro(413, "a imagem passa de 20 MB")
             if arquivo.exists() and not bool(opcoes.get("substituir")):
@@ -1720,6 +1761,18 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._erro(404, "imagem nao existe")
         return self._bytes(corpo, "image/gif" if parte == "previa" else "image/png")
 
+    # ------------------------------------------------ folha verde ou magenta
+    def _recortador_arquivo(self, sessao: str, parte: str):
+        """Previa temporaria do recortador; nunca e arquivo da biblioteca."""
+        with self.estado.trava:
+            dados = self.estado.atelie.get(sessao)
+        if not dados or dados["dono"] != self._dono or "recortador" not in dados:
+            return self._erro(404, "previa nao existe")
+        corpo = dados["recortador"].get(parte)
+        if corpo is None:
+            return self._erro(404, "recorte nao existe")
+        return self._bytes(corpo, "image/png")
+
     def _atelie_corpo(self):
         """(imagem, opcoes) de JSON/base64 ou multipart, limitado antes de ler."""
         try:
@@ -1758,6 +1811,13 @@ class Manipulador(BaseHTTPRequestHandler):
             opcoes = json.loads(campos.get("opcoes", b"{}").decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             opcoes = {}
+        # O recortador de folhas usa os campos diretos do multipart; a tela
+        # antiga continua mandando o objeto `opcoes`.
+        if isinstance(opcoes, dict):
+            for chave in ("variante", "nova"):
+                if chave in campos and chave not in opcoes:
+                    valor = campos[chave].decode("utf-8", "ignore")
+                    opcoes[chave] = valor in ("1", "true", "True") if chave == "nova" else valor
         return campos.get("imagem", b""), opcoes if isinstance(opcoes, dict) else {}
 
     def _atelie_importar(self):
@@ -1812,6 +1872,51 @@ class Manipulador(BaseHTTPRequestHandler):
                            "previa": f"{raiz}/previa",
                            "quadros_urls": [f"{raiz}/quadro-{i}" for i in range(len(resultado.alinhado.quadros))],
                            "salvo": bool(opcoes.get("salvar"))})
+
+    def _recortador_importar(self):
+        """Sobe uma folha e guarda so as previas na memoria deste aparelho."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        pedido = self._atelie_corpo()
+        if pedido is None:
+            return
+        imagem, opcoes = pedido
+        nivel = str(opcoes.get("juncao") or "medio")
+        if nivel not in sprites_recortador.JUNCAO:
+            return self._erro(400, "juncao precisa ser pouco, medio ou muito")
+        try:
+            origem = sprites_importar.abrir_bytes(imagem)
+            resultado = sprites_recortador.recortar(
+                origem, juntar=sprites_recortador.JUNCAO[nivel],
+                area_min=max(1, int(opcoes.get("area_min") or 50)),
+                margem=max(0, int(opcoes.get("margem") or 8)))
+        except (TypeError, ValueError) as exc:
+            return self._erro(400, str(exc))
+        parte = str(opcoes.get("parte") or "")
+        imagens = [sprites_recortador.no_gabarito(r.imagem, parte) if parte else r.imagem
+                   for r in resultado.recortes]
+        marcada = Image.fromarray(resultado.limpo, "RGBA")
+        caneta = ImageDraw.Draw(marcada)
+        for i, recorte in enumerate(resultado.recortes, 1):
+            caneta.rectangle(recorte.caixa, outline=(20, 20, 26, 255), width=3)
+            caneta.text((recorte.caixa[0] + 3, recorte.caixa[1] + 3), str(i),
+                        fill=(255, 255, 255, 255), stroke_width=2, stroke_fill=(20, 20, 26, 255))
+        sessao = secrets.token_urlsafe(12).replace("-", "_")
+        arquivos = {"limpa": self._atelie_png(resultado.limpo),
+                    "marcada": self._atelie_png(np.asarray(marcada, np.uint8))}
+        arquivos.update({f"recorte-{i}": self._atelie_png(q) for i, q in enumerate(imagens)})
+        with self.estado.trava:
+            self.estado.atelie[sessao] = {"dono": self._dono, "recortador": arquivos}
+        raiz = f"/api/sprites/recortar/arquivo/{sessao}"
+        return self._json({"sessao": sessao, "fundo": resultado.fundo,
+                           "avisos": resultado.avisos, "limpa": f"{raiz}/limpa",
+                           "folha": f"{raiz}/marcada",
+                           "recortes": [{"id": i, "caixa": list(r.caixa), "area": r.area,
+                                         "tamanho": [int(q.shape[1]), int(q.shape[0])],
+                                         "url": f"{raiz}/recorte-{i}"}
+                                        for i, (r, q) in enumerate(zip(resultado.recortes, imagens))]})
 
     def _biblioteca_bilhete(self, pagina: str):
         if self._aparelho() is None:

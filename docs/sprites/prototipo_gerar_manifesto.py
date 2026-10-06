@@ -102,7 +102,10 @@ def add(grupo, parte, nivel, alvo, estado, z, quadro, ancora, px, tingir, papel,
          "alvo": {"nivel": nivel, "chave": alvo_s, "rotulo": alvo or "comum"},
          "estado": est, "camada_z": z, "quadro": quadro, "ancora": ancora,
          "tamanho_px": list(px), "tingir": tingir, "papel": papel,
-         "destino": f"palco/biblioteca/partes/{grupo}/{parte}/{nivel}/{alvo_s}/{est}.png",
+         # Lutadores sao colecoes: v01 e a primeira variante, inclusive para
+         # artes antigas. Os outros grupos ainda sao arquivos singulares.
+         "destino": (f"palco/biblioteca/partes/{grupo}/{parte}/{nivel}/{alvo_s}/v01/{est}.png"
+                     if grupo == "lutador" else f"palco/biblioteca/partes/{grupo}/{parte}/{nivel}/{alvo_s}/{est}.png"),
          "godot_le_hoje": destino_hoje, "fonte": fonte}
     if extra:
         s.update(extra)

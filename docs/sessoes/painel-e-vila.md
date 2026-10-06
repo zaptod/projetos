@@ -660,6 +660,15 @@ o servidor lê o nó; pendente = `perto` (uma fileira enche a altura, na casa,
 como era); `longe` = a Vila inteira. Prova de tela: `prova_app.py` no
 scratchpad da sessão de 28/09 (Chrome headless, 390×844, instância 8934).
 
+## Oficina: recortador de folhas (06/10/2026)
+
+O motor reutilizado pela Oficina fica em `painel/sprites/recortador.py`:
+`limpeza.remover_fundo(..., "bordas")` responde “o que é fundo sem furar a
+arte?”, `rotulos.rotular` responde “quais pixels são uma peça?” e o recortador
+junta caixas próximas, elimina poeira e dá margem. Ele aceita somente verde ou
+magenta na borda, preserva a cor semelhante que esteja fechada dentro do
+desenho e oferece o encaixe proporcional nas zonas do gabarito 1024.
+
 **A Vila deitada do celular** (28/09, `flutuante/paisagem.py`, só o app
 usa). Na decisão `vila-zoom-celular` ("perto e grande") o Adrian comentou
 "também adicionei suporte se eu deitar o celular, pode mudar as casas de

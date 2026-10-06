@@ -154,7 +154,7 @@ def test_anexar_trocar_desfazer_apagar_pelo_seletor_de_verdade(sprites_isolados,
         assert any("Trocar pelo novo" in d for d in dialogos)
         _cartao(page, "Pele (o corpo)").get_by_role("button", name="Desfazer").wait_for()
         page.screenshot(path=str(pasta / f"{tema}_03_trocado.png"))
-        arquivo = sprites_isolados["raiz"] / "partes/lutador/pele/comum/_/base.png"
+        arquivo = sprites_isolados["raiz"] / "partes/lutador/pele/comum/_/v01/base.png"
         assert Image.open(arquivo).getpixel((512, 512))[:3] == (120, 200, 255)
         _quieto(page)
         _cartao(page, "Pele (o corpo)").get_by_role("button", name="Desfazer").click()

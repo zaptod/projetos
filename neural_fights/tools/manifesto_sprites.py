@@ -87,11 +87,22 @@ def estados_da_expressao(parte: str, expressao: str) -> list[str]:
     return saida
 
 
-def resolver_parte(parte: str, classe: str, expressao: str, existe) -> dict | None:
+def _sorteio_variante(personagem: str, parte: str, opcoes: list[str]) -> str:
+    """Indice estavel, igual a PartesLutador._sorteio_variante no Godot."""
+    texto = f"{personagem}:{parte}"
+    numero = 0
+    for letra in texto:
+        numero = (numero * 31 + ord(letra)) % 2147483647
+    return sorted(opcoes)[numero % len(opcoes)]
+
+
+def resolver_parte(parte: str, classe: str, expressao: str, existe, personagem: str = "",
+                   guarda_roupa: dict | None = None, variantes=None) -> dict | None:
     """O mesmo `resolver_com` do palco, sem personagem (o painel nao lista).
 
-    `existe(parte, nivel, alvo, estado) -> bool`. Devolve o nivel, o alvo e o
-    estado que o jogo usaria, ou None quando entra o desenho de hoje.
+    `existe(parte, nivel, alvo, estado) -> bool` mantem o contrato antigo.
+    `variantes`, quando informado, devolve `{variante: {estados}}`; nesse
+    modo a escolha e fixa por personagem + parte e so entao cai na carinha.
     """
     if parte not in NIVEIS:
         return None
@@ -100,11 +111,23 @@ def resolver_parte(parte: str, classe: str, expressao: str, existe) -> dict | No
             continue
         possiveis = EXPRESSOES if parte in PARTES_DE_EXPRESSAO else ("base",)
         # O primeiro nivel que possui QUALQUER estado e o dono da parte.
-        if not any(existe(parte, nivel, alvo, estado) for estado in possiveis):
+        colecao = variantes(parte, nivel, alvo) if variantes else {}
+        if variantes:
+            colecao = {str(v): set(estados) for v, estados in (colecao or {}).items() if estados}
+        if not colecao and not variantes:
+            estados_existentes = {estado for estado in possiveis if existe(parte, nivel, alvo, estado)}
+            if estados_existentes:
+                colecao = {"v01": estados_existentes}
+        if not colecao:
             continue
+        fixada = str((guarda_roupa or {}).get(parte, ""))
+        variante = fixada if fixada in colecao else _sorteio_variante(personagem or classe, parte, list(colecao))
         for estado in estados_da_expressao(parte, expressao):
-            if existe(parte, nivel, alvo, estado):
-                return {"nivel": nivel, "alvo": alvo, "estado": estado}
+            if estado in colecao[variante]:
+                saida = {"nivel": nivel, "alvo": alvo, "estado": estado}
+                if variantes:
+                    saida["variante"] = variante
+                return saida
         return None
     return None
 
@@ -413,6 +436,7 @@ def _destino_do_slot(biblioteca: Path, slot_id: str) -> str:
 def importar_antigas(biblioteca: Path = PADRAO.parent, origem: Path | None = None) -> list[Path]:
     """Copia as duas artes antigas para o gabarito, sem tocar nos originais."""
     origem = origem or RAIZ / "palco" / "biblioteca" / "efeitos" / "folhas"
+    migrar_variantes(biblioteca)
     copiados = []
     for nome, slot_id, ancora, modo in ARTES_ANTIGAS:
         fonte = origem / nome
@@ -433,6 +457,35 @@ def importar_antigas(biblioteca: Path = PADRAO.parent, origem: Path | None = Non
         os.replace(temporario, arquivo)
         copiados.append(arquivo)
     return copiados
+
+
+def migrar_variantes(biblioteca: Path = PADRAO.parent) -> list[Path]:
+    """Move o formato anterior de lutador para v01, inclusive historico.
+
+    Nunca sobrescreve uma v01 ja criada; assim uma segunda abertura e segura.
+    """
+    raiz = biblioteca / "partes" / "lutador"
+    movidos = []
+    if not raiz.is_dir():
+        return movidos
+    for arquivo in list(raiz.glob("*/*/*/*.png")):
+        # antigo: parte/nivel/alvo/estado.png; novo tem um diretorio a mais.
+        if arquivo.parent.parent.parent.parent != raiz:
+            continue
+        destino = arquivo.parent / "v01" / arquivo.name
+        if destino.exists():
+            continue
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(arquivo, destino)
+        antigo_historico = pasta_de_versoes(arquivo)
+        novo_historico = pasta_de_versoes(destino)
+        if antigo_historico.exists() and not novo_historico.exists():
+            os.replace(antigo_historico, novo_historico)
+        antigo_json = arquivo.with_suffix(".json")
+        if antigo_json.exists() and not destino.with_suffix(".json").exists():
+            os.replace(antigo_json, destino.with_suffix(".json"))
+        movidos.append(destino)
+    return movidos
 
 
 def gerar() -> dict:

@@ -700,8 +700,21 @@
       </div>
       <p id="modular-carregando" class="fraco oculto" role="status">carregando…</p>
       <div id="modular-slots" class="modular-slots"></div>
-      <input id="modular-arquivo" class="oculto" type="file" accept="image/png">
+      <input id="modular-arquivo" class="oculto" type="file" accept="image/png" multiple>
       <p id="modular-aviso" class="fraco"></p>
+    </div>
+    <div class="cartao" id="recortador-folha">
+      <h2>✂️ Recortar folha</h2>
+      <p class="fraco">Folha da IA com fundo verde ou magenta. Cada desenho vira uma variante nova.</p>
+      <input id="recortador-arquivo" type="file" accept="image/png,image/jpeg,image/*">
+      <div class="campos atelie-campos">
+        <label>Juntar pedaços <select id="recortador-juncao"><option value="pouco">pouco</option><option value="medio" selected>médio</option><option value="muito">muito</option></select></label>
+        <label>Mandar para <select id="recortador-destino"></select></label>
+      </div>
+      <div class="botoes"><button class="acao" id="recortador-refazer" type="button">Refazer</button><button class="acao primario" id="recortador-mandar" type="button">Mandar selecionados</button></div>
+      <p id="recortador-aviso" class="fraco" role="status"></p>
+      <figure id="recortador-folha-caixa" class="oculto"><img id="recortador-limpa" alt="Folha limpa com os desenhos marcados"><figcaption id="recortador-fundo" class="fraco"></figcaption></figure>
+      <div id="recortador-lista" class="recortador-lista"></div>
     </div>
     <details class="cartao">
       <summary>Ateliê antigo (animação de lado)</summary>

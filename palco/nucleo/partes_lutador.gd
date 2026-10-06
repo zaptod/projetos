@@ -9,6 +9,7 @@ static var _caminhos := {}
 static var _rotulos := {}
 static var _rotulos_palco := {}
 static var _manifesto_lido := false
+static var _guarda_roupa := {}
 const PARTES := {
 	"sombra": {"z": 0, "quadro": "mundo"},
 	"acessorio_costas": {"z": 10, "quadro": "olhar"},
@@ -43,15 +44,15 @@ const NIVEIS := {
 }
 
 
-static func caminho(parte: String, nivel: String, alvo: String, estado: String) -> String:
+static func caminho(parte: String, nivel: String, alvo: String, estado: String, variante: String = "v01") -> String:
 	_carregar_manifesto()
-	var chave := "%s/%s/%s/%s" % [parte, nivel, alvo, estado]
+	var chave := "%s/%s/%s/%s/%s" % [parte, nivel, alvo, variante, estado]
 	if _caminhos.has(chave):
 		return str(_caminhos[chave])
 	# Com biblioteca externa (previa do painel, testes), nada cai na
 	# biblioteca real do palco: o que nao esta no manifesto e procurado la.
 	var raiz := (_biblioteca_externa + "/partes/lutador") if _biblioteca_externa else RAIZ
-	return "%s/%s/%s/%s/%s.png" % [raiz, parte, nivel, alvo, estado]
+	return "%s/%s/%s/%s/%s/%s.png" % [raiz, parte, nivel, alvo, variante, estado]
 
 
 ## O nome humano do alvo ("Berserker (Furia)", com acento), tirado do
@@ -89,6 +90,7 @@ static func configurar_biblioteca(caminho_biblioteca: String) -> void:
 	_biblioteca_externa = caminho_biblioteca.replace("\\", "/").rstrip("/")
 	_caminhos.clear()
 	_rotulos.clear()
+	_guarda_roupa.clear()
 	_manifesto_lido = false
 
 
@@ -101,12 +103,21 @@ static func _carregar_manifesto() -> void:
 	var manifesto := (_biblioteca_externa + "/manifesto_slots.json") if _biblioteca_externa else "res://biblioteca/manifesto_slots.json"
 	for slot in _slots_do_manifesto(manifesto):
 		var alvo: Dictionary = slot.get("alvo", {})
-		var chave := "%s/%s/%s/%s" % [slot.get("parte", ""), alvo.get("nivel", ""), alvo.get("chave", ""), slot.get("estado", "base")]
+		var destino := str(slot.get("destino", "")).replace("\\", "/")
+		var pedacos: PackedStringArray = destino.split("/")
+		var variante := "v01"
+		if pedacos.size() >= 2 and pedacos[-2].begins_with("v"):
+			variante = pedacos[-2]
+		var chave := "%s/%s/%s/%s/%s" % [slot.get("parte", ""), alvo.get("nivel", ""), alvo.get("chave", ""), variante, slot.get("estado", "base")]
 		if str(alvo.get("rotulo", "")) != "":
 			_rotulos["%s/%s" % [alvo.get("nivel", ""), alvo.get("chave", "")]] = str(alvo.get("rotulo"))
-		var destino := str(slot.get("destino", "")).replace("\\", "/")
 		var relativo := destino.trim_prefix("palco/biblioteca/")
 		_caminhos[chave] = (_biblioteca_externa + "/" + relativo) if _biblioteca_externa else "res://biblioteca/" + relativo
+	var guarda := (_biblioteca_externa + "/partes/guarda_roupa.json") if _biblioteca_externa else "res://biblioteca/partes/guarda_roupa.json"
+	if FileAccess.file_exists(guarda):
+		var json_guarda := JSON.new()
+		if json_guarda.parse(FileAccess.get_file_as_string(guarda)) == OK and typeof(json_guarda.data) == TYPE_DICTIONARY:
+			_guarda_roupa = json_guarda.data
 
 
 static func estados(parte: String, expressao: String) -> Array:
@@ -162,21 +173,51 @@ static func resolver_com(parte: String, personagem: String, classe: String, expr
 		var alvo := str(nivel[1])
 		if alvo == "" and nivel_nome != "comum":
 			continue
-		# O primeiro nivel que possui QUALQUER estado e o dono da parte.
-		var dono := false
-		var possiveis: Array = EXPRESSOES if PARTES_DE_EXPRESSAO.has(parte) else ["base"]
-		for estado in possiveis:
-			if existe.call(caminho(parte, nivel_nome, alvo, str(estado))):
-				dono = true
-				break
-		if not dono:
+		var colecao := _variantes(parte, nivel_nome, alvo, existe)
+		if colecao.is_empty():
 			continue
+		var fixadas: Dictionary = _guarda_roupa.get(UtilPalco.slug(personagem), {})
+		var variante := str(fixadas.get(parte, ""))
+		if not colecao.has(variante):
+			variante = _sorteio_variante(personagem if personagem != "" else classe, parte, colecao.keys())
 		for estado in estados(parte, expressao):
-			var png := caminho(parte, nivel_nome, alvo, str(estado))
+			var png := caminho(parte, nivel_nome, alvo, str(estado), variante)
 			if existe.call(png):
 				return {"caminho": png, "nivel": nivel_nome, "estado": estado,
-					"z": int(PARTES[parte]["z"]), "quadro": str(PARTES[parte]["quadro"])}
+					"variante": variante, "z": int(PARTES[parte]["z"]), "quadro": str(PARTES[parte]["quadro"])}
 		# Um dono sem o estado pedido cai no neutro dele; se ele so tiver uma
 		# expressao avulsa, nao mistura a identidade com o nivel de baixo.
 		return {}
 	return {}
+
+
+static func _variantes(parte: String, nivel: String, alvo: String, existe: Callable) -> Dictionary:
+	var raiz := (_biblioteca_externa + "/partes/lutador") if _biblioteca_externa else RAIZ
+	var pasta := "%s/%s/%s/%s" % [raiz, parte, nivel, alvo]
+	var saida := {}
+	# A v01 e sempre consultada pelo `existe`, mesmo sem a pasta no disco: e o
+	# contrato antigo (uma arte por slot) e e o que deixa a regra verificavel
+	# sem PNG (testes.gd), igual ao fallback de manifesto_sprites.resolver_parte.
+	var candidatas: Array = ["v01"]
+	if DirAccess.dir_exists_absolute(pasta):
+		for nome in DirAccess.get_directories_at(pasta):
+			if not candidatas.has(nome):
+				candidatas.append(nome)
+	for variante in candidatas:
+		if not str(variante).begins_with("v"):
+			continue
+		for estado in (EXPRESSOES if PARTES_DE_EXPRESSAO.has(parte) else ["base"]):
+			if existe.call(caminho(parte, nivel, alvo, estado, variante)):
+				saida[variante] = true
+				break
+	return saida
+
+
+static func _sorteio_variante(personagem: String, parte: String, opcoes: Array) -> String:
+	var numero := 0
+	var texto := personagem + ":" + parte
+	for i in texto.length():
+		numero = (numero * 31 + texto.unicode_at(i)) % 2147483647
+	var ordenadas := opcoes.duplicate()
+	ordenadas.sort()
+	return str(ordenadas[numero % ordenadas.size()])

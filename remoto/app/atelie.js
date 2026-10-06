@@ -3,7 +3,8 @@
 // token, convertida em blob: e esquecida ao trocar de tentativa.
 const Atelie = {catalogo: null, sujeito: "", slot: null, arquivo: null, urls: []};
 const Modular = {dados: null, grupo: "lutador", alvo: "_", slot: null, expressao: "neutro", todas: false,
-  pedido: 0, pedidoPrevia: 0, versao: 0, folhas: {}, blobs: {}};
+  pedido: 0, pedidoPrevia: 0, versao: 0, folhas: {}, blobs: {}, nova: false};
+const Recortador = {arquivo: null, dados: null, selecionados: new Set(), urls: []};
 
 // As imagens do painel modular tem chave propria (previa, folha:<estilo>,
 // mini:<lugar>): a troca de tela do app revoga Atelie.urls, e a folha
@@ -24,6 +25,20 @@ async function modularBlob(chave, caminho) {
 function atelieLimparUrls() {
   Atelie.urls.forEach((url) => URL.revokeObjectURL(url));
   Atelie.urls = [];
+}
+
+function recortadorLimparUrls() {
+  Recortador.urls.forEach((url) => URL.revokeObjectURL(url));
+  Recortador.urls = [];
+}
+
+async function recortadorBlob(caminho) {
+  const token = localStorage.getItem(TOKEN);
+  const resposta = await fetch(caminho, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+  if (!resposta.ok) throw new Error("não consegui abrir a prévia");
+  const url = URL.createObjectURL(await resposta.blob());
+  Recortador.urls.push(url);
+  return url;
 }
 
 async function atelieBlob(caminho) {
@@ -106,7 +121,7 @@ async function atelieCarregar() {
 }
 
 function atelieMostrar() { atelieCarregar(); }
-function atelieParar() { atelieLimparUrls(); }
+function atelieParar() { atelieLimparUrls(); recortadorLimparUrls(); }
 
 // ------------------------------------------------------------ Montar sprites
 // O servidor responde so o pedido (grupo + para quem). Cada carga leva um
@@ -198,6 +213,9 @@ function modularCartao(slot) {
     apagar.addEventListener("click", () => modularMutar(slot, "apagar")); botoes.append(apagar);
   }
   if (Modular.grupo === "lutador") {
+    const nova = el("button", {class: "acao", type: "button"}, "+ Nova variante");
+    nova.addEventListener("click", () => { Modular.slot = slot; Modular.nova = true; $("modular-arquivo").click(); });
+    botoes.append(nova);
     const gabarito = el("button", {class: "acao modular-gabarito", type: "button"}, "Baixar gabarito");
     gabarito.addEventListener("click", () => modularGabarito(slot)); botoes.append(gabarito);
   }
@@ -232,7 +250,80 @@ function modularDesenhar() {
   const slots = Modular.dados.slots.filter((slot) => !lutador || !slot.estado || slot.estado === "base" ||
     slot.estado === Modular.expressao);
   for (const slot of slots) lista.append(modularCartao(slot));
+  recortadorDestinos();
   if (lutador) modularPrevia();
+}
+
+function recortadorDestinos() {
+  const seletor = $("recortador-destino");
+  if (!seletor || !Modular.dados) return;
+  const antes = seletor.value;
+  seletor.replaceChildren();
+  const slots = Modular.dados.slots.filter((slot) => slot.parte);
+  for (const slot of slots) {
+    const rotulo = slot.rotulo + (slot.estado ? ` · ${modularCarinha(slot.estado)}` : "");
+    seletor.append(el("option", {value: slot.id, "data-parte": slot.parte}, rotulo));
+  }
+  if ([...seletor.options].some((opcao) => opcao.value === antes)) seletor.value = antes;
+}
+
+function recortadorParte() {
+  const opcao = $("recortador-destino").selectedOptions[0];
+  return opcao ? opcao.dataset.parte : "";
+}
+
+async function recortadorDesenhar(dados) {
+  recortadorLimparUrls();
+  const lista = $("recortador-lista"); lista.replaceChildren();
+  $("recortador-limpa").src = await recortadorBlob(dados.folha || dados.limpa);
+  $("recortador-folha-caixa").classList.remove("oculto");
+  $("recortador-fundo").textContent = `Fundo ${dados.fundo} · ${dados.recortes.length} recorte(s)`;
+  for (const recorte of dados.recortes) {
+    const marcado = Recortador.selecionados.has(recorte.id);
+    const caixa = el("label", {class: "recortador-item" + (marcado ? " escolhido" : "")});
+    const marcar = el("input", {type: "checkbox", "data-recorte": recorte.id}); marcar.checked = marcado;
+    marcar.addEventListener("change", () => {
+      if (marcar.checked) Recortador.selecionados.add(recorte.id); else Recortador.selecionados.delete(recorte.id);
+      caixa.classList.toggle("escolhido", marcar.checked);
+    });
+    const imagem = el("img", {alt: `Recorte ${recorte.id + 1}`}); imagem.src = await recortadorBlob(recorte.url);
+    caixa.append(marcar, imagem, el("span", {}, `#${recorte.id + 1} · ${recorte.tamanho[0]}×${recorte.tamanho[1]}`));
+    lista.append(caixa);
+  }
+}
+
+async function recortadorEnviar() {
+  if (!Recortador.arquivo) return;
+  $("recortador-aviso").textContent = "recortando no PC…";
+  const dados = new FormData(); dados.append("imagem", Recortador.arquivo);
+  dados.append("opcoes", JSON.stringify({juncao: $("recortador-juncao").value, parte: recortadorParte()}));
+  try {
+    Recortador.dados = await api("/api/sprites/recortar", {method: "POST", body: dados});
+    Recortador.selecionados = new Set(Recortador.dados.recortes.map((r) => r.id));
+    await recortadorDesenhar(Recortador.dados);
+    $("recortador-aviso").textContent = Recortador.dados.avisos.join(" · ") || "Toque nos recortes que quer mandar.";
+  } catch (erro) { $("recortador-aviso").textContent = "Não deu: " + erro.message; }
+}
+
+async function recortadorMandar() {
+  const destino = $("recortador-destino").value;
+  const escolhidos = Recortador.dados?.recortes.filter((r) => Recortador.selecionados.has(r.id)) || [];
+  if (!destino || !escolhidos.length) return $("recortador-aviso").textContent = "Escolha pelo menos um recorte e uma peça.";
+  $("recortador-mandar").disabled = true;
+  try {
+    for (const recorte of escolhidos) {
+      const token = localStorage.getItem(TOKEN);
+      const resposta = await fetch(recorte.url, {headers: token ? {Authorization: `Bearer ${token}`} : {}});
+      if (!resposta.ok) throw new Error("não consegui abrir o recorte");
+      const dados = new FormData(); dados.append("imagem", await resposta.blob(), `recorte-${recorte.id + 1}.png`);
+      dados.append("opcoes", JSON.stringify({nova: true}));
+      // nova=1: o guarda-roupa cria a proxima variante (vNN) sem trocar a arte base.
+      await api(`/api/sprites/modulares/${encodeURIComponent(destino)}/anexar?nova=1`, {method: "POST", body: dados});
+    }
+    $("recortador-aviso").textContent = `${escolhidos.length} recorte(s) mandado(s) como variantes novas.`;
+    modularCarregar();
+  } catch (erro) { $("recortador-aviso").textContent = "Não deu: " + erro.message; }
+  finally { $("recortador-mandar").disabled = false; }
 }
 
 async function modularPrevia() {
@@ -330,22 +421,25 @@ async function modularAnexar(arquivoRecebido = null) {
   $("modular-arquivo").value = "";
   const slot = Modular.slot;
   if (!arquivo || !slot) return;
-  const trocar = slot.situacao === "anexado";
+  const trocar = slot.situacao === "anexado" && !Modular.nova;
   if (trocar && !confirm(`Já há um desenho em ${slot.rotulo.toLowerCase()}. Trocar pelo novo? (Desfazer volta o antigo.)`)) return;
   const dados = new FormData(); dados.append("imagem", arquivo);
-  dados.append("opcoes", JSON.stringify({substituir: trocar}));
+  dados.append("opcoes", JSON.stringify({substituir: trocar, nova: Modular.nova}));
   modularTexto("modular-aviso", "enviando o desenho…");
   try {
     const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/anexar`, {method: "POST", body: dados});
     modularTexto("modular-aviso", (trocar ? "Desenho trocado." : "Desenho anexado.") +
       (resposta.avisos?.length ? " " + resposta.avisos.join(" · ") : ""));
-    modularAplicar(resposta);
+    Modular.nova = false; modularAplicar(resposta);
   } catch (erro) { modularTexto("modular-aviso", "Não deu para anexar: " + erro.message); }
 }
 
 $("atelie-sujeito").addEventListener("change", () => { Atelie.sujeito = $("atelie-sujeito").value; atelieCarregar(); });
 $("atelie-nome").addEventListener("change", () => atelieCarregar());
 $("atelie-arquivo").addEventListener("change", () => { Atelie.arquivo = $("atelie-arquivo").files[0] || null; atelieEnviar(); });
+$("recortador-arquivo").addEventListener("change", () => { Recortador.arquivo = $("recortador-arquivo").files[0] || null; recortadorEnviar(); });
+$("recortador-refazer").addEventListener("click", () => recortadorEnviar());
+$("recortador-mandar").addEventListener("click", () => recortadorMandar());
 $("atelie-refazer").addEventListener("click", () => atelieEnviar());
 $("atelie-salvar").addEventListener("click", () => atelieEnviar(true));
 $("atelie-descartar").addEventListener("click", () => {

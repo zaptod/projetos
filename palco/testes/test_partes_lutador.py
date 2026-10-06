@@ -49,7 +49,7 @@ def _biblioteca(tmp_path: Path, pecas: dict) -> Path:
     biblioteca = tmp_path / "biblioteca"
     slots = []
     for (parte, nivel, alvo, estado), desenhar in pecas.items():
-        rel = f"partes/lutador/{parte}/{nivel}/{alvo}/{estado}.png"
+        rel = f"partes/lutador/{parte}/{nivel}/{alvo}/v01/{estado}.png"
         _peca(biblioteca / rel, desenhar)
         slots.append({"grupo": "lutador", "parte": parte, "alvo": {"nivel": nivel, "chave": alvo},
                       "estado": estado, "destino": "palco/biblioteca/" + rel})
@@ -177,7 +177,7 @@ def test_brilho_do_codigo_continua_sobre_a_pele_modular(tmp_path, brilho_proprio
         ("pele", "classe", "teste_classe", "base"): lambda d: d.ellipse((256, 256, 768, 768), fill=(110, 110, 110, 255)),
     })
     if brilho_proprio:
-        (biblioteca / "partes/lutador/pele/classe/teste_classe/base.json").write_text(
+        (biblioteca / "partes/lutador/pele/classe/teste_classe/v01/base.json").write_text(
             json.dumps({"tingir": "nenhum", "brilho_proprio": True}), encoding="utf-8")
     _saida, im = _previa(tmp_path, biblioteca, "--classe=teste_classe")
     cx, cy = _centro(0)  # neutro: nada do rosto no alto-esquerda nem no espelho dele

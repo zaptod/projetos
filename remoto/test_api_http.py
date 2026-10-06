@@ -166,6 +166,33 @@ def test_atelie_limita_corpo_antes_de_ler(servidor):
     assert resposta.status == 413
 
 
+def _folha_recortador():
+    imagem = Image.new("RGB", (120, 80), "#ff00ff")
+    for caixa, cor in [((12, 18, 30, 42), (32, 64, 192)), ((38, 18, 56, 42), (32, 64, 192)),
+                       ((80, 20, 106, 50), (224, 80, 48))]:
+        for x in range(caixa[0], caixa[2]):
+            for y in range(caixa[1], caixa[3]):
+                imagem.putpixel((x, y), cor)
+    saida = io.BytesIO()
+    imagem.save(saida, "PNG")
+    return base64.b64encode(saida.getvalue()).decode("ascii")
+
+
+def test_recortador_sobe_folha_e_devolve_previas_temporarias(servidor):
+    pedido = {"imagem": _folha_recortador(), "opcoes": {"juncao": "medio"}}
+    assert _pedir(servidor, "POST", "/api/sprites/recortar", pedido)[0].status == 401
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    resposta, bruto = _pedir(servidor, "POST", "/api/sprites/recortar", pedido, token)
+    assert resposta.status == 200
+    dados = json.loads(bruto)
+    assert dados["fundo"] == "magenta" and len(dados["recortes"]) == 2
+    assert dados["recortes"][0]["tamanho"] == [60, 40]
+    resposta, previa = _pedir(servidor, "GET", dados["limpa"], token=token)
+    assert resposta.status == 200, previa
+    assert Image.open(io.BytesIO(previa)).mode == "RGBA"
+
+
 def _png_rgba(cor, tamanho=(1024, 1024)):
     imagem = Image.new("RGBA", tamanho, cor)
     imagem.putpixel((0, 0), (0, 0, 0, 0))
@@ -236,7 +263,7 @@ def test_sprites_modulares_anexa_substitui_desfaz_e_monta_previa(servidor, bibli
     dados, _ = _catalogo(servidor, token)
     assert _slot(dados, pele)["tem_anterior"] is True and _slot(dados, olhos)["tem_anterior"] is False
     assert _pedir(servidor, "POST", _rota_slot(pele, "desfazer"), {}, token)[0].status == 200
-    arquivo = biblioteca_sprites / "partes/lutador/pele/comum/_/base.png"
+    arquivo = biblioteca_sprites / "partes/lutador/pele/comum/_/v01/base.png"
     assert Image.open(arquivo).getpixel((512, 512))[:3] == (255, 0, 0)
     # Sem versao anterior, o desfazer responde em portugues e nao mexe em nada.
     resposta, bruto = _pedir(servidor, "POST", _rota_slot(pele, "desfazer"), {}, token)
@@ -276,11 +303,42 @@ def test_sprites_modulares_versoes_em_ordem_pelo_carimbo(servidor, biblioteca_sp
     slot = "lutador/boca/comum/_/neutro"
     for cor in ((10, 0, 0, 255), (20, 0, 0, 255), (30, 0, 0, 255)):
         assert _anexar(servidor, token, slot, cor, substituir=True)[0].status == 200
-    arquivo = biblioteca_sprites / "partes/lutador/boca/comum/_/neutro.png"
+    arquivo = biblioteca_sprites / "partes/lutador/boca/comum/_/v01/neutro.png"
     nomes = [v.name for v in manifesto_sprites.versoes(arquivo)]
     assert len(nomes) == 2 and nomes == sorted(nomes) and all(len(n) == 24 for n in nomes)
     assert _pedir(servidor, "POST", _rota_slot(slot, "desfazer"), {}, token)[0].status == 200
     assert Image.open(arquivo).getpixel((512, 512))[0] == 20
+
+
+def test_sprites_modulares_nova_variante_ganha_id_e_nao_mistura_carinha(servidor, biblioteca_sprites):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    slot = "lutador/olhos/comum/_/neutro"
+    assert _anexar(servidor, token, slot, (10, 10, 10, 255))[0].status == 200
+    resposta, bruto = _pedir(servidor, "POST", _rota_slot(slot, "anexar"),
+                              {"imagem": _png_rgba((20, 20, 20, 255)), "opcoes": {"nova": True}}, token)
+    assert resposta.status == 200
+    dados, _ = _catalogo(servidor, token)
+    assert _slot(dados, slot)["variantes"] == ["v01", "v02"]
+    assert (biblioteca_sprites / "partes/lutador/olhos/comum/_/v02/neutro.png").is_file()
+
+
+def test_recortador_manda_nova_na_url_e_vira_variante(servidor, biblioteca_sprites):
+    """Integracao recortador + guarda-roupa: `anexar?nova=1` cria a proxima vNN
+    (antes do guarda-roupa a API recusava com 409) e nunca troca a v01."""
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    slot = "lutador/olhos/comum/_/neutro"
+    assert _anexar(servidor, token, slot, (10, 10, 10, 255))[0].status == 200
+    for cor in ((20, 20, 20, 255), (30, 30, 30, 255)):
+        resposta, bruto = _pedir(servidor, "POST", _rota_slot(slot, "anexar") + "?nova=1",
+                                  {"imagem": _png_rgba(cor)}, token)
+        assert resposta.status == 200, bruto
+    dados, _ = _catalogo(servidor, token)
+    assert _slot(dados, slot)["variantes"] == ["v01", "v02", "v03"]
+    base = biblioteca_sprites / "partes/lutador/olhos/comum/_"
+    assert Image.open(base / "v01/neutro.png").getpixel((512, 512))[0] == 10
+    assert Image.open(base / "v03/neutro.png").getpixel((512, 512))[0] == 30
 
 
 def test_sprites_modulares_contadores_seguem_o_contrato(servidor, biblioteca_sprites):

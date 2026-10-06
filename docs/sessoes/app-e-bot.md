@@ -1,5 +1,12 @@
 # App do celular e bot do Telegram
 
+## Sprites: guarda-roupa (06/10/2026)
+
+As partes de lutador agora são coleções em `v01`, `v02` etc. O painel pode
+criar uma variante nova e o resolvedor sorteia a mesma combinação para cada
+personagem até que o guarda-roupa a fixe. O formato, a migração e a API estão
+em `docs/sprites/CONTRATO_SLOTS.md`.
+
 <!-- decisoes:inicio -->
 ## Decisões do Adrian (gerado — não edite à mão)
 
@@ -2505,6 +2512,21 @@ sem resposta atrasada e a folha do Godot. Capturas claro/escuro em
 
 Importar as artes antigas: CONTRATO_SLOTS § "Importar as artes antigas"
 (o capacete do Berserker é acessório de cabeça, encaixado pelo arco).
+
+### Recortar folha (06/10/2026)
+
+Fica no Ateliê, logo depois de **Montar sprites**, pois o destino natural de
+cada recorte é uma variante de uma peça modular. No celular o Adrian escolhe a
+folha da galeria, vê “fundo verde” ou “fundo magenta”, a folha limpa e a grade
+de recortes em xadrez; pode desmarcar itens e refazer com junção pouco, médio
+ou muito. Os botões têm ao menos 44 px.
+
+`POST /api/sprites/recortar` só guarda prévias na memória do aparelho e devolve
+as URLs autenticadas da folha limpa e dos PNGs. O envio das escolhas usa o
+contrato `anexar?nova=1` (e `opcoes.nova=true`): com o guarda-roupa de
+variantes integrado (casca v50), cada recorte vira a próxima `vNN` da peça,
+sem substituir a arte-base. Peça que não é de lutador não tem coleção: o anexo
+cai no destino único e, se já houver arte, pede confirmação (409) como antes.
 
 # Aba Equipe
 

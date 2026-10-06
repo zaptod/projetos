@@ -164,6 +164,27 @@ peça de olhos inclui o brilho do olho e a piscada (o Godot não pisca a peça).
 
 ---
 
+### 2.4 Recortador de folha verde ou magenta
+
+No Ateliê, **Recortar folha** recebe PNG ou JPG cuja borda é verde `#00FF00`
+ou magenta `#FF00FF` liso. Qualquer outra borda é recusada com “o fundo
+precisa ser verde ou magenta liso”. A remoção começa pela borda: uma cor
+parecida, fechada dentro da arte, fica. A borda semitransparente é
+descontaminada para não deixar halo; o painel avisa se sobrar muita cor-chave
+dentro de algum desenho.
+
+Cada componente conectado vira uma peça; `pouco`, `médio` e `muito` escolhem
+a distância usada para juntar pupilas, sobrancelhas e outros pedaços próximos.
+Poeira isolada é descartada. A prévia mantém a caixa justa com margem e, ao
+escolher uma peça do lutador, encaixa proporcionalmente no gabarito 1024×1024
+na zona de §2.3 (por exemplo, o par de olhos em 480..645 × 340..684).
+
+Mandar recortes cria **variantes**, nunca troca a arte-base: o cliente usa
+`POST /api/sprites/modulares/<slot>/anexar?nova=1` com PNG transparente. A
+coleção de variantes é dona de interpretar `nova=1` (ou `variante=<id>`);
+uma instalação sem esse gerenciador deve recusar o pedido em vez de sobrescrever
+o slot.
+
 ## 3. O esquema de um slot
 
 Cada slot é um objeto no manifesto. Exemplo completo em `slots_exemplo.json`.
@@ -209,14 +230,29 @@ Cada slot é um objeto no manifesto. Exemplo completo em `slots_exemplo.json`.
 **Uma árvore nova, só de partes, descoberta pelo NOME** (a mesma filosofia da `biblioteca.gd`: sem catálogo para editar):
 
 ```
-palco/biblioteca/partes/<grupo>/<parte>/<nivel>/<alvo>/<estado>.png   (+ .json)
-     ex.: partes/lutador/pele/comum/_/base.png
-          partes/lutador/olhos/classe/berserker_furia/neutro.png
+palco/biblioteca/partes/lutador/<parte>/<nivel>/<alvo>/<variante>/<estado>.png (+ .json)
+     ex.: partes/lutador/pele/comum/_/v01/base.png
+          partes/lutador/olhos/classe/berserker_furia/v02/neutro.png
           partes/skill/projetil/skill/bola_de_fogo/base.png
           partes/arma/arma/estilo/katana/base.png
 ```
 
 - O nível `comum` usa `_` como alvo.
+- Uma **variante** é um id curto e estável (`v01`, `v02`...); seu rótulo é
+  opcional e não participa do caminho. Estados ausentes caem no neutro da
+  mesma variante, nunca em outra variante.
+- `palco/biblioteca/partes/guarda_roupa.json` guarda escolhas fixadas no
+  formato `{ "personagem": { "olhos": "v02" } }`. Sem escolha fixa, o jogo
+  sorteia uma variante de modo determinístico com `personagem:parte`, no nível
+  mais específico que tenha variantes.
+- Migração: um PNG antigo em `<alvo>/<estado>.png`, inclusive sua pasta
+  `.historico`, vai para `v01/<estado>.png` sem sobrescrever uma `v01` já
+  existente. `python -m neural_fights.tools.manifesto_sprites importar-antigas`
+  executa essa migração antes de importar as artes antigas.
+- A API de anexo aceita `opcoes.variante="v02"` para uma variante existente ou
+  `opcoes.nova=true` para criar a próxima variante. Isso também é o contrato
+  usado pelo recortador de folhas; PNGs múltiplos equivalem a anexos novos
+  sucessivos.
 - **Para o que o palco JÁ procura** (arma, skill, evento, camadas de estado), o painel grava também a **cena-embrulho** no caminho de hoje. Ela é uma `.tscn` de 1 quadro com `folha_animada.gd` (ou `peca.gd` + Sprite2D, para a arma), apontando para o PNG da árvore `partes/`. A Oficina já gera esse embrulho (`painel/sprites/exportar.py:256-357`).
   - Com isso, arma, skill, efeito e camada de estado anexados aparecem **sem mudar uma linha do Godot**.
 - **O `sprites_usuario/` do Ateliê** (catálogo por animação de lado, `catalogo.json`) não serve para a bolinha modular. O painel novo usa `partes/`. Ver PERGUNTAS 6.
