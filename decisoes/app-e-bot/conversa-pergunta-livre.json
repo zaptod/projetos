@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-a28fbae4",
+      "em": "2026-10-06T07:21:47",
+      "evento": "2026-10-06T07:21:41",
+      "linha": 130,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "modelo-decide",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Desde 06/10 (04h) a conversa responde como gente: saudação, 'orquestrador?' e 'o que você está fazendo?' recebem resposta em segundos e nunca entram na fila. Qualquer outro texto vira pedido para a equipe e recebe na hora 'Entendi: ... começa em uns X min'. A resposta de verdade a uma pergunta só vem quando um trabalhador pega o pedido (com o Claude acima do limite, pode demorar horas). Para que serve: decidir se o chat responde na hora também as perguntas livres.",
   "criado": "2026-10-06T04:12:37.902093",
   "depende_de": [],
