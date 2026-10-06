@@ -133,6 +133,14 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    saber") = a rodada **não publica**, a ficha fica e o aviso pede para
    conferir os canais e apagar a ficha. Ficha que não existe = segue.
    Voo em `escolhido` (antes da entrega) **não** pousa: nada subiu.
+   **Queda de energia**: a ficha é gravada com flush + `os.fsync` no
+   `.tmp` antes do `os.replace`, e a anterior vira `postar__rodada.dona.json.bak`
+   (troca atômica). Quem pega a trava decide pela principal; se ela sumiu
+   ou não serve (vazia, só NUL, voo torto), pela `.bak` (`_voo_anterior`):
+   `.bak` com voo `entregue`/`clicou` → "a conferir"; `.bak` sem voo →
+   segue e publica. Só bloqueia quando **nenhuma das duas** responde (o
+   aviso pede para conferir os canais e apagar as duas). Sem principal e
+   sem `.bak` (primeira rodada) → segue.
    **Pulso**: no processo dono, `sys.stdout` é `_SaidaComPulso`; toda linha
    (as do postar e as dos publicadores, que narram cada passo) renova o
    pulso, gravado no máximo a cada 30 s, e a postagem pulsa antes de cada
@@ -601,6 +609,17 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   cada `FALA_DO_UPLOAD_S` (60 s), sem mudar a espera; a frase não contém
   "arquivo entregue" (teste). Testes em `FichaAnteriorSemDonaVivaTests` e
   `UploadQueFalaTests`. Mutação: 25 regras, 25 derrubam teste.
+  **Conferente do 78112e5** (aprovado para as 17:57, que rodou com ele:
+  h51 p04 e duelo_00052): `_gravar_ficha` não fazia flush/fsync — uma
+  queda logo depois do `os.replace` podia deixar a ficha vazia ou só de
+  NUL, e então todo horário seguinte travava (saída 1) até alguém apagar o
+  arquivo; este PC já caiu em 11/09. → fsync + `.bak` (ver §1). Testes em
+  `FichaAnteriorSemDonaVivaTests`: principal vazia + `.bak` com voo
+  clicou → marca e leva outra; principal só NUL + `.bak` sem voo →
+  publica; as duas ilegíveis → não publica; principal vazia sem `.bak` →
+  não publica; só a `.bak` (queda entre as trocas) → decide por ela; voo
+  torto na principal + `.bak` boa → segue; a gravação faz fsync e deixa a
+  anterior na `.bak`. Mutação: 29 regras, 29 derrubam teste.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois

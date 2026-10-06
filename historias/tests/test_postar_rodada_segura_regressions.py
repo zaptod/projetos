@@ -312,10 +312,11 @@ class _BaseDaRodada(unittest.TestCase):
         m.INTERVALO_DE_OLHAR_A_DONA_S = 0.2
         m._cabe_antes_do_proximo = lambda *a, **k: True
         # Ficha velha de outro teste nao pode decidir este.
-        try:
-            m._arquivo_da_dona().unlink()
-        except FileNotFoundError:
-            pass
+        for velha in (m._arquivo_da_dona(), m._arquivo_da_reserva()):
+            try:
+                velha.unlink()
+            except FileNotFoundError:
+                pass
 
     def _outro_processo(self, segundos: float):
         from builds import travas
@@ -843,6 +844,67 @@ class FichaAnteriorSemDonaVivaTests(_BaseDaDona):
         self.assertFalse(self.m._arquivo_da_dona().exists())
         self.assertEqual(0, self.m.main([]))
         self.assertEqual([self.VOO], self.escolhidos)
+
+    # --- queda de energia na gravacao (conferente do 78112e5) ------------
+    def _reserva(self, conteudo):
+        caminho = self.m._arquivo_da_reserva()
+        if isinstance(conteudo, bytes):
+            caminho.write_bytes(conteudo)
+        else:
+            caminho.write_text(json.dumps(conteudo), encoding="utf-8")
+
+    def test_principal_vazia_e_bak_com_voo_clicou_pousa(self):
+        self._ficha(b"")
+        self._reserva(dict(self.BOA, em_voo=self._voo("clicou")))
+        self.assertEqual(0, self.m.main([]))
+        self.assertIn(self.VOO, self._marcados())
+        self.assertEqual([self.OUTRO], self.escolhidos)
+
+    def test_principal_so_de_NUL_e_bak_sem_voo_segue_e_publica(self):
+        self._ficha(b"\x00" * 205)
+        self._reserva(dict(self.BOA, em_voo=None))
+        self.assertEqual(0, self.m.main([]))
+        self.assertNotIn(self.VOO, self._marcados())
+        self.assertEqual([self.VOO], self.escolhidos)
+
+    def test_principal_e_bak_ilegiveis_nao_publica(self):
+        self._ficha(b"\x00" * 205)
+        self._reserva(b"")
+        self.assertEqual(1, self.m.main([]))
+        self.assertEqual([], self.ordem)
+        self.assertIn("apague as duas fichas", self.avisos[0][0]["motivo"])
+
+    def test_principal_vazia_sem_bak_nao_publica(self):
+        """Nada responde: nao da para saber (ficha VAZIA nao e "sem ficha")."""
+        self._ficha(b"")
+        self.assertEqual(1, self.m.main([]))
+        self.assertEqual([], self.ordem)
+
+    def test_principal_sumiu_no_meio_da_troca_decide_pela_bak(self):
+        """Queda entre as duas trocas: so a `.bak` existe."""
+        self._reserva(dict(self.BOA, em_voo=self._voo("entregue")))
+        self.assertEqual(0, self.m.main([]))
+        self.assertIn(self.VOO, self._marcados())
+        self.assertEqual([self.OUTRO], self.escolhidos)
+
+    def test_voo_torto_na_principal_e_bak_boa_decide_pela_bak(self):
+        self._ficha(dict(self.BOA, criado="ontem", em_voo={"etapa": "x"}))
+        self._reserva(dict(self.BOA, em_voo=None))
+        self.assertEqual(0, self.m.main([]))
+        self.assertEqual([self.VOO], self.escolhidos)
+
+    def test_a_gravacao_faz_fsync_e_guarda_a_anterior(self):
+        from unittest import mock
+        self.m._linha = lambda *_a, **_k: None
+        with mock.patch.object(os, "fsync", wraps=os.fsync) as fsync:
+            self.m._gravar_ficha({"n": 1})
+            self.m._gravar_ficha({"n": 2})
+        self.assertEqual(2, fsync.call_count)
+        ler = lambda c: json.loads(c.read_text(encoding="utf-8"))  # noqa: E731
+        self.assertEqual({"n": 2}, ler(self.m._arquivo_da_dona()))
+        self.assertEqual({"n": 1}, ler(self.m._arquivo_da_reserva()))
+        sobras = list(self.m._arquivo_da_dona().parent.glob("*.tmp"))
+        self.assertEqual([], sobras)
 
 
 class UploadQueFalaTests(unittest.TestCase):

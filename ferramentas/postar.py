@@ -4341,11 +4341,29 @@ def _arquivo_da_dona():
     return travas._pasta() / f"{TRAVA_DA_RODADA}.dona.json"
 
 
+def _arquivo_da_reserva():
+    """A ficha ANTERIOR (`.bak`): a que vale se a principal se perder."""
+    caminho = _arquivo_da_dona()
+    return caminho.with_name(f"{caminho.name}.bak")
+
+
 def _gravar_ficha(dados: dict) -> None:
-    """Escrita ATOMICA: `.tmp` + `os.replace` (nunca meia ficha no disco)."""
+    """Escrita ATOMICA e DURAVEL, com a anterior guardada em `.bak`.
+
+    `.tmp` com flush + `os.fsync` ANTES do `os.replace` (conferente do
+    78112e5): sem o fsync, uma queda de energia logo depois da troca podia
+    deixar a ficha vazia ou cheia de NUL — e este PC ja caiu (11/09). A
+    principal de antes vira `.bak` (troca atomica tambem), e quem le decide
+    pela `.bak` quando a principal nao serve (`_voo_anterior`).
+    """
     caminho = _arquivo_da_dona()
     temporario = caminho.with_name(f"{caminho.name}.{os.getpid()}.tmp")
-    temporario.write_text(json.dumps(dados), encoding="utf-8")
+    with open(temporario, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(dados))
+        fh.flush()
+        os.fsync(fh.fileno())
+    if caminho.exists():
+        os.replace(caminho, _arquivo_da_reserva())
     os.replace(temporario, caminho)
 
 
@@ -4483,9 +4501,9 @@ def _ficha_valida(dados) -> tuple:
     return dict(dados, horario_dt=horario), None
 
 
-def _ler_dona() -> tuple:
+def _ler_dona(caminho=None) -> tuple:
     """(ficha valida ou None, problema ou None). Arquivo ausente: (None, None)."""
-    caminho = _arquivo_da_dona()
+    caminho = caminho or _arquivo_da_dona()
     if not caminho.is_file():
         return None, None
     try:
@@ -4495,7 +4513,55 @@ def _ler_dona() -> tuple:
     return _ficha_valida(dados)
 
 
-def _voo_da_ficha_invalida() -> tuple:
+def _voo_da_ficha(caminho) -> tuple:
+    """(estado, voo, ficha valida ou None, problema) de UM arquivo de ficha.
+
+    estado: "ausente" (o arquivo nao existe), "sei" (da para afirmar qual
+    era o voo, inclusive "nenhum") ou "nao_sei" (vazio, NUL, ilegivel, voo
+    torto).
+    """
+    if not caminho.is_file():
+        return "ausente", None, None, None
+    dona, problema = _ler_dona(caminho)
+    if dona is not None:
+        return "sei", dona.get("em_voo"), dona, None
+    voo, sei = _voo_da_ficha_invalida(caminho)
+    return ("sei" if sei else "nao_sei"), voo, None, problema
+
+
+def _voo_anterior() -> tuple:
+    """(sei?, voo, ficha para o aviso, texto do bloqueio) da rodada anterior.
+
+    Principal primeiro; se ela sumiu ou nao da para saber, a `.bak`
+    (conferente do 78112e5: queda de energia no meio da gravacao). So
+    bloqueia quando nenhuma das duas responde. Sem principal e sem `.bak`
+    e a primeira rodada: segue.
+    """
+    principal, reserva = _arquivo_da_dona(), _arquivo_da_reserva()
+    estado, voo, dona, problema = _voo_da_ficha(principal)
+    if problema:
+        _avisar_ficha_invalida(problema)
+    if estado == "sei":
+        return True, voo, dona or {"em_voo": voo}, ""
+    estado_b, voo_b, dona_b, problema_b = _voo_da_ficha(reserva)
+    if estado == "ausente" and estado_b == "ausente":
+        return True, None, None, ""
+    if estado_b == "sei":
+        if estado == "nao_sei":
+            _linha("[postar] a ficha da trava nao serve; decidi pela "
+                   f"anterior ({reserva.name}).")
+        return True, voo_b, dona_b or {"em_voo": voo_b}, ""
+    return False, None, None, (
+        f"a ficha da rodada anterior ({principal}) "
+        + ("sumiu" if estado == "ausente" else f"esta invalida ({problema})")
+        + f" e a reserva ({reserva.name}) "
+        + ("nao existe" if estado_b == "ausente"
+           else f"tambem nao serve ({problema_b})")
+        + "; nao da para saber se havia video no ar e este horario NAO "
+        "publicou. Confira os canais e apague as duas fichas para liberar")
+
+
+def _voo_da_ficha_invalida(caminho=None) -> tuple:
     """(voo que da para pousar ou None, sei?) de uma ficha que NAO validou.
 
     `sei` e False quando nao da para afirmar que nao havia voo: arquivo
@@ -4504,7 +4570,8 @@ def _voo_da_ficha_invalida() -> tuple:
     nao pousa (nada foi entregue); sem `em_voo`, nao havia voo.
     """
     try:
-        dados = json.loads(_arquivo_da_dona().read_text(encoding="utf-8"))
+        dados = json.loads((caminho or _arquivo_da_dona()).read_text(
+            encoding="utf-8"))
     except Exception:                                          # noqa: BLE001
         return None, False
     if not isinstance(dados, dict):
@@ -4773,24 +4840,14 @@ def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
                "publico.")
         vez["minha"] = False
     if vez["minha"]:
-        anterior, problema = _ler_dona()
-        if problema:
-            # FICHA QUE EXISTE E NAO VALIDA (conferente do 9025da2): o voo
-            # dela nao pode ser ignorado. Se ainda da para ler um voo
-            # inteiro, ele pousa como qualquer outro; se nao da para saber,
-            # nada sai e a ficha fica para uma pessoa olhar.
-            _avisar_ficha_invalida(problema)
-            voo, sei = _voo_da_ficha_invalida()
-            anterior = {"em_voo": voo} if voo else None
-            if not sei:
-                vez["minha"] = False
-                vez["voo_preso"] = (
-                    f"a ficha da rodada anterior ({_arquivo_da_dona()}) esta "
-                    f"invalida ({problema}) e nao da para saber se havia "
-                    "video no ar; este horario NAO publicou. Confira os "
-                    "canais e apague a ficha para liberar")
-        if not vez["minha"]:
-            pass
+        # FICHA QUE NAO SERVE (conferentes do 9025da2 e do 78112e5): o voo
+        # dela nao pode ser ignorado. Principal, depois a `.bak`; voo
+        # inteiro pousa como qualquer outro; se nenhuma das duas diz, nada
+        # sai e as fichas ficam para uma pessoa olhar.
+        sei, _voo, anterior, bloqueio = _voo_anterior()
+        if not sei:
+            vez["minha"] = False
+            vez["voo_preso"] = bloqueio
         elif _pousar_voo_perdido(anterior):
             _gravar_dona(tipo)
         else:
