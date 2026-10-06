@@ -3,7 +3,15 @@
   "contexto": "Em 05/10 o título de publicação deixou de repetir a série no começo (6184587: 25 títulos consertados, ex. 'As Três Comportas — As Três Comportas — Parte 1: …' virou 'As Três Comportas — A Represa Aguenta (Parte 1/6)'). Sobraram 5 com a série no MEIO do título da parte: 'TÚMULO 214 — A Mulher do Túmulo 214', 'O Quarto 12 — A Mulher do Quarto 12', 'Rua Sete — A Noite em que a Rua Sete Entendeu', 'Última Hora — O Passageiro da Última Hora', 'Rua do Meio — A Rainha da Rua do Meio'. Serve para decidir o formato do título que vai ao YouTube/TikTok e à capa.",
   "criado": "2026-10-05T23:16:36.820682",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-06T02:34:01",
+      "opcao": "tirar",
+      "origem": "app"
+    }
+  ],
   "id": "titulo-marca-no-meio",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "Em 5 partes o título da parte repete o nome da série no meio (ex.: 'TÚMULO 214 — A Mulher do Túmulo 214 (Parte 1/5)'). Tiro a marca da frente nesses casos?",
   "projeto": "historias",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Títulos com o nome da série no meio",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-06T02:34:01",
+    "opcao": "tirar"
+  }
 }
