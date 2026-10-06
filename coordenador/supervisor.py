@@ -230,7 +230,7 @@ class Supervisor:
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
                  cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None,
-                 gerente_equipe=None, pedidos=None, aplicar_app=None, conversa=None):
+                 gerente_equipe=None, pedidos=None, aplicar_app=None, conversa=None, obsidian=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         self.iniciar = iniciar or self._iniciar
@@ -267,6 +267,9 @@ class Supervisor:
         # resposta nao esperar um `passo` lento dos pedidos (contratar leva ate
         # ~28 s) nem a fila de trabalho
         self.conversa = conversa
+        # O cofre e secundario: se nao existir ou estiver sincronizando, a
+        # producao segue normalmente. A propria rotina decide se houve mudanca.
+        self.obsidian = obsidian
         self.equipe = {}
         # a esteira de sprites idem: so o `montar()` de producao a liga
         self.esteira = esteira
@@ -676,6 +679,11 @@ class Supervisor:
         self.assembleia_em = agora
         self.em_fundo("assembleia", lambda: self.assembleia())
 
+    def atualizar_obsidian(self):
+        """Atualiza as notas geradas sem deixar o pulso esperar pelo disco."""
+        if self.obsidian:
+            self.em_fundo("obsidian", self.obsidian)
+
     def pedir_reinicio(self, nome):
         """O vigia aplicou codigo deste servico: reinicia no proximo momento seguro."""
         if nome in self.servicos:
@@ -709,6 +717,7 @@ class Supervisor:
             self.processar_comandos()
             self.processar_conversa()
             self.avancar_assembleia()
+            self.atualizar_obsidian()
             self.gravar(self.resumo())
             return
         for nome in self.servicos:
@@ -725,6 +734,7 @@ class Supervisor:
         self.gerenciar_equipe()
         self.rodar_esteira()
         self.avancar_assembleia()
+        self.atualizar_obsidian()
         self.gravar(self.resumo())
 
     def resumo(self):

@@ -1,0 +1,3 @@
+// Lixo do Android (miniaturas/lixeira do gerenciador de arquivos) - nao sincroniza
+(?d).Android_*
+.obsidian/workspace*.json

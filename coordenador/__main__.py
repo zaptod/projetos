@@ -87,13 +87,15 @@ def montar() -> Supervisor:
     from .vigia_trabalho import VigiaTrabalho
     from .equipe import GerenteEquipe
     from .supervisor import ciclo_das_esteiras
+    from ferramentas.obsidian import atualizar_automaticamente
     from ias.assembleia import avancar as avancar_assembleia
     # 04/10/2026: TODO comando do app e aplicado no pulso (capacidade, fila,
     # parar, modelos; a mensagem vira pedido), sem a sessao do VS Code
     s = Supervisor(comandos=pendentes, aplicar=aplicado, aplicar_app=aplicar_pelo_servidor,
                    cerebro=cerebro.atender, pedidos=pedidos.passo,
                    conversa=pedidos.atender_conversa,
-                   esteira=ciclo_das_esteiras, assembleia=avancar_assembleia)
+                   esteira=ciclo_das_esteiras, assembleia=avancar_assembleia,
+                   obsidian=atualizar_automaticamente)
     s.vigia_trabalho = VigiaTrabalho(
         avisar=s.avisar, evento=lambda tipo, texto: s.evento("", tipo, texto),
         seguro=lambda: s.seguro(""), pedir_reinicio=s.pedir_reinicio)

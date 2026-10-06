@@ -1,0 +1,12 @@
+filters:
+  and:
+    - file.folder == "01 💡 Ideias"
+views:
+  - type: table
+    name: Por estado
+    groupBy:
+      property: estado
+      direction: ASC
+    order:
+      - estado
+      - file.name
