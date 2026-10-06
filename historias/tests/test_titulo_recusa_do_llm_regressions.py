@@ -173,13 +173,29 @@ class OReparoTrocaOTitulo(_OutputsTemporario):
     BIBLIA = {"partes": [{"n": 1, "titulo": "Vila Bela — Parte 1: O Forasteiro"},
                          {"n": 2, "titulo": "Vila Bela — Parte 2: A Quermesse"}]}
 
+    def _pipeline(self):
+        # O render de verdade redesenha a capa da parte; desde 06/10/2026 o
+        # reparo do titulo confere que ela saiu (ver
+        # test_recusa_no_trecho_regressions).
+        pipeline = mock.Mock()
+        capa = self.pasta / "capa_p02.jpg"
+        pipeline.render.side_effect = (
+            lambda *_a, **_k: capa.write_bytes(b"capa nova"))
+        return pipeline
+
+    def _fila_completa(self):
+        from contos.imagens import fila
+        return mock.patch.object(fila, "resumo", return_value={
+            "total": 3, "prontas": 3, "faltam": 0, "completa": True})
+
     def _reparar(self, erros):
         from contos.pipeline import reparo
-        pipeline = mock.Mock()
+        pipeline = self._pipeline()
         video = SimpleNamespace(fonte_id=ID, parte=2, id=f"{ID}:celular:p02",
                                 caminho=self.pasta / "final_celular_p02.mp4")
         with mock.patch.object(reparo, "insistente", return_value=False), \
                 mock.patch.object(reparo, "_anotar", return_value=1), \
+                self._fila_completa(), \
                 mock.patch.object(reparo, "_so_vistoria",
                                   return_value={"aprovado": True,
                                                 "motivos": []}):
@@ -221,7 +237,8 @@ class OReparoTrocaOTitulo(_OutputsTemporario):
         video = SimpleNamespace(fonte_id=ID, parte=2, id=f"{ID}:celular:p02",
                                 caminho=self.pasta / "final_celular_p02.mp4")
         with mock.patch.object(reparo, "insistente", return_value=False), \
-                mock.patch.object(reparo, "_anotar", return_value=1):
+                mock.patch.object(reparo, "_anotar", return_value=1), \
+                self._fila_completa():
             resultado = reparo.reparar(
                 video, [f"{R.TITULO_RECUSADO}: \"x\""], pipeline=pipeline,
                 log=lambda *_a: None)

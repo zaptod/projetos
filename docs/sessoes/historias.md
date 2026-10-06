@@ -384,8 +384,7 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   com a recusa, antes de `_perguntar_sem_recusa`; o parser a leu como título e as cenas
   vieram do `cont1`). Catálogo, capa e mp4 a mostravam; nada barrava. Medido com
   `e_recusa_enlatada` no acervo inteiro: **1 título em 294 partes, 0 narrações em 4110
-  cenas**, 0 no ledger. Agora: `roteiro.recusa_no_titulo` / `cenas_com_recusa` (a mesma
-  pergunta do detector, feita ao pedaço do roteiro); a **vistoria** dá erro
+  cenas**, 0 no ledger. Agora: `roteiro.recusa_no_titulo` / `cenas_com_recusa`; a **vistoria** dá erro
   (`R.TITULO_RECUSADO`, sem "roteiro:" — tem conserto) e o **reparo** põe o título do plano
   da bíblia (`R.titulo_do_plano`; sem ele, só a marca), guarda o velho em
   `titulo_recusado` e re-renderiza (mp4 e capa; render que falha devolve o título velho, senão
@@ -395,6 +394,65 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   **geração**, `gerar._titulo_aceito` troca o título recusado pelo do plano (os dois
   recusados = `RecusaEnlatada`) e `_sem_recusa_nas_cenas` falha a parte. Testes:
   `tests/test_titulo_recusa_do_llm_regressions.py`.
+  **Três defeitos do conferente (06/10/2026)**, testes em
+  `tests/test_recusa_no_trecho_regressions.py`:
+  1. **Detector de trecho.** `e_recusa_enlatada` é a pergunta da **resposta inteira** e, em
+     cada narração, marcava fala de personagem ("Eu fui criado pela minha avó em Vila Bela.",
+     "— Não consigo ajudar você, Clara — disse ele", "Não tenho como te ajudar agora,
+     filho."): narração marcada = parte barrada para sempre. Agora é
+     `R.e_recusa_no_trecho(texto, titulo=False|True)`, com **duas perguntas de custos
+     opostos** (cinco rodadas do conferente):
+     - **título** (`recusa_no_titulo`, `titulo_do_plano`, `gerar._titulo_aceito`): **união
+       pura, sem exceção nenhuma** (decisão do coordenador, 06/10/2026):
+       `e_recusa_enlatada(texto) OR _novo_no_titulo(texto)`. Falso positivo no título só
+       troca pelo título do plano (custa pouco; o acervo tem 0); falso negativo leva a recusa
+       ao ar — e toda exceção posta no ramo da produção deixou recusa real passar
+       (conferente8: "Como disse antes, não posso ajudar com isso.", "Olá, Adrian, não posso
+       ajudar com isso.", 124 em Title Case; 284 de 2142 variações). O novo soma o que a
+       produção não pega: identidade + negativa, ou a 1ª frase do título (depois da marca, de
+       "Parte N:", de interjeição, de "Como (eu) disse,"/"As I've said,", de enfeite — "**",
+       emoji — e de um nome depois da desculpa) ser uma recusa **completa**, ancorada no começo
+       e no fim dela ("Peço desculpas, mas não posso escrever isso.", "I cannot create content
+       that depicts violence.", "Desculpe, ChatGPT não pode ajudar com isso.").
+     - **narração** (`cenas_recusadas`, vistoria, `_sem_recusa_nas_cenas`): alta precisão,
+       **não consulta a produção** (a recusa de verdade, a resposta inteira, já é pega antes
+       por `_perguntar_sem_recusa`). Só marca a recusa **dirigida a quem pediu**: identidade
+       de assistente em 1ª pessoa numa frase que não é pergunta ("sou só um modelo de
+       linguagem", "Como uma IA,", "sou o Gemini"; sem "claude", nome de gente; "não sou uma
+       IA" nunca conta) **e** a recusa do pedido ("não posso ajudar com isso / esse pedido /
+       esse conteúdo", "Gemini não pode ajudar com isso", "além das minhas capacidades").
+       As **exceções moram só aqui**: fala (travessão, aspas, verbo de fala na 3ª pessoa —
+       "como (eu|já) disse", "o que disse", "conforme disse", "as I (have|already) said" são o
+       próprio assistente), vocativo (", Pedro,", "Doutor, …") — que a **identidade de LLM
+       vence** ("Sinto muito, Adrian. Sou apenas um modelo de linguagem e não posso ajudar com
+       isso." é recusa; "Sou uma inteligência artificial, Doutor, …" continua fala) — e o teto
+       de 300 caracteres.
+     - **Corpus fixo**: `tests/dados/recusa_no_trecho_corpus.json`, 321 linhas (titsim4/6/7,
+       regressão, testemunhas, `fala_vocativo` do conferente8, mutantes, RECUSAS_MEDIDAS e as
+       listas daqui), cada uma com modo, `esperado` (a verdade) e fonte. **45 linhas com
+       `obtido_aceito`**, todas no título: 44 títulos legítimos que a produção marca (falso
+       positivo herdado e aceito) e 1 do ramo novo (fala com travessão e "brincou", sem
+       exceção no título). Na narração não há nenhuma. `OCorpusFixo` cai se qualquer linha
+       mudar; teste-propriedade nas **3978 variações** do `propriedade.py` do conferente8
+       (produção marca 2142, o título solta **0**) e no corpus; teste com a produção dublada
+       (sim ⇒ título sim; não ⇒ título = ramo novo). 38 mutações, 38 mortas.
+
+     No acervo (58 histórias, 300 partes, 4194 cenas, 300 títulos de plano), com a união
+     pura: **0 títulos de parte, 0 títulos de plano, 0 títulos de história, 0 narrações**, 0
+     cliffhangers/CTAs; a recusa da h59 p06, em `titulo_recusado` (trocada pelo reparo de
+     produção às 02:41 de 06/10), é pega. O detector antigo (resposta inteira) não mudou.
+  2. **Imagem antes do título.** O ramo do título vinha antes da cena sem imagem: o render
+     levantava `ImagensFaltando`, o título voltava e na 3ª tentativa a parte virava
+     insistente sem gerar a imagem. Agora o título entra no **mesmo render** do conserto que
+     houver (colagem, imagem que falta — conferida no disco, `fila.resumo`, mesmo sem o erro
+     no laudo); imagem que não vem = título intocado e nada de render. Colagem **e** cena
+     faltando com título recusado: se depois de `_refazer_cenas` ainda falta imagem, é
+     "adiado" (antes: "falhou: ImagensFaltando" 3x com o título trocado e devolvido). O render
+     só pelo título (as cenas do veto não vieram) não gasta a passada do veto.
+  3. **Capa conferida.** `controller._capa` engole a exceção, e a capa velha (com a recusa)
+     subiria como miniatura. O reparo do título exige a capa refeita neste render (existe,
+     mudou e é mais nova que o início do render); senão `CapaNaoRefeita` = falha e o título
+     volta (vistoria e catálogo seguem barrando).
 - **Reparo que desfaz diz por quê** (05/10/2026): `reparo._refazer_cenas(..., motivos=)`
   dá o motivo por cena ("o <gerador> nao devolveu a imagem" / "a imagem do X veio e foi
   recusada: …") no detalhe e no `feito`, e o registro da cena em `imagens.json` volta com

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -303,9 +304,29 @@ def _titulo_recusado(erros: list) -> bool:
     return any(R.TITULO_RECUSADO in str(e) for e in erros or [])
 
 
+def _faltam_imagens(historia_id: str, parte: int) -> bool:
+    """A parte tem cena sem imagem no disco? (o que o render recusa)
+
+    E a pergunta do render (`controller._partes_com_imagens` levanta
+    `ImagensFaltando`), feita antes de trocar o titulo. Sem resposta = `False`:
+    o render pergunta de novo e falha com o motivo.
+    """
+    return bool(_faltam_na_parte(historia_id, parte))
+
+
+def _faltam_na_parte(historia_id: str, parte: int) -> int:
+    """Quantas cenas da parte estao sem imagem no disco (0 sem resposta)."""
+    from ..imagens import fila
+    try:
+        return int(fila.resumo(historia_id, parte=parte)["faltam"] or 0)
+    except Exception:                                          # noqa: BLE001
+        return 0
+
+
 def _trocar_titulo_recusado(historia_id: str, parte: int, *,
-                            log=print) -> str:
-    """Poe o titulo do plano no lugar da recusa e grava. Devolve o novo.
+                            log=print) -> str | None:
+    """Poe o titulo do plano no lugar da recusa e grava. Devolve o novo
+    (`None` se o titulo do roteiro ja nao era recusa: nada foi trocado).
 
     05/10/2026, h59 p06: o titulo era a recusa e as 14 cenas eram normais.
     O conserto nao precisa de LLM: o titulo que a biblia planejou para a
@@ -318,6 +339,10 @@ def _trocar_titulo_recusado(historia_id: str, parte: int, *,
     roteiro = R.carregar(historia_id)
     dados = R.parte_de(roteiro, parte)
     antigo = str(dados.get("titulo") or "")
+    if not R.recusa_no_titulo(roteiro, parte):
+        # O laudo era de antes: o titulo ja nao e recusa. Nada a trocar (e
+        # nada a devolver se o render falhar); o render ainda e preciso.
+        return None
     novo = R.titulo_do_plano(historia_id, parte)
     dados["titulo_recusado"] = antigo
     dados["titulo"] = novo
@@ -325,6 +350,49 @@ def _trocar_titulo_recusado(historia_id: str, parte: int, *,
     log(f"[reparo] {historia_id} p{parte}: titulo recusado trocado por "
         f"\"{novo or '(so a marca)'}\".")
     return novo
+
+
+class CapaNaoRefeita(RuntimeError):
+    """O render do titulo trocado saiu, mas a capa da parte nao foi refeita."""
+
+
+def _capa_da_parte(video, historia_id: str, parte: int) -> Path:
+    """A capa que o catalogo sobe como miniatura: ao lado do mp4."""
+    from ..roteiro import roteiro as R
+    from ..video import capa as capa_mod
+    caminho = getattr(video, "caminho", None)
+    pasta = Path(caminho).parent if caminho else R.OUTPUTS / historia_id
+    try:
+        total = len(R.carregar(historia_id).get("partes") or [])
+    except Exception:                                          # noqa: BLE001
+        total = int(getattr(video, "partes", 1) or 1)
+    return capa_mod.caminho(pasta, parte, total)
+
+
+def _assinatura(arquivo: Path):
+    try:
+        info = arquivo.stat()
+    except OSError:
+        return None
+    return (info.st_mtime_ns, info.st_size)
+
+
+def _conferir_capa_refeita(capa: Path, antes, inicio: float) -> None:
+    """Levanta `CapaNaoRefeita` se a capa nao saiu deste render.
+
+    06/10/2026 (conferente): `controller._capa` engole a excecao — um video
+    sem capa e melhor que nenhum video. Mas no conserto do titulo a capa
+    VELHA traz a recusa desenhada ("NAO CONSIGO TE AJUDAR...") e o catalogo
+    a sobe como miniatura. Capa que nao existe, que e a mesma de antes ou que
+    e mais velha que o render = o conserto nao aconteceu.
+    """
+    depois = _assinatura(capa)
+    if depois is None:
+        raise CapaNaoRefeita(f"a capa {capa.name} nao saiu do render")
+    if depois == antes or depois[0] < int((inicio - 2.0) * 1e9):
+        raise CapaNaoRefeita(
+            f"a capa {capa.name} nao foi refeita (e a de antes do render, "
+            "com o titulo recusado)")
 
 
 def _voltar_titulo_recusado(historia_id: str, parte: int) -> None:
@@ -538,27 +606,65 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
         colagens = plano_da_ia["refazer"]
         detalhe = plano_da_ia["detalhe"]
     acao = ""
-    try:
-        if _titulo_recusado(erros):
-            # O mp4 e a capa trazem o titulo na primeira imagem: trocar so no
-            # roteiro deixaria a recusa queimada no video. Por isso re-render
-            # (que redesenha a capa). Os outros motivos ficam para a proxima
-            # passada: a vistoria abaixo ainda os ve.
-            novo = _trocar_titulo_recusado(historia_id, parte, log=log)
-            try:
-                pipeline.render(historia_id, parte=parte, log=log)
-            except BaseException:
+    # O TITULO RECUSADO VAI NO MESMO RENDER DO RESTO (06/10/2026). O mp4 e a
+    # capa trazem o titulo na primeira imagem: trocar so no roteiro deixaria a
+    # recusa queimada no video, entao o titulo do plano entra logo antes do
+    # render — o do conserto que houver (colagem, imagem que falta) ou um so
+    # dele. Ate 06/10 o titulo era um ramo PROPRIO e vinha antes da imagem
+    # que falta: o render levantava `ImagensFaltando`, o titulo voltava, a
+    # tentativa era gasta e na 3a a parte virava insistente sem nunca gerar a
+    # imagem (conferente, h59 p06 com a cena 5 escondida). Imagem que nao
+    # vem = nada de trocar o titulo; render ou capa que falham = o titulo
+    # volta (ver `renderizar`).
+    titulo = _titulo_recusado(erros)
+    capa = _capa_da_parte(video, historia_id, parte) if titulo else None
+    troca = {"novo": None}
+
+    def renderizar():
+        antes = inicio = None
+        if titulo:
+            troca["novo"] = _trocar_titulo_recusado(historia_id, parte,
+                                                    log=log)
+            antes, inicio = _assinatura(capa), time.time()
+        try:
+            pipeline.render(historia_id, parte=parte, log=log)
+            if titulo:
+                _conferir_capa_refeita(capa, antes, inicio)
+        except BaseException:
+            if troca["novo"] is not None:
                 _voltar_titulo_recusado(historia_id, parte)
-                raise
-            acao = ("troquei o titulo recusado pelo do plano ("
-                    + (f"\"{novo}\"" if novo else "so a marca")
-                    + ") e re-renderizei")
-        elif colagens:
+            raise
+
+    trocadas = None
+    try:
+        if colagens:
             porque = {}
             trocadas, guardadas = _refazer_cenas(
                 pipeline, historia_id, parte, colagens,
                 headless=headless, log=log, motivos=porque)
-            if not trocadas:
+            faltando = (_faltam_na_parte(historia_id, parte) if titulo
+                        else 0)
+            if faltando:
+                # Colagem E cena sem imagem (conferente, 06/10/2026): o
+                # `pipeline.imagens` de `_refazer_cenas` ja pediu todas as
+                # pendentes da parte. Se alguma ainda falta, o render levantaria
+                # `ImagensFaltando` com o titulo trocado e devolvido, tres
+                # vezes. Adia como o ramo da imagem: titulo intocado.
+                conta = _anotar(video_id, "; ".join(str(e) for e in erros),
+                                f"ainda faltam {faltando} imagem(ns)")
+                return {"acao": "adiado", "ok": False,
+                        "detalhe": f"ainda faltam {faltando} imagem(ns); nao "
+                                   "re-renderizei (o titulo recusado fica "
+                                   "para quando elas vierem)",
+                        "motivos_por_cena": dict(porque),
+                        "tentativas": conta}
+            if not trocadas and titulo:
+                # As cenas voltaram como estavam, mas o titulo tem conserto
+                # sozinho: renderiza por ele.
+                renderizar()
+                acao = (f"as cenas {sorted(porque) or colagens} nao vieram "
+                        "(restaurei as antigas) e re-renderizei")
+            elif not trocadas:
                 # NADA de renderizar: as imagens voltaram para o lugar e o
                 # video continua como estava. Ver abaixo por que isso importa.
                 # O MOTIVO E POR CENA (05/10/2026): "o PicassoIA nao devolveu"
@@ -574,9 +680,11 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
                                       "re-renderizei")[:400],
                         "motivos_por_cena": dict(porque),
                         "tentativas": conta}
-            pipeline.render(historia_id, parte=parte, log=log)
-            acao = f"refiz as cenas {trocadas} e re-renderizei"
-        elif _tem_cena_sem_imagem(erros):
+            else:
+                renderizar()
+                acao = f"refiz as cenas {trocadas} e re-renderizei"
+        elif _tem_cena_sem_imagem(erros) or (
+                titulo and _faltam_imagens(historia_id, parte)):
             from ..imagens import fila
             pipeline.imagens(historia_id, headless=headless, parte=parte,
                              log=log)
@@ -589,17 +697,24 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
                                 f"ainda faltam {faltando} imagem(ns)")
                 return {"acao": "adiado", "ok": False,
                         "detalhe": f"ainda faltam {faltando} imagem(ns); "
-                                   "nao re-renderizei",
+                                   "nao re-renderizei"
+                                   + (" (o titulo recusado fica para quando "
+                                      "elas vierem)" if titulo else ""),
                         "tentativas": conta}
-            pipeline.render(historia_id, parte=parte, log=log)
+            renderizar()
             acao = "gerei as imagens que faltavam e re-renderizei"
-        elif _so_render(erros):
-            pipeline.render(historia_id, parte=parte, log=log)
-            acao = "re-renderizei (o mp4 estava mais velho que as imagens)"
+        elif _so_render(erros) or titulo:
+            renderizar()
+            acao = ("re-renderizei" if titulo else
+                    "re-renderizei (o mp4 estava mais velho que as imagens)")
         else:
             return {"acao": "nada", "ok": False,
                     "detalhe": "nenhum dos motivos tem conserto automatico: "
                                + "; ".join(str(e) for e in erros)[:160]}
+        if troca["novo"] is not None:
+            acao = ("troquei o titulo recusado pelo do plano ("
+                    + (f"\"{troca['novo']}\"" if troca["novo"]
+                       else "so a marca") + "); " + acao)
     except NaoRodou as exc:
         # Pipeline pausada ou conta em uso: NAO conta tentativa. Nao foi o
         # video que falhou, foi a maquina que estava ocupada.
@@ -611,6 +726,9 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
                 "detalhe": f"{type(exc).__name__}: {exc}"[:160],
                 "tentativas": conta}
 
+    # A passada do veto so e gasta se as cenas do veto foram refeitas: o
+    # render so pelo titulo (as cenas nao vieram) nao consertou o veto.
+    passada = veio_do_veto and not (colagens and not trocadas)
     if CONFIRMAR_COM_A_IA:
         olhado = _confirmar_com_a_ia(video, historia_id, parte,
                                      headless=headless, log=log)
@@ -622,14 +740,14 @@ def reparar(video, erros: list, *, pipeline=None, headless: bool = False,
         quem = "a IA" if CONFIRMAR_COM_A_IA else "a vistoria"
         conta = _anotar(video_id, "; ".join(str(e) for e in erros),
                         f"consertei mas {quem} ainda reprova: {acao}",
-                        passada=veio_do_veto)
+                        passada=passada)
         return {"acao": acao, "ok": False,
                 "detalhe": f"{quem} olhou o video consertado e ainda reprova: "
                            + "; ".join(olhado["motivos"])[:200],
                 "tentativas": conta}
 
     conta = _anotar(video_id, "; ".join(str(e) for e in erros), acao,
-                    passada=veio_do_veto)
+                    passada=passada)
     return {"acao": acao, "ok": True, "detalhe": detalhe,
             "tentativas": conta}
 

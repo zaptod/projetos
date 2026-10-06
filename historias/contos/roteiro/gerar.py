@@ -178,18 +178,23 @@ def _titulo_aceito(titulo: str, plano: dict, numero: int, log=print) -> str:
     catalogo, a capa e o mp4. Titulo recusado cai no titulo que a biblia
     planejou para a parte (o mesmo LLM, antes); se ele tambem for recusa, a
     parte FALHA (`RecusaEnlatada`) e a retomada a escreve de novo.
+
+    A pergunta e a de TITULO (`R.e_recusa_no_trecho(..., titulo=True)`,
+    06/10/2026): a da resposta inteira barrava "A Mulher que Fui Criada Para
+    Ser".
     """
-    from ..llm.texto import e_recusa_enlatada
+    def recusa(texto):
+        return R.e_recusa_no_trecho(texto, titulo=True)
 
     escolhido = titulo or (plano or {}).get("titulo") or ""
-    if not e_recusa_enlatada(escolhido):
+    if not recusa(escolhido):
         return escolhido
     reserva = str((plano or {}).get("titulo") or "")
     log(f"[serie] parte {numero}: o titulo veio com a recusa enlatada "
         f"({' '.join(escolhido.split())[:80]}); "
         + (f"fico com o do plano ({reserva})." if reserva
-           and not e_recusa_enlatada(reserva) else "e o plano nao tem outro."))
-    if reserva and not e_recusa_enlatada(reserva):
+           and not recusa(reserva) else "e o plano nao tem outro."))
+    if reserva and not recusa(reserva):
         return reserva
     raise RecusaEnlatada(
         f"o titulo da parte {numero} e a recusa enlatada e o plano nao tem "

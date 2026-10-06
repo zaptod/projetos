@@ -448,26 +448,354 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
 # da continuacao. O catalogo listava "Vila Bela — Não consigo te ajudar...
 # (Parte 6/6)", e a capa e o mp4 traziam a frase. Medido no acervo inteiro
 # com `e_recusa_enlatada`: 1 titulo em 294 partes, 0 narracoes em 4110 cenas.
-# A pergunta e a mesma do detector ("este texto e a frase fixa de 'isso eu
-# nao faco'?"), so que feita ao pedaco do roteiro que a frase ocupou.
 TITULO_RECUSADO = "o titulo da parte e uma recusa do LLM"
+
+# O DETECTOR DE TRECHO (06/10/2026). `llm.texto.e_recusa_enlatada` foi feito
+# para a RESPOSTA INTEIRA do LLM (frase curta + lista de frases) e, aplicado a
+# cada narracao, marcava fala de personagem: "Eu fui criado pela minha avo em
+# Vila Bela.", "— Nao consigo ajudar voce, Clara — disse ele", "Nao tenho
+# como te ajudar agora, filho." (achados do conferente). Narracao marcada vira
+# erro "roteiro:" sem conserto — parte barrada para sempre — e, na geracao,
+# `RecusaEnlatada` = reescrita. Sao duas perguntas, com custos opostos, e o
+# corpus fixo delas mora em `tests/dados/recusa_no_trecho_corpus.json`.
+#
+# TITULO (`titulo=True`): UNIAO PURA, SEM EXCECAO NENHUMA (decisao do
+# coordenador, 06/10/2026, depois de quatro rodadas do conferente):
+#     e_recusa_enlatada(texto)  OU  _novo_no_titulo(texto)
+# Falso positivo no titulo so troca o titulo pelo do plano (custa pouco, e o
+# acervo tem 0); falso negativo leva a recusa ao ar. Toda excecao posta no
+# ramo da producao deixou recusa real passar ("Como disse antes, nao posso
+# ajudar com isso.", "Ola, Adrian, nao posso ajudar com isso.", 124 em Title
+# Case). O NOVO soma o que a producao nao pega: a identidade + uma negativa,
+# ou a 1a frase do titulo (depois da marca, de "Parte N:", de interjeicao e de
+# enfeite — "**", emoji) ser uma recusa COMPLETA, ancorada no comeco e no fim
+# dela ("Peco desculpas, mas nao posso escrever isso.", "I cannot create
+# content that depicts violence.").
+#
+# NARRACAO (`titulo=False`): ALTA PRECISAO — o custo do falso positivo e a
+# parte barrada, e o caminho real da recusa (a resposta inteira) ja e pego
+# pelo `gerar._perguntar_sem_recusa` com o detector antigo. Nao consulta a
+# producao. Marca so a recusa DIRIGIDA A QUEM PEDIU, com as duas coisas:
+#   - a IDENTIDADE de assistente em 1a pessoa, numa frase que nao e pergunta
+#     ("sou (so) um modelo de linguagem", "sou uma IA", "Como uma IA, ...",
+#     "sou o Gemini"; sem "claude", que e nome de gente); "nao sou uma IA"
+#     nunca conta;
+#   - e a RECUSA DO PEDIDO: "nao posso/consigo ajudar com isso / esse pedido /
+#     esse conteudo", "alem das minhas capacidades", "can't help with that".
+# As EXCECOES moram so aqui: FALA (travessao, aspas, verbo de fala na 3a
+# pessoa — "como (eu|ja) disse", "o que disse", "as I (have) said" sao o
+# proprio assistente), VOCATIVO (", Pedro,", "Doutor, ...") — que a identidade
+# de LLM vence ("Sinto muito, Adrian. Sou apenas um modelo de linguagem e nao
+# posso ajudar com isso.") — e o teto de 300 caracteres.
+_IA = (r"(?:modelo(?:s)? de linguagem(?: grande)?|"
+       r"modelo(?:s)? de (?:ia|inteligencia artificial)|"
+       r"ia (?:com )?base(?:ada)? em texto|ia de (?:texto|linguagem)|"
+       r"ia|inteligencia artificial|chatbot|"
+       r"assistente (?:de|com) (?:ia|inteligencia artificial)|"
+       r"programa de computador)")
+# So o que e LLM, sem ambiguidade: e o que vence o vocativo na narracao.
+_IA_LLM = (r"(?:modelo(?:s)? de linguagem(?: grande)?|"
+           r"modelo(?:s)? de (?:ia|inteligencia artificial)|"
+           r"ia (?:com )?base(?:ada)? em texto|ia de (?:texto|linguagem))")
+_IA_EN = (r"(?:ai|a\.i\.|language model|large language model|"
+          r"ai language model|text-based ai|chatbot|ai assistant|assistant)")
+_IA_EN_LLM = (r"(?:language model|large language model|ai language model|"
+              r"text-based ai)")
+# Sem "claude": e nome de gente ("Eu sou o Claude que ela abandonou").
+_PROVEDORES = r"(?:gemini|chatgpt|deepseek|grok|bard|copilot|gpt-?\d)"
+_NAO_ANTES = r"(?<!nao )(?<!nunca )(?<!nem )"
+_INTERJEICAO = (r"(?:(?:ola|oi|hmm+|hum+|ok|okay|certo|bem|entendo|entendi|"
+                r"ah|olha|hello|hi)\b[!.,\s]*)*")
+_DESCULPA = (r"(?:(?:desculpe|desculpa|me desculpe|peco desculpas|"
+             r"pedimos desculpas|perdao|sinto muito|lamento|infelizmente|"
+             r"ainda estou aprendendo(?: sobre isso)?|i'?m sorry|i am sorry|"
+             r"sorry|unfortunately|i apologize)"
+             r"[,.!]?\s+(?:(?:e|mas|but)\s+)?)*")
+
+
+def _padroes_de_identidade(ia: str, ia_en: str) -> tuple:
+    return tuple(re.compile(p) for p in (
+        _NAO_ANTES + r"\bsou (?:apenas |so |somente |simplesmente |mais |o |"
+                     r"a )?(?:um |uma )?(?:mero |mera )?" + ia + r"\b",
+        # "Como uma IA, nao posso..." (tambem depois de "Desculpe, mas");
+        # "Como um modelo de IA poderia saber?" nao (sem virgula; pergunta).
+        r"^" + _DESCULPA + r"como (?:um |uma )?" + ia + r"\s*,",
+        _NAO_ANTES + r"\bsou o " + _PROVEDORES + r"\b",
+        r"\b" + _PROVEDORES + r", (?:um|uma) (?:modelo|ia|assistente)\b",
+        r"\b(?:i'?m|i am) (?:just |only |simply )?(?:an? )?" + ia_en + r"\b",
+        r"^as an? " + ia_en + r"\b",
+    ))
+
+
+_IDENTIDADE = _padroes_de_identidade(_IA, _IA_EN) + tuple(
+    re.compile(p) for p in (
+        r"\bfui (?:criad|programad|treinad|projetad|desenvolvid)[oa] "
+        r"(?:apenas |somente |so |unicamente )?para (?:processar|gerar|"
+        r"entender)(?: e (?:processar|gerar|entender))? (?:texto|conteudo|"
+        r"respostas)\b",
+        r"\bso (?:consigo|posso|sei) (?:processar e )?gerar texto\b",
+    ))
+_IDENTIDADE_DE_LLM = _padroes_de_identidade(_IA_LLM, _IA_EN_LLM)
+_OBJETO_DO_PEDIDO = (r"(?:com |em |a |para )?(?:isso|isto|nisso|nisto|"
+                     r"(?:esse|essa|este|esta|o seu|a sua|seu|sua) "
+                     r"(?:pedido|solicitacao|conteudo|questao|pergunta|tarefa|"
+                     r"material|tipo de \w+))\b")
+_RECUSA_DIRIGIDA = re.compile(
+    r"\bnao (?:posso|consigo|sou capaz de|tenho como) (?:te |lhe |o |a |voce )?"
+    r"(?:ajudar|auxiliar|atender|responder|gerar|criar|produzir|escrever|"
+    r"fornecer|cumprir)(?: voce)? " + _OBJETO_DO_PEDIDO +
+    # "Gemini nao pode ajudar com isso." (o assistente pelo proprio nome)
+    r"|\b" + _PROVEDORES + r" nao (?:pode|consegue) (?:te |lhe )?"
+    r"(?:ajudar|auxiliar|atender|responder|gerar|criar|produzir|escrever)"
+    r"(?: voce)? " + _OBJETO_DO_PEDIDO +
+    r"|\b(?:alem|fora) d[ao]s? minhas? (?:capacidades|habilidades|habiliades|"
+    r"funcoes)"
+    r"|\bnao tenho (?:a )?capacidade de (?:entender|processar|responder|"
+    r"ajudar|gerar|ver|assistir)"
+    r"|\bnao fui (?:programad|criad|treinad|projetad)[oa] para (?:fazer )?"
+    r"(?:isso|essas coisas|esse tipo)"
+    r"|\bnao consegui entender o que voce (?:esta )?pedi"
+    r"|\b(?:can'?t|cannot|unable to) (?:help|assist)(?: you)? with "
+    r"(?:that|this|your request)"
+    r"|\boutside (?:of )?my capabilities|\bbeyond my capabilities")
+# No titulo a identidade basta com uma negativa mais larga: a frase de
+# assistente ("nao tenho opinioes pessoais", "treinado pelo Google").
+_NEGATIVA_DE_ASSISTENTE = re.compile(
+    _RECUSA_DIRIGIDA.pattern +
+    r"|\bnao (?:posso|consigo|sou capaz de|tenho como) (?:te |lhe |o |a )?"
+    r"(?:ajudar|auxiliar|atender|responder|gerar|criar|produzir|escrever)"
+    r"|\bnao tenho (?:opinioes|opiniao|sentimentos|emocoes|crencas|"
+    r"preferencias)\b"
+    r"|\b(?:treinad|desenvolvid|criad)[oa] (?:pelo|pela) (?:google|openai|"
+    r"deepseek|anthropic|meta|xai)\b"
+    r"|\bcan'?t (?:help|assist)|\bcannot (?:help|assist|fulfill)"
+    r"|\bunable to (?:help|assist)|\btrained by (?:google|openai)\b")
+# Fala de personagem (so na narracao): travessao, aspas ou verbo de fala na
+# 3a pessoa. "Como eu disse", "como ja te disse", "como disse antes", "o que
+# disse", "conforme disse" e "as I (have|already) said" sao o proprio
+# assistente (conferente7 e conferente8).
+_MARCAS_DE_FALA = ("—", "–", "\"", "“", "”", "«",
+                   "»")
+_VERBO_DE_FALA = re.compile(
+    r"\b(?:(?<!eu )(?<!te )(?<!ja )(?<!lhe )(?<!me )(?<!como )(?<!que )"
+    r"(?<!conforme )disse|"
+    r"diz(?! respeito)|dizia(?! respeito)|dizendo|falou|falava|"
+    r"respondeu|responde|respondia|perguntou|perguntava|brincou|brincava|"
+    r"riu|ria|rindo|imitando|imitou|imitava|repetia|repetiu|repete|gritou|"
+    r"gritava|debochou|zombou|jurou|jura|sussurrou|murmurou|explicou|"
+    r"contou|retrucou|rebateu|completou|(?<!i )(?<!i've )(?<!have )"
+    r"(?<!already )(?<!as )said|says|asked|replied|laughed|joked)\b")
+# Vocativo (so na narracao): quem fala chama alguem pelo nome ou parentesco.
+_VOCATIVOS = (r"(?:filho|filha|filhinho|filhinha|mae|pai|irmao|irma|vo|vovo|"
+              r"avo|amor|querido|querida|tia|tio|mano|mana|moca|moco|senhora|"
+              r"senhor|cara|doutor|doutora|dr|dra|delegado|delegada|"
+              r"professor|professora|chefe|patrao|patroa|menina|menino|"
+              r"garoto|garota|benzinho|bebe|meu bem|meu amor|minha filha|"
+              r"meu filho)")
+_VOCATIVO_DA_LISTA = re.compile(
+    r"(?:^(?:(?:desculpe|desculpa|me desculpe|sinto muito|lamento|perdao|"
+    r"infelizmente)[,.!]?\s+)?|,\s*)(?:meu |minha )?" + _VOCATIVOS
+    + r"\s*(?=[,.!?]|$)")
+# Nome proprio entre virgulas ou no fim: ", Rafael", ", Dona Cida,". So no
+# texto com a caixa original; as palavras da propria recusa nao contam.
+_NOME_VOCATIVO = re.compile(
+    r",\s*([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*(?=[,.!?]|$)")
+_NAO_SAO_NOME = {"nao", "mas", "eu", "posso", "consigo", "sou", "isso", "com",
+                 "ajudar", "desculpe", "infelizmente", "lamento", "sinto",
+                 "muito", "apenas", "so", "um", "uma", "e", "o", "a", "ela",
+                 "ele", "voltou", "parte", "google", "openai", "but", "i",
+                 "sorry", "me", "te", "the", "that", "this"}
+
+# A frase de recusa (modo titulo, pergunta nova).
+_NOME_DO_PEDIDO = (r"(?:conteudo|conteudos|video|videos|imagem|imagens|texto|"
+                   r"textos|pedido|pedidos|solicitacao|material|cena|cenas|"
+                   r"historia|historias)")
+_OBJETO_TITULO = (
+    r"(?:com |em |a |para )?(?:isso|isto|nisso|nisto|"
+    r"(?:esse|essa|este|esta|o seu|a sua|seu|sua) (?:pedido|solicitacao|"
+    r"conteudo|tarefa|material|historia|cena|texto|parte|continuacao|"
+    r"narrativa|tipo de " + _NOME_DO_PEDIDO + r")"
+    r"|conteudos? (?:que|onde) (?:envolva|envolvam|contenha|contenham|"
+    r"inclua|incluam|retrate|retratem|mostre|mostrem|descreva|descrevam|"
+    r"promova|promovam|incentive|incentivem)[^.!?]*)")
+_VERBO_DE_RECUSA = (r"(?:ajudar|auxiliar|atender|gerar|criar|produzir|"
+                    r"escrever|fornecer|cumprir|continuar)")
+_OBJETO_EN = (r"(?:that|this|it|your request|that request|this request|"
+              r"(?:this|that) (?:story|scene|content|text|request)|"
+              r"content (?:that|which) [^.!?]*)")
+_NUCLEO_DA_RECUSA = (
+    r"(?:(?:eu )?nao (?:posso|consigo|sou capaz de|tenho como|"
+    r"estou autorizad[oa] a|tenho permissao para) (?:te |lhe |o |a |voce )?"
+    r"(?:" + _VERBO_DE_RECUSA + r"(?: voce)? " + _OBJETO_TITULO
+    # "fazer isso" so com o ponto: "Desculpe, mas eu nao posso fazer isso"
+    # sem ponto e titulo de gente; "Desculpe, nao posso fazer isso." e recusa.
+    + r"|fazer (?:isso|isto)(?=[.!]))"
+    # "Desculpe, ChatGPT nao pode ajudar com isso." (pelo proprio nome)
+    r"|" + _PROVEDORES + r" nao (?:pode|consegue) (?:te |lhe |o |a |voce )?"
+    + _VERBO_DE_RECUSA + r"(?: voce)? " + _OBJETO_TITULO +
+    r"|nao e possivel " + _VERBO_DE_RECUSA + r" " + _OBJETO_TITULO +
+    r"|nao me sinto confortavel (?:em |para |a )?" + _VERBO_DE_RECUSA + r" "
+    + _OBJETO_TITULO +
+    r"|(?:esse|este) tipo de " + _NOME_DO_PEDIDO
+    + r" nao pode ser (?:gerado|gerada|criado|criada|produzido|produzida|"
+    r"escrito|escrita|feito|feita)"
+    r"|i(?: can'?t| cannot| can not|'m unable to| am unable to|"
+    r"'m not able to| am not able to| won'?t be able to| won'?t) "
+    r"(?:(?:help|assist)(?: you)?(?: with)? " + _OBJETO_EN +
+    r"|(?:fulfill|comply with|create|generate|provide|do|write|continue|"
+    r"continue with) " + _OBJETO_EN + r"))")
+# "Desculpe, nao posso continuar." / "Sorry, I can't continue.": sem objeto,
+# so com a desculpa na frente ("Nao Posso Continuar" e titulo de gente).
+_DESCULPA_OBRIGATORIA = (r"(?:(?:desculpe|desculpa|me desculpe|peco desculpas|"
+                         r"perdao|sinto muito|lamento|infelizmente|i'?m sorry|"
+                         r"i am sorry|sorry|unfortunately)[,.!]?\s+"
+                         r"(?:(?:e|mas|but)\s+)?)+")
+_CONTINUAR_SEM_OBJETO = (r"(?:(?:eu )?nao (?:posso|consigo) continuar|"
+                         r"i(?: can'?t| cannot|'m unable to| am unable to) "
+                         r"continue)")
+_JUSTIFICATIVA = (r"(?:,\s*|\s+)(?:pois|porque|ja que|uma vez que|since|"
+                  r"because|as) [^.!?]*\b(?:diretrizes|politicas?|conteudo|"
+                  r"violencia|viola|seguranca|inadequad\w*|impropri\w*|"
+                  r"apropriad\w*|ofensiv\w*|nociv\w*|prejudicia\w*|sexual|"
+                  r"odio|guidelines|polic\w*|harmful|violen\w*|"
+                  r"explicit\w*)[^.!?]*")
+# "Como (eu) disse antes, ...", "As I've said, ...": o assistente se repete.
+_ABERTURA_DO_ASSISTENTE = (
+    r"(?:(?:como (?:eu )?(?:ja )?(?:te )?(?:disse|expliquei|mencionei|falei)"
+    r"|conforme (?:eu )?(?:ja )?disse|repito o que disse|repito"
+    r"|as i(?:'ve| have| already)? (?:said|mentioned)|as said)"
+    r"(?: antes| anteriormente| before)?[,:]?\s+)?")
+# "Desculpe, Adrian, mas ..." / "Sorry, Adrian, ...": no titulo o nome de
+# quem pediu nao livra a recusa (decisao de 06/10: titulo nao tem excecao).
+_NOME_APOS_DESCULPA = r"(?:[^\W\d_]+,\s+(?:(?:e|mas|but)\s+)?)?"
+_FECHO_DE_DESCULPA = (r"(?:,\s*(?:infelizmente|desculpe|desculpa|sorry|"
+                      r"lamento|sinto muito))?")
+_FRASE_DE_RECUSA = re.compile(
+    r"^" + _INTERJEICAO + _ABERTURA_DO_ASSISTENTE + r"(?:" + _DESCULPA
+    + _NOME_APOS_DESCULPA + _NUCLEO_DA_RECUSA
+    + r"(?:" + _JUSTIFICATIVA + r")?" + _FECHO_DE_DESCULPA + r"|"
+    + _DESCULPA_OBRIGATORIA + _CONTINUAR_SEM_OBJETO + r")[.!]*$")
+# Recusa e frase curta; acima disto a narracao e texto de historia.
+RECUSA_NO_TRECHO_MAXIMO = 300
+
+
+def _sem_enfeite(texto) -> str:
+    """Tira markdown ("**", "_", "#", "`") e emoji/simbolo; mantem a caixa."""
+    sem = "".join(c for c in str(texto or "")
+                  if c not in "*_#`~" and unicodedata.category(c)
+                  not in ("So", "Cs", "Co"))
+    sem = sem.replace("️", "").replace("‍", "")
+    return " ".join(sem.split())
+
+
+def _sem_acento(texto: str) -> str:
+    base = unicodedata.normalize("NFKD", texto)
+    return "".join(c for c in base if not unicodedata.combining(c))
+
+
+def _trecho_comparavel(texto) -> str:
+    """Sem enfeite, caixa baixa, sem acento, aspas retas e espaco unico."""
+    sem = _sem_acento(_sem_enfeite(texto))
+    sem = sem.replace("’", "'").replace("‘", "'")
+    return " ".join(sem.lower().split())
+
+
+def _frases_afirmativas(limpo: str) -> list[str]:
+    """As frases do trecho que nao sao pergunta ("Sou uma IA? Nao.")."""
+    return [f.strip() for f in re.findall(r"[^.!?]+[.!?]*", limpo)
+            if f.strip() and not f.strip().endswith("?")]
+
+
+def _tem_identidade(limpo: str, padroes=None) -> bool:
+    return any(m.search(frase) for frase in _frases_afirmativas(limpo)
+               for m in (padroes or _IDENTIDADE))
+
+
+def _tem_vocativo(texto: str) -> bool:
+    """O trecho chama alguem: ", filho", "Doutor, ...", ", Dona Cida,"."""
+    limpo = _trecho_comparavel(texto)
+    if _VOCATIVO_DA_LISTA.search(limpo):
+        return True
+    caixa = _sem_acento(_sem_enfeite(texto))
+    for achado in _NOME_VOCATIVO.finditer(caixa):
+        palavras = achado.group(1).lower().split()
+        if not any(p in _NAO_SAO_NOME for p in palavras):
+            return True
+    return False
+
+
+def _frase_de_recusa_inteira(limpo: str) -> bool:
+    """A 1a frase do titulo (ou do que vem depois da marca) E uma recusa
+    completa? (ancorada no comeco e no fim DELA; o que vem depois nao importa:
+    "Desculpe, nao posso gerar esse conteudo. Ele viola as politicas.")"""
+    candidatos = [limpo] + re.split(r"\s[—–-]\s|:\s", limpo)[1:]
+    for candidato in candidatos:
+        frases = [f.strip() for f in re.findall(r"[^.!?]+[.!?]*",
+                                                  candidato.strip())]
+        # "Hmm..." e "Ola!" sao frases soltas antes da recusa.
+        while frases and re.fullmatch(_INTERJEICAO, frases[0]):
+            frases.pop(0)
+        # `search` de proposito: quem ancora sao o ^ e o $ da expressao.
+        if frases and _FRASE_DE_RECUSA.search(frases[0]):
+            return True
+    return False
+
+
+def _novo_no_titulo(texto) -> bool:
+    """O que a producao nao pega. Sem excecao: titulo nao tem."""
+    limpo = _trecho_comparavel(texto)
+    if not limpo:
+        return False
+    if _frase_de_recusa_inteira(limpo):
+        return True
+    return _tem_identidade(limpo) and bool(_NEGATIVA_DE_ASSISTENTE.search(limpo))
+
+
+def _titulo_e_recusa(texto) -> bool:
+    """Modo titulo = PRODUCAO OU NOVO, uniao pura (decisao de 06/10/2026)."""
+    from ..llm.texto import e_recusa_enlatada
+    return bool(e_recusa_enlatada(texto)) or _novo_no_titulo(texto)
+
+
+def _narracao_e_recusa(texto) -> bool:
+    limpo = _trecho_comparavel(texto)
+    if not limpo or len(limpo) > RECUSA_NO_TRECHO_MAXIMO:
+        return False
+    if _VERBO_DE_FALA.search(limpo):
+        return False
+    if any(m in limpo for m in _MARCAS_DE_FALA):
+        return False
+    if _tem_vocativo(texto) and not _tem_identidade(limpo,
+                                                    _IDENTIDADE_DE_LLM):
+        return False
+    return _tem_identidade(limpo) and bool(_RECUSA_DIRIGIDA.search(limpo))
+
+
+def e_recusa_no_trecho(texto, *, titulo: bool = False) -> bool:
+    """O titulo (`titulo=True`) ou a narracao e a recusa de um assistente?
+
+    A pergunta de TRECHO; a da resposta inteira continua sendo
+    `llm.texto.e_recusa_enlatada`, sem mudanca. Ver as regras acima e o
+    corpus `tests/dados/recusa_no_trecho_corpus.json`.
+    """
+    if not str(texto or "").strip():
+        return False
+    return _titulo_e_recusa(texto) if titulo else _narracao_e_recusa(texto)
 
 
 def recusa_no_titulo(roteiro: dict, numero: int) -> str:
-    """O titulo cru da parte, se ele e a recusa enlatada; senao `""`."""
-    from ..llm.texto import e_recusa_enlatada
+    """O titulo cru da parte, se ele e a recusa do LLM; senao `""`."""
     try:
         titulo = str(parte_de(roteiro, numero).get("titulo") or "")
     except (KeyError, TypeError, ValueError, AttributeError):
         return ""
-    return titulo if e_recusa_enlatada(titulo) else ""
+    return titulo if e_recusa_no_trecho(titulo, titulo=True) else ""
 
 
 def cenas_recusadas(cenas) -> list[int]:
-    """Os numeros das cenas cuja narracao e a recusa enlatada."""
-    from ..llm.texto import e_recusa_enlatada
+    """Os numeros das cenas cuja narracao e a recusa do LLM."""
     return [int(c.get("n") or i) for i, c in enumerate(cenas or [], 1)
-            if isinstance(c, dict) and e_recusa_enlatada(c.get("narracao"))]
+            if isinstance(c, dict) and e_recusa_no_trecho(c.get("narracao"))]
 
 
 def cenas_com_recusa(roteiro: dict, numero: int) -> list[int]:
@@ -485,7 +813,6 @@ def titulo_do_plano(historia_id: str, numero: int) -> str:
     E o que entra no lugar do titulo recusado (reparo): foi o mesmo LLM que
     o escreveu, na biblia, para esta parte. `""` (so a marca) sem biblia.
     """
-    from ..llm.texto import e_recusa_enlatada
     try:
         with open(OUTPUTS / historia_id / "biblia.json",
                   encoding="utf-8-sig") as fh:
@@ -495,7 +822,7 @@ def titulo_do_plano(historia_id: str, numero: int) -> str:
     except (OSError, ValueError, TypeError, AttributeError):
         return ""
     titulo = str(plano.get("titulo") or "").strip()
-    return "" if e_recusa_enlatada(titulo) else titulo
+    return "" if e_recusa_no_trecho(titulo, titulo=True) else titulo
 
 
 def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
