@@ -1,5 +1,17 @@
 {
   "comentario": false,
+  "consequencias": [
+    {
+      "alvo": "pedido-848986a8",
+      "em": "2026-10-06T09:31:20",
+      "evento": "2026-10-06T09:31:18",
+      "linha": 132,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "sorteio-fixo",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "06/10 ~08:15, pelo chat: 'você fez o ateliê errado, primeiro que quero vários olhos aleatórios pra poder colocar não apenas um, vai ser igual aqueles jogos de colocar roupa'. Cada peça vira uma coleção de variantes (olhos 1, olhos 2…); cada variante tem as suas carinhas (neutro, fúria…).",
   "criado": "2026-10-06T09:31:17.468718",
   "depende_de": [],
