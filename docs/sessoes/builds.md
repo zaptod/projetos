@@ -78,6 +78,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Som real nas 15 builds de estoque: fazer ou tirar da fila?** — Só as novas têm som real (04/10/2026) `som-real-15-builds`
 - ✅ **Parede de planos do Digen: consertar agora ou depois?** — Deixar em espera (05/10/2026) `digen-parede`
 - ✅ **Sprites modulares e painel de anexo** — Modular: cada parte é um sprite estático e o Godot monta e anima (06/10/2026) · “06/10 pelo chat: animações modulares; sprites estáticos, o Godot cuida do movimento; painel de anexo pronto de manhã” `sprites-modulares-painel`
+- ⏳ **Sprites modulares: as 9 escolhas do desenho** — Sigo com estas 9 escolhas para os sprites modulares? (1) a bolinha em 9 peças: sombra, acessório de costas, pele, marcas, olhos, sobrancelhas, boca, detalhe do rosto, acessório de cabeça; (2) olhos/sobrancelhas/boca mudam pelas 24 expressões do jogo, agrupadas em 6 (se faltar uma, usa a do grupo); (3) pele comum vem branca e o jogo tinge com a cor do lutador, mas na classe ou no lutador você pode mandar pele já colorida; (4) o rosto gira para onde o lutador olha, como hoje; (5) lutador não muda por elemento; (6) classe sem a expressão pedida usa o neutro da própria classe; (7) efeitos: imagem parada por padrão, folha de quadros quando você quiser; (8) o Ateliê antigo (animação de lado) se aposenta e as 2 artes suas de 02/10 vão para o lugar certo; (9) sem peça de vitória/entrada por agora (o jogo não tem esses momentos). `sprites-modulares-9-respostas`
 
 <!-- decisoes:fim -->
 

@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Auditoria da engine de 06/10 (docs/sprites/ENGINE.md e CONTRATO_SLOTS.md): 16 classes, 12 elementos, 24 expressões, 8 tipos de arma (54 estilos), 118 skills, 29 status, 20 arenas, 106 lutadores. Com essas escolhas, um lutador completo pede no mínimo 3 imagens (pele, olhos neutros, boca neutra); 14 para o rosto reagir; +2 por classe para dar identidade. O painel vai começar a ser construído com estas escolhas; trocar depois é mexer em dados, não refazer.",
+  "criado": "2026-10-06T04:33:41.313416",
+  "depende_de": [],
+  "historico": [],
+  "id": "sprites-modulares-9-respostas",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O painel e o Godot seguem exatamente assim",
+      "id": "aceito",
+      "pede_comentario": false,
+      "rotulo": "Aceito as 9 (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Diga qual no comentário",
+      "id": "mudar",
+      "pede_comentario": false,
+      "rotulo": "Quero mudar alguma"
+    }
+  ],
+  "pergunta": "Sigo com estas 9 escolhas para os sprites modulares? (1) a bolinha em 9 peças: sombra, acessório de costas, pele, marcas, olhos, sobrancelhas, boca, detalhe do rosto, acessório de cabeça; (2) olhos/sobrancelhas/boca mudam pelas 24 expressões do jogo, agrupadas em 6 (se faltar uma, usa a do grupo); (3) pele comum vem branca e o jogo tinge com a cor do lutador, mas na classe ou no lutador você pode mandar pele já colorida; (4) o rosto gira para onde o lutador olha, como hoje; (5) lutador não muda por elemento; (6) classe sem a expressão pedida usa o neutro da própria classe; (7) efeitos: imagem parada por padrão, folha de quadros quando você quiser; (8) o Ateliê antigo (animação de lado) se aposenta e as 2 artes suas de 02/10 vão para o lugar certo; (9) sem peça de vitória/entrada por agora (o jogo não tem esses momentos).",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Sprites modulares: as 9 escolhas do desenho",
+  "vigente": null
+}
