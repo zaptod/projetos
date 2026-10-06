@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-5f0feb22",
+      "em": "2026-10-06T02:45:07",
+      "evento": "2026-10-06T02:45:04",
+      "linha": 124,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "negar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "pedido de permissao da tarefa pedido-8682ee83",
   "criado": "2026-10-06T02:44:19.906090",
   "depende_de": [],
