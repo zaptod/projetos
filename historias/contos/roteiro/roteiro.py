@@ -303,11 +303,15 @@ def limpar_titulo_de_parte(texto: str) -> str:
     O numero da parte sai daqui porque quem o escreve e `titulo_da_parte`,
     sempre do mesmo jeito, e nao o modelo.
     """
-    import re
     limpo = " ".join(str(texto or "").split())
-    limpo = re.sub(r"^\s*parte\s*\d+\s*[-–—:.]\s*", "", limpo, flags=re.I)
-    limpo = re.sub(r"\s*[\(\[]\s*parte\s+\d+\s*[\)\]]\s*$", "", limpo,
-                   flags=re.I)
+    # "Parte 1: ...", "Parte 1/6 - ...", e "Parte 1" sozinho (05/10/2026: o
+    # `As Três Comportas — Parte 1` sobrava assim depois de tirar a marca).
+    limpo = re.sub(r"^\s*parte\s*\d+(?:\s*(?:/|de)\s*\d+)?\s*(?:[-–—:.]\s*|$)",
+                   "", limpo, flags=re.I)
+    limpo = re.sub(r"\s*[\(\[]\s*parte\s+\d+(?:\s*(?:/|de)\s*\d+)?\s*[\)\]]\s*$",
+                   "", limpo, flags=re.I)
+    limpo = re.sub(r"\s+[-–—:,]\s*parte\s*\d+(?:\s*(?:/|de)\s*\d+)?\s*$", "",
+                   limpo, flags=re.I)
     # CAIXA ALTA INTEIRA vira capitalizacao normal. Em titulo de video ela le
     # como grito, e so uma das seis partes vinha assim.
     letras = [c for c in limpo if c.isalpha()]
@@ -319,6 +323,49 @@ def limpar_titulo_de_parte(texto: str) -> str:
 def nome_da_serie(roteiro: dict) -> str:
     """A marca curta que liga as partes. `""` quando a historia nao tem."""
     return " ".join(str(roteiro.get("serie_nome") or "").split())
+
+
+_ARTIGOS = {"o", "a", "os", "as", "um", "uma"}
+# Entre a marca e o resto: travessao, meia-risca ou hifen COM espaco (o de
+# "Alto-Falante" nao separa nada), ou dois-pontos.
+_SEPARADOR_DA_MARCA = re.compile(r"\s+[—–-]\s+|\s*[—–]\s*|\s*:\s*")
+
+
+def _comparavel(texto: str) -> str:
+    """Sem acento, sem caixa, sem pontuacao e sem o artigo do comeco."""
+    sem = unicodedata.normalize("NFKD", str(texto or ""))
+    sem = "".join(c for c in sem if not unicodedata.combining(c))
+    palavras = re.sub(r"[^\w]+", " ", sem.lower()).split()
+    if len(palavras) > 1 and palavras[0] in _ARTIGOS:
+        palavras = palavras[1:]
+    return " ".join(palavras)
+
+
+def _sem_a_marca(proprio: str, marca: str) -> str:
+    """O titulo da parte sem a marca da serie que o LLM pos nele.
+
+    Medido em 05/10/2026: 30 de 294 titulos do catalogo saiam com a serie
+    duas vezes (`Rua das Acácias — Rua das Acácias — As 22 Pastas`,
+    `Bom Dia, Vizinhos — Bom Dia, Vizinhos`, `As Três Comportas — As Três
+    Comportas — Parte 1: A Represa Aguenta (Parte 1/6)`). Tira a marca do
+    comeco (seguida de separador) e o "Parte N" que vier depois; se o que
+    sobra e a propria marca, devolve "" e quem chama usa so a marca.
+    """
+    alvo = _comparavel(marca)
+    if not alvo:
+        return proprio
+    for _ in range(3):                  # "Marca — Parte 1: Marca — X" e raro
+        if _comparavel(proprio) == alvo:
+            return ""
+        cortado = proprio
+        for sep in _SEPARADOR_DA_MARCA.finditer(proprio):
+            if _comparavel(proprio[:sep.start()]) == alvo:
+                cortado = limpar_titulo_de_parte(proprio[sep.end():])
+                break
+        if cortado == proprio:
+            break
+        proprio = cortado
+    return proprio
 
 
 def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
@@ -346,6 +393,10 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
         return proprio or base
 
     marca = nome_da_serie(roteiro)
+    # UM marcador de parte so, o "(Parte n/N)" do fim, e a marca uma vez so:
+    # o LLM escreve o titulo da parte ja com a serie e o "Parte N:" na frente
+    # (05/10/2026, 30 de 294 titulos — ver `_sem_a_marca`).
+    proprio = _sem_a_marca(proprio, marca)
     ordem = f"Parte {numero}" + (f"/{total}" if total else "")
     # A marca vem PRIMEIRO: e ela que se repete, e o olho a encontra no fim
     # de uma fileira de miniaturas. O titulo da parte vem depois, porque e o

@@ -124,9 +124,14 @@ def sem_o_selo(titulo: str) -> str:
     do VIDEO, e ali ele precisa estar. Na capa o selo amarelo ja diz a parte,
     e manter os dois gastava uma das quatro linhas repetindo o que estava
     escrito a 1600 px dali.
+
+    Com o total tambem (05/10/2026): desde que o titulo leva "(Parte 1/6)"
+    esta regex so casava "(Parte 1)", e a capa da h54 p01 saiu com o selo
+    "PARTE 1" em cima e "(PARTE 1/6)" embaixo.
     """
     import re
-    return re.sub(r"\s*[\(\[]\s*parte\s+\d+\s*[\)\]]\s*$", "",
+    return re.sub(r"\s*[\(\[]\s*parte\s+\d+(?:\s*(?:/|de)\s*\d+)?\s*[\)\]]\s*$",
+                  "",
                   str(titulo or ""), flags=re.IGNORECASE).strip()
 
 

@@ -344,6 +344,22 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   gênero e idade); o prompt da parte repete a descrição fixa inteira; e
   `conserto_de_cena.motivos_da_cena` leva o pedaço sem número depois de "cena N:" e o
   elenco ao pedido de prompt.
+- **Série duas vezes no título** (05/10/2026): o LLM escreve o título da parte já com a
+  marca da série (e às vezes "Parte N:"), e `roteiro.titulo_da_parte` juntava marca +
+  " — " + título da parte + " (Parte n/N)". Medido no `catalogo.listar()`: 30 de 294
+  títulos com repetição em 15 histórias (h54 inteira: `As Três Comportas — As Três
+  Comportas — Parte 1: A Represa Aguenta (Parte 1/6)`), 18 linhas no ledger (h23 inteira,
+  h37 p06, h46 p01, h10 p06). Agora `_sem_a_marca` tira a marca do começo (sem
+  acento/caixa/artigo, separador " — ", " – ", " - " ou ":"; o hífen de "Alto-Falante" não
+  separa) e o "Parte N" que sobra; igual à marca vira só a marca. **Formato único**:
+  `Marca — Título da parte (Parte n/N)` ou `Marca (Parte n/N)` — o "(Parte n/N)" do fim é o
+  único marcador (é dele que `titulos.chave` e `capa.sem_o_selo` dependem). Depois: 25
+  títulos mudaram, 269 iguais, 0 com prefixo repetido. Ficam 5 com a marca **no meio**
+  (`TÚMULO 214 — A Mulher do Túmulo 214`), fora da regra. O mp4 e a capa já renderizados
+  continuam com o título antigo na primeira imagem até um re-render. Junto: a capa
+  (`capa.sem_o_selo`) só tirava "(Parte 6)" e não "(Parte 1/6)", e a h54 p01 saiu com o
+  selo "PARTE 1" e "(PARTE 1/6)" embaixo; agora tira os dois. Testes:
+  `tests/test_titulo_sem_serie_repetida_regressions.py`.
 - **Reparo que desfaz diz por quê** (05/10/2026): `reparo._refazer_cenas(..., motivos=)`
   dá o motivo por cena ("o <gerador> nao devolveu a imagem" / "a imagem do X veio e foi
   recusada: …") no detalhe e no `feito`, e o registro da cena em `imagens.json` volta com
