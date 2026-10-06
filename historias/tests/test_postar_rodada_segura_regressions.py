@@ -365,7 +365,7 @@ class TravaDaRodadaEntreProcessosTests(unittest.TestCase):
         self.assertEqual(["historias", "builds"], self.ordem)
 
 
-# ------------------------------------------------- a dona pendurada (0b5b6a9)
+# ------------------------------------------- a dona pendurada (0b5b6a9, 65dc781)
 _PENDURADA = r"""
 import importlib.util, subprocess, sys, time
 spec = importlib.util.spec_from_file_location("postar_pendurado", sys.argv[1])
@@ -374,7 +374,20 @@ m._linha = lambda *a, **k: None
 with m._trava_da_rodada(0, sys.argv[2]) as vez:
     # O "Chrome" dela: um filho que fica, como o que o Playwright abre.
     filho = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
-    print("PEGUEI" if vez["minha"] else "NAO", filho.pid, flush=True)
+    if len(sys.argv) > 3:
+        # Travada DEPOIS do clique, como o `page.evaluate` sem prazo: a saida
+        # com pulso ve a frase do publicador e a ficha grava a etapa.
+        import io
+        real = sys.stdout
+        sys.stdout = m._SaidaComPulso(io.StringIO())
+        with m._em_voo("historias", sys.argv[3], "youtube"):
+            print("[youtube-web] arquivo entregue (final_celular_p06.mp4)")
+            print("[youtube-web] publicar clicado; confirmando...")
+            real.write(f"PEGUEI {filho.pid}\n"); real.flush()
+            time.sleep(600)
+    real = sys.stdout
+    real.write(("PEGUEI" if vez["minha"] else "NAO") + f" {filho.pid}\n")
+    real.flush()
     time.sleep(600)
 """
 
@@ -384,27 +397,40 @@ def _vivo(pid) -> bool:
 
 
 class DonaPenduradaTests(unittest.TestCase):
-    """`_pode_matar`, so a decisao: a idade e o horario sao simulados."""
+    """`_pode_matar`, so a decisao: idade, pulso e horario simulados."""
 
     def setUp(self):
         self.m = _postar()
         self.meu = datetime(2026, 10, 6, 21, 37)
         self.agora = datetime(2026, 10, 6, 21, 48).timestamp()
 
-    def _dona(self, minutos, horario="2026-10-06T20:37", tipo="rodada"):
-        return {"pid": 4242, "criado": 1000.0, "tipo": tipo,
-                "horario": horario, "inicio": self.agora - minutos * 60}
+    def _dona(self, minutos, horario="2026-10-06T20:37", tipo="rodada",
+              pulso=None):
+        bruta = {"pid": 4242, "criado": 1000.0, "tipo": tipo,
+                 "horario": horario, "inicio": self.agora - minutos * 60,
+                 "pulso": self.agora - (minutos if pulso is None
+                                        else pulso) * 60}
+        dona, problema = self.m._ficha_valida(bruta)
+        self.assertIsNone(problema)
+        return dona
 
     def _decide(self, dona, criacao=lambda pid: 1000.0):
         return self.m._pode_matar(dona, agora=self.agora,
                                   meu_horario=self.meu, criacao=criacao)[0]
 
-    def test_horario_anterior_viva_ha_mais_de_70_min_morre(self):
+    def test_horario_anterior_viva_ha_mais_de_70_min_e_pulso_parado_morre(self):
         self.assertEqual(70, self.m.RODADA_PENDURADA_MIN)
-        self.assertTrue(self._decide(self._dona(71)))
+        self.assertEqual(20, self.m.PULSO_PARADO_MIN)
+        self.assertTrue(self._decide(self._dona(71, pulso=21)))
 
     def test_69_min_ainda_e_rodada_lenta(self):
         self.assertFalse(self._decide(self._dona(69)))
+
+    def test_lenta_mas_viva_nunca_morre(self):
+        """O conferente do 65dc781: uma tentativa de mais de ~21 min faria a
+        saudavel morrer aos 70. Com pulso de 19 min atras, ela vive — por
+        mais velha que seja."""
+        self.assertFalse(self._decide(self._dona(300, pulso=19)))
 
     def test_nunca_mata_o_mesmo_horario(self):
         self.assertFalse(self._decide(self._dona(300,
@@ -425,6 +451,31 @@ class DonaPenduradaTests(unittest.TestCase):
         self.assertFalse(self._decide(None))
         self.assertFalse(self._decide({"pid": "x"}))
 
+    def test_ficha_com_tipos_errados_e_invalida_e_nao_levanta(self):
+        """As fichas do conferente (`fichas.py`): cada uma vira "invalida",
+        sem excecao — antes, fuso e texto davam TypeError/ValueError fora
+        do `try`, e 'tipo' lista chegava a MATAR."""
+        boa = {"pid": 4242, "criado": 1000.0, "tipo": "rodada",
+               "horario": "2026-10-06T20:37", "inicio": 1.0, "pulso": 1.0}
+        ruins = {
+            "lista": [1, 2],
+            "vazio": {},
+            "fuso": dict(boa, horario="2026-10-06T20:37+00:00"),
+            "criado_texto": dict(boa, criado="ontem"),
+            "inicio_nan": dict(boa, inicio=float("nan")),
+            "horario_numero": dict(boa, horario=2037),
+            "tipo_lista": dict(boa, tipo=["rodada"]),
+            "pid_bool": dict(boa, pid=True),
+            "voo_torto": dict(boa, em_voo={"canal": "x"}),
+        }
+        for nome, dados in ruins.items():
+            with self.subTest(ficha=nome):
+                dona, problema = self.m._ficha_valida(dados)
+                self.assertIsNone(dona)
+                self.assertTrue(problema)
+                self.assertFalse(self._decide(dona))
+        self.assertIsNotNone(self.m._ficha_valida(boa)[0])
+
     def test_o_aviso_diz_quem_e_a_dona(self):
         d = self.m._descrever_dona
         self.assertIn("escoar' do app", d(self._dona(5, tipo="tudo")))
@@ -440,6 +491,77 @@ class DonaPenduradaTests(unittest.TestCase):
             agora=datetime(2026, 10, 6, 21, 16)))
         self.assertFalse(m._cabe_antes_do_proximo(
             agora=datetime(2026, 10, 6, 21, 18)))
+
+
+class DescendentesTests(unittest.TestCase):
+    """Filho so conta se nasceu DEPOIS do pai (conferente do 65dc781,
+    `orfao.py`: o Windows guarda o pid do pai morto e o reaproveita)."""
+
+    def test_orfao_de_outro_pai_com_o_mesmo_pid_nao_entra(self):
+        m = _postar()
+        processos = [
+            {"pid": 100, "pai": 1, "nome": "python.exe", "criado": 5000.0},
+            {"pid": 200, "pai": 100, "nome": "node.exe", "criado": 5001.0},
+            {"pid": 300, "pai": 200, "nome": "chrome.exe", "criado": 5002.0},
+            # O Chrome de um pai ANTIGO que tambem teve o pid 100.
+            {"pid": 400, "pai": 100, "nome": "chrome.exe", "criado": 10.0},
+            {"pid": 500, "pai": 100, "nome": "chrome.exe", "criado": None},
+        ]
+        achados = {p["pid"] for p in m._descendentes(100, processos, 5000.0)}
+        self.assertEqual({200, 300}, achados)
+        self.assertEqual([], m._descendentes(100, processos, None))
+
+
+class SaidaComPulsoTests(unittest.TestCase):
+    """O voo na ficha, escrito pelas frases dos publicadores."""
+
+    def setUp(self):
+        self.m = _postar()
+        self.m._linha = lambda *_a, **_k: None
+        self.addCleanup(self.m._DONA.clear)
+        self.m._gravar_dona("rodada")
+
+    def _ficha(self):
+        return json.loads(self.m._arquivo_da_dona().read_text(
+            encoding="utf-8"))
+
+    def test_entregue_e_clicou_vao_ao_disco_na_hora(self):
+        import io
+        saida = self.m._SaidaComPulso(io.StringIO())
+        with self.m._em_voo("historias", "h44:celular:p06", "youtube"):
+            self.assertEqual("escolhido", self._ficha()["em_voo"]["etapa"])
+            saida.write("[youtube-web] arquivo entregue (x.mp4); subindo\n")
+            self.assertEqual("entregue", self._ficha()["em_voo"]["etapa"])
+            saida.write("[youtube-web] publicar clicado; confirmando...\n")
+            voo = self._ficha()["em_voo"]
+            self.assertEqual(("clicou", "h44:celular:p06", "youtube"),
+                             (voo["etapa"], voo["alvo"], voo["destino"]))
+            # Nunca volta atras.
+            saida.write("[youtube-web] arquivo entregue (pedaco 2)\n")
+            self.assertEqual("clicou", self._ficha()["em_voo"]["etapa"])
+        self.assertIsNone(self._ficha()["em_voo"], "pousou")
+
+    def test_as_frases_existem_nos_publicadores(self):
+        """Contrato: se a frase mudar la, a etapa para de ser gravada."""
+        raiz = (Path(__file__).resolve().parents[2] / "random_builds"
+                / "builds" / "publicar")
+        for nome in ("youtube_web.py", "tiktok.py"):
+            fonte = (raiz / nome).read_text(encoding="utf-8")
+            for frase, _etapa in self.m.ETAPAS_DO_VOO:
+                self.assertIn(f'passo("{frase}' if frase.startswith("publicar")
+                              else f'passo(f"{frase}', fonte, (nome, frase))
+
+    def test_os_quatro_funis_voam(self):
+        fonte = POSTAR.read_text(encoding="utf-8")
+        for decorador, funil in (
+                ('@_voando("historias", "youtube")',
+                 "def _subir_parte_no_youtube("),
+                ('@_voando("historias", "tiktok")',
+                 "def _tiktok_das_historias("),
+                ('@_voando("builds", "youtube")', "def _youtube_dos_builds("),
+                ('@_voando("builds", "tiktok")', "def _tiktok_dos_builds(")):
+            self.assertIn(f"{decorador}\n{funil}", fonte)
+        self.assertIn("url = _youtube_dos_builds(alvo)", fonte)
 
 
 class LimiteDaTarefaTests(unittest.TestCase):
@@ -484,14 +606,43 @@ class LimiteDaTarefaTests(unittest.TestCase):
 
 class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
     """Dois processos de verdade: a dona 'pendurada' dorme segurando a trava,
-    com um filho; a idade e o horario dela sao simulados na ficha."""
+    com um filho; idade, pulso e horario dela sao simulados na ficha. A lista
+    "a conferir" vai para uma pasta do teste."""
 
-    def _pendurada(self, tipo="rodada"):
+    VOO = "historia_00044:celular:p06"
+    OUTRO = "historia_00051:celular:p04"
+
+    def setUp(self):
+        super().setUp()
+        import tempfile
+        from builds.publicar import desfecho
+        pasta = Path(tempfile.mkdtemp(dir=os.environ.get("TEMP")))
+        _trocar(self, desfecho, "arquivo_a_conferir",
+                lambda canal, plataforma="tiktok":
+                pasta / f"{canal}_{plataforma}_a_conferir.json")
+        self.escolhidos = []
+        m = self.m
+        alvos = [type("V", (), {"id": i})() for i in (self.VOO, self.OUTRO)]
+
+        # A escolha de VERDADE do que fica fora da fila: `_sem_a_conferir`.
+        def postar_historia(so_ver=False):
+            self.ordem.append("historias")
+            livres = m._sem_a_conferir(list(alvos), "historias")
+            self.escolhidos.append(livres[0].id if livres else None)
+            return {"canal": "historias", "feito": True,
+                    "alvo": self.escolhidos[-1],
+                    "url": "publicado no YouTube",
+                    "tiktok": "publicado no TikTok"}
+        m.postar_historia = postar_historia
+
+    def _pendurada(self, tipo="rodada", voo=None):
         ambiente = dict(os.environ)
         ambiente["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
-        proc = subprocess.Popen(
-            [sys.executable, "-c", _PENDURADA, str(POSTAR), tipo],
-            stdout=subprocess.PIPE, text=True, env=ambiente)
+        comando = [sys.executable, "-c", _PENDURADA, str(POSTAR), tipo]
+        if voo:
+            comando.append(voo)
+        proc = subprocess.Popen(comando, stdout=subprocess.PIPE, text=True,
+                                env=ambiente)
         estado, filho = proc.stdout.readline().split()
         filho = int(filho)
         self.addCleanup(lambda: subprocess.run(
@@ -499,21 +650,28 @@ class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
         self.addCleanup(proc.wait, 30)
         self.addCleanup(proc.kill)
         self.assertEqual("PEGUEI", estado)
-        dona = self.m._ler_dona()
+        dona, problema = self.m._ler_dona()
+        self.assertIsNone(problema)
         self.assertEqual(proc.pid, dona["pid"])
         return proc, filho, dona
 
-    def _envelhecer(self, dona, minutos, horario):
-        dona = dict(dona, inicio=dona["inicio"] - minutos * 60,
-                    horario=horario.isoformat(timespec="minutes"))
-        self.m._arquivo_da_dona().write_text(json.dumps(dona),
+    def _envelhecer(self, dona, minutos, horario, pulso=None, **troca):
+        bruta = {k: v for k, v in dona.items() if k != "horario_dt"}
+        import time
+        agora = time.time()
+        bruta.update(inicio=agora - minutos * 60,
+                     pulso=agora - (minutos if pulso is None else pulso) * 60,
+                     horario=horario.isoformat(timespec="minutes"), **troca)
+        self.m._arquivo_da_dona().write_text(json.dumps(bruta),
                                              encoding="utf-8")
+
+    def _anterior(self):
+        return self.m._inicio_do_horario() - timedelta(hours=3)
 
     def test_pendurada_de_horario_anterior_morre_com_o_filho_e_a_nova_publica(
             self):
         proc, filho, dona = self._pendurada()
-        anterior = self.m._inicio_do_horario() - timedelta(hours=3)
-        self._envelhecer(dona, 71, anterior)
+        self._envelhecer(dona, 71, self._anterior())
         # So os descendentes DELA com este nome morrem junto (no teste o
         # "Chrome" e um python; na vida, chrome.exe e o node do Playwright).
         self.m.FILHOS_QUE_MORREM_JUNTO = ("python.exe",)
@@ -526,7 +684,68 @@ class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
         self.assertIn("matei a rodada da grade", self.telegram[0])
         self.assertIn(str(filho), self.telegram[0])
         # A ficha agora e da rodada nova.
-        self.assertEqual(os.getpid(), self.m._ler_dona()["pid"])
+        self.assertEqual(os.getpid(), self.m._ler_dona()[0]["pid"])
+
+    def test_morta_DEPOIS_do_clique_a_nova_nao_sobe_o_mesmo_video(self):
+        """O defeito MEDIO do 65dc781: a dona travou depois do clique no
+        YouTube da h44 p06. A nova mata, poe a p06 "a conferir" no YouTube
+        ANTES de escolher, e leva outra parte."""
+        from builds.publicar import desfecho
+        proc, filho, dona = self._pendurada(voo=self.VOO)
+        self.assertEqual("clicou", dona["em_voo"]["etapa"])
+        self._envelhecer(dona, 71, self._anterior())
+        self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 30.0
+        self.assertEqual(0, self.m.main([]))
+        self.assertIsNotNone(proc.wait(15))
+        self.assertIn(self.VOO, desfecho.a_conferir("historias", "youtube"))
+        self.assertEqual([self.OUTRO], self.escolhidos)
+        self.assertTrue(any("pode ter saido publico" in t
+                            for t in self.telegram), self.telegram)
+
+    def test_dona_que_morreu_sozinha_com_voo_no_ar_tambem_pousa(self):
+        """Sem ninguem matar: a dona caiu (energia, Ctrl+C) depois do clique.
+        A trava esta livre, mas a ficha diz o que ficou no ar."""
+        from builds.publicar import desfecho
+        proc, filho, dona = self._pendurada(voo=self.VOO)
+        proc.kill()
+        proc.wait(15)
+        self.assertEqual(0, self.m.main([]))
+        self.assertIn(self.VOO, desfecho.a_conferir("historias", "youtube"))
+        self.assertEqual([self.OUTRO], self.escolhidos)
+
+    def test_marca_que_nao_grava_a_rodada_nao_publica(self):
+        from builds.publicar import desfecho
+        proc, filho, dona = self._pendurada(voo=self.VOO)
+        proc.kill()
+        proc.wait(15)
+
+        def quebra(*a, **k):
+            raise OSError("lista a conferir presa")
+        _trocar(self, desfecho, "marcar_para_conferir", quebra)
+        self.assertEqual(1, self.m.main([]))
+        self.assertEqual([], self.ordem)
+        # A ficha velha fica: a proxima rodada tenta pousar de novo.
+        self.assertEqual(self.VOO, self.m._ler_dona()[0]["em_voo"]["alvo"])
+
+    def test_lenta_mas_viva_nao_morre(self):
+        proc, filho, dona = self._pendurada()
+        self._envelhecer(dona, 300, self._anterior(), pulso=1)
+        self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 1.0
+        self.assertEqual(1, self.m.main([]))
+        self.assertIsNone(proc.poll(), "continua viva")
+        self.assertEqual([], self.telegram)
+
+    def test_ficha_invalida_espera_nao_mata_e_avisa(self):
+        proc, filho, dona = self._pendurada()
+        self._envelhecer(dona, 300, self._anterior())
+        bruta = json.loads(self.m._arquivo_da_dona().read_text("utf-8"))
+        bruta["horario"] += "+00:00"           # o TypeError do conferente
+        self.m._arquivo_da_dona().write_text(json.dumps(bruta), "utf-8")
+        self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 1.0
+        self.assertEqual(1, self.m.main([]))
+        self.assertIsNone(proc.poll(), "continua viva")
+        self.assertTrue(any("ficha da trava da rodada esta invalida"
+                            in str(a) for a in self.diario), self.diario)
 
     def test_pendurada_do_MESMO_horario_nunca_morre(self):
         proc, filho, dona = self._pendurada()
@@ -541,14 +760,50 @@ class DonaPenduradaEntreProcessosTests(TravaDaRodadaEntreProcessosTests):
 
     def test_escoar_do_app_nao_morre_e_o_aviso_diz_o_que_e(self):
         proc, filho, dona = self._pendurada("tudo")
-        anterior = self.m._inicio_do_horario() - timedelta(hours=3)
-        self._envelhecer(dona, 300, anterior)
+        self._envelhecer(dona, 300, self._anterior())
         self.m.ESPERA_PELA_RODADA_ANTERIOR_S = 1.0
         self.assertEqual(1, self.m.main([]))
         self.assertIsNone(proc.poll())
         motivo = self.avisos[0][0]["motivo"]
         self.assertIn("o 'escoar' do app (postar.py --tudo)", motivo)
         self.assertNotIn("rodada anterior", motivo)
+
+
+class ReservaRespeitaAMargemTests(unittest.TestCase):
+    """A reserva do TikTok sem `_cabe_antes_do_proximo` sobreviveu a mutacao
+    do conferente (65dc781)."""
+
+    def setUp(self):
+        self.m = m = _postar()
+        m._linha = lambda *_a, **_k: None
+        m.esperar_a_rede = lambda **k: True
+        for nome in ("avisar", "avisar_lote_nao_fechou"):
+            setattr(m, nome, lambda *a, **k: None)
+        m.estoque_do_lote = lambda *a, **k: {}
+        m.linhas_do_estoque = lambda lote: []
+        m.retidos_por_canal = lambda: {}
+        m.recuperar_no_tiktok = lambda so_ver=False, canal="historias": {
+            "fila": 0}
+        m.recuperar_no_youtube = lambda **k: {"fila": 0}
+        saiu = {"feito": True, "url": "u", "tiktok": "publicado no TikTok"}
+        m._publicar_canal = lambda canal, funcao, **k: [dict(saiu,
+                                                             canal=canal)]
+        self.reserva = []
+        m.publicar_da_reserva = lambda so_ver=False: (
+            self.reserva.append(1) or {})
+        from builds.publicar import tiktok
+        _trocar(self, tiktok, "confirmado", lambda e: bool(e))
+
+    def test_perto_do_horario_seguinte_a_reserva_fica(self):
+        self.m._cabe_antes_do_proximo = (
+            lambda passo="", **k: passo != "reserva do TikTok")
+        self.m.main([])
+        self.assertEqual([], self.reserva)
+
+    def test_longe_do_horario_seguinte_a_reserva_roda(self):
+        self.m._cabe_antes_do_proximo = lambda *a, **k: True
+        self.m.main([])
+        self.assertEqual([1], self.reserva)
 
 
 if __name__ == "__main__":

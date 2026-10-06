@@ -79,6 +79,23 @@ def _linha(texto: str = "") -> None:
         pass
 
 
+def _voando(canal: str, destino: str):
+    """Decora um FUNIL de publicacao: enquanto ele roda, a ficha da trava diz
+    o que esta no ar (`_em_voo`, la embaixo, perto da trava da rodada). Os
+    quatro funis: `_subir_parte_no_youtube`, `_youtube_dos_builds`,
+    `_tiktok_das_historias` e `_tiktok_dos_builds` — todo caminho que sobe
+    video passa por um deles (06/10/2026)."""
+    import functools
+
+    def decorar(funcao):
+        @functools.wraps(funcao)
+        def envolta(alvo, *args, **kwargs):
+            with _em_voo(canal, getattr(alvo, "id", str(alvo)), destino):
+                return funcao(alvo, *args, **kwargs)
+        return envolta
+    return decorar
+
+
 def _prova_ok(laudo):
     """A regra mora no ledger de builds; aqui e so a porta.
 
@@ -898,6 +915,7 @@ def proxima_historia(*, vistoriar: bool = True):
             break
         examinados += 1
         roteiro = R.carregar(alvo.fonte_id)
+        _pulsar()                  # a vistoria pode calar ~10 min
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
                                           alvo.caminho, roteiro)
         if not laudo["ok"]:
@@ -937,6 +955,7 @@ def proxima_historia(*, vistoriar: bool = True):
     retidos.sort(key=lambda alvo: alvo.id not in consertadas)
     for alvo in retidos[:3]:
         roteiro = R.carregar(alvo.fonte_id)
+        _pulsar()                  # a vistoria pode calar ~10 min
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
                                           alvo.caminho, roteiro)
         if laudo["ok"]:
@@ -949,6 +968,7 @@ def proxima_historia(*, vistoriar: bool = True):
             return alvo, recusados
     for alvo in vetados[:3]:
         roteiro = R.carregar(alvo.fonte_id)
+        _pulsar()                  # a vistoria pode calar ~10 min
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
                                           alvo.caminho, roteiro)
         if laudo["ok"]:
@@ -961,6 +981,7 @@ def proxima_historia(*, vistoriar: bool = True):
         if _veto_lembrado(alvo) or _retencao(alvo):
             continue
         roteiro = R.carregar(alvo.fonte_id)
+        _pulsar()                  # a vistoria pode calar ~10 min
         laudo = qualidade.vistoriar_parte(alvo.fonte_id, alvo.parte,
                                           alvo.caminho, roteiro)
         if laudo["ok"]:
@@ -1165,6 +1186,7 @@ class ParteMeioNoAr(RuntimeError):
         self.ids = list(ids)
 
 
+@_voando("historias", "youtube")
 def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
     """`catalogo.publicar_youtube`, com a guarda da parte meio no ar.
 
@@ -2505,6 +2527,7 @@ def _tiktok_neste_horario(agora=None) -> bool:
     return grade.publica_em("tiktok", grade.slot(agora))
 
 
+@_voando("historias", "tiktok")
 def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
     """Mesmo video, segundo destino. Nunca derruba a postagem do YouTube.
 
@@ -3269,8 +3292,6 @@ def proximo_build(config=None, *, marcar: bool = False):
 
 
 def postar_build(*, so_ver: bool = False) -> dict:
-    from builds.publicar import youtube
-
     # Uma guarda por DESTINO, igual as historias: o YouTube ter saido nesta
     # hora nao pode cancelar o TikTok.
     ja_yt = None if so_ver else publicou_neste_horario("builds", "youtube")
@@ -3311,9 +3332,7 @@ def postar_build(*, so_ver: bool = False) -> dict:
     # mesmo video. Foi assim nos dois builds de 08/09/2026.
     url, falha_yt, cota = "", None, False
     try:
-        url = youtube.publicar_como_configurado(alvo, canal="builds",
-                                                visibilidade="public",
-                                                log=_linha)
+        url = _youtube_dos_builds(alvo)
     except Exception as exc:                                   # noqa: BLE001
         # Mesma regra das historias (auditoria de 15/09/2026): falha do
         # YouTube — cota ou qualquer outra — nao deixa o TikTok vazio. Antes
@@ -3373,6 +3392,15 @@ def _build_ja_no_tiktok(video_id: str) -> bool:
         return False
 
 
+@_voando("builds", "youtube")
+def _youtube_dos_builds(alvo):
+    """O YouTube dos builds — `publicar_como_configurado` registra por dentro."""
+    from builds.publicar import youtube
+    return youtube.publicar_como_configurado(alvo, canal="builds",
+                                             visibilidade="public", log=_linha)
+
+
+@_voando("builds", "tiktok")
 def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
     """Mesmo video, segundo destino. Aqui o registro E de dentro.
 
@@ -4184,34 +4212,59 @@ def escoar_historias(*, limite: int = 0, so_ver: bool = False) -> dict:
 # mesmo processo ela nao separa nada, e nao precisa — o que ela separa sao
 # os processos do Agendador.
 #
-# A DONA PENDURADA (conferente do 0b5b6a9, 06/10/2026). Um Chrome/Playwright
-# preso (`page.evaluate` sem prazo) deixa a rodada VIVA segurando a trava, e
-# as tarefas tinham `ExecutionTimeLimit` de 72 h: todo horario seguinte
-# esperaria 15 min, sairia 1 e avisaria, por tres dias. Agora quem pega a
-# trava grava a FICHA DA DONA ao lado dela (pid, criacao do processo,
-# inicio, horario da grade, tipo). A rodada nova MATA a dona se, e so se:
-# ela e de um horario ANTERIOR da grade (nunca do mesmo), esta viva ha
-# `RODADA_PENDURADA_MIN` ou mais, o pid ainda e dela (mesma hora de
-# criacao: pid reaproveitado nao morre) e ela nao e um `--tudo` (o escoar
-# do app dura o que a fila durar, e e de uma pessoa). Mata so aquele python
-# (`taskkill /F /PID`, sem /T) e depois os Chrome e o driver do Playwright
-# DESCENDENTES dele que sobraram — nunca o Chrome de quem usa o PC —,
-# confere que morreu, pega a trava, publica e avisa no Telegram o que matou.
+# A DONA PENDURADA (conferentes do 0b5b6a9 e do 65dc781, 06/10/2026). Um
+# Chrome/Playwright preso (`page.evaluate` sem prazo) deixa a rodada VIVA
+# segurando a trava; as tarefas tinham `ExecutionTimeLimit` de 72 h, e todo
+# horario seguinte esperaria 15 min, sairia 1 e avisaria. Agora quem pega a
+# trava mantem a FICHA DA DONA ao lado dela (`postar__rodada.dona.json`,
+# escrita atomica): pid, criacao do processo, inicio, horario da grade,
+# tipo, PULSO e EM VOO.
 #
-# POR QUE 70 MIN. Medido nos ledgers (331 horarios com linha desde 15/09):
-# o horario mais demorado de uma rodada da grade gravou a ultima linha 35,8
-# min depois do horario (builds, 12:07 de 05/10); nas 17 rodadas do diario
-# (desde 05/10), a mais longa durou 35,8 min do primeiro ao ultimo envio. O
-# passo mais longo ja medido: TikTok 631 s, YouTube 381 s — um canal inteiro
-# (YouTube + TikTok), 17 min. E nada recomeca a menos de 20 min do horario
-# seguinte (`MARGEM_ANTES_DO_PROXIMO_MIN`, tambem nos passos extras), entao
-# nos horarios de 60 min o ultimo comeco e aos 40 min e a rodada saudavel
-# acaba ate ~57 min. 70 da 13 min de folga sobre isso; quem passa disso
-# esta pendurado.
+# O PULSO (e nao so a idade). Toda linha que o processo dono escreve na
+# saida — as dele e as dos publicadores, que narram cada passo
+# ("[youtube-web] esperando o processamento...") — renova o pulso, gravado
+# no maximo a cada `INTERVALO_DO_PULSO_S`. Quem trava num `page.evaluate`
+# para de escrever. A rodada nova MATA a dona se, e so se: ela e de um
+# horario ANTERIOR (nunca do mesmo), esta viva ha `RODADA_PENDURADA_MIN` ou
+# mais, o pulso esta PARADO ha `PULSO_PARADO_MIN` ou mais, o pid ainda e
+# dela (mesma hora de criacao) e ela nao e um `--tudo`. Rodada lenta mas
+# viva nao morre, por mais que demore: a 1a versao (so a idade) matava uma
+# saudavel que tivesse uma tentativa de mais de ~21 min (conta do
+# conferente: max(28 + 2A, 42 + A) + 5 min de rede).
+#
+# POR QUE 20 MIN DE PULSO PARADO. O trecho calado mais longo medido e uma
+# vistoria: 596 s (diario, 87 vistorias "lentas"; a postagem vistoria ate
+# `TENTATIVAS` partes, e cada uma chama `_pulsar`). A pagina que nao abre
+# fala a cada tentativa (90/60/60 s); o envio do TikTok cala ate 240 s.
+# 20 min e o dobro do pior trecho calado medido. Os 70 min de idade ficam
+# como piso: no diario a rodada mais longa durou 35,8 min, e nos ledgers
+# (331 horarios desde 15/09) a ultima linha saiu 35,8 min depois do horario.
+#
+# EM VOO. Matar depois do clique podia publicar DE NOVO (conferente do
+# 65dc781): o `page.evaluate` sem prazo esta depois do clique, nada ia ao
+# disco antes da confirmacao, e quem matou escolhia o MESMO video. Agora os
+# funis de publicacao (`_subir_parte_no_youtube`, `_youtube_dos_builds`,
+# `_tiktok_das_historias`, `_tiktok_dos_builds`) abrem `_em_voo`, e a ficha
+# grava a etapa ao ver a frase do publicador ("arquivo entregue", "publicar
+# clicado"). A rodada que pega a trava le a ficha ANTERIOR antes de
+# escolher qualquer coisa: voo que passou de "arquivo entregue" (a dona
+# morreu, foi morta ou caiu com ele no ar) vai para a lista "a conferir"
+# daquele destino — que tira o video da fila e da recuperacao — e o aviso
+# diz "pode ter saido publico: confira". Se a marca nao gravar, a rodada
+# NAO publica (repetir e pior que nao postar) e a ficha velha fica para a
+# proxima tentar de novo.
+#
+# Mata so aquele python (`taskkill /F /PID`, sem /T) e depois os
+# `chrome.exe` e `node.exe` DESCENDENTES dele que sobraram — filho so conta
+# se nasceu DEPOIS do pai (o Windows guarda o pid do pai morto e o reusa), e
+# a identidade de cada um (hora de criacao) e conferida de novo antes do
+# taskkill. Nunca o Chrome de quem usa o PC.
 TRAVA_DA_RODADA = "postar__rodada"
 ESPERA_PELA_RODADA_ANTERIOR_S = 15 * 60.0
 INTERVALO_DE_OLHAR_A_DONA_S = 5.0
 RODADA_PENDURADA_MIN = 70
+PULSO_PARADO_MIN = 20
+INTERVALO_DO_PULSO_S = 30.0
 FILHOS_QUE_MORREM_JUNTO = ("chrome.exe", "node.exe")
 TIPOS_QUE_NUNCA_MORREM = ("tudo",)
 DESCRICAO_DA_DONA = {
@@ -4220,6 +4273,15 @@ DESCRICAO_DA_DONA = {
     "recuperar": "o 'recuperar video privado' do app (postar.py --recuperar)",
     "so_youtube": "um envio avulso ao YouTube (postar.py --so-youtube)",
 }
+# A frase do publicador -> a etapa do voo, da mais adiantada para a menos.
+# Contrato com `youtube_web.passo` e `tiktok.passo` (ha teste que procura as
+# frases no fonte deles).
+ETAPAS_DO_VOO = (("publicar clicado", "clicou"),
+                 ("arquivo entregue", "entregue"))
+_ORDEM_DA_ETAPA = {"escolhido": 0, "entregue": 1, "clicou": 2}
+
+# A ficha em memoria quando ESTE processo segura a trava ({} quando nao).
+_DONA: dict = {}
 
 
 def _tipo_da_chamada(args) -> str:
@@ -4279,27 +4341,170 @@ def _arquivo_da_dona():
     return travas._pasta() / f"{TRAVA_DA_RODADA}.dona.json"
 
 
-def _gravar_dona(tipo: str) -> None:
-    """A ficha de quem segura a trava. Falhar aqui so tira o poder de matar."""
+def _gravar_ficha(dados: dict) -> None:
+    """Escrita ATOMICA: `.tmp` + `os.replace` (nunca meia ficha no disco)."""
+    caminho = _arquivo_da_dona()
+    temporario = caminho.with_name(f"{caminho.name}.{os.getpid()}.tmp")
+    temporario.write_text(json.dumps(dados), encoding="utf-8")
+    os.replace(temporario, caminho)
+
+
+def _pulsar(forcar: bool = False) -> None:
+    """Renova o pulso da dona (grava no maximo a cada `INTERVALO_DO_PULSO_S`)."""
     import time
+    if not _DONA:
+        return
+    agora = time.time()
+    _DONA["pulso"] = agora
+    if not forcar and agora - _DONA.get("_gravado", 0.0) < INTERVALO_DO_PULSO_S:
+        return
     try:
-        _arquivo_da_dona().write_text(json.dumps({
-            "pid": os.getpid(), "criado": _criacao_do_processo(os.getpid()),
-            "inicio": time.time(),
-            "horario": _inicio_do_horario().isoformat(timespec="minutes"),
-            "tipo": tipo, "comando": " ".join(sys.argv)[:200]}),
-            encoding="utf-8")
+        _gravar_ficha({k: v for k, v in _DONA.items() if not k.startswith("_")})
+        _DONA["_gravado"] = agora
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def _gravar_dona(tipo: str) -> None:
+    """A ficha de quem acabou de pegar a trava."""
+    import time
+    agora = time.time()
+    _DONA.clear()
+    _DONA.update({
+        "pid": os.getpid(), "criado": _criacao_do_processo(os.getpid()),
+        "inicio": agora, "pulso": agora,
+        "horario": _inicio_do_horario().isoformat(timespec="minutes"),
+        "tipo": tipo, "comando": " ".join(sys.argv)[:200], "em_voo": None})
+    try:
+        _gravar_ficha({k: v for k, v in _DONA.items() if not k.startswith("_")})
+        _DONA["_gravado"] = agora
     except Exception as exc:                                   # noqa: BLE001
         _linha(f"[postar] nao gravei a ficha da trava ({exc}); se esta "
                "rodada pendurar, a seguinte so vai esperar.")
 
 
-def _ler_dona() -> dict | None:
+@contextmanager
+def _em_voo(canal: str, alvo_id: str, destino: str):
+    """Um publicador vai rodar: a ficha diz o que esta no ar AGORA.
+
+    Fora da trava (teste, `--ver`), nao faz nada. Na saida (normal ou por
+    excecao), o voo pousa: daqui o caminho de sempre grava o ledger ou a
+    lista "a conferir".
+    """
+    import time
+    if not _DONA:
+        yield
+        return
+    _DONA["em_voo"] = {"canal": canal, "alvo": str(alvo_id),
+                       "destino": destino, "etapa": "escolhido",
+                       "desde": time.time()}
+    _pulsar(forcar=True)
     try:
-        dados = json.loads(_arquivo_da_dona().read_text(encoding="utf-8"))
+        yield
+    finally:
+        _DONA["em_voo"] = None
+        _pulsar(forcar=True)
+
+
+def _ao_escrever(texto: str) -> None:
+    """Cada linha da saida do dono: pulso, e a etapa do voo se for a frase."""
+    if not _DONA:
+        return
+    voo = _DONA.get("em_voo")
+    if voo:
+        baixo = str(texto).lower()
+        for frase, etapa in ETAPAS_DO_VOO:
+            if frase in baixo:
+                if _ORDEM_DA_ETAPA[etapa] > _ORDEM_DA_ETAPA.get(voo["etapa"], 0):
+                    voo["etapa"] = etapa
+                    _pulsar(forcar=True)
+                    return
+                break
+    _pulsar()
+
+
+class _SaidaComPulso:
+    """`sys.stdout` do processo dono: escreve igual e avisa `_ao_escrever`.
+
+    Sem `buffer` de proposito: `_linha` escreve pelo `write` e tambem pulsa.
+    """
+    buffer = None
+
+    def __init__(self, original):
+        self._original = original
+
+    def write(self, texto):
+        resultado = self._original.write(texto)
+        try:
+            _ao_escrever(texto)
+        except Exception:                                      # noqa: BLE001
+            pass
+        return resultado
+
+    def __getattr__(self, nome):
+        return getattr(self._original, nome)
+
+
+def _ficha_valida(dados) -> tuple:
+    """(ficha, problema): a ficha com os tipos certos, ou None e o porque."""
+    import math
+    from datetime import datetime
+
+    def numero(valor):
+        return (isinstance(valor, (int, float)) and not isinstance(valor, bool)
+                and math.isfinite(valor))
+    if not isinstance(dados, dict) or not dados:
+        return None, "nao e uma ficha"
+    pid = dados.get("pid")
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return None, f"pid invalido ({pid!r})"
+    for campo in ("criado", "inicio"):
+        if not numero(dados.get(campo)):
+            return None, f"{campo} invalido ({dados.get(campo)!r})"
+    if dados.get("pulso") is not None and not numero(dados["pulso"]):
+        return None, f"pulso invalido ({dados['pulso']!r})"
+    if not isinstance(dados.get("tipo"), str) or (
+            dados["tipo"] not in DESCRICAO_DA_DONA):
+        return None, f"tipo invalido ({dados.get('tipo')!r})"
+    try:
+        horario = datetime.fromisoformat(str(dados.get("horario")))
+    except (TypeError, ValueError):
+        return None, f"horario invalido ({dados.get('horario')!r})"
+    if not isinstance(dados.get("horario"), str) or horario.tzinfo is not None:
+        return None, f"horario invalido ({dados.get('horario')!r})"
+    voo = dados.get("em_voo")
+    if voo is not None and not (
+            isinstance(voo, dict) and voo.get("canal") in ("historias", "builds")
+            and isinstance(voo.get("alvo"), str) and voo.get("alvo")
+            and voo.get("destino") in ("youtube", "tiktok")
+            and isinstance(voo.get("etapa"), str)
+            and voo["etapa"] in _ORDEM_DA_ETAPA):
+        return None, f"em_voo invalido ({voo!r})"[:160]
+    return dict(dados, horario_dt=horario), None
+
+
+def _ler_dona() -> tuple:
+    """(ficha valida ou None, problema ou None). Arquivo ausente: (None, None)."""
+    caminho = _arquivo_da_dona()
+    if not caminho.is_file():
+        return None, None
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+    except Exception as exc:                                   # noqa: BLE001
+        return None, f"ficha ilegivel ({type(exc).__name__})"
+    return _ficha_valida(dados)
+
+
+def _avisar_ficha_invalida(problema: str) -> None:
+    texto = (f"a ficha da trava da rodada esta invalida ({problema}); trato "
+             "como 'sem ficha': espero, nao mato ninguem")
+    _linha(f"[postar] {texto}")
+    try:
+        from builds import atividade
+        atividade.registrar("publicacao", "aviso", texto, "builds",
+                            etapa="publicar.rodada")
     except Exception:                                          # noqa: BLE001
-        return None
-    return dados if isinstance(dados, dict) else None
+        pass
 
 
 def _descrever_dona(dona: dict | None) -> str:
@@ -4321,41 +4526,44 @@ def _pode_matar(dona: dict | None, *, agora=None, meu_horario=None,
                 criacao=None) -> tuple:
     """(mata?, por que) — a decisao inteira, sem tocar em processo nenhum.
 
-    `criacao` e a funcao que diz quando o pid nasceu (injetavel no teste).
+    `dona` e a ficha JA VALIDADA (`_ficha_valida`); qualquer outra coisa nao
+    mata. `criacao` diz quando o pid nasceu (injetavel no teste).
     """
     import time
-    from datetime import datetime
-    if not dona:
+    if not dona or "horario_dt" not in dona:
         return False, "sem ficha da dona"
-    if dona.get("tipo") in TIPOS_QUE_NUNCA_MORREM:
+    if dona["tipo"] in TIPOS_QUE_NUNCA_MORREM:
         return False, "o escoar do app nunca e morto"
-    try:
-        pid = int(dona["pid"])
-        inicio = float(dona["inicio"])
-        horario = datetime.fromisoformat(str(dona["horario"]))
-    except (KeyError, TypeError, ValueError):
-        return False, "ficha da dona ilegivel"
+    pid = dona["pid"]
     if pid == os.getpid():
         return False, "a dona sou eu"
     meu_horario = meu_horario or _inicio_do_horario()
-    if horario >= meu_horario:
+    if dona["horario_dt"] >= meu_horario:
         return False, "a dona e do MESMO horario (ou de um seguinte)"
     agora = time.time() if agora is None else agora
-    idade_min = (agora - inicio) / 60.0
+    idade_min = (agora - dona["inicio"]) / 60.0
     if idade_min < RODADA_PENDURADA_MIN:
         return False, f"viva ha {idade_min:.0f} min (< {RODADA_PENDURADA_MIN})"
+    pulso = dona.get("pulso")
+    parado_min = (agora - (dona["inicio"] if pulso is None else pulso)) / 60.0
+    if parado_min < PULSO_PARADO_MIN:
+        return False, (f"lenta mas viva: pulso de {parado_min:.0f} min atras "
+                       f"(< {PULSO_PARADO_MIN})")
     nascido = (criacao or _criacao_do_processo)(pid)
     if nascido is None:
         return False, "o processo ja nao existe"
-    if dona.get("criado") is None or abs(nascido - float(dona["criado"])) > 2:
+    if abs(nascido - dona["criado"]) > 2:
         return False, "o pid agora e de outro processo"
-    return True, f"pendurada: viva ha {idade_min:.0f} min"
+    return True, (f"pendurada: viva ha {idade_min:.0f} min, pulso parado ha "
+                  f"{parado_min:.0f} min")
 
 
 def _processos() -> list:
-    """[{pid, pai, nome}] de todos os processos (Win32_Process)."""
+    """[{pid, pai, nome, criado}] de todos os processos (Win32_Process)."""
     script = ("Get-CimInstance Win32_Process | Select-Object ProcessId,"
-              "ParentProcessId,Name | ConvertTo-Json -Compress")
+              "ParentProcessId,Name,@{n='Criado';e={if ($_.CreationDate) "
+              "{$_.CreationDate.ToFileTimeUtc()} else {0}}} | "
+              "ConvertTo-Json -Compress")
     proc = subprocess.run(["powershell", "-NoProfile", "-NonInteractive",
                            "-Command", script], capture_output=True,
                           timeout=60, creationflags=NO_WINDOW)
@@ -4363,20 +4571,34 @@ def _processos() -> list:
                        or "[]")
     if isinstance(dados, dict):
         dados = [dados]
-    return [{"pid": int(d.get("ProcessId") or 0),
-             "pai": int(d.get("ParentProcessId") or 0),
-             "nome": str(d.get("Name") or "").lower()} for d in dados]
+    saida = []
+    for d in dados:
+        ft = int(d.get("Criado") or 0)
+        saida.append({"pid": int(d.get("ProcessId") or 0),
+                      "pai": int(d.get("ParentProcessId") or 0),
+                      "nome": str(d.get("Name") or "").lower(),
+                      "criado": ft / 1e7 - 11644473600.0 if ft else None})
+    return saida
 
 
-def _descendentes(pid: int, processos: list) -> list:
-    filhos, fila, vistos = [], [int(pid)], {int(pid)}
+def _descendentes(pid: int, processos: list, criado: float | None) -> list:
+    """Os descendentes de `pid` — filho so conta se nasceu DEPOIS do pai.
+
+    O Windows guarda o pid do pai morto em `ParentProcessId` e reaproveita
+    o numero: sem a hora, o Chrome de OUTRO pai, ja morto, que tivesse o
+    mesmo pid, entraria na conta (conferente do 65dc781, `orfao.py`).
+    """
+    if criado is None:
+        return []
+    filhos, fila, vistos = [], [(int(pid), criado)], {int(pid)}
     while fila:
-        pai = fila.pop()
+        pai, nasceu = fila.pop()
         for p in processos:
-            if p["pai"] == pai and p["pid"] not in vistos:
+            if (p["pai"] == pai and p["pid"] not in vistos
+                    and p.get("criado") is not None and p["criado"] >= nasceu):
                 vistos.add(p["pid"])
                 filhos.append(p)
-                fila.append(p["pid"])
+                fila.append((p["pid"], p["criado"]))
     return filhos
 
 
@@ -4390,35 +4612,35 @@ def _matar_dona(dona: dict, *, prazo_s: float = 15.0) -> dict:
     import time
     pid = int(dona["pid"])
     try:
-        filhos = [p for p in _descendentes(pid, _processos())
+        filhos = [p for p in _descendentes(pid, _processos(), dona["criado"])
                   if p["nome"] in FILHOS_QUE_MORREM_JUNTO]
     except Exception:                                          # noqa: BLE001
         filhos = []
-    _taskkill(pid)
+    # A identidade ANTES do tiro: o pid ainda e o da ficha?
+    nascido = _criacao_do_processo(pid)
+    if nascido is not None and abs(nascido - dona["criado"]) <= 2:
+        _taskkill(pid)
     fim = time.monotonic() + prazo_s
     while _criacao_do_processo(pid) is not None and time.monotonic() < fim:
         time.sleep(0.5)
     morreu = _criacao_do_processo(pid) is None
     mortos = []
     for p in filhos:
-        if _criacao_do_processo(p["pid"]) is not None:
+        agora = _criacao_do_processo(p["pid"])
+        if agora is not None and abs(agora - p["criado"]) <= 2:
             _taskkill(p["pid"])
             mortos.append(f"{p['nome']} {p['pid']}")
     return {"pid": pid, "morreu": morreu, "filhos": mortos}
 
 
-def _avisar_morte(dona: dict, laudo: dict, motivo: str) -> None:
-    texto = (f"matei {_descrever_dona(dona)}: {motivo}; "
-             + ("morreu" if laudo["morreu"] else "NAO morreu")
-             + (f"; e {len(laudo['filhos'])} processo(s) dela que sobraram "
-                f"({', '.join(laudo['filhos'][:6])})" if laudo["filhos"]
-                else "; nenhum Chrome dela sobrou")
-             + ". Ela pode ter deixado um rascunho no canal.")
+def _avisar(texto: str, *, erro: bool = True) -> None:
+    """Log, diario e Telegram, nunca levanta."""
     _linha(f"[postar] {texto}")
     try:
         from builds import atividade
-        atividade.registrar("publicacao", atividade.ERRO, texto, "builds",
-                            etapa="publicar.rodada")
+        atividade.registrar("publicacao",
+                            atividade.ERRO if erro else "aviso",
+                            texto, "builds", etapa="publicar.rodada")
     except Exception:                                          # noqa: BLE001
         pass
     try:
@@ -4427,14 +4649,54 @@ def _avisar_morte(dona: dict, laudo: dict, motivo: str) -> None:
         pass
 
 
+def _avisar_morte(dona: dict, laudo: dict, motivo: str) -> None:
+    voo = dona.get("em_voo") or {}
+    _avisar(f"matei {_descrever_dona(dona)}: {motivo}; "
+            + ("morreu" if laudo["morreu"] else "NAO morreu")
+            + (f"; e {len(laudo['filhos'])} processo(s) dela que sobraram "
+               f"({', '.join(laudo['filhos'][:6])})" if laudo["filhos"]
+               else "; nenhum Chrome dela sobrou")
+            + (f". Estava com {voo['alvo']} no {voo['destino']} "
+               f"({voo['etapa']})" if voo else "")
+            + ". Ela pode ter deixado um rascunho no canal.")
+
+
+def _pousar_voo_perdido(anterior: dict | None) -> bool:
+    """O voo que a dona anterior deixou no ar vai para "a conferir".
+
+    True quando nao ha nada a fazer ou a marca gravou; False quando havia voo
+    e a marca NAO gravou — e entao esta rodada nao publica.
+    """
+    voo = (anterior or {}).get("em_voo")
+    if not voo or _ORDEM_DA_ETAPA.get(voo.get("etapa"), 0) < 1:
+        return True
+    texto = (f"a publicacao de {voo['alvo']} no {voo['destino']} parou na "
+             f"etapa '{voo['etapa']}' ({_descrever_dona(anterior)} nao "
+             "terminou): pode ter saido publico — confira")
+    try:
+        from builds.publicar import desfecho
+        desfecho.marcar_para_conferir(
+            voo["canal"], voo["alvo"], texto, voo["destino"],
+            aviso=texto, etapa="publicar.rodada", erro=True)
+    except Exception as exc:                                   # noqa: BLE001
+        _avisar(f"{texto}; e NAO consegui por na lista a conferir "
+                f"({type(exc).__name__}: {exc}) — este horario nao publica")
+        return False
+    _avisar(f"{texto}. Esta na lista a conferir do {voo['destino']}; nao "
+            "sobe de novo ate alguem conferir.")
+    return True
+
+
 @contextmanager
 def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
     """`with _trava_da_rodada() as vez:` — `vez["minha"]` diz se publica.
 
     Tenta na hora; ocupada, olha a ficha da dona a cada
     `INTERVALO_DE_OLHAR_A_DONA_S`: pendurada (`_pode_matar`), e morta e a
-    trava e tomada; senao espera ate o prazo. `vez["dona"]` e a ultima ficha
-    vista (o aviso diz QUEM segurou). Erro da propria trava (pasta de travas
+    trava e tomada; senao espera ate o prazo. Com a trava na mao, o voo que
+    a dona anterior deixou no ar vai para "a conferir" ANTES de qualquer
+    escolha (`_pousar_voo_perdido`). `vez["dona"]` e a ultima ficha vista (o
+    aviso diz QUEM segurou). Erro da propria trava (pasta de travas
     inacessivel) e "nao sei se ha outra rodada": falha FECHADA.
     """
     import time
@@ -4447,7 +4709,7 @@ def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
     pilha = ExitStack()
     try:
         fim = time.monotonic() + prazo
-        avisei = False
+        avisei = invalida = False
         tentei: set = set()
         while True:
             if pilha.enter_context(travas.trava(TRAVA_DA_RODADA)):
@@ -4455,10 +4717,14 @@ def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
                 break
             pilha.close()
             pilha = ExitStack()
-            vez["dona"] = dona = _ler_dona()
+            dona, problema = _ler_dona()
+            vez["dona"] = dona
+            if problema and not invalida:
+                _avisar_ficha_invalida(problema)
+                invalida = True
             mata, motivo = _pode_matar(dona)
-            if mata and dona.get("pid") not in tentei:
-                tentei.add(dona.get("pid"))
+            if mata and dona["pid"] not in tentei:
+                tentei.add(dona["pid"])
                 laudo = _matar_dona(dona)
                 _avisar_morte(dona, laudo, motivo)
                 if laudo["morreu"]:
@@ -4479,16 +4745,32 @@ def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
                "publico.")
         vez["minha"] = False
     if vez["minha"]:
-        _gravar_dona(tipo)
+        anterior, problema = _ler_dona()
+        if problema:
+            _avisar_ficha_invalida(problema)
+        if _pousar_voo_perdido(anterior):
+            _gravar_dona(tipo)
+        else:
+            vez["minha"] = False      # a ficha velha fica: a proxima tenta
+            vez["voo_preso"] = True
     with pilha:
-        yield vez
+        try:
+            yield vez
+        finally:
+            _DONA.clear()
 
 
-def _rodada_presa(prazo: float, dona: dict | None = None) -> int:
+def _rodada_presa(prazo: float, dona: dict | None = None,
+                  voo_preso: bool = False) -> int:
     """Quem segura a trava nao terminou no prazo: nada sai, e todo mundo sabe."""
-    texto = (f"{_descrever_dona(dona)} ainda estava rodando depois de "
-             f"{prazo:.0f} s de espera; este horario NAO publicou "
-             "(nunca subo a parte que esta em voo)")
+    if voo_preso:
+        texto = ("o video que a rodada anterior deixou no ar nao foi para a "
+                 "lista a conferir; este horario NAO publicou (repetir e "
+                 "pior que nao postar)")
+    else:
+        texto = (f"{_descrever_dona(dona)} ainda estava rodando depois de "
+                 f"{prazo:.0f} s de espera; este horario NAO publicou "
+                 "(nunca subo a parte que esta em voo)")
     _linha(f"[postar] {texto}")
     try:
         from builds import atividade
@@ -4534,8 +4816,16 @@ def main(argv=None) -> int:
     prazo = ESPERA_PELA_RODADA_ANTERIOR_S
     with _trava_da_rodada(prazo, _tipo_da_chamada(args)) as vez:
         if not vez["minha"]:
-            return _rodada_presa(prazo, vez["dona"])
-        return _main(args)
+            return _rodada_presa(prazo, vez["dona"],
+                                 vez.get("voo_preso", False))
+        # O PULSO: toda linha da saida (a nossa e a dos publicadores) diz
+        # "estou vivo" e marca a etapa do voo (ver `_SaidaComPulso`).
+        original = sys.stdout
+        sys.stdout = _SaidaComPulso(original)
+        try:
+            return _main(args)
+        finally:
+            sys.stdout = original
 
 
 def _main(args) -> int:

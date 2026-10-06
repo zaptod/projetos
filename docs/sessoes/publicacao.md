@@ -121,21 +121,45 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    **quem** segura (a rodada da grade das HH:MM, o "escoar" ou o "recuperar
    vídeo privado" do app, um `--so-youtube`, com pid e hora). A trava é
    reentrante por thread: só separa processos, que é o caso do Agendador.
-   Quem pega a trava grava a **ficha da dona** ao lado dela
-   (`postar__rodada.dona.json`: pid, criação do processo, início, horário
-   da grade, tipo). **Dona pendurada**: a rodada nova mata a dona se ela é
-   de um horário **anterior** (nunca do mesmo), está viva há
-   `RODADA_PENDURADA_MIN` (70) ou mais, o pid ainda é dela (mesma hora de
+   Quem pega a trava mantém a **ficha da dona** ao lado dela
+   (`postar__rodada.dona.json`, escrita atômica `.tmp` + `os.replace`:
+   pid, criação do processo, início, horário da grade, tipo, **pulso** e
+   **em voo**). Ficha com tipo errado (fuso no horário, texto no lugar de
+   número, pid booleano…) é **inválida** (`_ficha_valida`): vale como "sem
+   ficha" — espera, não mata — e vai ao diário como aviso.
+   **Pulso**: no processo dono, `sys.stdout` é `_SaidaComPulso`; toda linha
+   (as do postar e as dos publicadores, que narram cada passo) renova o
+   pulso, gravado no máximo a cada 30 s, e a postagem pulsa antes de cada
+   vistoria. **Dona pendurada**: a rodada nova mata a dona se ela é de um
+   horário **anterior** (nunca do mesmo), está viva há
+   `RODADA_PENDURADA_MIN` (70) ou mais, o **pulso está parado** há
+   `PULSO_PARADO_MIN` (20) ou mais, o pid ainda é dela (mesma hora de
    criação) e não é um `--tudo` (o escoar do app dura o que a fila durar).
-   Mata só aquele python (`taskkill /F /PID`, sem /T) e os `chrome.exe` e
-   `node.exe` (driver do Playwright) **descendentes** dele que sobraram,
-   confere que morreu, pega a trava, publica e avisa no Telegram o que
-   matou. Os 70 min: nos ledgers (331 horários desde 15/09) a rodada mais
-   longa gravou a última linha 35,8 min depois do horário; o passo mais
-   longo medido é TikTok 631 s / YouTube 381 s (um canal, 17 min); nada
-   recomeça a menos de 20 min do horário seguinte — também a recuperação e
-   a reserva (`_cabe_antes_do_proximo`) —, então nos horários de 60 min a
-   rodada saudável acaba até ~57 min. As tarefas `NeuralFights_postar_*`
+   Rodada lenta mas viva **não morre**, por mais velha que seja (a versão
+   só por idade matava uma saudável com tentativa de mais de ~21 min). Os
+   20 min: o trecho calado mais longo medido é uma vistoria de 596 s
+   (diário, 87 vistorias "lentas"); página que não abre fala a cada
+   tentativa; o TikTok cala até 240 s no envio. Os 70 min ficam como piso
+   (rodada mais longa: 35,8 min no diário e nos ledgers).
+   Mata só aquele python (`taskkill /F /PID`, sem /T, com a identidade
+   conferida antes) e os `chrome.exe` e `node.exe` (driver do Playwright)
+   **descendentes** dele que sobraram — filho só conta se nasceu **depois**
+   do pai (`_processos` traz a criação; o Windows guarda o pid do pai morto
+   e o reaproveita) e cada um é conferido de novo antes do tiro —, confere
+   que morreu, pega a trava, publica e avisa no Telegram o que matou.
+   **Em voo**: os quatro funis (`_subir_parte_no_youtube`,
+   `_youtube_dos_builds`, `_tiktok_das_historias`, `_tiktok_dos_builds`,
+   decorados com `_voando`) gravam na ficha canal, alvo e destino, e a
+   etapa vem das frases dos publicadores ("arquivo entregue" → `entregue`,
+   "publicar clicado" → `clicou`; há teste de contrato com o fonte deles).
+   Quem pega a trava lê a ficha **anterior** antes de escolher: voo em
+   `entregue` ou `clicou` (dona morta, morta por nós ou caída sozinha) vai
+   para a lista "a conferir" daquele destino (`_pousar_voo_perdido` →
+   `desfecho.marcar_para_conferir`), que tira o vídeo da fila e da
+   recuperação; o aviso diz "pode ter saído público — confira". Se a marca
+   não grava, a rodada **não publica** e a ficha velha fica para a próxima.
+   Nada recomeça a menos de 20 min do horário seguinte — também a
+   recuperação e a reserva (`_cabe_antes_do_proximo`). As tarefas `NeuralFights_postar_*`
    têm `ExecutionTimeLimit` de **2 h** (`LIMITE_DA_TAREFA`,
    `tarefas_windows.limitar_execucao`; era 72 h): medido em 06/10, o
    Agendador no limite encerra só o `wscript` — o `cmd` e o python
@@ -195,7 +219,8 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | --- | --- |
 | Um por horário **por plataforma** | `postar.publicou_neste_horario` (identidade do horário = `conferencia.chave_do_horario`, nunca a hora do relógio; fonte = ledger; linha sem data não barra; ledger **ilegível barra** — `LedgerIlegivel`, falha fechada desde 06/10) |
 | Duas rodadas ao mesmo tempo | `postar.TRAVA_DA_RODADA` (`_trava_da_rodada`, entre processos): a nova espera a velha até 15 min; se não, não publica, sai 1 e avisa quem segura (`_rodada_presa`, `_descrever_dona`) |
-| Rodada pendurada segurando a trava | `postar._pode_matar` (horário anterior, ≥ `RODADA_PENDURADA_MIN` = 70, mesmo processo, nunca `--tudo`) → `_matar_dona` (python + chrome/node descendentes) → `_avisar_morte`; tarefas com `ExecutionTimeLimit` PT2H (`LIMITE_DA_TAREFA`) |
+| Rodada pendurada segurando a trava | `postar._pode_matar` (ficha válida, horário anterior, ≥ `RODADA_PENDURADA_MIN` = 70, pulso parado ≥ `PULSO_PARADO_MIN` = 20, mesmo processo, nunca `--tudo`) → `_matar_dona` (python + chrome/node descendentes nascidos depois dele) → `_avisar_morte`; tarefas com `ExecutionTimeLimit` PT2H (`LIMITE_DA_TAREFA`) |
+| Vídeo no ar quando a dona morreu | `postar._em_voo`/`_voando` (os 4 funis) + `_SaidaComPulso` (etapa pela frase do publicador) → `_pousar_voo_perdido` na próxima rodada, antes da escolha: "a conferir" no destino, ou a rodada não publica |
 | Tentativa perto do horário seguinte | `postar._ainda_no_horario`: janela (25 reposição / 40 volta) + mesmo slot + `MARGEM_ANTES_DO_PROXIMO_MIN` (20) de `grade.proximo_em`, conferida depois de cada espera |
 | Upload avulso (`--so-youtube`) que atravessa uma rodada | `postar._horario_que_a_linha_tomaria`: recusa se uma rodada da grade **começa** dentro dos `DURACAO_DE_UM_UPLOAD_MIN = 20` min do upload (22:20 → "22:37"; 22:04 → livre) |
 | Título já publicado (fecha a fila) | `postar._sem_titulo_repetido`/`titulo_repetido`; regra em `titulos.chave/repetido` |
@@ -538,6 +563,26 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   verdade dormindo com um filho: morre com o filho e a nova publica; do
   mesmo horário, ou o escoar, não morre; `LimiteDaTarefaTests`). Mutação:
   14 regras, 14 derrubam teste.
+  **Conferente do 65dc781** (mesmo dia): (1) matar uma dona travada
+  **depois do clique** publicava de novo — nada ia ao disco antes da
+  confirmação e quem matava escolhia o mesmo vídeo. → "em voo" na ficha e
+  `_pousar_voo_perdido` (ver §1). (2) `_descendentes` seguia
+  `ParentProcessId` sem hora e pegaria o Chrome de outro pai já morto com
+  o mesmo pid. → filho só se nasceu depois do pai, identidade conferida
+  antes de cada tiro. (3) Ficha com tipo errado levantava fora do `try`. →
+  `_ficha_valida`, "sem ficha" e aviso. (4) A folga real até os 70 min
+  era ~8 min (a 1ª tentativa de cada canal não passa pela margem; conta
+  do conferente: max(28 + 2A, 42 + A) + 5 min de rede) e uma tentativa de
+  mais de ~21 min faria a saudável morrer. → escolhi o **pulso** em vez
+  de subir o limite: subir para cobrir o pior caso pelas constantes
+  deixaria uma pendurada de verdade segurando mais de um horário de 60
+  min; o pulso só mata quem parou de falar há 20 min. (5) A reserva sem a
+  margem sobreviveu à mutação. → `ReservaRespeitaAMargemTests`. Testes em
+  `test_postar_rodada_segura_regressions.py` (dois processos: dona
+  travada depois do clique → a nova marca a p06 "a conferir" no YouTube e
+  leva outra parte; dona caída sozinha com voo → idem; marca que não grava
+  → não publica e a ficha fica; lenta mas viva → não morre; ficha com
+  fuso → não morre e avisa). Mutação: 22 regras, 22 derrubam teste.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois
