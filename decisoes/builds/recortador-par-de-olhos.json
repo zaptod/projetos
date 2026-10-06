@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Conferência de 06/10: numa folha realista (6 pares, 40 px entre os olhos) o recortador fazia 12 recortes soltos ou encaixava o par deitado no meio do rosto. Zonas do jogo: olho de cima em (563,420) e de baixo em (563,604) no gabarito 1024. Serve para o recortador encaixar sozinho os olhos que você gera.",
+  "criado": "2026-10-06T13:17:12.804990",
+  "depende_de": [],
+  "historico": [],
+  "id": "recortador-par-de-olhos",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Ele acha os dois olhos do par, separa, e põe um em cada posição do jogo, sem distorcer. Um olho sozinho vira o par (o mesmo olho nas duas posições)",
+      "id": "separar",
+      "pede_comentario": false,
+      "rotulo": "Separar o par e pôr cada olho no seu lugar (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Mantém o desenho junto, só gira para ficar de pé; a distância entre os olhos fica a do desenho",
+      "id": "girar",
+      "pede_comentario": false,
+      "rotulo": "Girar o par inteiro 90°"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O recortador não mexe; eu gero as folhas no gabarito",
+      "id": "vista-de-cima",
+      "pede_comentario": false,
+      "rotulo": "Eu desenho já visto de cima"
+    }
+  ],
+  "pergunta": "A IA desenha o par de olhos lado a lado (de frente), mas no jogo (visto de cima, olhando para a direita) os dois olhos ficam um em cima do outro. O que o recortador faz com um par de olhos?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Recortador: par de olhos desenhado de frente",
+  "vigente": null
+}

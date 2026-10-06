@@ -39,3 +39,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Sprites modulares: as 9 escolhas do desenho** — Aceito as 9 (recomendado) (06/10/2026) `sprites-modulares-9-respostas`
 - ✅ **Sprites: guarda-roupa de variantes** — Sorteio fixo por lutador + provador (06/10/2026) · “06/10 pelo chat: 'vários olhos aleatórios ... igual aqueles jogos de colocar roupa' (orquestrador escolheu a recomendada; o Adrian pode trocar no app)” `sprites-guarda-roupa`
 - ✅ **Sprites: recortador de folha** — Tira só verde ou magenta e separa cada sprite (06/10/2026) · “06/10 pelo chat (pedido direto do Adrian)” `sprites-recortador`
+- ⏳ **Recortador: par de olhos desenhado de frente** — A IA desenha o par de olhos lado a lado (de frente), mas no jogo (visto de cima, olhando para a direita) os dois olhos ficam um em cima do outro. O que o recortador faz com um par de olhos? `recortador-par-de-olhos`
