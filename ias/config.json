@@ -12,10 +12,10 @@
     "grok": false
   },
   "_comment_imagem": "Pedidos de imagem. rodizio_imagem (03/10/2026, o Adrian: 'quero que o Gemini, o ChatGPT e o Picasso dividam o trabalho de gerar imagens'): os tres DIVIDEM - o carteiro escolhe, entre os livres e em cota, o que gerou imagem ha MAIS tempo. cota_pausa_h: depois de uma falha de limite/upgrade/parede, quantas horas o gerador fica fora do rodizio.",
+  "_comment_picasso_fora": "06/10/2026: PicassoIA FORA do rodizio (decisao geral/picasso-fora-da-roda, 'Tirar o PicassoIA de vez': o Adrian viu que o site morreu; so volta se ele pedir). A caixa 'picasso' continua existindo para pedido feito a mao pelo app.",
   "rodizio_imagem": [
     "gemini",
-    "chatgpt",
-    "picasso"
+    "chatgpt"
   ],
   "cota_pausa_h": 6
 }

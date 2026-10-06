@@ -59,8 +59,17 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 
 Documento de passagem — escrito em 27/09/2026 pela sessão dona desta parte.
 
-As imagens usam `config/imagens.json`: `geradores_imagem` limita a roda a Gemini,
-ChatGPT e PicassoIA. A decisão `imagens-divisao` foi tomada em 03/10/2026: um
+As imagens usam `config/imagens.json`: `geradores_imagem` limita a roda a **Gemini e
+ChatGPT**. **O PicassoIA saiu da roda em 06/10/2026** (decisão `geral/picasso-fora-da-roda`,
+"Tirar o PicassoIA de vez": só volta se o Adrian pedir): fora do `geradores_imagem` e do
+`rodizio_imagem` do carteiro (`ias/config.json`). História fixada (ou que herdaria) um
+gerador fora da lista passa ao primeiro do rodízio (`worker._saiu_da_roda`, diário
+`imagens.gerador_fora_da_roda`; o rosto pode mudar no meio da série — medido em 06/10: 55
+histórias herdariam o PicassoIA, 2 fixadas nele, **nenhuma** com cena pendente). Lista
+vazia não cai mais no caminho antigo do PicassoIA (`"geradores_imagem" in ajustes`).
+Testes: `tests/test_picasso_fora_da_roda_regressions.py`. Vazão medida no correio (8 dias,
+blocos de ≥ 10 imagens): PicassoIA 65–76/h, **Gemini ~20/h** (16–38), **ChatGPT ~15–30/h**
+(~2 min por imagem com o chat novo); nenhuma falha de cota dos dois no período. A decisão `imagens-divisao` foi tomada em 03/10/2026: um
 gerador por história (`por-historia`). Uma história nova fixa, na primeira cena,
 o gerador que está há mais tempo sem gerar, e as demais usam o mesmo; duas
 falhas da mesma cena movem só ela ao próximo. Uma história em andamento sem
@@ -91,8 +100,8 @@ se refaz** com o mesmo prompt como no caminho antigo
 (`worker._refazer_colagem_pelo_correio`, registro `refeita` e diário
 `imagens.refeita`). Testes: `tests/test_imagens_correio_varredura_regressions.py`.
 
-Esta parte **cria**: roteiro num LLM, uma imagem por cena pelo correio (Gemini,
-ChatGPT ou PicassoIA), narração,
+Esta parte **cria**: roteiro num LLM, uma imagem por cena pelo correio (Gemini ou
+ChatGPT; o PicassoIA saiu em 06/10), narração,
 um mp4 por parte, uma IA assiste, e o vídeo aprovado fica no estoque. **Não
 publica** — quem publica é `ferramentas/postar.py` (`publicacao.md`).
 
@@ -391,6 +400,18 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
 - **A vistoria enchia o diário** (05/10/2026): 2849 de 3836 linhas do `atividade.jsonl`
   (74 %) eram "vistoria hNN pM". Só vão ao diário as que barraram ou levaram ≥
   `VISTORIA_LENTA_S` (5 s); a mediana da etapa "vistoria" em `builds.tempos` sobe por isso.
+- **Render que parece travado é disco** (06/10/2026): a rodada das 01:20 ficou de 01:44:10 a
+  02:39:46 sem escrever no log (último: "celular 29/29"). Não era o PicassoIA: o pid da
+  rodada estava num `ffmpeg` da h59 p02 (reparo), e o `dividido.mp4` levou **33 min**
+  (01:45:55 → 02:18:42; nos dias anteriores, segmentos → mp4 final em 2–6 min) e a mixagem
+  gravava ~20 KB/s (21 min). O E: (HDD, disco 1) estava a 0 % ocioso, fila média 40: dois `grep -r` órfãos de
+  outra sessão (`grep -r … E:\projetos` desde 01:36, e outro em `historias/` desde 01:37,
+  ~10 MB/s cada, o pai já morto), um `git worktree add` do Codex e suítes de teste. A
+  tarefa do Windows roda abaixo do normal, com **E/S de baixa prioridade**: perde o disco
+  para todo mundo. Para ver: `Win32_PerfFormattedData_PerfDisk_PhysicalDisk` (o
+  `Get-Counter` aqui é em português) e os `Threads` do ffmpeg em `Wait`. Nunca `grep -r`
+  na raiz do repo (as `outputs/` têm centenas de GB de mp4): use o Grep da ferramenta
+  ou caminhos de código.
 - **Parede de planos do PicassoIA**: o diálogo de assinatura cobre a página e engole o
   clique, mesmo em conta com plano. `worker.gerar()` fecha o navegador e **reabre o
   perfil** `reaberturas_na_parede` vezes (2 desde 30/09, `config/imagens.json`, com

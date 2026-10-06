@@ -1,8 +1,8 @@
 {
     "_comment": "Como a cena vira imagem no PicassoIA. `estilo` e colado no fim de TODO prompt de cena: e ele que faz as 12 imagens de uma historia parecerem do mesmo filme. `negativo` entra como texto proibido; o site nao tem campo negativo separado, entao vai na mesma frase.",
     "provedor": "picasso",
-    "_comment_geradores_imagem": "03/10/2026: Gemini, ChatGPT e PicassoIA dividem as imagens pelo correio. Em por-historia, a primeira cena fixa o que gerou ha mais tempo; depois de duas falhas na mesma cena, ela tenta o proximo do rodizio.",
-    "geradores_imagem": ["gemini", "chatgpt", "picasso"],
+    "_comment_geradores_imagem": "03/10/2026: Gemini, ChatGPT e PicassoIA dividem as imagens pelo correio. Em por-historia, a primeira cena fixa o que gerou ha mais tempo; depois de duas falhas na mesma cena, ela tenta o proximo do rodizio. 06/10/2026: PicassoIA FORA DA RODA (decisao geral/picasso-fora-da-roda, 'Tirar o PicassoIA de vez': so volta se o Adrian pedir). Historia fixada num gerador que nao esta nesta lista passa ao primeiro do rodizio (worker._saiu_da_roda). Lista vazia nao cai no caminho antigo do PicassoIA: o correio diz 'nenhum gerador'.",
+    "geradores_imagem": ["gemini", "chatgpt"],
     "divisao": "por-historia",
     "espera_correio_s": 420,
     "aspect": "9:16",

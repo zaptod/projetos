@@ -221,11 +221,16 @@ def _pausado(alvo: str = "picasso"):
     return False, ""
 
 
+def _permitidos(config: dict) -> list[str]:
+    """Os geradores que o `imagens.json` deixa na roda (`geradores_imagem`)."""
+    return [str(g).lower() for g in config.get("geradores_imagem", []) or []]
+
+
 def _ordem_de_geradores(config: dict) -> list[str]:
     """Os geradores permitidos, do que trabalhou ha mais tempo ao ultimo."""
     from ias import imagem
 
-    permitidos = [str(g).lower() for g in config.get("geradores_imagem", [])]
+    permitidos = _permitidos(config)
     ordem = [g for g in imagem.rodizio_ordem() if g in permitidos]
     horas = float(config.get("cota_pausa_h", 6))
     return [g for g in ordem if imagem.gerador(g).get("disponivel")
@@ -354,6 +359,22 @@ def _refazer_colagem_pelo_correio(caixa: str, prompt: str, destino: Path, final:
     return refeita
 
 
+def _saiu_da_roda(historia_id: str, antigo: str, novo: str, log,
+                  gravar: bool = True) -> None:
+    """A historia estava com um gerador que o `imagens.json` tirou da roda:
+    passa ao `novo`, diz no log e no diario (o rosto pode mudar no meio)."""
+    texto = (f"{historia_id}: {antigo} saiu da roda de imagens (geradores_imagem); "
+             f"as cenas que faltam vao ao {novo}")
+    log(f"[imagens] {texto}.")
+    if gravar:
+        fila.definir_gerador_da_historia(historia_id, novo)
+    try:
+        _rb_atividade.registrar(novo, _rb_atividade.LOG, texto, "historias",
+                                etapa="imagens.gerador_fora_da_roda", ref=historia_id)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
                         parte: int | None = None, headless: bool = False,
                         log=print, entregador=None) -> dict:
@@ -377,10 +398,22 @@ def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
     if divisao == "por-historia" and not ordem:
         raise NaoRodou("nenhum gerador de imagem esta livre ou em cota")
     fixado = fila.gerador_da_historia(historia_id)
+    permitidos = _permitidos(config)
+    if divisao == "por-historia" and fixado and fixado not in permitidos:
+        # GERADOR QUE SAIU DA RODA (06/10/2026, decisao `geral/picasso-fora-da-roda`:
+        # "o picasso morreu tambem, nao podemos mais contar com ele"). Fora de
+        # cota a historia espera o gerador dela; fora da RODA ele nao volta, e o
+        # fixado ia na frente da lista de caixas mesmo assim (2 pedidos perdidos
+        # por cena num site morto). Troca o rosto no meio da serie: e o preco.
+        _saiu_da_roda(historia_id, fixado, ordem[0], log)
+        fixado = ordem[0]
     if divisao == "por-historia" and not fixado:
         # Historia em andamento herda o gerador das cenas prontas (mesmo fora
         # de cota): trocar no meio muda o rosto do personagem na serie.
         herdado = fila.gerador_herdado(historia_id)
+        if herdado and herdado not in permitidos:
+            _saiu_da_roda(historia_id, herdado, ordem[0], log, gravar=False)
+            herdado = ""
         fixado = herdado or ordem[0]
         fila.definir_gerador_da_historia(historia_id, fixado)
         origem_fixado = ("herdado das cenas ja feitas" if herdado
@@ -503,8 +536,10 @@ def gerar(historia_id: str, *, limite: int | None = None,
     except Exception:                                          # noqa: BLE001
         ajustes = {}
     # Configuracoes antigas continuam no caminho PicassoIA; a configuracao
-    # nova declara os tres geradores e passa pelo correio.
-    if ajustes.get("geradores_imagem"):
+    # nova declara os geradores e passa pelo correio. A CHAVE decide, nao a
+    # lista (06/10/2026): `geradores_imagem: []` caia aqui embaixo, direto no
+    # PicassoIA que saiu da roda; vazia, o correio diz "nenhum gerador".
+    if "geradores_imagem" in ajustes:
         return _gerar_pelo_correio(historia_id, limite=limite, parte=parte,
                                    headless=headless, log=log, entregador=entregador)
     Parede = _rb_identity_picasso_client.ParedeDePlanos
