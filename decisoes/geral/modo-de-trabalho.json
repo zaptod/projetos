@@ -179,6 +179,16 @@
       "opcao": "paralelo",
       "origem": "mesa",
       "tipo": "nada"
+    },
+    {
+      "alvo": "",
+      "em": "2026-10-06T04:35:58",
+      "evento": "2026-10-06T04:35:58",
+      "linha": 129,
+      "nota": "aplicada pela Mesa de comando: a config já vale",
+      "opcao": "paralelo",
+      "origem": "mesa",
+      "tipo": "nada"
     }
   ],
   "contexto": "",
@@ -346,6 +356,13 @@
       "em": "2026-10-06T03:10:20",
       "opcao": "paralelo",
       "origem": "mesa"
+    },
+    {
+      "anterior": "paralelo",
+      "comentario": "06/10 04:35, no chat: paralelo, até 3 agentes — nas palavras dele: 06/10 ~04:45 Adrian pelo chat: missao dos sprites modulares pronta de manha, 'tudo esta permitido contanto que esteja pronto'; 3 delegados do Codex (sprites-godot, sprites-painel, obsidian-vivo)",
+      "em": "2026-10-06T04:35:58",
+      "opcao": "paralelo",
+      "origem": "chat"
     }
   ],
   "id": "modo-de-trabalho",
@@ -371,8 +388,8 @@
   "situacao": "decidida",
   "titulo": "Modo de trabalho dos agentes",
   "vigente": {
-    "comentario": "06/10 03:10, pela Mesa de comando: paralelo, até 2 agentes — nas palavras dele: pedido do Adrian, executado pelo servidor",
-    "em": "2026-10-06T03:10:20",
+    "comentario": "06/10 04:35, no chat: paralelo, até 3 agentes — nas palavras dele: 06/10 ~04:45 Adrian pelo chat: missao dos sprites modulares pronta de manha, 'tudo esta permitido contanto que esteja pronto'; 3 delegados do Codex (sprites-godot, sprites-painel, obsidian-vivo)",
+    "em": "2026-10-06T04:35:58",
     "opcao": "paralelo"
   }
 }

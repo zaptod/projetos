@@ -7,7 +7,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 
 **Geral**
 - ✅ **Objetivo das próximas semanas** — Estabilizar o que existe (27/09/2026) `objetivo-das-semanas`
-- ✅ **Modo de trabalho dos agentes** — Vários projetos em paralelo (06/10/2026) · “06/10 03:10, pela Mesa de comando: paralelo, até 2 agentes — nas palavras dele: pedido do Adrian, executado pelo servidor” `modo-de-trabalho`
+- ✅ **Modo de trabalho dos agentes** — Vários projetos em paralelo (06/10/2026) · “06/10 04:35, no chat: paralelo, até 3 agentes — nas palavras dele: 06/10 ~04:45 Adrian pelo chat: missao dos sprites modulares pronta de manha, 'tudo esta permitido contanto que esteja pronto'; 3 delegados do Codex (sprites-godot, sprites-painel, obsidian-vivo)” `modo-de-trabalho`
 - ✅ **Teto de uso do Claude** — Passou de 50%, para tudo; força total 20 min antes de renovar (29/09/2026) · “29/09 07:26, pela Mesa de comando: passou de 50% da sessão, para tudo” `teto-de-uso`
 - ✅ **Força total antes de renovar: ainda vale?** — Só quando eu pedir (29/09/2026) · “29/09 13:28, pela Mesa de comando: força total só quando eu pedir” `forca-total-ainda-vale`
 - ✅ **Capacidade mudada pelo app vira regra?** — Substitui: o que eu mudo no app vira a regra (28/09/2026) `capacidade-pelo-app`
