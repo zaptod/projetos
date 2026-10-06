@@ -1,0 +1,41 @@
+{
+  "comentario": false,
+  "contexto": "06/10 ~04:20, pelo chat: 'conferir toda a engine do neural fights ... faça o painel de anexo de sprites com base no que realmente existe no jogo, separado por classe tipo e etc, e levando em conta cada estado novo, lembrando que os sprites são estáticos quem cuida do movimento é o godot, eu quero um lugar para colocar cada coisinha e ... animações modulares, ou seja o acessório é uma parte, a pele é outra, os olhos são outras a boca é outra ... eu cuido da criação das imagens e você da interface para que eu possa anexá-las conversando diretamente com a engine que criei.' Prazo: pronto e impecável na manhã de 06/10; tudo permitido para isso.",
+  "criado": "2026-10-06T04:16:14.611698",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "06/10 pelo chat: animações modulares; sprites estáticos, o Godot cuida do movimento; painel de anexo pronto de manhã",
+      "em": "2026-10-06T04:16:15",
+      "opcao": "modular",
+      "origem": "cli"
+    }
+  ],
+  "id": "sprites-modulares-painel",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Pele, olhos, boca, acessório, arma etc. separados; um lugar para cada coisinha, por classe/tipo/estado, tirado do que existe na engine",
+      "id": "modular",
+      "pede_comentario": false,
+      "rotulo": "Modular: cada parte é um sprite estático e o Godot monta e anima"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "inteiro",
+      "pede_comentario": false,
+      "rotulo": "Um sprite inteiro por lutador"
+    }
+  ],
+  "pergunta": "Como os sprites entram no jogo?",
+  "projeto": "builds",
+  "situacao": "decidida",
+  "titulo": "Sprites modulares e painel de anexo",
+  "vigente": {
+    "comentario": "06/10 pelo chat: animações modulares; sprites estáticos, o Godot cuida do movimento; painel de anexo pronto de manhã",
+    "em": "2026-10-06T04:16:15",
+    "opcao": "modular"
+  }
+}

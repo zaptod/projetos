@@ -35,3 +35,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Imagem-mestra: qual estilo (9 testes)?** — 2 Anime (02/10/2026) `imagem-mestra-v2`
 - ✅ **Som real nas 15 builds de estoque: fazer ou tirar da fila?** — Só as novas têm som real (04/10/2026) `som-real-15-builds`
 - ✅ **Parede de planos do Digen: consertar agora ou depois?** — Deixar em espera (05/10/2026) `digen-parede`
+- ✅ **Sprites modulares e painel de anexo** — Modular: cada parte é um sprite estático e o Godot monta e anima (06/10/2026) · “06/10 pelo chat: animações modulares; sprites estáticos, o Godot cuida do movimento; painel de anexo pronto de manhã” `sprites-modulares-painel`
