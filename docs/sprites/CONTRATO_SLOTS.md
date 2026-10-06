@@ -242,9 +242,19 @@ palco/biblioteca/partes/lutador/<parte>/<nivel>/<alvo>/<variante>/<estado>.png (
   opcional e não participa do caminho. Estados ausentes caem no neutro da
   mesma variante, nunca em outra variante.
 - `palco/biblioteca/partes/guarda_roupa.json` guarda escolhas fixadas no
-  formato `{ "personagem": { "olhos": "v02" } }`. Sem escolha fixa, o jogo
-  sorteia uma variante de modo determinístico com `personagem:parte`, no nível
-  mais específico que tenha variantes.
+  formato `{ "<slug do personagem>": { "olhos": "v02" } }` (ex.:
+  `celeste_a_impiedosa`; a chave com o nome cru não é lida). Sem escolha
+  fixa (ou com uma fixada que o dono não tem), o jogo sorteia uma variante de
+  modo determinístico, no nível mais específico que tenha variantes
+  (personagem → classe → comum).
+- **O sorteio, igual nos dois lados** (`manifesto_sprites._sorteio_variante`
+  e `PartesLutador._sorteio_variante`): `h` = FNV-1a de 32 bits sobre o
+  UTF-8 de `slug(personagem):parte` (sem personagem, `slug(classe)`); índice
+  = `((h >> 16) ^ (h & 0xFFFF)) % n` sobre os ids das variantes em ordem.
+  Conta como variante só a pasta `v...` com pelo menos uma carinha válida da
+  peça (um `base.png` nos olhos ou uma pasta vazia não contam).
+  `palco/testes/test_sorteio_variantes.py` compara Python × Godot em 19.440
+  casos (06/10/2026: 0 divergências; antes do conserto eram 2.291).
 - Migração: um PNG antigo em `<alvo>/<estado>.png`, inclusive sua pasta
   `.historico`, vai para `v01/<estado>.png` sem sobrescrever uma `v01` já
   existente. `python -m neural_fights.tools.manifesto_sprites importar-antigas`

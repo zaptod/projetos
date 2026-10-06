@@ -213,11 +213,22 @@ static func _variantes(parte: String, nivel: String, alvo: String, existe: Calla
 	return saida
 
 
-static func _sorteio_variante(personagem: String, parte: String, opcoes: Array) -> String:
-	var numero := 0
-	var texto := personagem + ":" + parte
-	for i in texto.length():
-		numero = (numero * 31 + texto.unicode_at(i)) % 2147483647
+## Igual a manifesto_sprites._sorteio_variante (Python): FNV-1a de 32 bits
+## sobre o UTF-8 de `slug(chave):parte`, dobrado em 16 bits, modulo o numero
+## de variantes, sobre os ids em ordem. `chave` e o nome do personagem (ou a
+## classe, sem personagem). palco/testes/test_sorteio_variantes.py compara os
+## dois lados em ~19 mil casos.
+static func _sorteio_variante(chave: String, parte: String, opcoes: Array) -> String:
+	var h := fnv1a32(UtilPalco.slug(chave) + ":" + parte)
 	var ordenadas := opcoes.duplicate()
 	ordenadas.sort()
-	return str(ordenadas[numero % ordenadas.size()])
+	return str(ordenadas[((h >> 16) ^ (h & 0xFFFF)) % ordenadas.size()])
+
+
+## FNV-1a de 32 bits sobre o UTF-8 (o `hash()` do Godot nao tem igual no
+## Python). O int do GDScript tem 64 bits: h * primo (< 2^57) cabe.
+static func fnv1a32(texto: String) -> int:
+	var h := 0x811C9DC5
+	for byte in texto.to_utf8_buffer():
+		h = ((h ^ byte) * 16777619) & 0xFFFFFFFF
+	return h
