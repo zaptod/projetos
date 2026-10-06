@@ -80,6 +80,28 @@ def url_de_upload(canal: str = "builds") -> str:
 PARAMETRO_DIALOGO = "d=ud"
 # Quanto esperar o dialogo aparecer, antes e depois dos cliques.
 ESPERA_DIALOGO_S = 20.0
+# O DIALOGO DE ENVIO DO PROPRIO STUDIO, e o que o backdrop dele faz com o
+# Criar (06/10/2026). Medido na sessao de verdade, tres aberturas do canal de
+# historias: com o dialogo aberto, o elemento por cima do centro do Criar e
+# `tp-yt-iron-overlay-backdrop` — o Criar continua habilitado
+# (`aria-disabled="false"`), mas nenhum clique chega nele. Na rodada das
+# 00:37 de 06/10 a pagina levou ~126 s para abrir e montar (o normal medido
+# e 8-30 s), o campo de arquivo nao veio em 20 s, e o reserva "Criar ->
+# Enviar videos" ficou 30 s esperando um clique que o backdrop engolia:
+# `Locator.click: Timeout 30000ms ... resolved to <button aria-label="Criar"
+# aria-disabled="false"...>`. O reserva era IMPOSSIVEL justamente quando o
+# dialogo ja estava la. Agora: dialogo do Studio na tela sem o campo = ele
+# esta CARREGANDO, espera-se mais; e o que cobrir o Criar e lido, fotografado
+# e fechado com ESC antes do clique (o molde da parede do PicassoIA).
+DIALOGO_DE_ENVIO = "ytcp-uploads-dialog tp-yt-paper-dialog"
+ESPERA_DIALOGO_CARREGANDO_S = 60.0
+# O clique no Criar tem prazo proprio e curto: o padrao do Playwright (30 s)
+# era tempo morto com a parede na frente.
+CLIQUE_CRIAR_S = 10.0
+# Acima disto, abrir + montar a pagina foi LENTO, e a falha do envio que vier
+# depois e da rede, nao da tela. Normal medido em 06/10: 8-30 s; a rodada que
+# falhou, ~126 s.
+PAGINA_LENTA_S = 60.0
 BOTAO_CRIAR = (
     'button[aria-label*="Criar" i]',
     'button[aria-label*="Create" i]',
@@ -982,35 +1004,129 @@ def _agendar(page, quando: str, passo) -> bool:
     return True
 
 
-def _abrir_dialogo_de_upload(page, passo) -> bool:
+# Quem esta por cima do centro do Criar, e o texto dos dialogos visiveis.
+# `elementFromPoint` e a mesma pergunta que o Playwright faz antes de clicar
+# ("<x> intercepts pointer events"), feita ANTES, para dar nome a parede.
+JS_PAREDE_NO_CRIAR = r"""(seletores) => {
+  const vis = e => { const r = e.getBoundingClientRect();
+    const s = getComputedStyle(e);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden'
+           && s.display !== 'none'; };
+  let criar = null;
+  for (const s of seletores) {
+    try { criar = document.querySelector(s); } catch (e) { criar = null; }
+    if (criar) break;
+  }
+  let por = '';
+  if (criar) {
+    const r = criar.getBoundingClientRect();
+    const t = document.elementFromPoint(r.left + r.width / 2,
+                                        r.top + r.height / 2);
+    por = !t ? 'nada' : (criar.contains(t) || t.contains(criar) ? ''
+          : t.tagName.toLowerCase() + (t.id ? '#' + t.id : ''));
+  }
+  const envio = document.querySelector('%s');
+  const textos = Array.from(document.querySelectorAll(
+      '[role=dialog], [aria-modal=true], tp-yt-paper-dialog'))
+    .filter(vis).map(e => (e.innerText || '').trim().replace(/\s+/g, ' '))
+    .filter(t => t).map(t => t.slice(0, 160));
+  return {criar: !!criar, coberto: !!por && por !== 'nada', por: por,
+          envio: !!(envio && vis(envio)), texto: textos.join(' | ').slice(0, 300)};
+}""" % DIALOGO_DE_ENVIO
+
+
+def _parede_no_criar(page) -> dict:
+    """O que a tela mostra em volta do Criar. `{}` se nao deu para ler.
+
+    Nunca levanta: e diagnostico, e diagnostico nao derruba o envio.
+    """
+    try:
+        lido = page.evaluate(JS_PAREDE_NO_CRIAR, list(BOTAO_CRIAR))
+    except Exception:                                          # noqa: BLE001
+        return {}
+    return lido if isinstance(lido, dict) else {}
+
+
+def _abrir_dialogo_de_upload(page, passo, laudo: dict | None = None) -> bool:
     """Garante que a tela tem campo de arquivo. True se conseguiu.
 
     Caminho curto: a URL ja vem com `?d=ud` e o dialogo abre sozinho.
     Caminho longo: clicar em Criar e depois em "Enviar videos", que e o que
     um humano faz.
+
+    `laudo` (opcional) recebe o que a tela mostrou quando nao deu:
+    `dialogo_sem_campo`, `parede` (texto/elemento que cobria o Criar), `tela`
+    (foto) e `motivo`. Ver `DIALOGO_DE_ENVIO` para o defeito de 06/10/2026.
     """
+    laudo = {} if laudo is None else laudo
+
     def tem_campo() -> bool:
         try:
             return page.locator(ENTRADA_ARQUIVO).count() > 0
         except Exception:
             return False
 
-    limite = time.time() + ESPERA_DIALOGO_S
-    while time.time() < limite:
-        if tem_campo():
+    def esperar_campo(segundos: float) -> bool:
+        limite = time.time() + segundos
+        while time.time() < limite:
+            if tem_campo():
+                return True
+            # Dormir so ate o prazo: sem isto a ultima volta gasta 1 s a toa.
+            time.sleep(min(1.0, max(0.0, limite - time.time())))
+        return tem_campo()
+
+    if esperar_campo(ESPERA_DIALOGO_S):
+        return True
+
+    # O dialogo do Studio veio, mas sem o campo: ele esta carregando. Clicar
+    # no Criar agora e impossivel (o backdrop dele cobre o botao).
+    if _parede_no_criar(page).get("envio"):
+        laudo["dialogo_sem_campo"] = True
+        passo("o dialogo de envio abriu sem o campo de arquivo; espero ele "
+              "carregar.")
+        if esperar_campo(ESPERA_DIALOGO_CARREGANDO_S):
+            passo("dialogo de upload aberto.")
             return True
-        # Dormir so ate o prazo: sem isto a ultima volta gasta 1 s a toa.
-        time.sleep(min(1.0, max(0.0, limite - time.time())))
 
     passo("o dialogo nao abriu sozinho; clicando em Criar -> Enviar videos.")
     criar = _primeiro(page, BOTAO_CRIAR, timeout=20.0)
     if criar is None:
+        laudo["motivo"] = "o botao Criar nao esta na tela"
         return False
-    criar.click()
+
+    # A PAREDE SAI ANTES DO CLIQUE: o texto dela vai ao laudo (sem ele toda
+    # parede vira a mesma linha de log), a foto tambem, e o ESC fecha — o
+    # dialogo meio carregado do proprio Studio inclusive, que o Criar abre de
+    # novo. ESC nunca aceita nada: so dispensa.
+    for _ in range(2):
+        tela = _parede_no_criar(page)
+        if not tela.get("coberto"):
+            break
+        parede = tela.get("texto") or tela.get("por") or "?"
+        laudo["parede"] = parede[:300]
+        if not laudo.get("tela"):
+            laudo["tela"] = escrita.fotografar(page, "youtube_parede_no_criar")
+        passo(f"tem algo por cima do Criar ({tela.get('por')}: "
+              f"{parede[:120]}); fechando com ESC.")
+        try:
+            page.keyboard.press("Escape")
+        except Exception:                                      # noqa: BLE001
+            break
+        time.sleep(1.0)
+
+    try:
+        criar.click(timeout=CLIQUE_CRIAR_S * 1000)
+    except Exception as exc:                                   # noqa: BLE001
+        laudo["motivo"] = (f"o clique no Criar nao passou "
+                           f"({type(exc).__name__})")
+        if not laudo.get("tela"):
+            laudo["tela"] = escrita.fotografar(page, "youtube_criar_sem_clique")
+        return False
     time.sleep(2.0)
 
     enviar = _primeiro(page, MENU_ENVIAR_VIDEOS, timeout=15.0)
     if enviar is None:
+        laudo["motivo"] = "o menu do Criar nao mostrou 'Enviar videos'"
         return False
     enviar.click()
 
@@ -1020,7 +1136,62 @@ def _abrir_dialogo_de_upload(page, passo) -> bool:
             passo("dialogo de upload aberto.")
             return True
         time.sleep(min(1.0, max(0.0, limite - time.time())))
+    laudo["motivo"] = "cliquei em Criar -> Enviar videos e o campo nao veio"
     return False
+
+
+def falha_da_montagem(abertura_s: float, tela: str = "") -> str:
+    """A frase de "a pagina abriu e ficou em branco". Pura.
+
+    E sempre `infraestrutura:` — a rodada (`postar._e_de_rede`) tenta o canal
+    de novo no mesmo horario, e nenhum arquivo foi entregue, entao repetir
+    nao duplica nada. Medido em 06/10/2026: as 6 vezes em que esta falha
+    aparece no `outputs/postar.txt` cairam em rodadas com erro de rede no
+    mesmo minuto (SSLError, `Page.goto: Timeout 90000ms`, 10053). 5 das 6
+    foram em historias so porque historias e o PRIMEIRO canal da rodada.
+
+    A frase antiga mandava para "pagina Publicar -> Reparar perfil", um botao
+    que nao existe mais em tela nenhuma; e o perfil e o MESMO dos dois canais
+    (`.browser_profile/youtube_web`), que publicou builds minutos depois.
+    """
+    return (f"infraestrutura: a pagina de upload abriu e ficou em branco "
+            f"(sem texto depois de {abertura_s:.0f} s). Quase sempre e a rede; "
+            f"se acontecer com a rede boa, o cache do perfil pode estar podre "
+            f"(`browser.limpar_cache` apaga so o cache e mantem o login)."
+            + (f" Tela: {tela}" if tela else ""))
+
+
+def falha_do_envio(laudo: dict, abertura_s: float) -> str:
+    """A frase de "o envio nao abriu", com o que a tela mostrou. Pura.
+
+    `infraestrutura:` so quando ha prova de que foi a rede: a pagina demorou
+    mais que `PAGINA_LENTA_S` para abrir e montar, ou o dialogo do proprio
+    Studio veio sem o campo (os componentes dele nao chegaram). Pagina rapida
+    sem o botao, ou com uma parede que o ESC nao tirou, e tela mudada — tentar
+    de novo em 60 s nao muda nada, e a frase pede o `--sondar`.
+
+    Caso medido (06/10/2026, 00:37, historias): ~126 s para abrir e montar,
+    campo ausente em 20 s, clique no Criar engolido pelo backdrop do dialogo.
+    """
+    lento = abertura_s >= PAGINA_LENTA_S
+    de_rede = lento or bool(laudo.get("dialogo_sem_campo"))
+    partes = ["nao consegui abrir o envio de video"]
+    if laudo.get("motivo"):
+        partes.append(f"({laudo['motivo']})")
+    frase = " ".join(partes) + "."
+    if lento:
+        frase += (f" A pagina levou {abertura_s:.0f} s para abrir (o normal "
+                  f"e 8-30 s).")
+    if laudo.get("dialogo_sem_campo"):
+        frase += " O dialogo de envio do Studio abriu sem o campo de arquivo."
+    if laudo.get("parede"):
+        frase += f" Na frente do Criar: {laudo['parede'][:160]}."
+    if not de_rede:
+        frase += (" Rode `python -m builds.publicar.youtube_web --sondar` "
+                  "para ver a tela e ajustar BOTAO_CRIAR / MENU_ENVIAR_VIDEOS.")
+    if laudo.get("tela"):
+        frase += f" Tela: {laudo['tela']}"
+    return ("infraestrutura: " + frase) if de_rede else frase
 
 
 def publicar(video, *, visibilidade: str | None = None,
@@ -1082,12 +1253,14 @@ def publicar(video, *, visibilidade: str | None = None,
                            ref=getattr(video, "id", "")), \
             contexto_persistente(headless=False,
                                  profile=perfil_da_conta(canal)) as ctx:
+        comeco_da_abertura = time.monotonic()
         page = _abrir(ctx, url_de_upload(canal))
-        if not _esperar_montar(page):
-            raise YouTubeWebFalhou(
-                "a pagina de upload nao carregou. Se ela abrir em branco "
-                "sempre, o perfil pode estar degradado: pagina Publicar -> "
-                "Reparar perfil.")
+        montada = _esperar_montar(page)
+        abertura_s = time.monotonic() - comeco_da_abertura
+        laudo["abertura_s"] = round(abertura_s, 1)
+        if not montada:
+            raise YouTubeWebFalhou(falha_da_montagem(
+                abertura_s, escrita.fotografar(page, "youtube_em_branco")))
         if "accounts.google" in page.url or "signin" in page.url:
             raise YouTubeWebFalhou(
                 "o Google pediu login. Rode uma vez: "
@@ -1111,14 +1284,14 @@ def publicar(video, *, visibilidade: str | None = None,
             passo(f"ATENCAO: o canal '{canal}' nao tem id gravado; vai para "
                   f"onde o Studio abrir ({atual or 'desconhecido'}).")
 
-        if not _abrir_dialogo_de_upload(page, passo):
-            raise YouTubeWebFalhou(
-                "nao consegui abrir o envio de video. A pagina do canal so "
-                "mostra a LISTA de videos: o campo de arquivo aparece depois "
-                "de Criar -> Enviar videos, e nenhum dos dois botoes "
-                "respondeu. Rode `python -m builds.publicar.youtube_web "
-                "--sondar` para ver a tela e ajustar BOTAO_CRIAR / "
-                "MENU_ENVIAR_VIDEOS.")
+        # A pagina do canal so mostra a LISTA de videos: o campo de arquivo
+        # vem do `?d=ud` ou de Criar -> Enviar videos.
+        envio = {}
+        if not _abrir_dialogo_de_upload(page, passo, envio):
+            laudo["envio_nao_abriu"] = {
+                k: envio[k] for k in ("motivo", "parede", "tela",
+                                      "dialogo_sem_campo") if envio.get(k)}
+            raise YouTubeWebFalhou(falha_do_envio(envio, abertura_s))
 
         entrada = None
         limite = time.time() + ESPERA_PAGINA_S

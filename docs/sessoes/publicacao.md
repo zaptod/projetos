@@ -163,6 +163,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Rodízio favela/normal/babaca | `_no_rodizio_dos_tipos` → `contos.publicar.tipos` |
 | Válvula de qualidade: parte **retida** (veto da IA vencido, parecer só pela folha, ou **consertada** — o reparo refez as cenas depois do veto e ninguém assistiu ao mp4 novo) só sai se o horário fosse ficar vazio | `postar._retencao` (lida de arquivo, não gasta `TENTATIVAS`; a situação vem de `parecer.estado_do_video`, com "consertado"), `proxima_historia` (retidos antes dos vetados e dos fora de ordem no último recurso; entre os retidos, a consertada primeiro); quando sai, `_marcar_retido` põe `[qualidade] ` na lista "a conferir" **só** do destino onde saiu de fato (TikTok só confirmado) — não sai sozinha: quem confere é uma pessoa. A retida que chega ao TikTok **depois** (recuperação, ou "YouTube já saiu nesta hora; levando só para o TikTok") ganha a marca lá e a válvula no diário por `_retida_chegou_ao_tiktok`; as marcas da ficha moram num lugar só, `_valvula_da_parte` |
 | Página do YouTube/TikTok que não abre | `identity.browser.abrir_pagina` (3 tentativas: a aba de sempre com `domcontentloaded` 90 s, depois aba nova com `commit` 60 s; a aba que falhou é fechada assim que a nova existe, e na falha final sobra uma só) e `ir_para` (mesma aba, para quem tem ouvinte nela); `tiktok._abrir`/`youtube_web._abrir` levantam `"infraestrutura: ..."`, que `desfecho.classificar` não conta contra o vídeo |
+| Studio que abre em branco, ou envio que não abre (YouTube) | `youtube_web.falha_da_montagem` (sempre `infraestrutura:`) e `falha_do_envio` (`infraestrutura:` só se abrir+montar passou de `PAGINA_LENTA_S` = 60 s, ou se o diálogo do Studio veio sem o campo); `_abrir_dialogo_de_upload` espera mais `ESPERA_DIALOGO_CARREGANDO_S` (60 s) com o diálogo na tela, e o que cobre o Criar (`_parede_no_criar`) é lido, fotografado e fechado com ESC antes do clique (prazo `CLIQUE_CRIAR_S` = 10 s). O laudo leva `abertura_s` e `envio_nao_abriu` |
 | Legenda do TikTok comida pelo editor | `escrita.escrever` pausa `PAUSA_DEPOIS_DO_ENTER_S` (0,25 s) depois de limpar e de cada Enter; `tiktok._escrever_legenda` tenta 3 modos (`MODOS_DA_LEGENDA`: digitada, colada, digitada devagar) e só escreve depois do envio a 100% (`_esperar_envio`, "Enviado （…MB）" com parêntese de largura cheia — `_sem_acento` faz NFKC antes do NFD —, teto 120 s) |
 | Capa recusada pela conta (403) | `youtube.definir_capa` + `capa_bloqueada`: o 403 marca a conta em `<runtime>/capa_bloqueada.json`, a capa não é pedida de novo no mesmo dia (revalida 1x/dia) e o diário ganha 1 aviso quando o bloqueio começa. Short não procura miniatura no Studio (`youtube_web._e_short`) |
 | Estágio do processamento no Studio | `youtube_web._classificar_rodape`: só o **rodapé** do diálogo classifica (seletor, ou o trecho em volta da contagem regressiva) e vai ao laudo. O último estágio legível vai ao passo, ao laudo (`ultimo_estagio_legivel`) e ao ERRO do diário, mas **não decide o clique**: `desconhecida` no estouro do teto publica (regra de 16/09) — `subindo`/`processando` lidos AGORA continuam segurando |
@@ -401,6 +402,31 @@ diário.
     estouraram com `desconhecida` depois de começar legíveis (histórias 2
     processando + 1 subindo, builds 5 subindo) teriam perdido o YouTube.
     Desfeito antes do commit: o herdado só informa.
+- **YouTube de histórias vazio no 23:37 de 05/10 e no 00:37 de 06/10**
+  (medido em 06/10, 01:00–01:30). Não era o canal nem o perfil: os dois
+  canais usam a **mesma** pasta (`random_builds/.browser_profile/youtube_web`,
+  o canal sai do id na URL), o builds publicou 9 min depois com ela, e três
+  aberturas do Studio de histórias depois disso montaram em 8–30 s, sem aviso
+  nenhum na tela; 8 envios no canal em 24 h (pela API), longe de limite.
+  O 23:37 foi rede/Chrome (builds caiu 3x com `net::ERR_ABORTED` e
+  `TargetClosedError`; a página de histórias ficou em branco). O 00:37: a
+  página levou ~126 s para abrir e montar (181 s de tentativa − 20 s do
+  diálogo − 30 s do clique − ~5 s do Chrome), o campo de arquivo não veio em
+  20 s, e o reserva "Criar → Enviar vídeos" esperou 30 s um clique que o
+  **backdrop do próprio diálogo `?d=ud`** engolia — medido: com o diálogo
+  aberto, `elementFromPoint` no centro do Criar é
+  `tp-yt-iron-overlay-backdrop`, e o Criar segue `aria-disabled="false"`. As
+  duas frases ("a pagina de upload nao carregou", `TimeoutError` cru do
+  clique) não eram de rede para `postar._e_de_rede`, então o horário não foi
+  reposto. Das 6 "nao carregou" do `outputs/postar.txt`, 6 em rodadas com erro
+  de rede; 5 em histórias só porque histórias roda primeiro. A frase antiga
+  mandava para "pagina Publicar → Reparar perfil", botão que não existe mais
+  (as funções são `browser.limpar_cache`, que preserva o login, e
+  `resetar_perfil`, que custa o login dos **dois** canais). → ver a linha
+  "Studio que abre em branco" no §2; teste
+  `random_builds/tests/test_parede_no_criar_regressions.py`. Achado junto:
+  `6-APf13ZQXc` (h46 p01, 20:37 de 05/10) segue `uploadStatus: uploaded`,
+  `processingStatus: processing`, 0 views, 4h40 depois do envio.
 - **Id do pedaço errado** (latente): o publicador perguntava ao canal o id
   pela linha do ledger, e com a parte cortada em dois Shorts o pedaço 2
   ganhava o id do 1 (e a capa do 2 ia para o 1). Nenhuma linha tem dois

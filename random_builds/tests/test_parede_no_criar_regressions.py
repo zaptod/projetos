@@ -1,0 +1,264 @@
+# -*- coding: utf-8 -*-
+"""O Criar coberto pelo dialogo de envio do proprio Studio (06/10/2026).
+
+O caso medido: na rodada das 00:37 de 06/10 o YouTube de historias falhou com
+
+    TimeoutError: Locator.click: Timeout 30000ms exceeded.
+      - waiting for locator("button[aria-label*="Criar" i]").first
+        - locator resolved to <button ... aria-label="Criar" aria-disabled="false" ...>
+
+O botao estava HABILITADO. Medido depois, na sessao de verdade do canal de
+historias (tres aberturas, sem enviar nada): com o dialogo `?d=ud` aberto, o
+elemento por cima do centro do Criar e `tp-yt-iron-overlay-backdrop` — o
+backdrop do proprio dialogo. A pagina daquela rodada levou ~126 s para abrir
+e montar (181 s de tentativa - 20 s de espera do dialogo - 30 s do clique -
+~5 s do Chrome; o normal medido e 8-30 s), o campo de arquivo nao veio em
+20 s, e o reserva "Criar -> Enviar videos" era impossivel: o backdrop engolia
+o clique. O builds publicou 9 min depois, com o MESMO perfil.
+
+E a falha nao era de rede para a rodada (`postar._e_de_rede`): nem "a pagina
+de upload nao carregou" nem o TimeoutError do clique repunham o horario, e
+o YouTube de historias ficou vazio no 23:37 e no 00:37.
+
+Rode de dentro de random_builds/:
+    python -m unittest tests.test_parede_no_criar_regressions -v
+"""
+from __future__ import annotations
+
+import importlib.util
+import unittest
+from pathlib import Path
+
+from builds.publicar import youtube_web
+
+POSTAR = Path(__file__).resolve().parents[2] / "ferramentas" / "postar.py"
+
+
+def _trocar(teste, objeto, nome, valor):
+    original = getattr(objeto, nome)
+    setattr(objeto, nome, valor)
+    teste.addCleanup(setattr, objeto, nome, original)
+
+
+class Teclado:
+    def __init__(self, pagina):
+        self.pagina = pagina
+
+    def press(self, tecla):
+        self.pagina.teclas.append(tecla)
+        if tecla == "Escape":
+            self.pagina.parede = None
+
+
+class Studio:
+    """Um Studio de mentira com o que importa: campo, dialogo e parede.
+
+    `campo_em`: o campo de arquivo aparece na N-esima pergunta (None = nunca).
+    `parede`: o dict que `JS_PAREDE_NO_CRIAR` devolveria; o ESC a tira.
+    """
+
+    def __init__(self, *, campo_em=None, envio=False, parede=None,
+                 clique_engolido=False, campo_apos_enviar=True):
+        self.campo_em = campo_em
+        self.perguntas = 0
+        self.envio = envio
+        self.parede = parede
+        self.clique_engolido = clique_engolido
+        self.campo_apos_enviar = campo_apos_enviar
+        self.campo = False
+        self.cliques = []
+        self.teclas = []
+        self.keyboard = Teclado(self)
+
+    def locator(self, _seletor):
+        pagina = self
+
+        class Alvo:
+            @staticmethod
+            def count():
+                pagina.perguntas += 1
+                if (pagina.campo_em is not None
+                        and pagina.perguntas >= pagina.campo_em):
+                    pagina.campo = True
+                return 1 if pagina.campo else 0
+        return Alvo()
+
+    def evaluate(self, _js, _arg=None):
+        if self.parede:
+            return dict(self.parede, criar=True, envio=self.envio)
+        return {"criar": True, "coberto": False, "por": "",
+                "envio": self.envio, "texto": ""}
+
+
+class Botao:
+    def __init__(self, pagina, nome):
+        self.pagina, self.nome = pagina, nome
+
+    def click(self, **_kw):
+        if self.nome == "criar" and (self.pagina.parede
+                                     or self.pagina.clique_engolido):
+            raise TimeoutError("Locator.click: Timeout 10000ms exceeded.")
+        self.pagina.cliques.append(self.nome)
+        if self.nome == "enviar" and self.pagina.campo_apos_enviar:
+            self.pagina.campo = True
+
+
+BACKDROP = {"coberto": True, "por": "tp-yt-iron-overlay-backdrop",
+            "texto": ""}
+
+
+class AbrirDialogoComParedeTests(unittest.TestCase):
+    def setUp(self):
+        _trocar(self, youtube_web, "ESPERA_DIALOGO_S", 0.05)
+        _trocar(self, youtube_web, "ESPERA_DIALOGO_CARREGANDO_S", 3.0)
+        _trocar(self, youtube_web.time, "sleep", lambda _s: None)
+        _trocar(self, youtube_web.escrita, "fotografar",
+                lambda _p, rotulo, **_k: f"telas/{rotulo}.png")
+        self.linhas = []
+
+    def _botoes(self, pagina):
+        def primeiro(_page, seletores, **_kw):
+            return Botao(pagina, "criar" if seletores is youtube_web.BOTAO_CRIAR
+                         else "enviar")
+        _trocar(self, youtube_web, "_primeiro", primeiro)
+
+    def test_dialogo_do_studio_carregando_espera_e_nao_clica(self):
+        """O caso das 00:37: dialogo na tela, campo atrasado. Espera; o
+        Criar nem e tocado (o backdrop engoliria o clique)."""
+        pagina = Studio(envio=True, parede=BACKDROP)
+        self._botoes(pagina)
+        # O campo chega durante a espera longa (depois que a tela foi lida),
+        # nunca na curta.
+        ler = pagina.evaluate
+
+        def evaluate(js, arg=None):
+            lido = ler(js, arg)
+            pagina.campo_em = pagina.perguntas + 2
+            return lido
+        pagina.evaluate = evaluate
+        laudo = {}
+        self.assertTrue(youtube_web._abrir_dialogo_de_upload(
+            pagina, self.linhas.append, laudo))
+        self.assertEqual([], pagina.cliques)
+        self.assertEqual([], pagina.teclas)
+        self.assertTrue(laudo.get("dialogo_sem_campo"))
+
+    def test_parede_sai_com_esc_antes_do_clique_no_criar(self):
+        """Antes: clique direto, 30 s, TimeoutError cru. Agora a parede e
+        lida (texto ao laudo, foto) e fechada com ESC, e o clique passa."""
+        pagina = Studio(parede={"coberto": True, "por": "tp-yt-paper-dialog",
+                                "texto": "Novidades no Studio Entendi"})
+        self._botoes(pagina)
+        laudo = {}
+        self.assertTrue(youtube_web._abrir_dialogo_de_upload(
+            pagina, self.linhas.append, laudo))
+        self.assertEqual(["Escape"], pagina.teclas)
+        self.assertEqual(["criar", "enviar"], pagina.cliques)
+        self.assertIn("Novidades no Studio", laudo["parede"])
+        self.assertTrue(laudo["tela"].endswith(".png"))
+        self.assertTrue(any("por cima do Criar" in l for l in self.linhas))
+
+    def test_clique_engolido_vira_false_com_motivo_e_nao_excecao(self):
+        """O TimeoutError do Playwright nao sobe mais cru: vira motivo."""
+        pagina = Studio(clique_engolido=True)
+        self._botoes(pagina)
+        laudo = {}
+        self.assertFalse(youtube_web._abrir_dialogo_de_upload(
+            pagina, self.linhas.append, laudo))
+        self.assertIn("clique no Criar nao passou", laudo["motivo"])
+        self.assertIn("TimeoutError", laudo["motivo"])
+        self.assertTrue(laudo["tela"])
+
+    def test_sem_parede_e_sem_dialogo_o_caminho_antigo_continua(self):
+        """Caso ZERO: nada na frente, nenhum dialogo — nenhum ESC."""
+        pagina = Studio()
+        self._botoes(pagina)
+        laudo = {}
+        self.assertTrue(youtube_web._abrir_dialogo_de_upload(
+            pagina, self.linhas.append, laudo))
+        self.assertEqual([], pagina.teclas)
+        self.assertEqual(["criar", "enviar"], pagina.cliques)
+        self.assertEqual({}, laudo)
+
+    def test_pagina_sem_evaluate_nao_derruba(self):
+        """Duble (ou pagina morta) sem `evaluate`: a leitura devolve {}."""
+        self.assertEqual({}, youtube_web._parede_no_criar(object()))
+
+
+class FraseDaFalhaTests(unittest.TestCase):
+    def test_caso_medido_das_0037_e_de_rede(self):
+        frase = youtube_web.falha_do_envio(
+            {"motivo": "o clique no Criar nao passou (TimeoutError)",
+             "parede": "tp-yt-iron-overlay-backdrop",
+             "tela": "telas/x.png"}, 126.0)
+        self.assertTrue(frase.startswith("infraestrutura: "))
+        self.assertIn("126 s", frase)
+        self.assertIn("tp-yt-iron-overlay-backdrop", frase)
+        self.assertIn("Tela: telas/x.png", frase)
+        self.assertNotIn("--sondar", frase)
+
+    def test_dialogo_sem_campo_e_de_rede_mesmo_com_pagina_rapida(self):
+        frase = youtube_web.falha_do_envio({"dialogo_sem_campo": True}, 12.0)
+        self.assertTrue(frase.startswith("infraestrutura: "))
+
+    def test_pagina_rapida_sem_botao_e_tela_mudada_nao_rede(self):
+        """Repetir em 60 s nao muda layout: a frase pede o --sondar."""
+        frase = youtube_web.falha_do_envio(
+            {"motivo": "o botao Criar nao esta na tela"}, 12.0)
+        self.assertFalse(frase.startswith("infraestrutura"))
+        self.assertIn("--sondar", frase)
+
+    def test_caso_zero_laudo_vazio(self):
+        frase = youtube_web.falha_do_envio({}, 0.0)
+        self.assertFalse(frase.startswith("infraestrutura"))
+        self.assertIn("nao consegui abrir o envio", frase)
+
+    def test_limiar_de_pagina_lenta(self):
+        """Normal medido 8-30 s; a falha, ~126 s."""
+        self.assertGreater(youtube_web.PAGINA_LENTA_S, 30.0)
+        self.assertLess(youtube_web.PAGINA_LENTA_S, 126.0)
+
+    def test_em_branco_e_de_rede_e_nao_manda_para_botao_que_nao_existe(self):
+        frase = youtube_web.falha_da_montagem(47.0, "telas/b.png")
+        self.assertTrue(frase.startswith("infraestrutura: "))
+        self.assertNotIn("Reparar perfil", frase)
+        self.assertIn("Tela: telas/b.png", frase)
+
+
+class RodadaRepoeTests(unittest.TestCase):
+    """A frase chega a `postar._derrubados_pela_rede` cortada em 200: a marca
+    tem de sobreviver ao corte, nos dois canais."""
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("postar_parede_criar",
+                                                      POSTAR)
+        cls.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.m)
+
+    def _ficha(self, frase):
+        falha_yt = f"YouTubeWebFalhou: {frase}"[:200]
+        return {"canal": "historias", "feito": True, "youtube_falhou": True,
+                "motivo": f"YouTube falhou: {falha_yt}"[:200],
+                "tiktok": "publicado no TikTok"}
+
+    def test_envio_que_nao_abriu_com_pagina_lenta_repoe_o_youtube(self):
+        frase = youtube_web.falha_do_envio(
+            {"motivo": "o clique no Criar nao passou (TimeoutError)",
+             "parede": "tp-yt-iron-overlay-backdrop"}, 126.0)
+        self.assertEqual(["youtube"],
+                         self.m._derrubados_pela_rede(self._ficha(frase)))
+
+    def test_pagina_em_branco_repoe_o_youtube(self):
+        frase = youtube_web.falha_da_montagem(47.0)
+        self.assertEqual(["youtube"],
+                         self.m._derrubados_pela_rede(self._ficha(frase)))
+
+    def test_tela_mudada_nao_repoe(self):
+        frase = youtube_web.falha_do_envio(
+            {"motivo": "o botao Criar nao esta na tela"}, 12.0)
+        self.assertEqual([], self.m._derrubados_pela_rede(self._ficha(frase)))
+
+
+if __name__ == "__main__":
+    unittest.main()

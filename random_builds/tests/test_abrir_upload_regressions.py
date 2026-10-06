@@ -53,7 +53,8 @@ class Botao:
     def __init__(self, pagina, nome):
         self.pagina, self.nome = pagina, nome
 
-    def click(self):
+    def click(self, **_kw):
+        # `**_kw`: o Criar e clicado com prazo proprio (`CLIQUE_CRIAR_S`).
         self.pagina.clicou(self.nome)
 
 
@@ -166,10 +167,12 @@ class PublicarAvisaTests(unittest.TestCase):
     def test_publicar_para_com_recado_util_se_o_envio_nao_abrir(self):
         fonte = Path(youtube_web.__file__).read_text(encoding="utf-8")
         i = fonte.index("def publicar(")
-        trecho = fonte[i:i + 5000]
-        self.assertIn("_abrir_dialogo_de_upload(page, passo)", trecho)
-        self.assertIn("so", trecho)
-        self.assertIn("--sondar", trecho)
+        trecho = fonte[i:i + 6000]
+        self.assertIn("_abrir_dialogo_de_upload(page, passo, envio)", trecho)
+        self.assertIn("falha_do_envio(envio, abertura_s)", trecho)
+        # O recado do --sondar mora na frase (`falha_do_envio`), e sai quando
+        # a falha nao e de rede.
+        self.assertIn("--sondar", youtube_web.falha_do_envio({}, 5.0))
 
 
 if __name__ == "__main__":
