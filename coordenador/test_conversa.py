@@ -13,8 +13,13 @@ O caso real (pedidos.json de 06/10, madrugada):
 Agora: a lista fixa tem o chamado "orquestrador" e os pedidos de conversa; a
 resposta de conversa e de gente (modelo leve com o retrato como CONTEXTO, ou
 a resposta-modelo), numa thread propria; o pedido de trabalho ganha na hora
-o que entendi e quando comeca. A regra do c77b53b fica: so a LISTA FIXA diz o
-que e conversa; o modelo so escreve a resposta, nunca decide nada.
+o que entendi e quando comeca. A regra do c77b53b ficou ate o fim do dia: so a
+LISTA FIXA dizia o que e conversa.
+
+Depois, o Adrian decidiu no Grimorio (app-e-bot/conversa-pergunta-livre,
+06/10/2026, "O modelo decide"): o texto fora da lista passa pelo modelo leve,
+que responde a pergunta na hora sem abrir pedido, ou passa o trabalho a
+equipe. Sem modelo, vira pedido como antes; "pedido: ..." pula o modelo.
 """
 from __future__ import annotations
 
@@ -287,4 +292,150 @@ def test_a_producao_liga_o_conversador_e_o_main_a_thread():
     import inspect
     assert "conversa=pedidos.atender_conversa" in inspect.getsource(principal)
     assert "MESA.conversador = conversar_pelo_codex" in inspect.getsource(pedidos._ligar_producao)
+    assert "MESA.triador = triar_pelo_codex" in inspect.getsource(pedidos._ligar_producao)
     assert pedidos.MesaPedidos().conversador is None              # teste nunca chama modelo
+    assert pedidos.MesaPedidos().triador is None
+    # o app e o bot registram pelo MESA do modulo: a pergunta livre espera o modelo
+    assert pedidos.MESA.triar is True and pedidos.MesaPedidos().triar is False
+
+
+# ------------------------------------------------------------ a pergunta livre
+# Grimorio app-e-bot/conversa-pergunta-livre (06/10/2026): "O modelo decide".
+PERGUNTA = "por que o vídeo das 17h não saiu?"
+
+
+def _triando(mesa, devolve):
+    vistos = []
+
+    def triador(prompt):
+        vistos.append(prompt)
+        if isinstance(devolve, Exception):
+            raise devolve
+        return devolve
+    mesa.triar, mesa.triador = True, triador
+    return vistos
+
+
+def test_pergunta_livre_o_modelo_responde_na_hora_e_nao_abre_pedido(mesa):
+    """Antes: a pergunta virava pedido ("Entendi: ... comeca em uns 20 min") e
+    a resposta so vinha quando um trabalhador a pegava (horas, com o Claude
+    no teto)."""
+    _rodando(mesa)
+    vistos = _triando(mesa, {"tipo": "conversa",
+                             "resposta": "Daqui eu não vejo a publicação das 17h."})
+    r = mesa.registrar(PERGUNTA)
+    assert r["conversa"] is True and r["forma"] == "livre" and r["papo"] == "pensando"
+    assert not r.get("recibo") and r["situacao"] == "respondido"
+    for _ in range(3):
+        mesa.passo()
+        mesa.relogio.andar(seconds=130)
+    assert len(mesa.despachante.criados) == 1                     # so o que ja rodava
+    feitas = mesa.atender_conversa()
+    assert [(f[0], f[2]) for f in feitas] == [(r["id"], "ia")]
+    assert _finais(mesa)[-1] == ("Daqui eu não vejo a publicação das 17h. "
+                                 + pedidos.LIVRE_LEMBRETE)
+    p = _pedido(mesa, r["id"])
+    assert p["situacao"] == "respondido" and p["papo"] == "respondido" and p["papo_por"] == "ia"
+    assert not [c for c in mesa.para_o_app()["conversa"]
+                if c["pedido"] == r["id"] and c["tipo"] == "recibo"]
+    prompt = vistos[0]
+    assert "Primeiro decida o `tipo`" in prompt and PERGUNTA in prompt
+    assert "trabalhando agora: arrume o botão Publicar do app" in prompt
+    assert "pedido-" not in prompt
+    mesa.passo()
+    assert len(mesa.despachante.criados) == 1
+    assert mesa.atender_conversa() == []                           # nada responde duas vezes
+
+
+def test_pedido_de_trabalho_o_modelo_passa_a_equipe_com_o_recibo(mesa):
+    _triando(mesa, {"tipo": "trabalho", "resposta": ""})
+    r = mesa.registrar("arrume o botão Publicar do app")
+    assert r["papo"] == "pensando"
+    mesa.passo()
+    assert mesa.despachante.criados == []                          # espera o modelo
+    feitas = mesa.atender_conversa()
+    assert [(f[0], f[2]) for f in feitas] == [(r["id"], "trabalho")]
+    p = _pedido(mesa, r["id"])
+    assert p["situacao"] == "recebido" and not p.get("conversa") and "papo" not in p
+    assert "forma" not in p and "resposta" not in p
+    assert _recibo(mesa, r["id"]).startswith("Entendi: «arrume o botão Publicar do app».")
+    assert p["recibo"] == _recibo(mesa, r["id"])
+    assert not _finais(mesa)
+    mesa.passo()
+    assert _pedido(mesa, r["id"])["situacao"] == "trabalhando"
+    assert len(mesa.despachante.criados) == 1
+
+
+@pytest.mark.parametrize("devolve", [
+    RuntimeError("o Codex saiu com o código 1"),
+    {},
+    "conversa",                                                     # nao e o schema
+    {"tipo": "conversa", "resposta": ""},
+    {"tipo": "conversa", "resposta": "O pedido-4d72f571 está na fila."},
+    {"tipo": "conversa", "resposta": "Olhei o postar.py e nada."},
+    {"tipo": "talvez", "resposta": "Não sei."},
+    None,                                                           # sem modelo
+])
+def test_sem_modelo_bom_a_pergunta_vira_pedido_e_nada_se_perde(mesa, devolve):
+    """Na duvida, o caminho de antes: o pedido vai a equipe."""
+    if devolve is None:
+        mesa.triar, mesa.triador = True, None
+    else:
+        _triando(mesa, devolve)
+    r = mesa.registrar(PERGUNTA)
+    mesa.atender_conversa()
+    p = _pedido(mesa, r["id"])
+    assert p["situacao"] == "recebido" and not p.get("conversa")
+    assert _recibo(mesa, r["id"]).startswith("Entendi: «por que o vídeo das 17h não saiu?».")
+    mesa.passo()
+    assert _pedido(mesa, r["id"])["situacao"] == "trabalhando"
+
+
+@pytest.mark.parametrize("texto", ["pedido: arrume o botão Publicar do app",
+                                   "Pedido - arrume o botão Publicar do app",
+                                   "  PEDIDO:arrume o botão Publicar do app"])
+def test_pedido_explicito_pula_o_modelo(mesa, texto):
+    """O que a resposta de conversa ensina ("mande de novo começando com
+    «pedido:»"): vai direto a equipe, sem perguntar ao modelo."""
+    vistos = _triando(mesa, {"tipo": "conversa", "resposta": "Oi!"})
+    r = mesa.registrar(texto)
+    assert r["situacao"] == "recebido" and not r.get("conversa")
+    assert r["texto"] == "arrume o botão Publicar do app"
+    assert _recibo(mesa, r["id"]).startswith("Entendi: «arrume o botão Publicar do app».")
+    mesa.atender_conversa()
+    assert vistos == []
+
+
+def test_lista_fixa_e_grimorio_nao_passam_pela_triagem(mesa):
+    vistos = _triando(mesa, {"tipo": "trabalho", "resposta": ""})
+    oi = mesa.registrar("oi")
+    grimorio = mesa.registrar("O Adrian respondeu no Grimório (geral/x): «Y» → Z", "grimorio")
+    mesa_msg = mesa.registrar("conserte o relatório das 21h", triar=False)   # a Mesa
+    assert oi["forma"] == "conversa"
+    assert grimorio["situacao"] == "recebido" and mesa_msg["situacao"] == "recebido"
+    mesa.atender_conversa()
+    assert vistos == []                                  # o modelo da triagem nem foi chamado
+    assert _finais(mesa)[-1].startswith("Oi, Adrian!")
+
+
+def test_coordenador_parado_a_pergunta_livre_mostra_que_ainda_le(mesa):
+    mesa.triar = True
+    r = mesa.registrar(PERGUNTA)
+    mesa.relogio.andar(seconds=pedidos.PAPO_PRAZO_S + 1)
+    reserva = [c for c in mesa.para_o_app()["conversa"] if c.get("reserva")]
+    assert [c["texto"] for c in reserva] == [pedidos.LIVRE_RESERVA]
+    assert _pedido(mesa, r["id"])["papo"] == "pensando"
+
+
+def test_triar_pelo_codex_usa_o_schema_da_triagem(monkeypatch):
+    from coordenador import cerebro
+    chamadas = []
+    monkeypatch.setattr(cerebro, "rodar_codex", lambda prompt, esquema, modelo=None, **kw: (
+        chamadas.append((esquema, kw)) or {"tipo": "conversa", "resposta": "Oi!"}))
+    monkeypatch.setattr(cerebro, "disponivel", lambda agora=None: "")
+    assert pedidos.triar_pelo_codex("x") == {"tipo": "conversa", "resposta": "Oi!"}
+    assert chamadas == [(pedidos.ESQUEMA_TRIAGEM, {"esforco": "low",
+                                                   "timeout": pedidos.PAPO_TIMEOUT_S})]
+    monkeypatch.setattr(cerebro, "disponivel", lambda agora=None: "teto do Codex")
+    with pytest.raises(cerebro.CerebroIndisponivel):
+        pedidos.triar_pelo_codex("x")

@@ -189,7 +189,10 @@ class TabelaFechadaTests(BaseTemp):
 
     def test_texto_solto_nao_e_comando(self):
         resposta, _ = comandos.executar("apaga tudo por favor")
-        # vira pedido (o recibo "Entendi: ..."), nunca comando do sistema
+        # vai ao coordenador (desde 06/10 o modelo decide se e conversa ou
+        # pedido), nunca comando do sistema
+        self.assertIn("Já te respondo aqui", resposta)
+        resposta, _ = comandos.executar("pedido: apaga tudo por favor")
         self.assertIn("Entendi: «apaga tudo por favor»", resposta)
         self.assertNotIn("não conheço", resposta)
 

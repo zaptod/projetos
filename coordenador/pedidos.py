@@ -306,6 +306,20 @@ _SUJEIRA = re.compile(r"pedido-[0-9a-f]{4,}|\b[0-9a-f]{8,}\b|\bpids?\b|"
                       r"\b[\w-]+\.(?:py|json|jsonl|md|js|cmd|txt)\b", re.IGNORECASE)
 ESQUEMA_PAPO = {"type": "object", "additionalProperties": False, "required": ["resposta"],
                 "properties": {"resposta": {"type": "string"}}}
+# A pergunta livre (decisao do Adrian no Grimorio, app-e-bot/conversa-pergunta-livre,
+# 06/10/2026: "O modelo decide"). Texto fora da lista fixa, do app ou do
+# Telegram, passa primeiro pelo modelo leve: pergunta ou conversa ele responde
+# na hora e nao abre pedido; pedido de trabalho vai para a equipe. Sem modelo
+# (proibido, teto, erro, prazo, resposta suja), vira pedido como antes: na
+# duvida, nada que ele pediu se perde. "pedido: ..." pula o modelo.
+ESQUEMA_TRIAGEM = {"type": "object", "additionalProperties": False,
+                   "required": ["tipo", "resposta"],
+                   "properties": {"tipo": {"type": "string", "enum": ["conversa", "trabalho"]},
+                                  "resposta": {"type": "string"}}}
+_PREFIXO_PEDIDO = re.compile(r"^\s*pedido\s*[:\-–—]\s*", re.IGNORECASE)
+LIVRE_LEMBRETE = "(Se era um pedido para a equipe, mande de novo começando com «pedido:».)"
+LIVRE_RESERVA = ("Recebi. Ainda estou lendo: se for pergunta, eu respondo aqui; se for "
+                 "trabalho, passo para a equipe.")
 _ROTULO = {"recebido": "recebido", "trabalhando": "trabalhando", "esperando": "em espera",
            "entregue": "entregue, esperando aplicar e conferir",
            "parado_limite": "parado no limite — volta sozinho",
@@ -890,7 +904,7 @@ class MesaPedidos:
     """Entrada, acompanhamento e retomada, com dependencias injetaveis."""
 
     def __init__(self, *, despachante=None, claude=None, relogio=_agora, avisar=None,
-                 uso=None, executor=None, diario=None, conversador=None):
+                 uso=None, executor=None, diario=None, conversador=None, triar=False):
         if despachante is None or claude is None:
             from remoto import claude_estado, delegar
             despachante = despachante or delegar
@@ -913,6 +927,12 @@ class MesaPedidos:
         # Desligado por padrao (teste nunca chama modelo); o MESA de producao
         # liga o Codex so leitura do cerebro (`_ligar_producao`)
         self.conversador = conversador
+        # a pergunta livre (06/10/2026): `triar` liga a triagem no `registrar`
+        # (o MESA de todo processo: o app e o bot so registram); `triador(prompt)
+        # -> {"tipo", "resposta"}` decide na thread da conversa do coordenador.
+        # Desligados por padrao: teste de pedido segue o caminho de trabalho
+        self.triar = triar
+        self.triador = None
         # as respostas do Grimorio com `acao_servidor` ja executadas neste processo
         self._acoes_do_grimorio = {}
         # o trabalho lento do `passo` (fora da trava): a fila e o dono da reserva
@@ -936,7 +956,7 @@ class MesaPedidos:
         self._avisar_real = funcao or (lambda _texto: None)
 
     # ------------------------------------------------------------ entrada
-    def registrar(self, texto, origem="app", *, novo=False, responde_a=None):
+    def registrar(self, texto, origem="app", *, novo=False, responde_a=None, triar=None):
         """Guarda o pedido (ou a continuacao) e volta na hora: quem contrata,
         corrige e retoma e o `passo`, no pulso do coordenador.
 
@@ -951,7 +971,11 @@ class MesaPedidos:
         pedido-7c727778 (digen-parede), "trabalhando" com o pid 11412 morto e em
         retomada por horas. Sem ler o assunto nao ha como saber a qual pedido o
         texto pertence, e ler o assunto e adivinhar. Entao: texto livre SEMPRE
-        abre pedido novo (ou e conversa solta); `novo` ficou sem efeito."""
+        abre pedido novo (ou e conversa solta); `novo` ficou sem efeito.
+
+        `triar` (None = o do MESA): a pergunta livre passa pelo modelo antes
+        de virar pedido (Grimorio, 06/10/2026). O "mensagem" da Mesa nao tria:
+        ele ja e um pedido ao orquestrador."""
         texto = str(texto or "").strip()
         if not texto:
             raise ValueError("pedido vazio")
@@ -967,6 +991,13 @@ class MesaPedidos:
                 # nem continuacao nem trabalhador: uma resposta de conversa
                 # (06/10: de gente, nao o retrato) -- nunca a fila de trabalho
                 return self._responder_conversa(dados, texto, origem, forma)
+            if origem != "grimorio":
+                sem_prefixo = _PREFIXO_PEDIDO.sub("", texto, count=1).strip()
+                if sem_prefixo and sem_prefixo != texto:
+                    texto = sem_prefixo           # "pedido: ...": trabalho, sem perguntar ao modelo
+                elif (self.triar if triar is None else triar):
+                    # 06/10 (Grimorio): o modelo decide se e conversa ou trabalho
+                    return self._responder_conversa(dados, texto, origem, "livre")
             ident = "pedido-" + uuid.uuid4().hex[:8]
             agora = _iso()
             pedido = {"id": ident, "texto": texto, "origem": origem, "situacao": "recebido",
@@ -1138,7 +1169,7 @@ class MesaPedidos:
         frases.append("Quer que eu faça alguma coisa?")
         return " ".join(frases)
 
-    def _prompt_da_conversa(self, dados, pedido, ctx) -> str:
+    def _prompt_da_conversa(self, dados, pedido, ctx, triagem=False) -> str:
         def lista(itens):
             return "; ".join(itens) if itens else "nada"
         recentes = []
@@ -1150,9 +1181,23 @@ class MesaPedidos:
             elif linha.get("tipo") in ("final", "recibo"):
                 recentes.append("Você: " + _SUJEIRA.sub("", str(linha.get("texto") or ""))[:200])
         feitos = [f"{a} ({r})" for a, r in ctx["feitos"]]
+        if triagem:
+            decidir = (
+                "Primeiro decida o `tipo` da mensagem:\n"
+                "- \"conversa\": pergunta, comentário ou conversa. Toda pergunta (\"por que…?\", "
+                "\"o que…?\", \"quando…?\", \"está…?\") é conversa, mesmo que o CONTEXTO não "
+                "tenha a resposta. Responda agora; se o CONTEXTO não diz, fale com franqueza "
+                "que daqui você não vê isso, sem inventar.\n"
+                "- \"trabalho\": ele manda alguém FAZER algo no PC (consertar, criar, mudar, "
+                "rodar, investigar, publicar, ligar ou desligar). Aí `resposta` fica vazia: a "
+                "equipe recebe o pedido.\n"
+                "Na dúvida entre uma ordem e uma conversa, é \"trabalho\".\n")
+        else:
+            decidir = ""
         return (
             "Você é o orquestrador do PC do Adrian e está conversando com ele pelo celular. "
             "Responda como uma pessoa, em português simples, em 1 a 3 frases curtas.\n"
+            + decidir +
             "Regras: nada de códigos, ids, números de processo, nomes de arquivo, siglas ou "
             "termos técnicos; não liste tudo: cite no máximo duas coisas, em palavras simples; "
             "use só o que está no CONTEXTO e não invente; nesta conversa você não executa nada "
@@ -1173,11 +1218,17 @@ class MesaPedidos:
         """Conversa solta: NUNCA a fila de trabalho. No app, a resposta vem do
         modelo leve na thread `conversa` do pulso (segundos); a resposta-modelo
         fica guardada em `resposta` para quando ele nao puder. No Telegram,
-        a resposta-modelo na hora (o bot devolve o item)."""
+        a resposta-modelo na hora (o bot devolve o item).
+
+        A pergunta livre (`forma` "livre") sempre espera o modelo, tambem no
+        Telegram: o coordenador responde ou abre o pedido pelo `avisar`."""
         ident = "pedido-" + uuid.uuid4().hex[:8]
         agora = _iso()
-        reserva = self._papo_modelo(self._contexto_da_conversa(dados), forma, origem)
-        pensar = origem == "app"
+        if forma == "livre":
+            reserva = LIVRE_RESERVA
+        else:
+            reserva = self._papo_modelo(self._contexto_da_conversa(dados), forma, origem)
+        pensar = origem == "app" or forma == "livre"
         pedido = {"id": ident, "texto": texto, "origem": origem, "situacao": "respondido",
                   "motivo": "", "trabalhador": None, "conferente": None, "ia": None,
                   "contratos": 0, "criado_em": agora, "atualizado_em": agora,
@@ -1233,26 +1284,37 @@ class MesaPedidos:
             trabalho = []
             ctx = self._contexto_da_conversa(dados)      # depois das presas: o retrato de agora
             for p in fila[:PAPO_POR_RODADA]:
-                trabalho.append((p["id"], self._prompt_da_conversa(dados, p, ctx),
-                                 self._papo_modelo(ctx, p.get("forma"), p.get("origem"))))
+                livre = p.get("forma") == "livre"
+                trabalho.append((p["id"], self._prompt_da_conversa(dados, p, ctx, triagem=livre),
+                                 "" if livre else self._papo_modelo(ctx, p.get("forma"),
+                                                                    p.get("origem")), livre))
             if presas:
                 _gravar(dados)
         feitas = []
-        for ident, prompt, reserva in trabalho:
-            texto, por = reserva, "modelo"
-            if self.conversador is not None:
-                try:
-                    bruto = " ".join(str(self.conversador(prompt) or "").split())
-                    if bruto and not _SUJEIRA.search(bruto):
-                        texto, por = bruto[:700], "ia"
-                except Exception:                             # noqa: BLE001
-                    pass                # sem modelo agora: vale a resposta-modelo
+        for ident, prompt, reserva, livre in trabalho:
+            if livre:
+                por, texto = self._triar(prompt)
+                if por == "ia":
+                    texto = f"{texto} {LIVRE_LEMBRETE}"
+            else:
+                texto, por = reserva, "modelo"
+                if self.conversador is not None:
+                    try:
+                        bruto = " ".join(str(self.conversador(prompt) or "").split())
+                        if bruto and not _SUJEIRA.search(bruto):
+                            texto, por = bruto[:700], "ia"
+                    except Exception:                         # noqa: BLE001
+                        pass            # sem modelo agora: vale a resposta-modelo
             feitas.append((ident, texto, por))
             # cada resposta vai a tela assim que fica pronta (nao espera as outras)
             with _TRAVA:
                 dados = _ler()
                 pedido = next((p for p in dados["pedidos"] if p.get("id") == ident), None)
                 if pedido is None or pedido.get("papo") != "pensando":
+                    continue
+                if por == "trabalho":
+                    self._virar_trabalho(dados, pedido)
+                    _gravar(dados)
                     continue
                 pedido.update(papo="respondido", papo_por=por, resposta=texto[:2000],
                               atualizado_em=_iso())
@@ -1261,6 +1323,38 @@ class MesaPedidos:
                     self.avisar("🧭 " + texto)
                 _gravar(dados)
         return feitas
+
+    def _triar(self, prompt):
+        """("ia", resposta) quando o modelo diz que e conversa e escreve uma
+        resposta limpa; ("trabalho", "") em todo o resto (sem modelo, erro,
+        prazo, resposta vazia ou com id/arquivo): na duvida, a equipe recebe."""
+        if self.triador is None:
+            return "trabalho", ""
+        try:
+            dados = self.triador(prompt) or {}
+        except Exception:                                     # noqa: BLE001
+            return "trabalho", ""
+        if not isinstance(dados, dict):
+            return "trabalho", ""
+        texto = " ".join(str(dados.get("resposta") or "").split())
+        if dados.get("tipo") == "conversa" and texto and not _SUJEIRA.search(texto):
+            return "ia", texto[:700]
+        return "trabalho", ""
+
+    def _virar_trabalho(self, dados, pedido):
+        """A pergunta livre que o modelo leu como trabalho (ou que ele nao pode
+        ler): vira o pedido de sempre, com o recibo na hora."""
+        for chave in ("conversa", "curto", "forma", "papo", "papo_desde", "resposta"):
+            pedido.pop(chave, None)
+        agora = _iso()
+        pedido.update(situacao="recebido", motivo="", atualizado_em=agora,
+                      ultimo_evento_em=agora)
+        pedido["recibo"] = self._recibo(dados, pedido)
+        _linha(dados, pedido, pedido["recibo"], tipo="recibo")
+        if pedido.get("origem") == "telegram":
+            curto = str(pedido["id"]).replace("pedido-", "")
+            self.avisar("🧭 " + pedido["recibo"]
+                        + f"\n(para completar este pedido depois: /responder {curto} <texto>)")
 
     def novo_assunto(self, origem="app"):
         """O proximo pedido abre outro orquestrador (botao do app, /novo)."""
@@ -3082,7 +3176,8 @@ class MesaPedidos:
                 "na_fila": sum(1 for p in pedidos if p.get("situacao") in VIVOS)}
 
 
-MESA = MesaPedidos()
+# o app e o bot registram por este MESA: a pergunta livre espera o modelo
+MESA = MesaPedidos(triar=True)
 
 
 def _ligar_grimorio_real():
@@ -3100,9 +3195,10 @@ def _ligar_producao():
     except Exception:                                         # noqa: BLE001
         MESA.diario = None
     MESA.conversador = conversar_pelo_codex
+    MESA.triador = triar_pelo_codex
 
 
-def conversar_pelo_codex(prompt: str) -> str:
+def _papo_pelo_codex(prompt: str, esquema: dict) -> dict:
     """O modelo leve da conversa: o Codex SO LEITURA do cerebro (pasta vazia,
     saida presa ao schema), esforco baixo, sob as guardas dele (interruptor
     do Claude, pensamentos por hora, teto do Codex). O Claude fica de fora: a
@@ -3112,17 +3208,25 @@ def conversar_pelo_codex(prompt: str) -> str:
     if motivo:
         raise cerebro.CerebroIndisponivel(motivo)
     cerebro._marcar_pensamento(datetime.now(), "conversa")
-    dados = cerebro.rodar_codex(prompt, ESQUEMA_PAPO, cerebro._modelo(), esforco="low",
-                                timeout=PAPO_TIMEOUT_S)
-    return str((dados or {}).get("resposta") or "")
+    return cerebro.rodar_codex(prompt, esquema, cerebro._modelo(), esforco="low",
+                               timeout=PAPO_TIMEOUT_S) or {}
+
+
+def conversar_pelo_codex(prompt: str) -> str:
+    return str(_papo_pelo_codex(prompt, ESQUEMA_PAPO).get("resposta") or "")
+
+
+def triar_pelo_codex(prompt: str) -> dict:
+    """A pergunta livre: {"tipo": "conversa"|"trabalho", "resposta"}."""
+    return _papo_pelo_codex(prompt, ESQUEMA_TRIAGEM)
 
 
 def atender_conversa():
     return MESA.atender_conversa()
 
 
-def registrar(texto, origem="app", *, novo=False, responde_a=None):
-    return MESA.registrar(texto, origem, novo=novo, responde_a=responde_a)
+def registrar(texto, origem="app", *, novo=False, responde_a=None, triar=None):
+    return MESA.registrar(texto, origem, novo=novo, responde_a=responde_a, triar=triar)
 
 
 def reabrir(ident, motivo="reaberto", continuacao=None):

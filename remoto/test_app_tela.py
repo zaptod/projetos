@@ -393,7 +393,8 @@ def test_responder_no_cartao_do_pedido_vai_ao_mesmo_pedido(tela_isolada, monkeyp
 
     from coordenador import pedidos
     monkeypatch.setattr(tela_isolada.RequestHandlerClass.estado, "com_acoes", True)
-    p = pedidos.registrar("arquive os vídeos antigos no Google Drive", "app", novo=True)
+    p = pedidos.registrar("arquive os vídeos antigos no Google Drive", "app", novo=True,
+                          triar=False)
     with pedidos._TRAVA:
         dados = pedidos._ler()
         alvo = next(x for x in dados["pedidos"] if x["id"] == p["id"])
@@ -451,6 +452,15 @@ def test_a_conversa_responde_como_gente_e_o_pedido_ganha_recibo(tela_isolada, mo
     monkeypatch.setattr(tela_isolada.RequestHandlerClass.estado, "com_acoes", True)
     monkeypatch.setattr(pedidos.MESA, "conversador",
                         lambda _prompt: "Oi, Adrian! Tô aqui, sem nada rodando agora.")
+
+    def triador(prompt):
+        # 06/10 (Grimorio, "O modelo decide"): o dublê do modelo da triagem
+        mensagem = prompt.rsplit("# Mensagem do Adrian agora", 1)[-1]
+        if "17h" in mensagem:
+            return {"tipo": "conversa",
+                    "resposta": "Daqui eu não vejo a publicação das 17h."}
+        return {"tipo": "trabalho", "resposta": ""}
+    monkeypatch.setattr(pedidos.MESA, "triador", triador)
     base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
     token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
     CAPTURAS.mkdir(parents=True, exist_ok=True)
@@ -483,13 +493,32 @@ def test_a_conversa_responde_como_gente_e_o_pedido_ganha_recibo(tela_isolada, mo
         assert "pensando…" not in texto and "pedido-" not in texto and "Retrato" not in texto
         page.screenshot(path=str(CAPTURAS / "conversa-gente-390x844.png"))
         page.locator("#toast.oculto").wait_for(state="attached")
+        # a pergunta livre: o modelo responde e nenhum pedido entra na fila
+        page.locator("#coord-texto").fill("por que o vídeo das 17h não saiu?")
+        page.locator("#coord-enviar").click()
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('pensando…')")
+        assert "Respondendo na Conversa" in page.locator("#toast").inner_text()
+        pedidos.atender_conversa()
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('Daqui eu não vejo a publicação das 17h.')")
+        texto = mensagens.inner_text()
+        assert "começando com «pedido:»" in texto and "pensando…" not in texto
+        assert "Entendi" not in texto
+        assert [p["situacao"] for p in pedidos.para_o_app()["pedidos"]] == ["respondido"] * 2
+        page.locator("#toast.oculto").wait_for(state="attached")
+        mensagens.screenshot(path=str(CAPTURAS / "conversa-pergunta-livre-390x844.png"))
+        # o pedido de trabalho: o modelo o passa a equipe, com o recibo de gente
         page.locator("#coord-texto").fill("arrume o botão Publicar do app")
         page.locator("#coord-enviar").click()
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('pensando…')")
+        pedidos.atender_conversa()
         page.wait_for_function("() => document.querySelector('#coord-mensagens')"
                                ".innerText.includes('Entendi: «arrume o botão Publicar do app».')")
         texto = mensagens.inner_text()
         assert "te aviso aqui quando ficar pronto" in texto and "pedido-" not in texto
-        assert "Entendi" in page.locator("#toast").inner_text()
+        assert "pensando…" not in texto
         assert "pedido-" not in page.locator("#toast").inner_text()
         page.locator("#toast.oculto").wait_for(state="attached")
         mensagens.screenshot(path=str(CAPTURAS / "conversa-recibo-390x844.png"))
@@ -518,7 +547,7 @@ def test_permissao_de_estado_no_cartao_tem_permitir_e_nao_responder(tela_isolada
     assert os.path.normcase(str(delegar.pasta())) != os.path.normcase(real)
     delegar.gravar_config({"gerente_ligado": False})
     monkeypatch.setattr(tela_isolada.RequestHandlerClass.estado, "com_acoes", True)
-    p = pedidos.registrar("ligue o gerente da equipe", "app")
+    p = pedidos.registrar("ligue o gerente da equipe", "app", triar=False)
     ident = p["id"]
     pasta = delegar.pasta_da(ident)
     pasta.mkdir(parents=True)

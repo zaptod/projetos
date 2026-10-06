@@ -369,6 +369,10 @@ def falar_ao_coordenador(texto: str) -> str:
     except Exception as exc:      # nenhuma mensagem derruba o bot
         return (f"não consegui guardar sua mensagem para o coordenador "
                 f"({type(exc).__name__}). Os comandos com / continuam: /ajuda")
+    if item.get("conversa") and item.get("forma") == "livre":
+        # 06/10/2026 (Grimorio, "O modelo decide"): a pergunta livre espera o
+        # modelo do coordenador, que responde aqui ou passa para a equipe
+        return "🧭 Li. Já te respondo aqui (se for trabalho, passo para a equipe)."
     if item.get("conversa"):
         # 05/10/2026 (conferente 3): a conversa solta ("qual o progresso?")
         # nasce respondida, e o `avisar` do processo do bot e vazio: a

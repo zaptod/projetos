@@ -29,7 +29,8 @@ def test_texto_livre_vira_pedido_do_orquestrador(cerebro):
     """03/10: o resto e PEDIDO; um trabalhador `orquestrador` do servidor
     atende, sem o VS Code. /novo abre outro assunto."""
     from coordenador import pedidos
-    resposta, _ = comandos.executar("reinicia o carteiro, por favor")
+    # 06/10 (Grimorio): "pedido:" vai direto a equipe, sem a triagem do modelo
+    resposta, _ = comandos.executar("pedido: reinicia o carteiro, por favor")
     # 06/10: o recibo de gente (o que entendi, quando comeca), o id so no fim
     assert resposta.startswith("🧭 Entendi: «reinicia o carteiro, por favor».")
     assert cerebro.entradas_novas() == []
@@ -39,7 +40,7 @@ def test_texto_livre_vira_pedido_do_orquestrador(cerebro):
     # 05/10 (conferente 3): texto solto nunca gruda; continuar e explicito
     primeiro = lista[0]["id"]
     assert f"/responder {primeiro[len('pedido-'):]} <texto>" in resposta
-    resposta, _ = comandos.executar("e o bot também")
+    resposta, _ = comandos.executar("Pedido - e o bot também")
     assert resposta.startswith("🧭 Entendi: «e o bot também».")
     assert len(pedidos.para_o_app()["pedidos"]) == 2
     curto = primeiro[len("pedido-"):]
@@ -58,7 +59,7 @@ def test_responder_com_quebra_de_linha_depois_do_id(cerebro):
     """Conferente 4: "/responder 7c727778" + quebra de linha + texto virava o
     id "pedido-7c727778\\nja" ("não há o pedido")."""
     from coordenador import pedidos
-    comandos.executar("reinicia o carteiro, por favor")
+    comandos.executar("pedido: reinicia o carteiro, por favor")
     primeiro = pedidos.para_o_app()["pedidos"][0]["id"]
     curto = primeiro[len("pedido-"):]
     for separador in ("\n", "\t", "  \n "):
@@ -83,16 +84,41 @@ def test_mensagem_curta_no_telegram_nao_abre_pedido(cerebro, texto):
 
 @pytest.mark.parametrize("texto", ["já loguei", "e o gerente?", "reinicie o app",
                                    "pode ligar o gerente?"])
-def test_texto_curto_fora_da_lista_fixa_e_pedido_no_telegram(cerebro, texto):
+def test_texto_curto_fora_da_lista_fixa_e_pedido_no_telegram(cerebro, texto, monkeypatch):
     """Conferente 5 (05/10/2026): o "curto" por contagem de palavras engolia
-    pedidos de verdade. So a lista fixa e conversa; o resto e pedido."""
+    pedidos de verdade. So a lista fixa e conversa fixa; desde 06/10 (Grimorio,
+    "O modelo decide") o resto espera o modelo, e sem ele vira pedido."""
     from coordenador import pedidos
+    avisos = []
+    monkeypatch.setattr(pedidos.MESA, "avisar", avisos.append)
     resposta, _ = comandos.executar(texto)
-    # 06/10: o recibo de gente, na hora; o id so no fim, para o /responder
-    assert resposta.startswith("🧭 Entendi: «"), resposta
+    assert resposta.startswith("🧭 Li. Já te respondo aqui"), resposta
+    assert "Entendi" not in resposta
+    # o coordenador sem modelo (o triador do teste e None): vira pedido, e o
+    # recibo vai pelo aviso do Telegram, com o /responder no fim
+    assert pedidos.MESA.triador is None
+    pedidos.MESA.atender_conversa()
     item = pedidos.para_o_app()["pedidos"][0]
-    assert resposta.rstrip().endswith(f"/responder {item['id'][len('pedido-'):]} <texto>)")
-    assert [p.get("conversa") for p in pedidos.para_o_app()["pedidos"]] == [None]
+    assert item["situacao"] == "recebido" and item.get("conversa") is None
+    assert len(avisos) == 1 and avisos[0].startswith("🧭 Entendi: «"), avisos
+    assert avisos[0].rstrip().endswith(f"/responder {item['id'][len('pedido-'):]} <texto>)")
+
+
+def test_pergunta_livre_no_telegram_o_modelo_responde_sem_abrir_pedido(cerebro, monkeypatch):
+    """06/10/2026 (Grimorio, app-e-bot/conversa-pergunta-livre): a pergunta
+    que nao esta na lista recebe resposta do modelo e nao entra na fila."""
+    from coordenador import pedidos
+    avisos = []
+    monkeypatch.setattr(pedidos.MESA, "avisar", avisos.append)
+    monkeypatch.setattr(pedidos.MESA, "triador", lambda _prompt: {
+        "tipo": "conversa", "resposta": "Daqui eu não vejo a publicação das 17h."})
+    resposta, _ = comandos.executar("por que o vídeo das 17h não saiu?")
+    assert resposta.startswith("🧭 Li.")
+    pedidos.MESA.atender_conversa()
+    assert avisos == ["🧭 Daqui eu não vejo a publicação das 17h. " + pedidos.LIVRE_LEMBRETE]
+    item = pedidos.para_o_app()["pedidos"][0]
+    assert item["conversa"] is True and item["situacao"] == "respondido"
+    assert item["papo"] == "respondido" and item["papo_por"] == "ia"
 
 
 @pytest.mark.parametrize("texto", ["qual o progresso?", "Coordenador?", "oi",
@@ -103,7 +129,7 @@ def test_conversa_solta_no_telegram_responde_como_gente(cerebro, texto):
     ia ao `avisar` vazio do processo do bot. Desde 06/10 a resposta e de
     gente (nao o retrato com ids), na hora."""
     from coordenador import pedidos
-    comandos.executar("corrija o X do aplicativo agora")
+    comandos.executar("pedido: corrija o X do aplicativo agora")
     resposta, _ = comandos.executar(texto)
     assert resposta.startswith("🧭 Oi, Adrian!"), resposta
     assert "orquestrador do servidor vai atender" not in resposta

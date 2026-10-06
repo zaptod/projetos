@@ -1792,7 +1792,8 @@ DO_SUPERVISOR = ("servico_reiniciar", "servico_parar", "servico_ligar", "pc_acao
 
 def _registrar_pedido(texto: str) -> dict:
     from coordenador import pedidos
-    return pedidos.registrar(texto, "app")
+    # a mensagem da Mesa ja e um pedido: nao passa pela triagem da pergunta livre
+    return pedidos.registrar(texto, "app", triar=False)
 
 
 def _espelhar_no_despachante(nome: str, despachante=None) -> str:

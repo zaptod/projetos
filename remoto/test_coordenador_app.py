@@ -32,6 +32,12 @@ def mundo(tmp_path, monkeypatch):
 @pytest.fixture
 def servidor(mundo):
     srv = api_http.criar_servidor("127.0.0.1", 0, local=True, com_acoes=True)
+    # 06/10/2026 (vigia): com o disco frio o primeiro pedido levou ~48 s; o
+    # cliente desistia e a thread que sobrava gravava o pedidos.json no
+    # LOCALAPPDATA do teste SEGUINTE (KeyError la). O `server_close` agora
+    # espera as conexoes em voo, ainda com o LOCALAPPDATA deste teste
+    srv.daemon_threads = False
+    srv.block_on_close = True
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     yield srv
     srv.shutdown()
@@ -40,7 +46,8 @@ def servidor(mundo):
 
 def _pedir(srv, metodo, caminho, corpo=None, token=None):
     porta = srv.server_address[1]
-    conexao = http.client.HTTPConnection("127.0.0.1", porta, timeout=10)
+    # o recibo do primeiro pedido le o Grimorio e o estado do Claude a frio
+    conexao = http.client.HTTPConnection("127.0.0.1", porta, timeout=120)
     cab = {"Host": f"127.0.0.1:{porta}"}
     if token:
         cab["Authorization"] = f"Bearer {token}"
@@ -172,10 +179,40 @@ def test_falar_grava_a_entrada_e_a_conversa(servidor, cerebro_isolado):
 def test_falar_longo_com_acento_passa_dos_4_kb(servidor, cerebro_isolado):
     from coordenador import pedidos
     texto = "ação " * 700                        # 3500 caracteres, mais de 4 KB em UTF-8
-    status, dados = _pedir(servidor, "POST", "/api/coordenador/falar", {"texto": texto},
-                           _parear(servidor))
+    status, dados = _pedir(servidor, "POST", "/api/coordenador/falar",
+                           {"texto": "pedido: " + texto}, _parear(servidor))
     assert status == 200 and dados["para"] == "orquestrador"
     assert [p["texto"] for p in pedidos.para_o_app()["pedidos"]] == [texto.strip()]
+
+
+def test_pergunta_livre_espera_o_modelo_e_nao_abre_pedido(servidor, cerebro_isolado,
+                                                          monkeypatch):
+    """06/10/2026 (Grimorio, app-e-bot/conversa-pergunta-livre, "O modelo
+    decide"): a pergunta fora da lista vai a Conversa, nao a fila; o modelo
+    do coordenador responde; o pedido de trabalho vira o pedido de sempre."""
+    from coordenador import pedidos
+    token = _parear(servidor)
+    status, dados = _pedir(servidor, "POST", "/api/coordenador/falar",
+                           {"texto": "por que o vídeo das 17h não saiu?"}, token)
+    assert status == 200 and dados["para"] == "conversa" and dados["curto"] is False
+    monkeypatch.setattr(pedidos.MESA, "triador", lambda prompt: {
+        "tipo": "conversa" if "17h" in prompt.rsplit("# Mensagem", 1)[-1] else "trabalho",
+        "resposta": "Daqui eu não vejo a publicação das 17h."})
+    status, trabalho = _pedir(servidor, "POST", "/api/coordenador/falar",
+                              {"texto": "conserte o botão de reiniciar do app"}, token)
+    assert trabalho["para"] == "conversa"                     # tambem espera o modelo
+    pedidos.MESA.atender_conversa()
+    status, conversa = _pedir(servidor, "GET", "/api/coordenador/conversa", token=token)
+    por_id = {p["id"]: p for p in conversa["pedidos"]}
+    assert por_id[dados["id"]]["situacao"] == "respondido" and por_id[dados["id"]]["conversa"]
+    assert por_id[trabalho["id"]]["situacao"] == "recebido"
+    assert not por_id[trabalho["id"]].get("conversa")
+    linhas = [(m["pedido"], m["tipo"], m["texto"]) for m in conversa["conversa"]
+              if m.get("de") == "orquestrador"]
+    assert (dados["id"], "final", "Daqui eu não vejo a publicação das 17h. "
+            + pedidos.LIVRE_LEMBRETE) in linhas
+    assert any(p == trabalho["id"] and t == "recibo" and x.startswith("Entendi: «conserte")
+               for p, t, x in linhas)
 
 
 def test_pedido_vira_item_do_orquestrador_e_aparece_na_conversa(servidor, cerebro_isolado):
@@ -184,13 +221,13 @@ def test_pedido_vira_item_do_orquestrador_e_aparece_na_conversa(servidor, cerebr
     from coordenador import pedidos
     token = _parear(servidor)
     status, dados = _pedir(servidor, "POST", "/api/coordenador/falar",
-                           {"texto": "conserte o botão de reiniciar do app"}, token)
+                           {"texto": "pedido: conserte o botão de reiniciar do app"}, token)
     assert status == 200 and dados["para"] == "orquestrador" and dados["situacao"] == "recebido"
     assert cerebro_isolado.entradas_novas() == []
     assert dados["titulo"] == "conserte o botão de reiniciar do app"
     # 05/10 (conferente 3): texto solto nunca continua; e pedido novo
     status, dados2 = _pedir(servidor, "POST", "/api/coordenador/falar",
-                            {"texto": "e o de parar também"}, token)
+                            {"texto": "pedido: e o de parar também"}, token)
     assert dados2["id"] != dados["id"] and dados2["continuacao"] is False
     status, velho = _pedir(servidor, "POST", "/api/coordenador/falar", {"novo": True}, token)
     assert status == 200 and velho["novo_assunto"] is False        # a casca velha nao quebra
@@ -239,7 +276,7 @@ def test_proposta_confirmada_pelo_app_executa_e_a_vencida_nao(servidor, cerebro_
 
 def _parado_esperando_voce(pedidos, texto="arquive os vídeos no Drive"):
     """Um pedido que parou esperando o Adrian, com trabalhador (como o cd2e5e0c)."""
-    p = pedidos.registrar(texto, "app", novo=True)
+    p = pedidos.registrar(texto, "app", novo=True, triar=False)
     with pedidos._TRAVA:
         dados = pedidos._ler()
         alvo = next(x for x in dados["pedidos"] if x["id"] == p["id"])

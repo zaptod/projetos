@@ -204,7 +204,7 @@ def _coordenador(mundo, segundos_atras):
 
 def test_coordenador_vivo_sem_aviso_de_sessao_fechada(mundo):  # noqa: F811
     _coordenador(mundo, 4)
-    pedidos.registrar("um pedido em andamento", "app")
+    pedidos.registrar("pedido: um pedido em andamento", "app")
     tela = O.para_o_app()
     s = tela["servidor"]
     assert s["situacao"] == "ok" and s["alarmes"] == [] and tela["fora_do_ar"] is False
