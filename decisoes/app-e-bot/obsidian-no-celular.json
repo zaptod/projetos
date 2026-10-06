@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-f19c9cfb",
+      "em": "2026-10-06T03:03:10",
+      "evento": "2026-10-06T03:03:07",
+      "linha": 126,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "syncthing",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "06/10 pelo chat: 'quero conectar meu app com meu obsidian ... não existe um cofre do obsidian, por isso quero achar alguma forma de fazer uma conexao direta com o app oficial, para eu ter no meu celular'. O plano: criar um cofre (uma pasta de notas .md) no PC, que o sistema atualiza sozinho; o Obsidian desenha diagramas (Mermaid) dentro da nota, então o diagrama do fluxo vira uma nota viva. O app oficial do Obsidian NÃO tem API para outro programa escrever nele: o que existe é sincronizar a PASTA do cofre com o celular. Serve para escolher esse caminho.",
   "criado": "2026-10-06T03:00:29.646924",
   "depende_de": [],
