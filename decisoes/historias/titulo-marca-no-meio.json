@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-936b3f89",
+      "em": "2026-10-06T02:41:28",
+      "evento": "2026-10-06T02:34:01",
+      "linha": 122,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "tirar",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Em 05/10 o título de publicação deixou de repetir a série no começo (6184587: 25 títulos consertados, ex. 'As Três Comportas — As Três Comportas — Parte 1: …' virou 'As Três Comportas — A Represa Aguenta (Parte 1/6)'). Sobraram 5 com a série no MEIO do título da parte: 'TÚMULO 214 — A Mulher do Túmulo 214', 'O Quarto 12 — A Mulher do Quarto 12', 'Rua Sete — A Noite em que a Rua Sete Entendeu', 'Última Hora — O Passageiro da Última Hora', 'Rua do Meio — A Rainha da Rua do Meio'. Serve para decidir o formato do título que vai ao YouTube/TikTok e à capa.",
   "criado": "2026-10-05T23:16:36.820682",
   "depende_de": [],
