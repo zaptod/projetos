@@ -8,7 +8,15 @@
       "opcao": "tirar"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-06T02:45:15",
+      "opcao": "duas-historias",
+      "origem": "app"
+    }
+  ],
   "id": "imagens-dois-geradores-juntos",
   "midias": [],
   "opcoes": [
@@ -36,7 +44,11 @@
   ],
   "pergunta": "Sem o PicassoIA, as imagens das histórias ficaram ~4x mais lentas. Faço o Gemini e o ChatGPT gerarem ao mesmo tempo?",
   "projeto": "historias",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Imagens sem o PicassoIA: Gemini e ChatGPT trabalham juntos?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-06T02:45:15",
+    "opcao": "duas-historias"
+  }
 }

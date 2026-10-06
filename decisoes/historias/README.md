@@ -13,4 +13,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Imagens das histórias: como dividir entre Gemini, ChatGPT e PicassoIA** — Um gerador por história (recomendado) (03/10/2026) `imagens-divisao`
 - ✅ **IA olha de novo a parte consertada?** — Não, manter uma passada só (05/10/2026) `reolhar-depois-do-conserto`
 - ✅ **Títulos com o nome da série no meio** — Tirar a marca da frente (06/10/2026) `titulo-marca-no-meio`
-- ⏳ **Imagens sem o PicassoIA: Gemini e ChatGPT trabalham juntos?** — Sem o PicassoIA, as imagens das histórias ficaram ~4x mais lentas. Faço o Gemini e o ChatGPT gerarem ao mesmo tempo? `imagens-dois-geradores-juntos`
+- ✅ **Imagens sem o PicassoIA: Gemini e ChatGPT trabalham juntos?** — Duas histórias ao mesmo tempo, uma em cada gerador (recomendado) (06/10/2026) `imagens-dois-geradores-juntos`
