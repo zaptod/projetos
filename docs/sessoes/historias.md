@@ -52,6 +52,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Histórias: teto diário de imagens no PicassoIA** — Sem teto (30/09/2026) `teto-diario-picasso`
 - ✅ **Imagens das histórias: como dividir entre Gemini, ChatGPT e PicassoIA** — Um gerador por história (recomendado) (03/10/2026) `imagens-divisao`
 - ✅ **IA olha de novo a parte consertada?** — Não, manter uma passada só (05/10/2026) `reolhar-depois-do-conserto`
+- ⏳ **Títulos com o nome da série no meio** — Em 5 partes o título da parte repete o nome da série no meio (ex.: 'TÚMULO 214 — A Mulher do Túmulo 214 (Parte 1/5)'). Tiro a marca da frente nesses casos? `titulo-marca-no-meio`
 
 <!-- decisoes:fim -->
 
