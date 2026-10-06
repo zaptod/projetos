@@ -33,6 +33,10 @@ var _ctx: Dictionary = {}
 var _expressoes: Array = []
 var _status: Array = []
 var _pecas := {}
+var nome_personagem := ""
+var classe_personagem := ""
+var _partes_modulares := {}
+var _texturas_modulares := {}
 
 
 func configurar(dados: Dictionary, ctx: Dictionary) -> void:
@@ -42,7 +46,11 @@ func configurar(dados: Dictionary, ctx: Dictionary) -> void:
 	cor_lado = UtilPalco.cor(dados.get("cor_lado", 0x3498DB))
 	raio_px = float(dados.get("raio_corpo", 0.85)) * UtilPalco.PX_POR_M
 	semente = 0 if dados.get("slot", "p1") == "p1" else 5
-	_expressoes = ctx.get("timeline").tabela("expressoes") if ctx.get("timeline") else []
+	nome_personagem = str(dados.get("nome", ""))
+	classe_personagem = str(dados.get("classe", ""))
+	_expressoes = ctx.get("timeline").tabela("expressoes") if ctx.get("timeline") else RostoPalco.EXPRESSOES
+	_partes_modulares.clear()
+	_texturas_modulares.clear()
 
 
 func atualizar(amostra: Dictionary, ctx: Dictionary) -> void:
@@ -106,6 +114,30 @@ func _flag(bit: int) -> bool:
 	return (int(_s.get("flags", 0)) & bit) != 0
 
 
+func _parte(nome: String, expr: String) -> Dictionary:
+	var chave := nome + ":" + expr
+	if not _partes_modulares.has(chave):
+		_partes_modulares[chave] = PartesLutador.resolver(nome, nome_personagem, classe_personagem, expr)
+	return _partes_modulares[chave]
+
+
+func _desenhar_parte(parte: Dictionary, xf: Transform2D, cor: Color = Color.WHITE) -> bool:
+	if parte.is_empty():
+		return false
+	var imagem := Image.load_from_file(ProjectSettings.globalize_path(str(parte.get("caminho", ""))))
+	var caminho := str(parte.get("caminho", ""))
+	var tex: Texture2D = _texturas_modulares.get(caminho)
+	if tex == null:
+		tex = ImageTexture.create_from_image(imagem) if imagem != null and not imagem.is_empty() else load(caminho) as Texture2D
+		if tex != null:
+			_texturas_modulares[caminho] = tex
+	if tex == null:
+		return false
+	draw_set_transform_matrix(xf)
+	draw_texture_rect(tex, Rect2(-Vector2(512, 512), Vector2(1024, 1024)), false, cor)
+	return true
+
+
 func _draw() -> void:
 	if _s.is_empty() or _flag(FLAG_OCULTO):
 		return
@@ -124,9 +156,22 @@ func _draw() -> void:
 		alfa = 0.45
 	if _flag(FLAG_INVENCIVEL) and not morto and (quadro / 2) % 2 == 0:
 		alfa *= 0.55
+	var expr := "neutro"
+	var idx := int(_s.get("expr", 0))
+	if morto:
+		expr = "morto"
+	elif idx >= 0 and idx < _expressoes.size():
+		expr = str(_expressoes[idx])
+	var escala_gabarito := R / 256.0
+	var xf_mundo := Transform2D(0.0, Vector2.ONE * escala_gabarito, 0.0, Vector2.ZERO)
+	var centro := Vector2(0, -z)
+	var xf_tela := Transform2D(0.0, esc * escala_gabarito, 0.0, centro)
+	var ang := deg_to_rad(float(_s.get("ang", 0.0)))
+	var xf_olhar := Transform2D(Vector2(esc.x, 0), Vector2(0, esc.y), centro) * Transform2D(ang, Vector2.ZERO) * Transform2D(0.0, Vector2.ONE * escala_gabarito, 0.0, Vector2.ZERO)
 
 	# --- sombra de contato (achatada; encolhe com a altura do pulo) ---
-	if estilo.sombra_alfa > 0.0 and not morto:
+	var sombra_modular := _desenhar_parte(_parte("sombra", expr), xf_mundo, Color(1, 1, 1, alfa))
+	if not sombra_modular and estilo.sombra_alfa > 0.0 and not morto:
 		var larg := R * 2.0 * maxf(0.4, 1.0 - z / (4.0 * UtilPalco.PX_POR_M))
 		var alt := larg * estilo.sombra_achatamento
 		draw_set_transform(Vector2(0, R * 0.5), 0.0, Vector2(1.0, alt / larg))
@@ -134,7 +179,6 @@ func _draw() -> void:
 		draw_circle(Vector2.ZERO, larg * 0.36, Color(0, 0, 0, estilo.sombra_alfa * 0.55 * alfa), true, -1.0, true)
 		draw_set_transform(Vector2.ZERO)
 
-	var centro := Vector2(0, -z)
 	# --- cor do corpo: flash de dano, congelado ---
 	var cor := cor_corpo
 	var flash := float(_s.get("flash", 0.0))
@@ -149,9 +193,12 @@ func _draw() -> void:
 		draw_set_transform(centro, 0.0, esc)
 		draw_arc(Vector2.ZERO, R * 1.14, 0, TAU, 64, cor_lado.lerp(Color.WHITE, 0.4), maxf(3.0, estilo.contorno_px), true)
 
-	# --- corpo ---
-	draw_set_transform(centro, 0.0, esc)
-	if estilo.brilho_corpo > 0.0:
+	# --- acessorio de costas e corpo ---
+	_desenhar_parte(_parte("acessorio_costas", expr), xf_olhar, Color(1, 1, 1, alfa))
+	var parte_pele := _parte("pele", expr)
+	var cor_pele := cor if PartesLutador.tingir(parte_pele) == "cor_personagem" else Color(1, 1, 1, alfa)
+	var pele_modular := _desenhar_parte(parte_pele, xf_tela, cor_pele)
+	if not pele_modular and estilo.brilho_corpo > 0.0:
 		# cel de 2 tons + 1 brilho, luz do alto a esquerda (estilo combinado da
 		# 16F): o tom escuro e a lua crescente embaixo-direita que sobra quando
 		# o disco claro, um pouco menor, vai para cima-esquerda.
@@ -162,22 +209,20 @@ func _draw() -> void:
 		draw_set_transform(centro + Vector2(-R * 0.40, -R * 0.44) * esc, -0.6, esc * Vector2(1.0, 0.62))
 		draw_circle(Vector2.ZERO, R * 0.17, Color(1, 1, 1, 0.55 * estilo.brilho_corpo * alfa), true, -1.0, true)
 		draw_set_transform(centro, 0.0, esc)
-	else:
+	elif not pele_modular:
 		draw_circle(Vector2.ZERO, R, cor, true, -1.0, true)
+	_desenhar_parte(_parte("marcas", expr), xf_olhar, Color(1, 1, 1, alfa))
 
 	# --- rosto (quadro do olhar; o squash vale nos eixos da tela, como no jogo) ---
 	var raio_tela := R * float(_ctx.get("zoom", 1.0)) * minf(esc.x, esc.y)
 	if raio_tela >= 7.0:
-		var ang := deg_to_rad(float(_s.get("ang", 0.0)))
 		var xf := Transform2D(Vector2(esc.x, 0), Vector2(0, esc.y), centro) * Transform2D(ang, Vector2.ZERO)
 		draw_set_transform_matrix(xf)
-		var expr := "neutro"
-		var idx := int(_s.get("expr", 0))
-		if morto:
-			expr = "morto"
-		elif idx >= 0 and idx < _expressoes.size():
-			expr = str(_expressoes[idx])
 		RostoPalco.new(self, R, t_jogo, semente, cor, raio_tela < 11.0, xf, estilo.cor_contorno).desenhar(expr)
+	# As partes substituem visualmente o desenho de reserva sem impedir que
+	# uma parte ainda ausente continue usando o rosto de hoje.
+	for nome_parte in ["olhos", "sobrancelhas", "boca", "detalhe_rosto", "acessorio_cabeca"]:
+		_desenhar_parte(_parte(nome_parte, expr), xf_olhar, Color(1, 1, 1, alfa))
 	draw_set_transform(centro, 0.0, esc)
 
 	# --- contorno (as mesmas regras de cor do jogo) ---

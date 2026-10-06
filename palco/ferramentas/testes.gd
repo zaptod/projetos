@@ -21,6 +21,7 @@ func _initialize() -> void:
 	_testar_slug()
 	_testar_plano()
 	_testar_biblioteca()
+	_testar_partes_lutador()
 	_testar_timeline()
 	_testar_revisao_3()
 	_testar_revisao_4()
@@ -161,6 +162,27 @@ func _testar_biblioteca() -> void:
 		_checar(float(maior[nome]) <= 1.0, "rosto: %s nitida a 408 px (ampliada %.2fx)" % [nome, maior[nome]])
 	for chave in real.escolhas:
 		_checar(not str(real.escolhas[chave]).begins_with("(reserva"), "biblioteca real sem reserva embutida: " + chave)
+
+
+func _testar_partes_lutador() -> void:
+	var tem := {
+		PartesLutador.caminho("olhos", "comum", "_", "dor"): true,
+		PartesLutador.caminho("olhos", "classe", "berserker_furia", "neutro"): true,
+		PartesLutador.caminho("pele", "comum", "_", "base"): true,
+	}
+	var existe := func(caminho: String): return tem.has(caminho)
+	var olhos := PartesLutador.resolver_com("olhos", "Ninguem", "Berserker (Furia)", "tonto", existe)
+	_checar(olhos.get("nivel") == "classe" and olhos.get("estado") == "neutro",
+		"partes: classe dona cai no neutro, sem misturar dor comum")
+	var pele := PartesLutador.resolver_com("pele", "Ninguem", "Berserker (Furia)", "neutro", existe)
+	_checar(pele.get("nivel") == "comum" and PartesLutador.tingir(pele) == "cor_personagem",
+		"partes: pele comum e tingida")
+	var vazio := PartesLutador.resolver_com("boca", "Ninguem", "Berserker (Furia)", "neutro", existe)
+	_checar(vazio.is_empty(), "partes: sem PNG deixa a reserva procedural")
+	_checar(int(PartesLutador.PARTES["sombra"]["z"]) < int(PartesLutador.PARTES["pele"]["z"])
+		and int(PartesLutador.PARTES["pele"]["z"]) < int(PartesLutador.PARTES["olhos"]["z"])
+		and int(PartesLutador.PARTES["olhos"]["z"]) < int(PartesLutador.PARTES["acessorio_cabeca"]["z"]),
+		"partes: ordem z do contrato")
 
 
 func _doc(n: int) -> Dictionary:

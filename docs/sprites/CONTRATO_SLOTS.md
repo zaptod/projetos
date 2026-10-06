@@ -175,6 +175,22 @@ palco/biblioteca/partes/<grupo>/<parte>/<nivel>/<alvo>/<estado>.png   (+ .json)
   - Com isso, arma, skill, efeito e camada de estado anexados aparecem **sem mudar uma linha do Godot**.
 - **O `sprites_usuario/` do Ateliê** (catálogo por animação de lado, `catalogo.json`) não serve para a bolinha modular. O painel novo usa `partes/`. Ver PERGUNTAS 6.
 
+### Prévia para o painel
+
+Depois de gravar ou trocar PNGs, o painel gera a folha das seis expressões
+representantes com o comando abaixo (o `--import` só é necessário para PNG novo):
+
+```powershell
+E:\ferramentas\godot\Godot_v4.7.2-stable_win64_console.exe --headless --path palco --import
+E:\ferramentas\godot\Godot_v4.7.2-stable_win64_console.exe --path palco res://ferramentas/previa_sprites.tscn -- --classe=berserker --personagem= --saida=E:/tmp/previa_berserker.png
+```
+
+`classe` e `personagem` usam os mesmos nomes da timeline (o resolvedor aplica
+`slug`); `personagem` pode ficar vazio. A folha usa fundo escuro de contraste e
+as expressões `neutro`, `furia`, `animado`, `panico`, `dor` e `morto`.
+Na HD 4600, a segunda linha deve rodar sem `--headless`: o renderer ANGLE
+entrega o PNG em cerca de 7 s; no modo headless a leitura do viewport não fecha.
+
 ---
 
 ## 5. Os outros grupos

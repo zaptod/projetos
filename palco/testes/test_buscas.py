@@ -20,3 +20,8 @@ def test_buscas_novas_da_biblioteca_do_palco():
     assert 'variante = str(ev.get("gatilho", ""))' in palco
     assert 'variante = str(ev.get("motivo", ""))' in palco
     assert '"buff": "buffs", "canal": "canais", "transformacao": "transformacoes"' in lutador
+    partes = (RAIZ / "nucleo" / "partes_lutador.gd").read_text(encoding="utf-8")
+    assert '"personagem", UtilPalco.slug(personagem)' in partes
+    assert '"classe", UtilPalco.slug(classe)' in partes
+    assert '"comum", "_"' in partes
+    assert '"furia": "furia"' in partes
