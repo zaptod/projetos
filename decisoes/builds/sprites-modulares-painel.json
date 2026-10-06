@@ -1,5 +1,17 @@
 {
   "comentario": false,
+  "consequencias": [
+    {
+      "alvo": "pedido-5f240534",
+      "em": "2026-10-06T04:16:22",
+      "evento": "2026-10-06T04:16:15",
+      "linha": 128,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "modular",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "06/10 ~04:20, pelo chat: 'conferir toda a engine do neural fights ... faça o painel de anexo de sprites com base no que realmente existe no jogo, separado por classe tipo e etc, e levando em conta cada estado novo, lembrando que os sprites são estáticos quem cuida do movimento é o godot, eu quero um lugar para colocar cada coisinha e ... animações modulares, ou seja o acessório é uma parte, a pele é outra, os olhos são outras a boca é outra ... eu cuido da criação das imagens e você da interface para que eu possa anexá-las conversando diretamente com a engine que criei.' Prazo: pronto e impecável na manhã de 06/10; tudo permitido para isso.",
   "criado": "2026-10-06T04:16:14.611698",
   "depende_de": [],
