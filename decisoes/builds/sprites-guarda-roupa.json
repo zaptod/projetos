@@ -1,0 +1,41 @@
+{
+  "comentario": false,
+  "contexto": "06/10 ~08:15, pelo chat: 'você fez o ateliê errado, primeiro que quero vários olhos aleatórios pra poder colocar não apenas um, vai ser igual aqueles jogos de colocar roupa'. Cada peça vira uma coleção de variantes (olhos 1, olhos 2…); cada variante tem as suas carinhas (neutro, fúria…).",
+  "criado": "2026-10-06T09:31:17.468718",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "06/10 pelo chat: 'vários olhos aleatórios ... igual aqueles jogos de colocar roupa' (orquestrador escolheu a recomendada; o Adrian pode trocar no app)",
+      "em": "2026-10-06T09:31:18",
+      "opcao": "sorteio-fixo",
+      "origem": "cli"
+    }
+  ],
+  "id": "sprites-guarda-roupa",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Cada lutador recebe uma combinação sorteada das variantes (sempre a mesma para ele, luta após luta); num 'provador' no app você vê o lutador montado, troca cada peça passando as variantes, aperta Sortear, e pode Fixar a escolha. Variante sem a carinha pedida usa o neutro dela.",
+      "id": "sorteio-fixo",
+      "pede_comentario": false,
+      "rotulo": "Sorteio fixo por lutador + provador"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O mesmo lutador muda de cara a cada vídeo",
+      "id": "sorteio-por-luta",
+      "pede_comentario": false,
+      "rotulo": "Sorteio novo a cada luta"
+    }
+  ],
+  "pergunta": "Como funcionam as variantes de cada peça?",
+  "projeto": "builds",
+  "situacao": "decidida",
+  "titulo": "Sprites: guarda-roupa de variantes",
+  "vigente": {
+    "comentario": "06/10 pelo chat: 'vários olhos aleatórios ... igual aqueles jogos de colocar roupa' (orquestrador escolheu a recomendada; o Adrian pode trocar no app)",
+    "em": "2026-10-06T09:31:18",
+    "opcao": "sorteio-fixo"
+  }
+}
