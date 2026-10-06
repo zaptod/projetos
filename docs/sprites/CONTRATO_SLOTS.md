@@ -164,6 +164,40 @@ peça de olhos inclui o brilho do olho e a piscada (o Godot não pisca a peça).
 
 ---
 
+### 2.4 Recortador de folha verde ou magenta
+
+No Ateliê, **Recortar folha** recebe PNG ou JPG cuja borda é verde `#00FF00`
+ou magenta `#FF00FF` liso. Qualquer outra borda é recusada com “o fundo
+precisa ser verde ou magenta liso”. A remoção começa pela borda: uma cor
+parecida, fechada dentro da arte, fica. A borda semitransparente é
+descontaminada para não deixar halo; o painel avisa se sobrar muita cor-chave
+dentro de algum desenho.
+
+Cada componente conectado vira uma peça; `pouco`, `médio` e `muito` escolhem
+a distância usada para juntar pupilas, sobrancelhas e outros pedaços próximos.
+Poeira isolada é descartada. O recorte fica cru (caixa justa com margem). O
+encaixe acontece só **na hora de mandar**, para a peça de DESTINO
+(`recortador.encaixar`): a peça do lutador vai para a zona de §2.3, e as
+outras vão para o quadro inteiro do slot (arma 1024×256, por exemplo). Até
+06/10/2026 o encaixe era feito ao subir a folha, com a peça que estava no
+seletor, e olhos caíam na zona da sombra.
+
+**Olhos.** A IA desenha o par de frente (lado a lado). A junção `pares` casa
+dois desenhos parecidos e alinhados, com o vão de até 3× a largura de um
+olho. O modo vem da decisão `builds/recortador-par-de-olhos` (padrão
+`separar`):
+- `separar`: cada olho no seu centro do jogo, (563, 420) e (563, 604), na
+  mesma escala (maior lado 122 px) e sem girar. O olho da direita da imagem
+  é o esquerdo do rosto e vai para cima. Olho sozinho vira o par;
+- `girar`: o par gira 90° anti-horário e encaixa em 480..645 × 340..684;
+- `vista-de-cima`: encaixa como veio, em 480..645 × 340..684.
+
+Mandar recortes cria **variantes**, nunca troca a arte-base: o cliente usa
+`POST /api/sprites/modulares/<slot>/anexar?nova=1` com PNG transparente. A
+coleção de variantes é dona de interpretar `nova=1` (ou `variante=<id>`);
+uma instalação sem esse gerenciador deve recusar o pedido em vez de sobrescrever
+o slot.
+
 ## 3. O esquema de um slot
 
 Cada slot é um objeto no manifesto. Exemplo completo em `slots_exemplo.json`.
@@ -209,14 +243,78 @@ Cada slot é um objeto no manifesto. Exemplo completo em `slots_exemplo.json`.
 **Uma árvore nova, só de partes, descoberta pelo NOME** (a mesma filosofia da `biblioteca.gd`: sem catálogo para editar):
 
 ```
-palco/biblioteca/partes/<grupo>/<parte>/<nivel>/<alvo>/<estado>.png   (+ .json)
-     ex.: partes/lutador/pele/comum/_/base.png
-          partes/lutador/olhos/classe/berserker_furia/neutro.png
+palco/biblioteca/partes/lutador/<parte>/<nivel>/<alvo>/<variante>/<estado>.png (+ .json)
+     ex.: partes/lutador/pele/comum/_/v01/base.png
+          partes/lutador/olhos/classe/berserker_furia/v02/neutro.png
           partes/skill/projetil/skill/bola_de_fogo/base.png
           partes/arma/arma/estilo/katana/base.png
 ```
 
 - O nível `comum` usa `_` como alvo.
+- Uma **variante** é um id curto e estável (`v01`, `v02`...); seu rótulo é
+  opcional e não participa do caminho. Estados ausentes caem no neutro da
+  mesma variante, nunca em outra variante.
+- `palco/biblioteca/partes/guarda_roupa.json` guarda escolhas fixadas no
+  formato `{ "<slug do personagem>": { "olhos": "v02" } }` (ex.:
+  `celeste_a_impiedosa`; a chave com o nome cru não é lida). Sem escolha
+  fixa (ou com uma fixada que o dono não tem), o jogo sorteia uma variante de
+  modo determinístico, no nível mais específico que tenha variantes
+  (personagem → classe → comum).
+- **O sorteio, igual nos dois lados** (`manifesto_sprites._sorteio_variante`
+  e `PartesLutador._sorteio_variante`) é **estável** (rendezvous /
+  highest-random-weight): cada variante tem um peso próprio para o lutador e
+  a peça, `peso = fmix32(FNV-1a 32 do UTF-8 de "slug(personagem):parte:vNN")`
+  (sem personagem, `slug(classe)`; `fmix32` é o final do MurmurHash3), e
+  ganha a de **maior peso**; empate fica com o menor id. O peso de uma
+  variante não depende das outras, por isso:
+  - **acrescentar** uma variante só muda quem passa a ter a nova como a de
+    maior peso (~1/n dos lutadores, e todos eles para a nova);
+  - **apagar** uma variante só muda quem a usava; ninguém mais troca de rosto.
+
+  É o que a decisão `sprites-guarda-roupa` pede ("sempre a mesma para ele,
+  luta após luta"). Medido em 06/10/2026 com os 111 lutadores reais × 9 peças:
+
+  | mudança | regra antiga `h % n` | rendezvous |
+  |---|---|---|
+  | 5 → 6 variantes (olhos, 111 lutadores) | 98 trocam | 15 trocam |
+  | 8 → 9 (olhos) | 101 | 6 |
+  | 8 → 7, apagando a v08 (olhos) | 92 | 18 (só quem usava a v08) |
+  | 5 → 6 (as 999 peças) | 82,6% | 15,0% (ideal 16,7%) |
+  | apagar a v03 de 5: trocam sem usá-la | 607 de 999 | 0 |
+  | 8 variantes: peças por variante (ideal 125) | 108–137 | 112–139 |
+
+  O `fmix32` é obrigatório: as variantes só diferem no último byte e o
+  FNV-1a cru mistura mal esse byte (com 8 variantes, o maior FNV cru dava a
+  v08 a 489 de 999 peças). No GDScript a multiplicação é feita em 16 + 16 bits
+  (`PartesLutador._mul32`) para não estourar o int de 64 bits com sinal.
+  Conta como variante só a pasta `v...` com pelo menos uma carinha válida da
+  peça (um `base.png` nos olhos ou uma pasta vazia não contam).
+  `palco/testes/test_sorteio_variantes.py` compara Python × Godot em 19.440
+  casos (06/10/2026: 0 divergências; a regra antiga do Godot contra a nova do
+  Python dá 8.014, então o teste pega a regra trocada de um lado só), mede a
+  estabilidade com os lutadores reais (acrescentar: só para a nova e ≤ 1/(n+1)
+  + 5%; apagar: zero de quem não a usava) e a distribuição (cada variante
+  ±25% de 1/n, ids com buraco incluídos). `palco/ferramentas/testes.gd` tem os
+  vetores do `fmix32` e a trilha da Celeste (v01 até a v04 chegar, v04 dali
+  em diante).
+- **Mudança de 06/10/2026:** a troca de `h % n` para o rendezvous mudou, uma
+  vez, a variante sorteada de quem não tem fixada (a fixada no guarda-roupa
+  não muda). Daqui em diante, a regra só troca rosto nos casos acima.
+- Migração: um PNG antigo em `<alvo>/<estado>.png`, inclusive sua pasta
+  `.historico`, vai para `v01/<estado>.png` sem sobrescrever uma `v01` já
+  existente. `python -m neural_fights.tools.manifesto_sprites importar-antigas`
+  executa essa migração antes de importar as artes antigas.
+- A API de anexo aceita `opcoes.variante="v02"` para uma variante existente ou
+  `opcoes.nova=true` para criar a próxima variante. Isso também é o contrato
+  usado pelo recortador de folhas; PNGs múltiplos equivalem a anexos novos
+  sucessivos.
+- **Quem grava o `guarda_roupa.json` é o servidor do app** (o Provador do
+  Ateliê): escrita atômica (arquivo novo + `os.replace`), LF, chaves em ordem.
+  Arquivo ilegível nunca é sobrescrito (Fixar responde 409).
+- **Variante apagada** pelo painel vai para `<alvo>/.apagadas/<carimbo de 20
+  dígitos>-vNN/` (o Desfazer a traz de volta). Como não começa com `v`, nem o
+  palco nem `dono_da_parte` a contam; quem a tinha fixa sai do guarda-roupa.
+  Rotas, telas e medidas: `docs/sessoes/app-e-bot.md`, seção "Provador".
 - **Para o que o palco JÁ procura** (arma, skill, evento, camadas de estado), o painel grava também a **cena-embrulho** no caminho de hoje. Ela é uma `.tscn` de 1 quadro com `folha_animada.gd` (ou `peca.gd` + Sprite2D, para a arma), apontando para o PNG da árvore `partes/`. A Oficina já gera esse embrulho (`painel/sprites/exportar.py:256-357`).
   - Com isso, arma, skill, efeito e camada de estado anexados aparecem **sem mudar uma linha do Godot**.
 - **O `sprites_usuario/` do Ateliê** (catálogo por animação de lado, `catalogo.json`) não serve para a bolinha modular. O painel novo usa `partes/`. Ver PERGUNTAS 6.
@@ -233,19 +331,40 @@ E:\ferramentas\godot\Godot_v4.7.2-stable_win64_console.exe --path palco res://fe
 
 `classe` aceita o id do slot (`berserker_furia`) ou o nome da timeline
 (`Berserker (Fúria)`): o resolvedor aplica `slug`. `personagem` pode ficar
-vazio. Argumentos de teste: `--z=0.6 --esc_x=1.25 --esc_y=0.8 --ang=30` põem
-as seis bolinhas no ar, achatadas ou viradas (é assim que os testes conferem
-pulo e squash).
+vazio. `--cor=#RRGGBB` (ou `r,g,b`) dá a cor do personagem. Argumentos de
+teste: `--z=0.6 --esc_x=1.25 --esc_y=0.8 --ang=30` põem as seis bolinhas no
+ar, achatadas ou viradas (é assim que os testes conferem pulo e squash).
+
+**A cor das bolinhas:**
+
+- **Prévia de um personagem** (`--personagem=` preenchido): as **seis**
+  bolinhas com a cor DELE, a mesma que a luta usa (a pele comum sem `.json`
+  sai tingida por ela, como na luta). A cor vem de `--cor`; sem `--cor`, do
+  banco que o jogo lê, pelo slug do nome: `<runtime>/personagens.json`
+  (`NEURAL_FIGHTS_RUNTIME_DIR`, senão `%LOCALAPPDATA%\neural-fights`) quando o
+  runtime tem `personagens.json` E `armas.json`, senão o snapshot
+  `neural_fights/data/personagens.json`. Só leitura. O servidor do app deve
+  passar `--cor` (ele já tem a cor do lutador): o banco é a reserva.
+- **Classe, comum, ou personagem fora do banco e sem `--cor`:** as seis cores
+  de exemplo (`previa_sprites.gd::CORES`, uma por bolinha), e o título diz
+  **"cores de exemplo"**.
 
 **O formato da folha (para o painel exibir):**
 
 - **Um PNG só, 1080×1920 (retrato, 9:16)**, fundo escuro de contraste
   `#191D27`. Feito para o celular: mostre em largura total, sem recorte; tocar
   abre em tela cheia com zoom.
-- **Topo (0–190 px):** linha 1 "Prévia no Godot"; linha 2, em letra grande, o
-  **nome humano** do alvo: `Berserker (Fúria)` (vem do `alvo.rotulo` do
-  manifesto), `Nome do personagem · Classe`, ou `Comum (todos os lutadores)`.
-  Nunca o id.
+- **Topo (0–190 px), três linhas:** "Prévia no Godot" (pequena); o **nome
+  humano** em letra grande; embaixo, menor, o complemento. Nunca o id.
+  - personagem: `Elektra a Abençoada` / `Paladino (Sagrado)` (+ `· cores de
+    exemplo` se não houver a cor dele);
+  - classe: `Paladino (Sagrado)` / `cores de exemplo` (o nome vem do
+    `alvo.rotulo` do manifesto);
+  - comum: `Comum (todos os lutadores)` / `cores de exemplo`.
+  - Cada linha cabe em 1000 px (40 px de margem): a fonte diminui até caber
+    (58 → 30 px no nome, 40 → 26 no complemento) e, no limite, corta com
+    reticências. Antes de 06/10/2026 era uma linha só de 60 px e
+    "Elektra a Abençoada · Paladino (Sagrado)" saía cortado ("Paladino (Sag").
 - **Grade 2 colunas × 3 linhas**, célula de 540×576 px. A ordem é
   Neutro, Fúria / Animado, Pânico / Dor, Morto. O rótulo da expressão vem
   em cima de cada bolinha, com acento.

@@ -1,5 +1,14 @@
 # App do celular e bot do Telegram
 
+## Sprites: guarda-roupa (06/10/2026)
+
+As partes de lutador agora são coleções em `v01`, `v02` etc. O painel pode
+criar uma variante nova e o resolvedor sorteia a mesma combinação para cada
+personagem até que o guarda-roupa a fixe. O formato, a migração e a API estão
+em `docs/sprites/CONTRATO_SLOTS.md`. O **Provador** do Ateliê (o "jogo de
+vestir", casca v51) é onde ele vê e fixa a combinação de cada lutador: ver
+"Provador" no fim deste documento.
+
 <!-- decisoes:inicio -->
 ## Decisões do Adrian (gerado — não edite à mão)
 
@@ -2505,6 +2514,221 @@ sem resposta atrasada e a folha do Godot. Capturas claro/escuro em
 
 Importar as artes antigas: CONTRATO_SLOTS § "Importar as artes antigas"
 (o capacete do Berserker é acessório de cabeça, encaixado pelo arco).
+
+### Recortar folha (06/10/2026)
+
+Fica no Ateliê, logo depois de **Montar sprites**, pois o destino natural de
+cada recorte é uma variante de uma peça modular. No celular o Adrian escolhe a
+folha da galeria, vê “fundo verde” ou “fundo magenta”, a folha limpa e a grade
+de recortes em xadrez; pode desmarcar itens e refazer com junção pouco, médio
+ou muito. Os botões têm ao menos 44 px.
+
+`POST /api/sprites/recortar` só guarda prévias na memória do aparelho e devolve
+as URLs autenticadas da folha limpa e dos PNGs. O envio das escolhas usa o
+contrato `anexar?nova=1` (e `opcoes.nova=true`): com o guarda-roupa de
+variantes integrado (casca v50), cada recorte vira a próxima `vNN` da peça,
+sem substituir a arte-base. Peça que não é de lutador não tem coleção: o anexo
+cai no destino único e, se já houver arte, pede confirmação (409) como antes.
+Depois de mandar, a carinha do painel passa a ser a do destino (o cartão fica à
+vista) e o aviso diz "N recortes viraram variantes novas de <peça>".
+
+**Reprovação do conferente (06/10, casca v52) e o que mudou:**
+- **O encaixe é do DESTINO, na hora de mandar.** Antes o `parte` do seletor ia
+  junto da folha e o encaixe no gabarito era feito ao SUBIR. O seletor abre em
+  "Sombra", então 4 olhos mandados depois aos Olhos caíram na zona da sombra
+  (256..767 × 552..726). Agora o servidor guarda os recortes CRUS na memória
+  (as 4 últimas folhas por aparelho; antes nada saía da memória). O
+  `GET /api/sprites/recortar/arquivo/<sessão>/recorte-N?destino=<lugar>&olhos=<modo>`
+  devolve o PNG já encaixado (`recortador.encaixar`): na zona do CONTRATO §2.3
+  para peça de lutador, e no quadro inteiro do slot para as outras (arma
+  1024×256, que antes era recusada por formato). O `parte` que uma casca
+  velha ainda mande ao subir é ignorado.
+- **Pares de olhos.** Com destino Olhos, a junção vira sozinha **pares de
+  olhos** e a folha é recortada de novo. Ao sair dos olhos, ela volta ao
+  médio. Dois desenhos viram um par quando têm tamanhos parecidos (≥ 0,6
+  nos dois lados), estão alinhados (centros a ≤ 0,35 da altura) e o vão
+  entre eles é de até 3× a largura de um olho. Eles se casam pelo menor
+  vão, e um olho nunca entra em dois pares. Um par que o médio já juntou
+  (olhos a menos de 16 px) é dividido pelo vão limpo. Na folha realista do
+  conferente (6 pares, vão de 24 ou 40 px, pares só de pupilas com 94 px)
+  saem 6 pares, não 12 recortes.
+- **O modo do par** (tela "Par de olhos", só com destino Olhos) vem da
+  decisão `builds/recortador-par-de-olhos`. A tela abre na resposta vigente,
+  ou em "separar" enquanto ela estiver pendente. Os modos:
+  - `separar`: cada olho no seu lugar, (563,420) e (563,604), na mesma
+    escala, maior lado 122 px, sem girar. O olho da DIREITA da imagem (o
+    esquerdo do rosto) vai para cima. Olho sozinho vira o par;
+  - `girar`: o par gira 90° anti-horário e encaixa na caixa dos olhos;
+  - `vista-de-cima`: não mexe, só encaixa como veio.
+- **Franja de cor de fundo na borda.** Medido na folha do conferente: o anel
+  de 1 px tinha média (96,6, 13,9, 100,6) no magenta. 1307 de 4528 pixels
+  estavam mais perto da chave que do contorno. O `limpeza.remover_fundo`
+  (`descontaminar=True`) agora lê cada pixel a até 2 px do fundo como
+  C = a·F + (1−a)·K. F é a média dos vizinhos confiáveis numa janela 5×5,
+  ou 9×9 se faltar. O alfa vira a projeção na reta K→F e a cor vira F, mas
+  só quando C está na reta: um brilho branco encostado no fundo fica. Depois
+  disso o anel ficou com média (20,7, 20,1, 26,6), que é o contorno, com 0
+  pixels perto da chave, verde e magenta. A folha 2048 recorta em 1,5 s.
+- **Recusar uma folha esquece a anterior** (lista, folha e seleção): o
+  "Mandar" não manda mais a folha de antes.
+- **Textos.** O aviso agora tem acento ("há bastante…"). "Mandar para" é
+  agrupado por peça (`optgroup`), com o texto "Olhos · fúria" (antes era
+  "Olhos · fúria · furia" e "Sombra · base"). Cada recorte se chama
+  "Recorte 3 · 357×127 px · par de olhos" ("· um olho só" quando não tem
+  par), e a legenda diz "Fundo magenta · 6 pares de olhos". O nome do
+  arquivo aparece sem as letras espaçadas: o `input` global do código de
+  pareamento tem `letter-spacing: .3em`, e o `input[type=file]` agora
+  volta ao normal. O "Ateliê antigo" passou de 22 para 44 px de toque. O
+  rótulo e o botão da carinha dizem o mesmo ("Carinha: neutra" e
+  "✓ neutra"), no painel e no Provador.
+- Folha de teste: `painel/sprites/folha_de_olhos.py` gera, byte a byte, a
+  folha do conferente.
+
+### Variantes no cartão (06/10/2026, casca v51)
+
+- **"+ Nova variante" com vários arquivos.** O seletor já era `multiple`, mas o
+  `modularAnexar` mandava só `files[0]`: escolher 3 olhos criava 1 variante.
+  Agora cada arquivo vira a próxima `vNN`, em sequência ("3 variantes novas
+  anexadas"). Um "+ Nova variante" cancelado não vira o próximo Anexar.
+- **Galeria no cartão** (lutador, com 2+ variantes ou alguma apagada): a
+  miniatura de cada variante na carinha do cartão (exata → família → neutra,
+  dentro da variante), "Variante N" e **Apagar** (a variante INTEIRA, todas
+  as carinhas, com confirmação). A frase do resultado aparece junto da
+  galeria (o `#modular-aviso` fica no fim da lista, longe do toque).
+- **Apagar variante** move `<alvo>/vNN/` para `<alvo>/.apagadas/<carimbo
+  20 díg>-vNN/` (o palco só lê pastas `v…`; o importador do Godot ignora
+  pasta com ponto). Quem tinha aquela variante FIXA (e é dono dela naquele
+  nível: os olhos de classe do Berserker não contam para quem apagou a v02
+  comum) sai do guarda-roupa, e a tela diz em uma frase: "Júlia a Abençoada
+  usava esta variante fixa e voltou ao sorteio." **Desfazer** traz a última
+  apagada com o nome dela (ou o próximo livre, se uma nova ocupou o número)
+  e devolve a escolha fixa a quem a tinha.
+- **Armadilha medida (06/10):** a lista é redesenhada duas vezes seguidas
+  depois de cada anexo (a resposta do anexo e a carga completa). Com uma
+  chave de blob por lugar, a resposta atrasada do 1º desenho revogava a
+  imagem do 2º: 4 de 5 variantes da galeria ficaram em branco na captura.
+  Agora a URL só nasce se a `<img>` ainda está na tela e é revogada no
+  redesenho seguinte (miniatura do cartão e do Provador também).
+
+### Provador (06/10/2026, casca v51)
+
+Decisão `builds/sprites-guarda-roupa`: cada peça é coleção de variantes, cada
+lutador tem um sorteio fixo, o guarda-roupa fixa escolhas. No Ateliê há dois
+modos no topo, **🧩 Montar peças** (o que já existia) e **👕 Provador**; o
+último usado volta (`painel.atelie.modo`), e o lutador escolhido também
+(`painel.provador.lutador`).
+
+- **Escolher o lutador:** busca pelo nome (sem acento: "julia" acha "Júlia")
+  e filtro por classe; com uma classe, o **lutador de exemplo** dela vem
+  primeiro (sorteia pela classe, como a folha do Godot sem personagem; dá
+  para experimentar, não para fixar). A lista mostra "🔒 N" de quem tem
+  escolha fixada. Até 40 por vez.
+- **O palco:** o lutador montado grande (prévia de 512 px; a pele comum sai
+  tingida pela cor do personagem, como o `modulate` do Godot), as 6 carinhas
+  + "Ver todas as 24", e uma linha por peça com desenho: `‹ miniatura ›`,
+  "Olhos 2 de 5", o selo (🔒 Fixada por você · 🎲 Sorteada pelo jogo · ✋
+  Experimentando: ainda não guardada · 🎨 Um desenho só) e de onde vem
+  ("peça comum", "peça da classe Berserker (Fúria)", "peça só deste
+  lutador"). Embaixo: 🎲 Sortear tudo, 🔒 Fixar tudo (as peças com 2+
+  desenhos), ↩ Tudo ao sorteio (pede confirmação) e Ver no Godot.
+- **O que só a tela guarda:** setas e dado mudam a `escolha` da tela (vai em
+  cada pedido); nada é gravado até **Fixar**. Recarregar volta ao que está
+  fixado.
+- **Mesma regra do palco:** o dono da peça (personagem → classe → comum), a
+  fixada e o sorteio vêm de `manifesto_sprites.dono_da_parte`,
+  `variante_escolhida` e `estado_na_variante` (o espelho Python do
+  `PartesLutador`, que `palco/testes/test_sorteio_variantes.py` compara com o
+  Godot). `remoto/test_provador.py` confere a API contra
+  `resolver_no_disco` (o mesmo espelho lendo o disco e o guarda-roupa).
+- **Ver no Godot deste lutador:** monta uma biblioteca temporária em
+  `<runtime>/previas_sprites/provador/<hash>/` só com a variante escolhida de
+  cada peça e roda a mesma `previa_sprites.tscn` com `--personagem=<nome>
+  --classe=<classe> --cor=#RRGGBB`. A cor vem do banco: com ela, as seis
+  bolinhas da folha saem pintadas com a cor do lutador (a folha aceita
+  `--cor` desde o bfb6b35, da parte builds). O lutador de exemplo vai sem
+  `--cor` e fica com as cores de exemplo. O guarda-roupa de verdade não
+  entra. A pasta guarda as 6 últimas folhas. Usa a mesma fila do Godot (um
+  por vez, um na fila).
+- **Ver no Godot com o PC ocupado** (06/10, casca v52): o conferente mediu
+  62 s, e o servidor parava o Godot em 45 s. Agora:
+  - o servidor espera `GODOT_TIMEOUT_S = 150` s;
+  - no estouro ele para a ÁRVORE (`taskkill /T /F`), porque o
+    `_console.exe` abre o Godot de verdade como filho e matar só o console
+    o deixava rodando;
+  - a tela espera até 3 min (`godotEsperar`, comum ao painel e ao
+    Provador). Depois de 8 s ela diz "montando… o PC está ocupado, pode
+    levar 1–2 min";
+  - fechar o Ateliê ou trocar de lutador cancela a espera, sem escrever
+    no aviso do outro.
+- **O lutador montado fica sempre à vista** (06/10, casca v52). Medido pelo
+  conferente: depois de apertar ‹ ›, a prévia ficava 47 px acima do topo em
+  pé e 270 px acima deitado. Agora:
+  - em pé, a prévia (230 px, até 30vh) fica `sticky` logo abaixo do
+    cabeçalho;
+  - deitado (≥ 560 px de largura), ela vai para a coluna da esquerda,
+    presa, e os controles rolam à direita (`.provador-mesa`);
+  - a prova confere pelo `elementFromPoint` que nada cobre a prévia depois
+    da seta.
+
+**Rotas** (todas com token; as que gravam exigem `--acoes`):
+
+| rota | o que faz |
+| --- | --- |
+| `GET /api/sprites/provador/lutadores` | id (slug do nome = chave do guarda-roupa), nome, classe, `classe_nome`, `fixadas`; as 16 classes e os 16 exemplos |
+| `GET /api/sprites/provador?lutador=&expressao=&escolha=olhos:v02,…` | a combinação: por peça `ordem`, `atual`, `indice`/`total`, `situacao` (`fixada`/`sorteio`/`experimento`), `dono`, `imagens` (URLs prontas); `escolha` efetiva, `previa`, `godot`, `sem_desenho` |
+| `GET /api/sprites/provador/previa?…` | PNG 512 px da combinação (`X-Previa-Pecas`) |
+| `GET /api/sprites/provador/peca?lutador=&parte=&variante=&expressao=` | miniatura 160 px de uma variante |
+| `GET /api/sprites/provador/godot?…` | 202 montando / 200 PNG / 502 frase |
+| `POST /api/sprites/provador/sortear` `{lutador, escolha, expressao, parte?}` | sorteio SÓ na tela (não grava; vale sem `--acoes`) |
+| `POST /api/sprites/provador/fixar` `{…, parte?}` | grava a peça (ou todas com 2+ desenhos) no guarda-roupa |
+| `POST /api/sprites/provador/desfixar` `{…, parte?}` | tira a peça (ou todas) do guarda-roupa |
+| `GET /api/sprites/modulares/<lugar>/imagem?variante=vNN` | a galeria do cartão |
+| `POST /api/sprites/modulares/<lugar>/variante/<vNN>/apagar` · `…/variante/desfazer` | apagar a variante inteira / trazer de volta |
+
+**Guarda-roupa** (`palco/biblioteca/partes/guarda_roupa.json`, o mesmo que o
+palco lê): escrito só pelo servidor, atômico (arquivo novo + `os.replace`,
+5 tentativas se o Godot estiver lendo), sob trava, LF, chaves em ordem; sem
+mudança, não grava. Ilegível: a tela abre (tudo no sorteio), mas Fixar e
+desfixar respondem 409 "nada foi mudado" e o arquivo fica como estava. O banco
+de personagens é o mesmo par que o jogo lê (o do runtime quando existe, senão
+o do pacote; `api_http.ARQUIVO_PERSONAGENS` nos testes).
+
+**Medido em 06/10** (porta 8980, manifesto real, 110 personagens reais,
+5 olhos + 3 bocas + pele + 2 capacetes): lista 4 ms / 17,6 KB; provador
+4 ms / 4,6 KB; prévia 83 ms / 1,5 KB; miniatura 20 ms; sortear/fixar/
+desfixar 4–5 ms (máx. 29 ms); o catálogo do lutador comum segue 5 ms / 27 KB.
+
+**Provas:** `remoto/test_provador.py` (15: lista, combinação = palco, a galeria
+conta variante como o palco (`base.png` nos olhos não conta), setas →
+fixar → recarregar → desfixar, fixar tudo, sortear só na tela, exemplo não
+fixa, guarda-roupa ilegível intocado, 3 fixações simultâneas, prévia com a
+escolha e a pele tingida, miniaturas, apagar com volta ao sorteio + desfazer,
+nome ocupado no desfazer, Ver no Godot só com a combinação, < 300 ms e < 60 KB)
+e `remoto/test_app_provador_tela.py` (`NF_TESTE_NAVEGADOR=1`, claro e escuro,
+390×844; `NF_TESTE_GODOT=1` usa o Godot de verdade): 3 olhos pelo seletor
+múltiplo → recortador manda 2 recortes → galeria com 5 → Provador: busca, seta
+troca a miniatura (cor medida no canvas), Fixar, recarregar e continua fixada,
+24 carinhas, Ver no Godot, Voltar ao sorteio → apagar a variante fixada (a
+frase) → Desfazer. Toques ≥ 44 px e nenhum id/caminho na tela. Capturas em
+`<TEMP>/tela_app/provador/`.
+
+`remoto/test_app_recortador_tela.py` (`NF_TESTE_NAVEGADOR=1`, claro e
+escuro) refaz o caminho natural da reprovação de 06/10 pelo SELETOR de arquivo
+real, com a folha do conferente. Os passos:
+1. sobe a folha com destino Sombra e recebe 12 recortes crus;
+2. uma folha azul é recusada e a lista fica vazia, então "Mandar" não manda
+   nada;
+3. sobe de novo, troca o destino para "Olhos · neutra" e recebe 6 pares;
+4. manda: as 6 variantes são gravadas e a CAIXA de cada olho no PNG fica na
+   zona do §2.3;
+5. "girar" e "já visto de cima" pelo seletor do par;
+6. confere os textos, os 44 px, a prévia do Provador presa em pé e deitado,
+   e o "PC ocupado" com um Godot dublê de 10 s.
+
+As capturas ficam em `<TEMP>/tela_app/recortador/`.
+
+**Pendências do palco resolvidas pelo bfb6b35 (parte builds):** a folha pinta
+com a cor do personagem e o título vai em duas linhas, sem encostar na borda.
 
 # Aba Equipe
 

@@ -9,6 +9,7 @@ static var _caminhos := {}
 static var _rotulos := {}
 static var _rotulos_palco := {}
 static var _manifesto_lido := false
+static var _guarda_roupa := {}
 const PARTES := {
 	"sombra": {"z": 0, "quadro": "mundo"},
 	"acessorio_costas": {"z": 10, "quadro": "olhar"},
@@ -43,15 +44,15 @@ const NIVEIS := {
 }
 
 
-static func caminho(parte: String, nivel: String, alvo: String, estado: String) -> String:
+static func caminho(parte: String, nivel: String, alvo: String, estado: String, variante: String = "v01") -> String:
 	_carregar_manifesto()
-	var chave := "%s/%s/%s/%s" % [parte, nivel, alvo, estado]
+	var chave := "%s/%s/%s/%s/%s" % [parte, nivel, alvo, variante, estado]
 	if _caminhos.has(chave):
 		return str(_caminhos[chave])
 	# Com biblioteca externa (previa do painel, testes), nada cai na
 	# biblioteca real do palco: o que nao esta no manifesto e procurado la.
 	var raiz := (_biblioteca_externa + "/partes/lutador") if _biblioteca_externa else RAIZ
-	return "%s/%s/%s/%s/%s.png" % [raiz, parte, nivel, alvo, estado]
+	return "%s/%s/%s/%s/%s/%s.png" % [raiz, parte, nivel, alvo, variante, estado]
 
 
 ## O nome humano do alvo ("Berserker (Furia)", com acento), tirado do
@@ -89,6 +90,7 @@ static func configurar_biblioteca(caminho_biblioteca: String) -> void:
 	_biblioteca_externa = caminho_biblioteca.replace("\\", "/").rstrip("/")
 	_caminhos.clear()
 	_rotulos.clear()
+	_guarda_roupa.clear()
 	_manifesto_lido = false
 
 
@@ -101,12 +103,21 @@ static func _carregar_manifesto() -> void:
 	var manifesto := (_biblioteca_externa + "/manifesto_slots.json") if _biblioteca_externa else "res://biblioteca/manifesto_slots.json"
 	for slot in _slots_do_manifesto(manifesto):
 		var alvo: Dictionary = slot.get("alvo", {})
-		var chave := "%s/%s/%s/%s" % [slot.get("parte", ""), alvo.get("nivel", ""), alvo.get("chave", ""), slot.get("estado", "base")]
+		var destino := str(slot.get("destino", "")).replace("\\", "/")
+		var pedacos: PackedStringArray = destino.split("/")
+		var variante := "v01"
+		if pedacos.size() >= 2 and pedacos[-2].begins_with("v"):
+			variante = pedacos[-2]
+		var chave := "%s/%s/%s/%s/%s" % [slot.get("parte", ""), alvo.get("nivel", ""), alvo.get("chave", ""), variante, slot.get("estado", "base")]
 		if str(alvo.get("rotulo", "")) != "":
 			_rotulos["%s/%s" % [alvo.get("nivel", ""), alvo.get("chave", "")]] = str(alvo.get("rotulo"))
-		var destino := str(slot.get("destino", "")).replace("\\", "/")
 		var relativo := destino.trim_prefix("palco/biblioteca/")
 		_caminhos[chave] = (_biblioteca_externa + "/" + relativo) if _biblioteca_externa else "res://biblioteca/" + relativo
+	var guarda := (_biblioteca_externa + "/partes/guarda_roupa.json") if _biblioteca_externa else "res://biblioteca/partes/guarda_roupa.json"
+	if FileAccess.file_exists(guarda):
+		var json_guarda := JSON.new()
+		if json_guarda.parse(FileAccess.get_file_as_string(guarda)) == OK and typeof(json_guarda.data) == TYPE_DICTIONARY:
+			_guarda_roupa = json_guarda.data
 
 
 static func estados(parte: String, expressao: String) -> Array:
@@ -162,21 +173,93 @@ static func resolver_com(parte: String, personagem: String, classe: String, expr
 		var alvo := str(nivel[1])
 		if alvo == "" and nivel_nome != "comum":
 			continue
-		# O primeiro nivel que possui QUALQUER estado e o dono da parte.
-		var dono := false
-		var possiveis: Array = EXPRESSOES if PARTES_DE_EXPRESSAO.has(parte) else ["base"]
-		for estado in possiveis:
-			if existe.call(caminho(parte, nivel_nome, alvo, str(estado))):
-				dono = true
-				break
-		if not dono:
+		var colecao := _variantes(parte, nivel_nome, alvo, existe)
+		if colecao.is_empty():
 			continue
+		var fixadas: Dictionary = _guarda_roupa.get(UtilPalco.slug(personagem), {})
+		var variante := str(fixadas.get(parte, ""))
+		if not colecao.has(variante):
+			variante = _sorteio_variante(personagem if personagem != "" else classe, parte, colecao.keys())
 		for estado in estados(parte, expressao):
-			var png := caminho(parte, nivel_nome, alvo, str(estado))
+			var png := caminho(parte, nivel_nome, alvo, str(estado), variante)
 			if existe.call(png):
 				return {"caminho": png, "nivel": nivel_nome, "estado": estado,
-					"z": int(PARTES[parte]["z"]), "quadro": str(PARTES[parte]["quadro"])}
+					"variante": variante, "z": int(PARTES[parte]["z"]), "quadro": str(PARTES[parte]["quadro"])}
 		# Um dono sem o estado pedido cai no neutro dele; se ele so tiver uma
 		# expressao avulsa, nao mistura a identidade com o nivel de baixo.
 		return {}
 	return {}
+
+
+static func _variantes(parte: String, nivel: String, alvo: String, existe: Callable) -> Dictionary:
+	var raiz := (_biblioteca_externa + "/partes/lutador") if _biblioteca_externa else RAIZ
+	var pasta := "%s/%s/%s/%s" % [raiz, parte, nivel, alvo]
+	var saida := {}
+	# A v01 e sempre consultada pelo `existe`, mesmo sem a pasta no disco: e o
+	# contrato antigo (uma arte por slot) e e o que deixa a regra verificavel
+	# sem PNG (testes.gd), igual ao fallback de manifesto_sprites.resolver_parte.
+	var candidatas: Array = ["v01"]
+	if DirAccess.dir_exists_absolute(pasta):
+		for nome in DirAccess.get_directories_at(pasta):
+			if not candidatas.has(nome):
+				candidatas.append(nome)
+	for variante in candidatas:
+		if not str(variante).begins_with("v"):
+			continue
+		for estado in (EXPRESSOES if PARTES_DE_EXPRESSAO.has(parte) else ["base"]):
+			if existe.call(caminho(parte, nivel, alvo, estado, variante)):
+				saida[variante] = true
+				break
+	return saida
+
+
+## Igual a manifesto_sprites._sorteio_variante (Python): rendezvous
+## (highest-random-weight). Cada variante tem um peso proprio por lutador e
+## peca, `mistura32(fnv1a32(slug(chave):parte:variante))`, e ganha a de MAIOR
+## peso; empate fica com o menor id. `chave` e o nome do personagem (ou a
+## classe, sem personagem). Acrescentar uma variante so muda quem passa a ter
+## a nova como a de maior peso (~1/n); apagar uma so muda quem a usava. A
+## regra antiga (`h % n`) trocava o rosto de quase todos a cada variante nova.
+## palco/testes/test_sorteio_variantes.py compara os dois lados em ~19 mil
+## casos e mede a estabilidade com os lutadores reais.
+static func _sorteio_variante(chave: String, parte: String, opcoes: Array) -> String:
+	var base := UtilPalco.slug(chave) + ":" + parte + ":"
+	var ordenadas := opcoes.duplicate()
+	ordenadas.sort()
+	var escolhida := ""
+	var maior := -1
+	for variante in ordenadas:
+		var peso := mistura32(fnv1a32(base + str(variante)))
+		if peso > maior:
+			escolhida = str(variante)
+			maior = peso
+	return escolhida
+
+
+## O final do MurmurHash3 (fmix32), igual a manifesto_sprites.mistura32: o
+## FNV-1a mistura mal o ultimo byte, e as variantes so diferem nele.
+static func mistura32(h: int) -> int:
+	h &= 0xFFFFFFFF
+	h ^= h >> 16
+	h = _mul32(h, 0x85EBCA6B)
+	h ^= h >> 13
+	h = _mul32(h, 0xC2B2AE35)
+	h ^= h >> 16
+	return h
+
+
+## (a * b) mod 2^32 sem passar de 2^63: o int do GDScript tem sinal e
+## a * b inteiro (dois fatores de 32 bits) estouraria. Parte b em 16 + 16 bits.
+static func _mul32(a: int, b: int) -> int:
+	var baixo := a * (b & 0xFFFF)
+	var alto := ((a * (b >> 16)) & 0xFFFF) << 16
+	return (baixo + alto) & 0xFFFFFFFF
+
+
+## FNV-1a de 32 bits sobre o UTF-8 (o `hash()` do Godot nao tem igual no
+## Python). O int do GDScript tem 64 bits: h * primo (< 2^57) cabe.
+static func fnv1a32(texto: String) -> int:
+	var h := 0x811C9DC5
+	for byte in texto.to_utf8_buffer():
+		h = ((h ^ byte) * 16777619) & 0xFFFFFFFF
+	return h

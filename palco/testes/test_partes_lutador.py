@@ -49,7 +49,7 @@ def _biblioteca(tmp_path: Path, pecas: dict) -> Path:
     biblioteca = tmp_path / "biblioteca"
     slots = []
     for (parte, nivel, alvo, estado), desenhar in pecas.items():
-        rel = f"partes/lutador/{parte}/{nivel}/{alvo}/{estado}.png"
+        rel = f"partes/lutador/{parte}/{nivel}/{alvo}/v01/{estado}.png"
         _peca(biblioteca / rel, desenhar)
         slots.append({"grupo": "lutador", "parte": parte, "alvo": {"nivel": nivel, "chave": alvo},
                       "estado": estado, "destino": "palco/biblioteca/" + rel})
@@ -65,13 +65,13 @@ def _env(tmp_path: Path) -> dict:
     return env
 
 
-def _previa(tmp_path: Path, biblioteca: Path, *extra: str):
+def _previa(tmp_path: Path, biblioteca: Path, *extra: str, env: dict | None = None):
     Image = pytest.importorskip("PIL.Image")
     saida = tmp_path / "folha.png"
     cmd = [str(GODOT), "--path", str(RAIZ), "res://ferramentas/previa_sprites.tscn", "--",
            f"--biblioteca={biblioteca.as_posix()}", f"--saida={saida.as_posix()}", *extra]
     p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=TIMEOUT,
-                       env=_env(tmp_path))
+                       env={**_env(tmp_path), **(env or {})})
     assert p.returncode == 0, p.stdout + p.stderr
     assert saida.is_file()
     return saida, Image.open(saida).convert("RGB")
@@ -177,7 +177,7 @@ def test_brilho_do_codigo_continua_sobre_a_pele_modular(tmp_path, brilho_proprio
         ("pele", "classe", "teste_classe", "base"): lambda d: d.ellipse((256, 256, 768, 768), fill=(110, 110, 110, 255)),
     })
     if brilho_proprio:
-        (biblioteca / "partes/lutador/pele/classe/teste_classe/base.json").write_text(
+        (biblioteca / "partes/lutador/pele/classe/teste_classe/v01/base.json").write_text(
             json.dumps({"tingir": "nenhum", "brilho_proprio": True}), encoding="utf-8")
     _saida, im = _previa(tmp_path, biblioteca, "--classe=teste_classe")
     cx, cy = _centro(0)  # neutro: nada do rosto no alto-esquerda nem no espelho dele
@@ -208,3 +208,89 @@ def test_sombra_modular_encolhe_com_o_pulo_como_a_de_codigo(tmp_path, z):
     largura = max(xs) - min(xs) + 1
     assert abs(largura - 2 * RAIO * fator) <= 6, (largura, 2 * RAIO * fator)
     assert abs((max(xs) + min(xs)) / 2 - cx) <= 3
+
+
+# ------------------------------------------- a folha de UM personagem
+# Achado do conferente em 06/10/2026 no "Ver no Godot deste lutador": as seis
+# bolinhas saiam com as CORES de exemplo (nao a cor do personagem) e o titulo
+# "Elektra a Abencoada  ·  Paladino (Sagrado)" saia cortado ("Paladino (Sag").
+def _pele_cinza(tmp_path: Path) -> Path:
+    """Pele comum cinza sem .json: o contrato manda tingir pela cor do lutador."""
+    return _biblioteca(tmp_path, {
+        ("pele", "comum", "_", "base"): lambda d: d.ellipse((256, 256, 768, 768), fill=(200, 200, 200, 255)),
+    })
+
+
+def _cor_do_corpo(im, k: int) -> tuple:
+    """Media de um ponto da pele na nuca (atras do rosto, abaixo do brilho):
+    nenhuma das seis carinhas desenha ali (a sobrancelha do panico passa em
+    (-0,40R, +0,44R))."""
+    cx, cy = _centro(k)
+    px = [im.getpixel((int(cx - 0.72 * RAIO) + dx, int(cy + 0.05 * RAIO) + dy))
+          for dx in range(-3, 4) for dy in range(-3, 4)]
+    return tuple(sum(p[i] for p in px) / len(px) for i in range(3))
+
+
+def _iguais(a, b, tol=6.0) -> bool:
+    return all(abs(x - y) <= tol for x, y in zip(a, b))
+
+
+def test_folha_do_personagem_pinta_as_seis_com_a_cor_dele(tmp_path):
+    biblioteca = _pele_cinza(tmp_path)
+    _saida, im = _previa(tmp_path, biblioteca, "--personagem=Fulano de Teste", "--classe=Paladino (Sagrado)",
+                         "--cor=#2080F0")
+    cores = [_cor_do_corpo(im, k) for k in range(6)]
+    assert all(_iguais(c, cores[0]) for c in cores), cores
+    r, g, b = cores[0]
+    assert b > r + 60 and b > g + 20, cores[0]  # a pele cinza saiu tingida de azul
+
+
+def test_folha_do_personagem_acha_a_cor_no_banco(tmp_path):
+    """Sem --cor (o servidor do app hoje so passa nome e classe), a cor vem do
+    banco que o jogo le, pelo slug do nome: o runtime com personagens.json E
+    armas.json."""
+    banco = tmp_path / "runtime"
+    banco.mkdir()
+    (banco / "personagens.json").write_text(json.dumps([
+        {"nome": "Outra Pessoa", "classe": "Mago (Arcano)", "cor_r": 250, "cor_g": 250, "cor_b": 0},
+        {"nome": "Júlia a Abençoada", "classe": "Paladino (Sagrado)", "cor_r": 30, "cor_g": 200, "cor_b": 60},
+    ], ensure_ascii=False), encoding="utf-8")
+    (banco / "armas.json").write_text("[]", encoding="utf-8")
+    biblioteca = _pele_cinza(tmp_path)
+    _saida, im = _previa(tmp_path, biblioteca, "--personagem=julia a abencoada", "--classe=Paladino (Sagrado)",
+                         env={"NEURAL_FIGHTS_RUNTIME_DIR": str(banco)})
+    cores = [_cor_do_corpo(im, k) for k in range(6)]
+    assert all(_iguais(c, cores[0]) for c in cores), cores
+    r, g, b = cores[0]
+    assert g > r + 60 and g > b + 60, cores[0]
+
+
+@pytest.mark.parametrize("extra", [["--classe=Paladino (Sagrado)"],
+                                   ["--personagem=Ninguem No Banco", "--classe=Paladino (Sagrado)"]],
+                         ids=["classe", "personagem_fora_do_banco"])
+def test_folha_sem_cor_do_personagem_usa_as_cores_de_exemplo(tmp_path, extra):
+    biblioteca = _pele_cinza(tmp_path)
+    banco = tmp_path / "runtime_vazio"  # nem o banco real entra
+    banco.mkdir()
+    (banco / "personagens.json").write_text("[]", encoding="utf-8")
+    (banco / "armas.json").write_text("[]", encoding="utf-8")
+    _saida, im = _previa(tmp_path, biblioteca, *extra, env={"NEURAL_FIGHTS_RUNTIME_DIR": str(banco)})
+    cores = [_cor_do_corpo(im, k) for k in range(6)]
+    distintas = sum(1 for i in range(6) for j in range(i + 1, 6) if not _iguais(cores[i], cores[j], 20))
+    assert distintas == 15, cores  # seis cores diferentes: e exemplo
+
+
+def test_titulo_longo_nao_encosta_na_borda(tmp_path):
+    """Nome + classe longos: o titulo quebra em duas linhas e reduz a fonte;
+    nada de texto claro a menos de 30 px das bordas na faixa do titulo."""
+    biblioteca = _pele_cinza(tmp_path)
+    _saida, im = _previa(tmp_path, biblioteca,
+                         "--personagem=Júlia a Abençoada das Montanhas Sagradas do Norte Gelado",
+                         "--classe=Paladino (Sagrado)", "--cor=#2080F0")
+    claros_borda = [(x, y) for y in range(0, 190) for x in list(range(0, 30)) + list(range(1050, 1080))
+                    if max(im.getpixel((x, y))) > 120]
+    assert not claros_borda, claros_borda[:10]
+    # e o titulo esta la: texto claro nas duas linhas (nome e classe)
+    for y0, y1 in ((60, 125), (130, 185)):
+        claros = sum(1 for y in range(y0, y1) for x in range(30, 1050, 2) if min(im.getpixel((x, y))) > 180)
+        assert claros > 200, (y0, y1, claros)

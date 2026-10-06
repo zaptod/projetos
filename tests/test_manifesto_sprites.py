@@ -70,7 +70,7 @@ def test_importar_artes_antigas_copia_centrada_e_guarda_a_versao(tmp_path):
     Image.new("RGBA", (512, 512), (255, 0, 0, 255)).save(origem / "corpo_bolinha.png")
     _capacete_falso().save(origem / "classe_berserker.png")
     biblioteca = tmp_path / "biblioteca"
-    destino = arquivo_do_destino(biblioteca, "palco/biblioteca/partes/lutador/pele/comum/_/base.png")
+    destino = arquivo_do_destino(biblioteca, "palco/biblioteca/partes/lutador/pele/comum/_/v01/base.png")
     destino.parent.mkdir(parents=True)
     Image.new("RGBA", (1024, 1024), (0, 255, 0, 255)).save(destino)
 
@@ -83,7 +83,7 @@ def test_importar_artes_antigas_copia_centrada_e_guarda_a_versao(tmp_path):
     assert Image.open(anteriores[0]).getpixel((512, 512))[:3] == (0, 255, 0)
     assert Image.open(origem / "corpo_bolinha.png").getpixel((0, 0))[:3] == (255, 0, 0)
     # O capacete e ACESSORIO DE CABECA do Berserker, nao a pele da classe.
-    capacete = biblioteca / "partes/lutador/acessorio_cabeca/classe/berserker_furia/base.png"
+    capacete = biblioteca / "partes/lutador/acessorio_cabeca/classe/berserker_furia/v01/base.png"
     assert copiados[1] == capacete.resolve()
     assert not (biblioteca / "partes/lutador/pele/classe/berserker_furia/base.png").exists()
     # O arco do capacete cai em cima do circulo de 512 do gabarito (06/10:
@@ -128,6 +128,32 @@ def test_regra_do_rosto_e_a_mesma_do_palco():
     achado = m.resolver_parte("olhos", "berserker_furia", "tonto", lambda *k: k in existe)
     # A classe e dona dos olhos: cai no neutro DELA, nunca no 'dor' comum.
     assert achado == {"nivel": "classe", "alvo": "berserker_furia", "estado": "neutro"}
+
+
+def test_variantes_sorteadas_sao_estaveis_e_carinha_nao_mistura_variantes():
+    from neural_fights.tools import manifesto_sprites as m
+    colecao = {"v01": {"neutro", "furia"}, "v02": {"neutro"}}
+    variante = lambda *_: colecao
+    a = m.resolver_parte("olhos", "berserker_furia", "furia", lambda *_: False,
+                         personagem="luna", variantes=variante)
+    b = m.resolver_parte("olhos", "berserker_furia", "furia", lambda *_: False,
+                         personagem="luna", variantes=variante)
+    assert a == b and a["variante"] in colecao
+    assert a["estado"] in colecao[a["variante"]]
+
+
+def test_migracao_legacy_move_png_e_historico_para_v01(tmp_path):
+    from neural_fights.tools.manifesto_sprites import migrar_variantes, pasta_de_versoes
+    antigo = tmp_path / "partes/lutador/pele/comum/_/base.png"
+    antigo.parent.mkdir(parents=True)
+    Image.new("RGBA", (2, 2), (1, 2, 3, 4)).save(antigo)
+    historia = pasta_de_versoes(antigo)
+    historia.mkdir()
+    Image.new("RGBA", (2, 2), (5, 6, 7, 8)).save(historia / "00000000000000000001.png")
+    movidos = migrar_variantes(tmp_path)
+    novo = tmp_path / "partes/lutador/pele/comum/_/v01/base.png"
+    assert movidos == [novo] and novo.is_file() and not antigo.exists()
+    assert (pasta_de_versoes(novo) / "00000000000000000001.png").is_file()
 
 
 def test_gabarito_aparece_em_fundo_claro_e_escuro():

@@ -22,8 +22,13 @@ def _opcoes():
 def test_worker_exporta_e_renderiza_com_duble(tmp_path, monkeypatch):
     comandos = []
     monkeypatch.setattr(arena.subprocess, "run", lambda comando, check: comandos.append(comando))
-    monkeypatch.setitem(sys.modules, "neural_fights.recording.timeline_arquivo",
-                        types.SimpleNamespace(carregar=lambda caminho: {"resultado": {"vencedor": "Ana"}}))
+    duble_timeline = types.SimpleNamespace(carregar=lambda caminho: {"resultado": {"vencedor": "Ana"}})
+    monkeypatch.setitem(sys.modules, "neural_fights.recording.timeline_arquivo", duble_timeline)
+    # `from neural_fights.recording import timeline_arquivo` le o ATRIBUTO do
+    # pacote antes do sys.modules: na bateria inteira outro teste ja importou o
+    # modulo real e o duble era ignorado (FileNotFoundError timeline.gcpf, 06/10).
+    import neural_fights.recording as pacote_recording
+    monkeypatch.setattr(pacote_recording, "timeline_arquivo", duble_timeline, raising=False)
 
     def renderizar(timeline, mp4):
         # o render recebe o ARQUIVO da timeline (com o dict quebrava de verdade, 02/10)

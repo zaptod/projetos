@@ -87,25 +87,201 @@ def estados_da_expressao(parte: str, expressao: str) -> list[str]:
     return saida
 
 
-def resolver_parte(parte: str, classe: str, expressao: str, existe) -> dict | None:
-    """O mesmo `resolver_com` do palco, sem personagem (o painel nao lista).
+def fnv1a32(texto: str) -> int:
+    """FNV-1a de 32 bits sobre o UTF-8: explicito e igual no GDScript
+    (`PartesLutador.fnv1a32`). `hash()` do Python e o do Godot nao servem."""
+    h = 0x811C9DC5
+    for byte in texto.encode("utf-8"):
+        h = ((h ^ byte) * 16777619) & 0xFFFFFFFF
+    return h
 
-    `existe(parte, nivel, alvo, estado) -> bool`. Devolve o nivel, o alvo e o
-    estado que o jogo usaria, ou None quando entra o desenho de hoje.
+
+def mistura32(h: int) -> int:
+    """O final do MurmurHash3 (fmix32), igual a `PartesLutador.mistura32`.
+
+    O FNV-1a sozinho mistura mal o ULTIMO byte, e no sorteio as variantes
+    so diferem nele (`...:v01`, `...:v02`): medido em 06/10/2026 com os 111
+    lutadores reais x 9 pecas e 8 variantes, o maior FNV cru dava a v08 a
+    489 de 999 pecas (ideal 125). Com esta mistura: 112-139."""
+    h &= 0xFFFFFFFF
+    h ^= h >> 16
+    h = (h * 0x85EBCA6B) & 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * 0xC2B2AE35) & 0xFFFFFFFF
+    h ^= h >> 16
+    return h
+
+
+def peso_da_variante(chave: str, parte: str, variante: str) -> int:
+    """O peso de UMA variante para um lutador e uma peca: mistura32(FNV-1a de
+    `slug(chave):parte:variante`). Depende so dos tres; as outras variantes
+    da colecao nao entram."""
+    return mistura32(fnv1a32(f"{slug(chave)}:{parte}:{variante}"))
+
+
+def _sorteio_variante(chave: str, parte: str, opcoes: list[str]) -> str:
+    """Igual a PartesLutador._sorteio_variante: a variante de MAIOR peso
+    (`peso_da_variante`; rendezvous / highest-random-weight); empate fica com
+    o menor id.
+
+    `chave` e o nome do personagem como o jogo o recebe (ou a classe, sem
+    personagem); o slug faz "Celeste a Impiedosa" e "celeste_a_impiedosa"
+    sortearem igual.
+
+    Por que nao `h % n` (a regra ate 06/10/2026): o indice dependia de
+    QUANTAS variantes havia, e acrescentar uma trocava o rosto de quase todo
+    mundo (111 lutadores reais, olhos: 5->6 trocava 98, 8->9 trocava 101).
+    Aqui cada variante tem um peso proprio por lutador: acrescentar uma so
+    muda quem passa a ter a nova como a de maior peso (~1/n), e apagar uma
+    so muda quem a usava. E o que a decisao `sprites-guarda-roupa` pede:
+    "sempre a mesma para ele, luta apos luta".
+    """
+    escolhida, maior = "", -1
+    for variante in sorted(opcoes):
+        peso = peso_da_variante(chave, parte, variante)
+        if peso > maior:
+            escolhida, maior = variante, peso
+    return escolhida
+
+
+def resolver_parte(parte: str, classe: str, expressao: str, existe, personagem: str = "",
+                   guarda_roupa: dict | None = None, variantes=None) -> dict | None:
+    """O mesmo `PartesLutador.resolver_com` do palco.
+
+    `existe(parte, nivel, alvo, estado) -> bool` mantem o contrato antigo
+    (uma arte por slot, sem variantes; a resposta nao traz `variante`).
+    `variantes`, quando informado, devolve `{variante: {estados}}`; nesse
+    modo o dono vem de `dono_da_parte` (personagem -> classe -> comum), a
+    escolha e fixa por personagem + parte e so entao cai na carinha.
+    `guarda_roupa` sao as escolhas fixadas DESTE personagem (`{parte:
+    variante}`; `fixadas_do_personagem` tira do arquivo inteiro).
     """
     if parte not in NIVEIS:
         return None
-    for nivel, alvo in (("classe", classe), ("comum", "_")):
+    if variantes:
+        dono = dono_da_parte(parte, classe, variantes, personagem)
+        if dono is None:
+            return None
+        nivel, alvo, colecao = dono
+        variante = variante_escolhida(colecao, (guarda_roupa or {}).get(parte, ""),
+                                      personagem or classe, parte)
+        estado = estado_na_variante(parte, expressao, colecao[variante])
+        if estado is None:
+            return None
+        return {"nivel": nivel, "alvo": alvo, "estado": estado, "variante": variante}
+    possiveis = EXPRESSOES if parte in PARTES_DE_EXPRESSAO else ("base",)
+    for nivel, alvo in (("personagem", slug(personagem)), ("classe", slug(classe)), ("comum", "_")):
         if nivel not in NIVEIS[parte] or (nivel != "comum" and alvo in ("", "_")):
             continue
-        possiveis = EXPRESSOES if parte in PARTES_DE_EXPRESSAO else ("base",)
         # O primeiro nivel que possui QUALQUER estado e o dono da parte.
-        if not any(existe(parte, nivel, alvo, estado) for estado in possiveis):
+        estados_existentes = {estado for estado in possiveis if existe(parte, nivel, alvo, estado)}
+        if not estados_existentes:
             continue
-        for estado in estados_da_expressao(parte, expressao):
-            if existe(parte, nivel, alvo, estado):
-                return {"nivel": nivel, "alvo": alvo, "estado": estado}
+        estado = estado_na_variante(parte, expressao, estados_existentes)
+        return None if estado is None else {"nivel": nivel, "alvo": alvo, "estado": estado}
+    return None
+
+
+def fixadas_do_personagem(guarda_roupa: dict | None, personagem: str) -> dict:
+    """As escolhas fixadas de UM personagem no `guarda_roupa.json` inteiro
+    (`{slug_do_personagem: {parte: variante}}`), pela chave que o palco le."""
+    escolhas = (guarda_roupa or {}).get(slug(personagem)) if personagem else None
+    return escolhas if isinstance(escolhas, dict) else {}
+
+
+def variantes_no_disco(biblioteca: Path):
+    """`variantes(parte, nivel, alvo)` lido das pastas de uma biblioteca
+    (`<biblioteca>/partes/lutador/...`), como o palco descobre pelo nome."""
+    raiz = Path(biblioteca) / "partes" / "lutador"
+
+    def variantes(parte: str, nivel: str, alvo: str) -> dict:
+        try:
+            return {d.name: {f.stem for f in d.glob("*.png") if f.is_file()}
+                    for d in (raiz / parte / nivel / alvo).iterdir() if d.is_dir()}
+        except OSError:
+            return {}
+    return variantes
+
+
+def resolver_no_disco(biblioteca: Path, parte: str, personagem: str, classe: str,
+                      expressao: str) -> dict | None:
+    """Espelho de `PartesLutador.resolver` numa biblioteca concreta (le o
+    `partes/guarda_roupa.json` e as pastas); devolve tambem o `arquivo`."""
+    biblioteca = Path(biblioteca)
+    try:
+        guarda = json.loads((biblioteca / "partes" / "guarda_roupa.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        guarda = {}
+    achado = resolver_parte(parte, classe, expressao, lambda *_: False, personagem=personagem,
+                            guarda_roupa=fixadas_do_personagem(guarda if isinstance(guarda, dict) else {},
+                                                               personagem),
+                            variantes=variantes_no_disco(biblioteca))
+    if achado is not None:
+        achado["arquivo"] = (biblioteca / "partes" / "lutador" / parte / achado["nivel"] / achado["alvo"]
+                             / achado["variante"] / f"{achado['estado']}.png")
+    return achado
+
+
+# ------------------------------------------------------- provador (painel)
+# O provador do app mostra, para UM lutador, de qual nivel vem cada peca e
+# qual variante o jogo usa. As duas funcoes abaixo sao o mesmo
+# `PartesLutador.resolver_com` do palco, em dois passos: o dono da peca
+# (personagem -> classe -> comum, o primeiro com alguma variante) e a escolha
+# dentro dele (a fixada no guarda-roupa ou o sorteio por `personagem:parte`).
+def slug(texto: str) -> str:
+    """O mesmo de `UtilPalco.slug` (palco/nucleo/util.gd)."""
+    de, para = "áàâãäåéèêëíìîïóòôõöúùûüçñý", "aaaaaaeeeeiiiiooooouuuucny"
+    saida = ""
+    for letra in str(texto or "").strip().lower():
+        indice = de.find(letra)
+        if indice >= 0:
+            letra = para[indice]
+        if "a" <= letra <= "z" or "0" <= letra <= "9":
+            saida += letra
+        elif saida and not saida.endswith("_"):
+            saida += "_"
+    return saida.rstrip("_")
+
+
+def dono_da_parte(parte: str, classe: str, variantes, personagem: str = "") -> tuple | None:
+    """(nivel, alvo, {variante: {estados}}) do nivel que e dono da peca.
+
+    `variantes(parte, nivel, alvo)` devolve a colecao daquele nivel. O
+    personagem entra pelo slug do nome, como no palco; sem nome, so classe e
+    comum. None quando nenhum nivel tem desenho (o jogo usa o de hoje).
+    """
+    if parte not in NIVEIS:
         return None
+    for nivel, alvo in (("personagem", slug(personagem)), ("classe", slug(classe)), ("comum", "_")):
+        if nivel not in NIVEIS[parte] or (nivel != "comum" and alvo in ("", "_")):
+            continue
+        # So conta o que o palco conta (PartesLutador._variantes): pasta
+        # `v...` com pelo menos uma carinha valida para a peca. Um `base.png`
+        # nos olhos ou uma pasta vazia nao viram variante.
+        possiveis = set(EXPRESSOES if parte in PARTES_DE_EXPRESSAO else ("base",))
+        colecao = {str(v): set(e) & possiveis for v, e in (variantes(parte, nivel, alvo) or {}).items()
+                   if str(v).startswith("v")}
+        colecao = {v: e for v, e in colecao.items() if e}
+        if colecao:
+            return nivel, alvo, colecao
+    return None
+
+
+def variante_escolhida(colecao: dict, fixada: str, chave_sorteio: str, parte: str) -> str:
+    """A fixada, se ainda existir na colecao; senao o sorteio estavel.
+
+    `chave_sorteio` e o nome do personagem como o jogo o recebe (ou a classe,
+    no lutador de exemplo): o mesmo texto de `_sorteio_variante` no Godot.
+    """
+    fixada = str(fixada or "")
+    return fixada if fixada in colecao else _sorteio_variante(chave_sorteio, parte, list(colecao))
+
+
+def estado_na_variante(parte: str, expressao: str, estados) -> str | None:
+    """A carinha que a variante mostra: exata -> familia -> neutro, so dentro dela."""
+    for estado in estados_da_expressao(parte, expressao):
+        if estado in estados:
+            return estado
     return None
 
 
@@ -413,6 +589,7 @@ def _destino_do_slot(biblioteca: Path, slot_id: str) -> str:
 def importar_antigas(biblioteca: Path = PADRAO.parent, origem: Path | None = None) -> list[Path]:
     """Copia as duas artes antigas para o gabarito, sem tocar nos originais."""
     origem = origem or RAIZ / "palco" / "biblioteca" / "efeitos" / "folhas"
+    migrar_variantes(biblioteca)
     copiados = []
     for nome, slot_id, ancora, modo in ARTES_ANTIGAS:
         fonte = origem / nome
@@ -433,6 +610,35 @@ def importar_antigas(biblioteca: Path = PADRAO.parent, origem: Path | None = Non
         os.replace(temporario, arquivo)
         copiados.append(arquivo)
     return copiados
+
+
+def migrar_variantes(biblioteca: Path = PADRAO.parent) -> list[Path]:
+    """Move o formato anterior de lutador para v01, inclusive historico.
+
+    Nunca sobrescreve uma v01 ja criada; assim uma segunda abertura e segura.
+    """
+    raiz = biblioteca / "partes" / "lutador"
+    movidos = []
+    if not raiz.is_dir():
+        return movidos
+    for arquivo in list(raiz.glob("*/*/*/*.png")):
+        # antigo: parte/nivel/alvo/estado.png; novo tem um diretorio a mais.
+        if arquivo.parent.parent.parent.parent != raiz:
+            continue
+        destino = arquivo.parent / "v01" / arquivo.name
+        if destino.exists():
+            continue
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(arquivo, destino)
+        antigo_historico = pasta_de_versoes(arquivo)
+        novo_historico = pasta_de_versoes(destino)
+        if antigo_historico.exists() and not novo_historico.exists():
+            os.replace(antigo_historico, novo_historico)
+        antigo_json = arquivo.with_suffix(".json")
+        if antigo_json.exists() and not destino.with_suffix(".json").exists():
+            os.replace(antigo_json, destino.with_suffix(".json"))
+        movidos.append(destino)
+    return movidos
 
 
 def gerar() -> dict:

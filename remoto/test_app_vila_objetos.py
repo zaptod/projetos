@@ -17,7 +17,8 @@ APP = Path(__file__).resolve().parent / "app"
 HTML = (APP / "index.html").read_text(encoding="utf-8")
 JS = {n: (APP / n).read_text(encoding="utf-8")
       for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js",
-                "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js", "atelie.js")}
+                "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js", "atelie.js",
+                "provador.js")}
 
 # os quatro objetos da prateleira (02/10/2026): o rótulo e a aba que abre
 # da primeira vez (`data-tela`)
@@ -145,13 +146,18 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v44 = pedido honesto v2: Responder no pedido, rótulos novos, teto da semana (05/10);
     # v45 = a conversa responde como gente, com "pensando…" (06/10);
     # v46 = o Ateliê anexa sprite por slot do manifesto (06/10); v47 = painel modular completo;
-    # v48 = o anexo pelo seletor funciona, 24 carinhas, prévia por estilo (06/10).
-    assert "painel-casca-v48" in sw
+    # v48 = o anexo pelo seletor funciona, 24 carinhas, prévia por estilo (06/10);
+    # v49 = guarda-roupa de variantes (vNN) + provador; v50 = recortador de folha
+    # verde/magenta junto com o guarda-roupa (06/10); v51 = o Provador (jogo de
+    # vestir), a galeria de variantes no cartao e "+ Nova variante" com varios arquivos;
+    # v52 = recortador encaixa no DESTINO, pares de olhos, prévia do Provador presa (06/10).
+    assert "painel-casca-v52" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
     assert '"assembleia.js"' in sw
     assert '"atelie.js"' in sw
+    assert '"provador.js"' in sw
 
 
 def test_o_icone_novo_esta_no_manifest_na_casca_e_no_servidor():

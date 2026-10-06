@@ -59,7 +59,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageDraw
 
 from . import (acoes, biblioteca, claude_estado, comandos_app, decisoes, delegar, orquestrador,
                painel_dados, tarefas, vila_dados, vila_nova)
@@ -68,6 +69,7 @@ from esteira_sprites import aprovar as sprites_aprovar
 from esteira_sprites import config as sprites_config
 from esteira_sprites import juiz as sprites_juiz
 from painel.sprites import importar as sprites_importar
+from painel.sprites import recortador as sprites_recortador
 from neural_fights.tools import manifesto_sprites
 
 PORTA_PADRAO = 8931
@@ -93,7 +95,14 @@ PARTES_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca"
 MANIFESTO_SPRITES = PARTES_BIBLIOTECA / "manifesto_slots.json"
 GODOT_PREVIA = Path("E:/ferramentas/godot/Godot_v4.7.2-stable_win64_console.exe")
 GODOT_RAIZ = Path(__file__).resolve().parents[1] / "palco"
+# A folha do Godot com o PC ocupado levou 62 s (conferente, 06/10/2026); com
+# 45 s ela era parada no meio. A tela espera um pouco mais que isto.
+GODOT_TIMEOUT_S = 150
 SPRITE_MAX = 20 * 1024 * 1024
+RECORTADOR_SESSOES = 4               # folhas do recortador guardadas por aparelho
+# A resposta do Adrian sobre o par de olhos desenhado de frente (o padrao da
+# tela do recortador); pendente = "separar", a recomendada.
+DECISAO_OLHOS = ("builds", "recortador-par-de-olhos")
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -295,6 +304,7 @@ ESTATICOS = {
     "/equipe.js": ("equipe.js", "text/javascript; charset=utf-8"),
     "/biblioteca.js": ("biblioteca.js", "text/javascript; charset=utf-8"),
     "/atelie.js": ("atelie.js", "text/javascript; charset=utf-8"),
+    "/provador.js": ("provador.js", "text/javascript; charset=utf-8"),
     # o desenho de hoje da bolinha (folha do Godot sem pecas), para a previa vazia
     "/bolinha_hoje.png": ("bolinha_hoje.png", "image/png"),
 }
@@ -804,10 +814,19 @@ def _base_do_indice(chave) -> dict:
             "por_alvo": por_alvo, "alvos": alvos, "raiz": raiz}
 
 
-def _varrer_existentes(base: dict) -> tuple[set, set]:
-    existe, com_versao = set(), set()
+def _varrer_existentes(base: dict) -> tuple[set, set, dict, dict]:
+    existe, com_versao, variantes, apagadas = set(), set(), {}, {}
     mapa = base["id_por_arquivo"]
     for pasta, subpastas, arquivos in os.walk(os.path.join(base["raiz"], "partes")):
+        if os.path.basename(pasta) == APAGADAS:
+            # Variantes apagadas (o Desfazer as traz): so contam, nunca existem.
+            relativo = Path(pasta).relative_to(base["raiz"]).parts
+            if len(relativo) == 6 and relativo[:2] == ("partes", "lutador"):
+                total = sum(1 for nome in subpastas if _APAGADA_RE.fullmatch(nome))
+                if total:
+                    apagadas[(relativo[2], relativo[3], relativo[4])] = total
+            subpastas[:] = []
+            continue
         if pasta.lower().endswith(".png.historico"):
             subpastas[:] = []
             if any(a.lower().endswith(".png") for a in arquivos):
@@ -820,7 +839,14 @@ def _varrer_existentes(base: dict) -> tuple[set, set]:
                 sid = mapa.get(os.path.normcase(os.path.join(pasta, nome)))
                 if sid:
                     existe.add(sid)
-    return existe, com_versao
+                # Variantes alem de v01 nao existem no manifesto: o nome do
+                # diretorio e a autoridade, e o indice continua uma varredura.
+                relativo = Path(pasta).relative_to(base["raiz"]).parts
+                if len(relativo) == 6 and relativo[:2] == ("partes", "lutador") and relativo[5].startswith("v"):
+                    chave = (relativo[2], relativo[3], relativo[4])
+                    variantes.setdefault(chave, {}).setdefault(relativo[5], set()).add(Path(nome).stem)
+                    existe.add("lutador/%s/%s/%s/%s" % (relativo[2], relativo[3], relativo[4], Path(nome).stem))
+    return existe, com_versao, variantes, apagadas
 
 
 def _indice_sprites(mudou: str | None = None) -> dict:
@@ -837,26 +863,28 @@ def _indice_sprites(mudou: str | None = None) -> dict:
         base = estado["base"]
         agora = time.monotonic()
         if estado["existe"] is None or agora - estado["quando"] > INDICE_VALIDADE_S:
-            estado["existe"], estado["com_versao"] = _varrer_existentes(base)
+            (estado["existe"], estado["com_versao"], estado["variantes"],
+             estado["apagadas"]) = _varrer_existentes(base)
             estado["quando"] = agora
         if mudou and mudou in base["por_id"]:
-            try:
-                arquivo = manifesto_sprites.arquivo_do_destino(
-                    PARTES_BIBLIOTECA, str(base["por_id"][mudou]["destino"]))
-            except (KeyError, ValueError):
-                arquivo = None
-            if arquivo is not None:
-                (estado["existe"].add if arquivo.is_file() else estado["existe"].discard)(mudou)
-                (estado["com_versao"].add if manifesto_sprites.versoes(arquivo)
-                 else estado["com_versao"].discard)(mudou)
+            # Uma variante nova nao tem id no manifesto; revarrer mantem a
+            # escolha e a galeria coerentes logo na resposta que a criou.
+            (estado["existe"], estado["com_versao"], estado["variantes"],
+             estado["apagadas"]) = _varrer_existentes(base)
+            estado["quando"] = agora
             estado["geracao"] += 1
         return {**base, "existe": set(estado["existe"]), "com_versao": set(estado["com_versao"]),
-                "geracao": estado["geracao"]}
+                "variantes": {k: {v: set(e) for v, e in valores.items()} for k, valores in estado.get("variantes", {}).items()},
+                "apagadas": dict(estado.get("apagadas", {})), "geracao": estado["geracao"]}
 
 
 def _existe_no_indice(indice: dict):
     existe = indice["existe"]
     return lambda parte, nivel, alvo, estado: f"lutador/{parte}/{nivel}/{alvo}/{estado}" in existe
+
+
+def _variantes_no_indice(indice: dict):
+    return lambda parte, nivel, alvo: indice["variantes"].get((parte, nivel, alvo), {})
 
 
 # "Carinha" e feminino: "a carinha neutra", nao "neutro". Os nomes que sao
@@ -920,10 +948,24 @@ _TRAVA_PREVIA_GODOT = threading.Lock()
 _GODOT_OCUPADO = {"alvo": None}
 
 
-def pedir_previa_godot(alvo: str) -> tuple[str, object]:
-    """('pronta', bytes) | ('erro', frase) | ('montando'|'na_fila', None)."""
+_PEDIDOS_GODOT: dict[str, dict] = {}       # chave "prov:..." -> o lutador e a combinacao
+
+
+def pedir_previa_godot(alvo: str, pedido: dict | None = None) -> tuple[str, object]:
+    """('pronta', bytes) | ('erro', frase) | ('montando'|'na_fila', None).
+
+    `alvo` e o estilo (painel de anexo) ou a chave de um pedido do provador
+    (`prov:<lutador>:<combinacao>`, com o `pedido` junto)."""
     geracao = _indice_sprites()["geracao"]
     with _TRAVA_PREVIA_GODOT:
+        if pedido is not None:
+            _PEDIDOS_GODOT[alvo] = pedido
+            # Combinacoes velhas do provador nao se acumulam: so as 12 ultimas.
+            velhas = [c for c in _PREVIAS_GODOT if c.startswith("prov:") and c != alvo
+                      and _PREVIAS_GODOT[c].get("estado") not in ("montando", "na_fila")]
+            for chave in velhas[:-12]:
+                _PREVIAS_GODOT.pop(chave, None)
+                _PEDIDOS_GODOT.pop(chave, None)
         atual = _PREVIAS_GODOT.get(alvo)
         if atual and atual["estado"] in ("montando", "na_fila"):
             return atual["estado"], None
@@ -949,7 +991,12 @@ def pedir_previa_godot(alvo: str) -> tuple[str, object]:
 def _trabalhar_previas_godot(alvo: str) -> None:
     while alvo is not None:
         geracao = _indice_sprites()["geracao"]
-        resultado = _rodar_previa_godot(alvo, PARTES_BIBLIOTECA)
+        with _TRAVA_PREVIA_GODOT:
+            pedido = _PEDIDOS_GODOT.get(alvo)
+        if alvo.startswith("prov:") and pedido is not None:
+            resultado = _rodar_previa_provador(pedido)
+        else:
+            resultado = _rodar_previa_godot(alvo, PARTES_BIBLIOTECA)
         with _TRAVA_PREVIA_GODOT:
             _PREVIAS_GODOT[alvo] = {**resultado, "geracao": geracao}
             alvo = _FILA_GODOT.pop(0) if _FILA_GODOT else None
@@ -964,21 +1011,513 @@ def _rodar_previa_godot(alvo: str, biblioteca: Path) -> dict:
         pasta = runtime_dir() / "previas_sprites"
         pasta.mkdir(parents=True, exist_ok=True)
         saida = pasta / f"folha_{re.sub(r'[^a-z0-9_]', '_', alvo.lower()) or 'comum'}.png"
+    except OSError:
+        return {"estado": "erro", "erro": "não consegui abrir o Godot neste PC"}
+    return _godot_folha('' if alvo == '_' else alvo, "", biblioteca, saida)
+
+
+def _olhos_padrao() -> str:
+    """O modo do par de olhos que a tela abre: a resposta vigente do Adrian no
+    Grimorio, ou "separar" (a recomendada) enquanto ele nao responde."""
+    try:
+        item = json.loads(decisoes.caminho_item(*DECISAO_OLHOS).read_text(encoding="utf-8"))
+        opcao = str(((item.get("vigente") or {}).get("opcao")) or "")
+    except (OSError, ValueError, AttributeError):
+        opcao = ""
+    return opcao if opcao in sprites_recortador.MODOS_OLHOS else "separar"
+
+
+def _parar_arvore(processo: subprocess.Popen) -> None:
+    """O `_console.exe` do Godot abre o Godot de verdade como FILHO: matar so
+    o console deixava o Godot rodando (e a GPU ocupada) depois do estouro."""
+    if os.name == "nt":
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(["taskkill", "/PID", str(processo.pid), "/T", "/F"],
+                           capture_output=True, timeout=20, creationflags=NO_WINDOW)
+    with contextlib.suppress(OSError):
+        processo.kill()
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        processo.communicate(timeout=10)
+
+
+def _godot_folha(classe: str, personagem: str, biblioteca: Path, saida: Path, cor=None) -> dict:
+    """O Godot de verdade: a folha das seis carinhas de `classe`/`personagem`.
+
+    `cor` (r, g, b) vai como `--cor=#RRGGBB`: a folha pinta as seis bolinhas
+    com a cor DELE (bfb6b35, parte builds); sem ela o Godot procura o nome no
+    banco, e o lutador de exemplo fica com as cores de exemplo."""
+    try:
         with contextlib.suppress(OSError):
             saida.unlink()
         cmd = [str(GODOT_PREVIA), "--path", str(GODOT_RAIZ),
                "res://ferramentas/previa_sprites.tscn", "--",
-               f"--classe={'' if alvo == '_' else alvo}", "--personagem=",
+               f"--classe={classe}", f"--personagem={personagem}",
                f"--biblioteca={biblioteca}", f"--saida={saida}"]
-        processo = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
-                                  errors="replace", timeout=45, creationflags=NO_WINDOW)
+        if cor is not None:
+            cmd.append("--cor=#%02X%02X%02X" % tuple(max(0, min(255, int(c))) for c in tuple(cor)[:3]))
+        processo = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                    encoding="utf-8", errors="replace", creationflags=NO_WINDOW)
+        try:
+            processo.communicate(timeout=GODOT_TIMEOUT_S)
+        except subprocess.TimeoutExpired:
+            _parar_arvore(processo)
+            with contextlib.suppress(OSError):
+                saida.unlink()
+            return {"estado": "erro", "erro": f"o Godot passou de {GODOT_TIMEOUT_S // 60} minutos e foi "
+                                              "parado; tente de novo quando o PC estiver mais livre"}
         if processo.returncode == 0 and saida.is_file():
             return {"estado": "pronta", "arquivo": str(saida)}
         return {"estado": "erro", "erro": "o Godot não conseguiu desenhar a folha; tente de novo daqui a pouco"}
-    except subprocess.TimeoutExpired:
-        return {"estado": "erro", "erro": "o Godot demorou demais e foi parado; tente de novo"}
     except (OSError, subprocess.SubprocessError):
         return {"estado": "erro", "erro": "não consegui abrir o Godot neste PC"}
+
+
+# ================================================================ provador
+# O "jogo de vestir" do Ateliê (decisão builds/sprites-guarda-roupa, 06/10):
+# para UM lutador, de qual nível vem cada peça e qual variante o jogo usa (a
+# fixada no guarda-roupa ou o sorteio fixo de `personagem:parte`). O que ele
+# experimenta nas setas e no dado mora só na tela (`escolha`, devolvida a cada
+# pedido); só o Fixar grava `partes/guarda_roupa.json`, que o palco lê.
+ARQUIVO_PERSONAGENS: Path | None = None      # os testes trocam; None = o banco do jogo
+PREFIXO_EXEMPLO = "exemplo-"
+COR_EXEMPLO = (216, 101, 101)                # a primeira bolinha da folha do Godot
+PROVADOR_PASTAS_GUARDADAS = 6                # bibliotecas temporárias do "Ver no Godot"
+VARIANTE_RE = re.compile(r"v[0-9a-z_-]{1,20}")
+APAGADAS = ".apagadas"                       # variante apagada (o Desfazer a traz de volta)
+_APAGADA_RE = re.compile(r"(\d{20})-(v[0-9a-z_-]{1,20})")
+_PERSONAGENS: dict = {"chave": None, "lista": [], "por_id": {}}
+_TRAVA_PERSONAGENS = threading.Lock()
+_TRAVA_GUARDA_ROUPA = threading.Lock()
+
+
+class GuardaRoupaIlegivel(ValueError):
+    """O guarda_roupa.json existe e não abre: nada é gravado por cima dele."""
+
+
+def _arquivo_personagens() -> Path:
+    """O mesmo par que o jogo lê: o do usuário quando existe, senão o do pacote."""
+    if ARQUIVO_PERSONAGENS is not None:
+        return Path(ARQUIVO_PERSONAGENS)
+    from neural_fights.data import database
+    runtime = Path(database.resolver_runtime_data_dir())
+    if (runtime / "personagens.json").is_file() and (runtime / "armas.json").is_file():
+        return runtime / "personagens.json"
+    return Path(database.ARQUIVO_CHARS)
+
+
+def _personagens() -> dict:
+    """Os lutadores do banco: `id` é o slug do nome (a chave do guarda-roupa)."""
+    arquivo = _arquivo_personagens()
+    try:
+        marca = arquivo.stat().st_mtime_ns
+    except OSError:
+        marca = None
+    chave = (str(arquivo), marca)
+    with _TRAVA_PERSONAGENS:
+        if _PERSONAGENS["chave"] == chave:
+            return _PERSONAGENS
+        try:
+            bruto = json.loads(arquivo.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            bruto = []
+        lista, por_id = [], {}
+        for item in bruto if isinstance(bruto, list) else []:
+            nome = str(item.get("nome") or "").strip() if isinstance(item, dict) else ""
+            ident = manifesto_sprites.slug(nome)
+            if not ident or ident in por_id:
+                continue
+            cor = []
+            for campo in ("cor_r", "cor_g", "cor_b"):
+                try:
+                    cor.append(max(0, min(255, int(float(item.get(campo, 200))))))
+                except (TypeError, ValueError):
+                    cor.append(200)
+            por_id[ident] = {"id": ident, "nome": nome, "classe": manifesto_sprites.slug(item.get("classe")),
+                             "cor": tuple(cor)}
+            lista.append(por_id[ident])
+        lista.sort(key=lambda p: p["id"])
+        _PERSONAGENS.update({"chave": chave, "lista": lista, "por_id": por_id})
+        return _PERSONAGENS
+
+
+def _classes_do_lutador(indice: dict) -> dict:
+    """{chave: "Berserker (Fúria)"}, na ordem do manifesto."""
+    return {a["chave"]: a["rotulo"] for a in indice["alvos"].get("lutador", []) if a.get("nivel") == "classe"}
+
+
+def _lutador_do_provador(ident: str, indice: dict) -> dict | None:
+    classes = _classes_do_lutador(indice)
+    if ident.startswith(PREFIXO_EXEMPLO):
+        classe = ident[len(PREFIXO_EXEMPLO):]
+        if classe not in classes:
+            return None
+        # Sem personagem o jogo sorteia pela classe (a folha do Godot faz igual).
+        return {"id": ident, "nome": "Lutador de exemplo", "classe": classe, "classe_nome": classes[classe],
+                "exemplo": True, "cor": COR_EXEMPLO, "chave_sorteio": classe, "nome_jogo": ""}
+    achado = _personagens()["por_id"].get(ident)
+    if achado is None:
+        return None
+    return {**achado, "classe_nome": classes.get(achado["classe"], manifesto_sprites.texto_humano(achado["classe"])),
+            "exemplo": False, "chave_sorteio": achado["nome"], "nome_jogo": achado["nome"]}
+
+
+def _arquivo_guarda_roupa() -> Path:
+    return PARTES_BIBLIOTECA / "partes" / "guarda_roupa.json"
+
+
+def _ler_guarda_roupa(estrito: bool = False) -> dict:
+    """{personagem: {parte: variante}}. Ilegível: {} na leitura da tela, erro
+    quando a resposta vai gravar (`estrito`), para não apagar o que ele fixou."""
+    try:
+        dados = json.loads(_arquivo_guarda_roupa().read_text(encoding="utf-8-sig"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError):
+        if estrito:
+            raise GuardaRoupaIlegivel("o guarda-roupa do PC não abre; nada foi mudado") from None
+        return {}
+    if not isinstance(dados, dict):
+        if estrito:
+            raise GuardaRoupaIlegivel("o guarda-roupa do PC não abre; nada foi mudado")
+        return {}
+    return {str(p): {str(k): str(v) for k, v in f.items()} for p, f in dados.items() if isinstance(f, dict)}
+
+
+def _gravar_guarda_roupa(dados: dict) -> None:
+    """Escrita atômica (arquivo novo + os.replace): o Godot nunca lê meio arquivo."""
+    arquivo = _arquivo_guarda_roupa()
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    limpo = {p: dict(sorted(f.items())) for p, f in sorted(dados.items()) if f}
+    texto = json.dumps(limpo, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    temporario = arquivo.with_name(f".{arquivo.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    with open(temporario, "w", encoding="utf-8", newline="\n") as saida:
+        saida.write(texto)
+        saida.flush()
+        os.fsync(saida.fileno())
+    for tentativa in range(5):
+        try:
+            os.replace(temporario, arquivo)
+            return
+        except PermissionError:                  # o Godot lendo naquele instante
+            if tentativa == 4:
+                with contextlib.suppress(OSError):
+                    temporario.unlink()
+                raise
+            time.sleep(0.05)
+
+
+def _mudar_guarda_roupa(mudar) -> dict:
+    """Lê (estrito), aplica `mudar(dados)` e grava, sob a trava; sem mudança, não grava."""
+    with _TRAVA_GUARDA_ROUPA:
+        dados = _ler_guarda_roupa(estrito=True)
+        antes = json.dumps(dados, sort_keys=True)
+        mudar(dados)
+        if json.dumps(dados, sort_keys=True) != antes:
+            _gravar_guarda_roupa(dados)
+        return dados
+
+
+def _escolha_normalizada(bruto) -> dict:
+    """'olhos:v02,boca:v01' ou {"olhos": "v02"} -> {parte: variante}; o resto cai fora."""
+    if isinstance(bruto, dict):
+        pares = list(bruto.items())
+    else:
+        pares = [pedaco.partition(":")[::2] for pedaco in str(bruto or "").split(",")]
+    return {str(p): str(v) for p, v in pares[:20]
+            if str(p) in manifesto_sprites.CAMADA_Z and VARIANTE_RE.fullmatch(str(v))}
+
+
+def _texto_da_escolha(escolha: dict) -> str:
+    return ",".join(f"{p}:{v}" for p, v in sorted(escolha.items()))
+
+
+def _pecas_do_lutador(lutador: dict, indice: dict, escolha: dict, fixadas: dict) -> list[dict]:
+    """Cada peça com desenho: o dono, as variantes, a do sorteio, a fixada e a da tela."""
+    variantes = _variantes_no_indice(indice)
+    pecas = []
+    for parte in sorted(manifesto_sprites.CAMADA_Z, key=manifesto_sprites.CAMADA_Z.get):
+        dono = manifesto_sprites.dono_da_parte(parte, lutador["classe"], variantes, lutador["nome_jogo"])
+        if dono is None:
+            continue
+        nivel, alvo, colecao = dono
+        sorteada = manifesto_sprites.variante_escolhida(colecao, "", lutador["chave_sorteio"], parte)
+        fixada = str(fixadas.get(parte) or "")
+        valida = fixada if fixada in colecao else ""
+        pedida = escolha.get(parte) if escolha.get(parte) in colecao else ""
+        guardada = valida or sorteada
+        atual = pedida or guardada
+        situacao = "experimento" if pedida and pedida != guardada else ("fixada" if valida else "sorteio")
+        pecas.append({"parte": parte, "nivel": nivel, "alvo": alvo, "colecao": colecao,
+                      "ordem": sorted(colecao), "sorteada": sorteada, "fixada": valida, "atual": atual,
+                      "situacao": situacao, "fixa_perdida": bool(fixada) and not valida})
+    return pecas
+
+
+def _arquivo_da_variante(parte: str, nivel: str, alvo: str, variante: str, estado: str) -> Path | None:
+    """`partes/lutador/<parte>/<nivel>/<alvo>/<vNN>/<estado>.png`, o mesmo nome
+    que o palco procura; cada pedaço é conferido antes de virar caminho."""
+    if (parte not in manifesto_sprites.CAMADA_Z or nivel not in ("personagem", "classe", "comum")
+            or not re.fullmatch(r"[a-z0-9_]{1,80}", alvo or "") or not VARIANTE_RE.fullmatch(variante or "")
+            or not re.fullmatch(r"[a-z_]{1,30}", estado or "")):
+        return None
+    return PARTES_BIBLIOTECA / "partes" / "lutador" / parte / nivel / alvo / variante / f"{estado}.png"
+
+
+def _tingir_da_peca(arquivo: Path, nivel: str) -> str:
+    """O mesmo `PartesLutador.tingir`: o .json ao lado manda; sem ele, a pele
+    comum é máscara tingida pela cor do personagem."""
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        dados = json.loads(arquivo.with_suffix(".json").read_text(encoding="utf-8-sig"))
+        return str(dados.get("tingir", "nenhum"))
+    return "cor_personagem" if nivel == "comum" else "nenhum"
+
+
+def _abrir_peca(arquivo: Path, parte: str, nivel: str, cor) -> Image.Image | None:
+    try:
+        with Image.open(arquivo) as imagem:
+            peca = imagem.convert("RGBA")
+    except (OSError, ValueError):
+        return None
+    if parte == "pele" and _tingir_da_peca(arquivo, nivel) == "cor_personagem":
+        # O Godot desenha a pele com `modulate` = cor do personagem (multiplica).
+        r, g, b, a = peca.split()
+        r, g, b = (canal.point(lambda v, k=k: v * k // 255) for canal, k in zip((r, g, b), cor))
+        peca = Image.merge("RGBA", (r, g, b, a))
+    return peca
+
+
+def _lutador_publico(lutador: dict, fixadas: dict | None = None) -> dict:
+    return {"id": lutador["id"], "nome": lutador["nome"], "classe": lutador["classe"],
+            "classe_nome": lutador["classe_nome"], "exemplo": lutador["exemplo"],
+            "fixadas": len(fixadas or {})}
+
+
+def _expressoes_publicas() -> list[dict]:
+    """As 24 carinhas, por família (as 6 principais na ordem do contrato)."""
+    return [{"id": e, "nome": manifesto_sprites.NOMES_DAS_EXPRESSOES[e],
+             "familia": manifesto_sprites.FAMILIA[e],
+             "representante": e in manifesto_sprites.REPRESENTANTES}
+            for e in sorted(manifesto_sprites.EXPRESSOES, key=lambda e: (
+                manifesto_sprites.REPRESENTANTES.index(manifesto_sprites.FAMILIA[e]),
+                e not in manifesto_sprites.REPRESENTANTES))]
+
+
+def _dono_humano(nivel: str, lutador: dict) -> str:
+    if nivel == "comum":
+        return "peça comum (todos os lutadores)"
+    if nivel == "classe":
+        return f"peça da classe {lutador['classe_nome']}"
+    return "peça só deste lutador"
+
+
+def provador_resposta(lutador: dict, escolha: dict, expressao: str, aviso: str = "") -> dict:
+    """O que a tela do provador precisa: curto (poucos KB) e sem caminho do PC."""
+    from urllib.parse import quote
+    indice = _indice_sprites()
+    guarda = {} if lutador["exemplo"] else _ler_guarda_roupa()
+    fixadas = guarda.get(lutador["id"], {})
+    pecas = _pecas_do_lutador(lutador, indice, escolha, fixadas)
+    efetiva = {p["parte"]: p["atual"] for p in pecas if p["situacao"] == "experimento"}
+    base = (f"lutador={quote(lutador['id'])}&expressao={quote(expressao)}"
+            f"&escolha={quote(_texto_da_escolha(efetiva))}&v={indice['geracao']}")
+    publicas = []
+    for p in pecas:
+        publicas.append({
+            "parte": p["parte"], "nome": manifesto_sprites.nome_da_parte(p["parte"]),
+            "dono": _dono_humano(p["nivel"], lutador), "ordem": p["ordem"], "atual": p["atual"],
+            "indice": p["ordem"].index(p["atual"]) + 1, "total": len(p["ordem"]),
+            "sorteada_indice": p["ordem"].index(p["sorteada"]) + 1,
+            "situacao": p["situacao"], "tem_fixa": bool(p["fixada"]), "fixa_perdida": p["fixa_perdida"],
+            # A variante sem esta carinha (nem a família, nem a neutra) some na luta.
+            "sem_carinha": manifesto_sprites.estado_na_variante(
+                p["parte"], expressao, p["colecao"][p["atual"]]) is None,
+            "imagens": {v: (f"/api/sprites/provador/peca?lutador={quote(lutador['id'])}&parte={p['parte']}"
+                            f"&variante={v}&expressao={quote(expressao)}&v={indice['geracao']}")
+                        for v in p["ordem"]}})
+    com_desenho = {p["parte"] for p in pecas}
+    return {"lutador": _lutador_publico(lutador, {k: v for k, v in fixadas.items()
+                                                  if any(p["parte"] == k and p["fixada"] for p in pecas)}),
+            "pecas": publicas, "escolha": efetiva, "expressao": expressao,
+            "sem_desenho": [manifesto_sprites.nome_da_parte(p) for p in
+                            sorted(manifesto_sprites.CAMADA_Z, key=manifesto_sprites.CAMADA_Z.get)
+                            if p not in com_desenho],
+            "expressoes": _expressoes_publicas(), "pode_fixar": not lutador["exemplo"],
+            "previa": "/api/sprites/provador/previa?" + base,
+            "godot": "/api/sprites/provador/godot?" + base,
+            "godot_previa": GODOT_PREVIA.is_file(), "aviso": aviso}
+
+
+def provador_lutadores() -> dict:
+    indice = _indice_sprites()
+    classes = _classes_do_lutador(indice)
+    guarda = _ler_guarda_roupa()
+    lutadores = []
+    for p in _personagens()["lista"]:
+        lutadores.append({"id": p["id"], "nome": p["nome"], "classe": p["classe"],
+                          "classe_nome": classes.get(p["classe"], manifesto_sprites.texto_humano(p["classe"])),
+                          "fixadas": len(guarda.get(p["id"], {}))})
+    return {"lutadores": lutadores,
+            "classes": [{"chave": c, "rotulo": r} for c, r in classes.items()],
+            "exemplos": [{"id": PREFIXO_EXEMPLO + c, "nome": "Lutador de exemplo", "classe": c,
+                          "classe_nome": r, "fixadas": 0} for c, r in classes.items()]}
+
+
+def _previa_do_provador(lutador: dict, escolha: dict, expressao: str) -> tuple[bytes, int]:
+    indice = _indice_sprites()
+    fixadas = {} if lutador["exemplo"] else _ler_guarda_roupa().get(lutador["id"], {})
+    quadro = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    pecas = 0
+    for p in _pecas_do_lutador(lutador, indice, escolha, fixadas):
+        estado = manifesto_sprites.estado_na_variante(p["parte"], expressao, p["colecao"][p["atual"]])
+        arquivo = _arquivo_da_variante(p["parte"], p["nivel"], p["alvo"], p["atual"], estado or "")
+        peca = _abrir_peca(arquivo, p["parte"], p["nivel"], lutador["cor"]) if arquivo else None
+        if peca is None:
+            continue
+        if peca.size != (1024, 1024):
+            peca.thumbnail((1024, 1024))
+        quadro.alpha_composite(peca, ((1024 - peca.width) // 2, (1024 - peca.height) // 2))
+        pecas += 1
+    saida = io.BytesIO()
+    quadro.resize((512, 512), Image.Resampling.LANCZOS).save(saida, "PNG", optimize=True)
+    return saida.getvalue(), pecas
+
+
+def _pasta_do_alvo(slot: dict) -> Path | None:
+    """A pasta das variantes de um lugar de lutador (`.../<parte>/<nivel>/<alvo>`)."""
+    if not isinstance(slot, dict) or slot.get("grupo") != "lutador":
+        return None
+    alvo = slot.get("alvo") or {}
+    arquivo = _arquivo_da_variante(str(slot.get("parte")), str(alvo.get("nivel")), str(alvo.get("chave")),
+                                   "v01", "neutro")
+    return arquivo.parent.parent if arquivo else None
+
+
+def _proxima_variante(pasta: Path) -> str:
+    """O menor vNN livre NO DISCO (a mesma regra do anexo `nova`)."""
+    numero = 1
+    while (pasta / f"v{numero:02d}").exists():
+        numero += 1
+    return f"v{numero:02d}"
+
+
+def _quem_fixou(parte: str, nivel: str, alvo: str, variante: str, indice: dict) -> list[str]:
+    """Os lutadores cuja escolha fixada de `parte` é ESTA variante deste dono."""
+    afetados = []
+    personagens = _personagens()["por_id"]
+    variantes = _variantes_no_indice(indice)
+    for ident, fixas in _ler_guarda_roupa().items():
+        if fixas.get(parte) != variante:
+            continue
+        achado = personagens.get(ident)
+        if achado is None:          # fora do banco: só dá para saber no nível dele ou no comum
+            dono = (nivel, alvo) if nivel == "comum" or (nivel == "personagem" and alvo == ident) else None
+        else:
+            dono = manifesto_sprites.dono_da_parte(parte, achado["classe"], variantes, achado["nome"])
+            dono = dono[:2] if dono else None
+        if dono == (nivel, alvo):
+            afetados.append(ident)
+    return afetados
+
+
+def _nomes_dos_lutadores(idents: list[str]) -> list[str]:
+    personagens = _personagens()["por_id"]
+    return [personagens[i]["nome"] if i in personagens else manifesto_sprites.texto_humano(i) for i in idents]
+
+
+def _frase_do_sorteio(nomes: list[str]) -> str:
+    if not nomes:
+        return ""
+    if len(nomes) == 1:
+        return f" {nomes[0]} usava esta variante fixa e voltou ao sorteio."
+    if len(nomes) <= 3:
+        return f" {', '.join(nomes[:-1])} e {nomes[-1]} usavam esta variante fixa e voltaram ao sorteio."
+    return f" {len(nomes)} lutadores usavam esta variante fixa e voltaram ao sorteio."
+
+
+def apagar_variante(slot: dict, variante: str) -> dict:
+    """Tira a variante INTEIRA (todas as carinhas) para `.apagadas/`; quem a
+    tinha fixa volta ao sorteio. Devolve os nomes de quem voltou."""
+    pasta = _pasta_do_alvo(slot)
+    if pasta is None or not VARIANTE_RE.fullmatch(variante) or not (pasta / variante).is_dir():
+        raise LookupError("esta variante não existe mais")
+    parte = str(slot.get("parte"))
+    alvo = slot.get("alvo") or {}
+    afetados = _quem_fixou(parte, str(alvo.get("nivel")), str(alvo.get("chave")), variante, _indice_sprites())
+    lixeira = pasta / APAGADAS / f"{time.time_ns():020d}-{variante}"
+    lixeira.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(pasta / variante, lixeira)
+    with contextlib.suppress(OSError):
+        (lixeira / "_apagada.json").write_text(json.dumps({"variante": variante, "fixadas": afetados}),
+                                               encoding="utf-8")
+    if afetados:
+        def soltar(dados):
+            for ident in afetados:
+                if dados.get(ident, {}).get(parte) == variante:
+                    dados[ident].pop(parte)
+        with contextlib.suppress(GuardaRoupaIlegivel):
+            _mudar_guarda_roupa(soltar)
+    return {"nomes": _nomes_dos_lutadores(afetados)}
+
+
+def desfazer_variante(slot: dict) -> dict:
+    """Traz de volta a última variante apagada deste lugar (com o nome dela,
+    ou o próximo livre) e devolve a escolha fixa a quem a tinha."""
+    pasta = _pasta_do_alvo(slot)
+    lixeira = pasta / APAGADAS if pasta else None
+    entradas = sorted(d for d in lixeira.iterdir() if d.is_dir() and _APAGADA_RE.fullmatch(d.name)) \
+        if lixeira and lixeira.is_dir() else []
+    if not entradas:
+        raise LookupError("não há variante apagada para trazer de volta")
+    ultima = entradas[-1]
+    original = _APAGADA_RE.fullmatch(ultima.name).group(2)
+    meta = {}
+    with contextlib.suppress(OSError, ValueError):
+        meta = json.loads((ultima / "_apagada.json").read_text(encoding="utf-8"))
+    with contextlib.suppress(OSError):
+        (ultima / "_apagada.json").unlink()
+    nome = original if not (pasta / original).exists() else _proxima_variante(pasta)
+    os.replace(ultima, pasta / nome)
+    parte = str(slot.get("parte"))
+    devolvidos = [str(i) for i in (meta.get("fixadas") or []) if isinstance(i, str)]
+    if devolvidos:
+        def devolver(dados):
+            for ident in devolvidos:
+                if parte not in dados.get(ident, {}):
+                    dados.setdefault(ident, {})[parte] = nome
+        with contextlib.suppress(GuardaRoupaIlegivel):
+            _mudar_guarda_roupa(devolver)
+    return {"variante": nome, "nomes": _nomes_dos_lutadores(devolvidos)}
+
+
+def _rodar_previa_provador(pedido: dict) -> dict:
+    """A folha do Godot para UM lutador com UMA combinação: uma biblioteca
+    temporária só com a variante escolhida de cada peça (o palco não muda e o
+    guarda-roupa de verdade não entra)."""
+    try:
+        base = runtime_dir() / "previas_sprites" / "provador"
+        pasta = base / hashlib.sha1(pedido["chave"].encode("utf-8")).hexdigest()[:12]
+        shutil.rmtree(pasta, ignore_errors=True)
+        for parte, nivel, alvo, variante in pedido["pecas"]:
+            origem = _arquivo_da_variante(parte, nivel, alvo, variante, "neutro")
+            if origem is None or not origem.parent.is_dir():
+                continue
+            destino = pasta / "partes" / "lutador" / parte / nivel / alvo / variante
+            destino.mkdir(parents=True, exist_ok=True)
+            for arquivo in origem.parent.iterdir():
+                if arquivo.is_file() and arquivo.suffix.lower() in (".png", ".json"):
+                    shutil.copy2(arquivo, destino / arquivo.name)
+        pasta.mkdir(parents=True, exist_ok=True)
+        velhas = sorted((d for d in base.iterdir() if d.is_dir() and d != pasta),
+                        key=lambda d: d.stat().st_mtime, reverse=True)
+        for velha in velhas[PROVADOR_PASTAS_GUARDADAS - 1:]:
+            shutil.rmtree(velha, ignore_errors=True)
+    except OSError:
+        return {"estado": "erro", "erro": "não consegui preparar a prévia neste PC"}
+    lutador = pedido["lutador"]
+    if lutador.get("exemplo") or lutador.get("cor") is None:
+        return _godot_folha(lutador["classe"], lutador["nome_jogo"], pasta, pasta / "folha.png")
+    return _godot_folha(lutador["classe"], lutador["nome_jogo"], pasta, pasta / "folha.png",
+                        cor=lutador["cor"])
 
 
 class Manipulador(BaseHTTPRequestHandler):
@@ -1188,13 +1727,21 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._sprites_modulares_previa(consulta)
             achado = re.fullmatch(r"/api/sprites/modulares/(.+)/imagem", rota)
             if achado:
-                return self._sprites_modulares_imagem(unquote(achado.group(1)))
+                return self._sprites_modulares_imagem(unquote(achado.group(1)), consulta)
+            if rota == "/api/sprites/provador/lutadores":
+                return self._json(provador_lutadores())
+            if rota in ("/api/sprites/provador", "/api/sprites/provador/previa",
+                        "/api/sprites/provador/peca", "/api/sprites/provador/godot"):
+                return self._provador_get(rota.rsplit("/", 1)[-1], consulta)
             achado = re.fullmatch(r"/api/sprites/modulares/(.+)/gabarito", rota)
             if achado:
                 return self._sprites_modulares_gabarito(unquote(achado.group(1)))
             achado = re.fullmatch(r"/api/atelie/arquivo/([a-z0-9_-]{8,40})/(original|limpa|folha|previa|quadro-\d+)", rota)
             if achado:
                 return self._atelie_arquivo(*achado.groups())
+            achado = re.fullmatch(r"/api/sprites/recortar/arquivo/([A-Za-z0-9_-]{8,40})/(limpa|marcada|recorte-\d+)", rota)
+            if achado:
+                return self._recortador_arquivo(*achado.groups(), consulta)
             achado = re.fullmatch(r"/api/sprites/arquivo/(palco|vila)/([a-z0-9][a-z0-9_-]{0,63})/([^/]+)", rota)
             if achado:
                 return self._arquivo_sprite(achado.group(1), achado.group(2), achado.group(3))
@@ -1415,6 +1962,15 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._responder_decisao()
         if rota == "/api/atelie/importar":
             return self._atelie_importar()
+        if rota == "/api/sprites/recortar":
+            return self._recortador_importar()
+        achado = re.fullmatch(r"/api/sprites/provador/(sortear|fixar|desfixar)", rota)
+        if achado:
+            return self._provador_post(achado.group(1))
+        # Antes do anexar/apagar: o `(.+)` de la engoliria o "/variante/vNN".
+        achado = re.fullmatch(r"/api/sprites/modulares/(.+)/variante/(?:(v[0-9a-z_-]{1,20})/apagar|(desfazer))", rota)
+        if achado:
+            return self._variante_mutar(unquote(achado.group(1)), achado.group(2))
         achado = re.fullmatch(r"/api/sprites/modulares/(.+)/(anexar|apagar|desfazer)", rota)
         if achado:
             return self._sprites_modulares_mutar(unquote(achado.group(1)), achado.group(2))
@@ -1483,11 +2039,14 @@ class Manipulador(BaseHTTPRequestHandler):
         return _indice_sprites()["manifesto"]
 
     @staticmethod
-    def _arquivo_do_slot(slot: dict) -> Path | None:
+    def _arquivo_do_slot(slot: dict, variante: str = "v01") -> Path | None:
         # O manifesto e a unica autoridade para destino; ainda assim a API
         # confere que um manifesto corrompido nao a faca sair da biblioteca.
         try:
-            return manifesto_sprites.arquivo_do_destino(PARTES_BIBLIOTECA, str(slot["destino"]))
+            destino = str(slot["destino"])
+            if slot.get("grupo") == "lutador":
+                destino = destino.replace("/v01/", f"/{variante}/")
+            return manifesto_sprites.arquivo_do_destino(PARTES_BIBLIOTECA, destino)
         except (KeyError, TypeError, ValueError):
             return None
 
@@ -1496,11 +2055,22 @@ class Manipulador(BaseHTTPRequestHandler):
         """O telefone recebe o lugar da peca, nunca o caminho do PC."""
         situacao, aviso = _situacao_do_slot(slot, indice)
         sid = str(slot.get("id"))
+        alvo = slot.get("alvo") or {}
+        chave = (str(slot.get("parte", "")), str(alvo.get("nivel", "")), str(alvo.get("chave", "")))
+        lutador = slot.get("grupo") == "lutador"
+        # A mesma regra do palco (`dono_da_parte`): so conta a pasta vNN com
+        # alguma carinha valida da peca (um base.png nos olhos nao e variante).
+        validos = set(manifesto_sprites.EXPRESSOES if chave[0] in manifesto_sprites.PARTES_DE_EXPRESSAO
+                      else ("base",))
+        variantes = sorted(v for v, estados in indice.get("variantes", {}).get(chave, {}).items()
+                           if VARIANTE_RE.fullmatch(v) and set(estados) & validos) if lutador else []
         return {"id": sid, "rotulo": manifesto_sprites.rotulo_humano(slot),
                 "parte": slot.get("parte"), "estado": slot.get("estado"),
                 "nivel": (slot.get("alvo") or {}).get("nivel"), "papel": slot.get("papel"),
                 "situacao": situacao, "aviso": aviso,
-                "tem_anterior": sid in indice["com_versao"]}
+                "tem_anterior": sid in indice["com_versao"], "variantes": variantes,
+                # a galeria do cartao: "Desfazer" traz a ultima variante apagada
+                "variantes_apagadas": indice.get("apagadas", {}).get(chave, 0) if lutador else 0}
 
     def _sprites_modulares_catalogo(self, consulta: dict):
         indice = _indice_sprites()
@@ -1517,14 +2087,8 @@ class Manipulador(BaseHTTPRequestHandler):
                     "godot_previa": grupo == "lutador" and GODOT_PREVIA.is_file()}
         if grupo == "lutador":
             resposta["progresso"] = _progresso_sprites(indice)
-            resposta["expressoes"] = [
-                {"id": e, "nome": manifesto_sprites.NOMES_DAS_EXPRESSOES[e],
-                 "familia": manifesto_sprites.FAMILIA[e],
-                 "representante": e in manifesto_sprites.REPRESENTANTES}
-                # Por familia (as 6 principais na ordem do contrato), a principal primeiro.
-                for e in sorted(manifesto_sprites.EXPRESSOES, key=lambda e: (
-                    manifesto_sprites.REPRESENTANTES.index(manifesto_sprites.FAMILIA[e]),
-                    e not in manifesto_sprites.REPRESENTANTES))]
+            resposta["expressoes"] = _expressoes_publicas()
+            resposta["recortador_olhos"] = _olhos_padrao()
         return self._json(resposta)
 
     def _sprites_modulares_gabarito(self, slot_id: str):
@@ -1544,10 +2108,36 @@ class Manipulador(BaseHTTPRequestHandler):
         except CLIENTE_SAIU:
             self._cliente_saiu()
 
-    def _sprites_modulares_imagem(self, slot_id: str):
-        """A miniatura do cartao: so a peca deste lugar, em 160 px."""
-        slot = _indice_sprites()["por_id"].get(slot_id)
-        arquivo = self._arquivo_do_slot(slot) if isinstance(slot, dict) else None
+    def _sprites_modulares_imagem(self, slot_id: str, consulta: dict | None = None):
+        """A miniatura do cartao: so a peca deste lugar, em 160 px.
+
+        `?variante=vNN` e a galeria de variantes: a carinha do lugar DENTRO
+        da variante (exata -> familia -> neutra), como o jogo a usaria."""
+        indice = _indice_sprites()
+        slot = indice["por_id"].get(slot_id)
+        if not isinstance(slot, dict):
+            return self._erro(404, "este lugar não tem desenho")
+        pedida = str(((consulta or {}).get("variante") or [""])[0])
+        arquivo = None
+        if slot.get("grupo") == "lutador":
+            alvo = slot.get("alvo") or {}
+            chave = (str(slot.get("parte")), str(alvo.get("nivel")), str(alvo.get("chave")))
+            colecao = indice["variantes"].get(chave, {})
+            estado = str(slot.get("estado") or "base")
+            # Sem variante pedida: a v01 (a arte-base) ou, apagada ela, a primeira.
+            ordem = [pedida] if pedida else ["v01"] + sorted(v for v in colecao if v != "v01")
+            for variante in ordem:
+                achado = manifesto_sprites.estado_na_variante(
+                    chave[0], estado if estado != "base" else "neutro", colecao.get(variante, set()))
+                if estado == "base" and "base" in colecao.get(variante, set()):
+                    achado = "base"
+                if achado:
+                    arquivo = _arquivo_da_variante(*chave, variante, achado)
+                    break
+            if pedida and arquivo is None:
+                return self._erro(404, "esta variante não tem esta carinha")
+        if arquivo is None:
+            arquivo = self._arquivo_do_slot(slot)
         if arquivo is None or not arquivo.is_file():
             return self._erro(404, "este lugar não tem desenho")
         try:
@@ -1571,11 +2161,13 @@ class Manipulador(BaseHTTPRequestHandler):
         quadro = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
         pecas = 0
         for parte in sorted(manifesto_sprites.CAMADA_Z, key=manifesto_sprites.CAMADA_Z.get):
-            achado = manifesto_sprites.resolver_parte(parte, alvo, expressao, _existe_no_indice(indice))
+            achado = manifesto_sprites.resolver_parte(
+                parte, alvo, expressao, _existe_no_indice(indice), personagem=alvo,
+                variantes=_variantes_no_indice(indice))
             if achado is None:
                 continue
             slot = indice["por_id"].get(f"lutador/{parte}/{achado['nivel']}/{achado['alvo']}/{achado['estado']}")
-            arquivo = self._arquivo_do_slot(slot) if slot else None
+            arquivo = self._arquivo_do_slot(slot, achado.get("variante", "v01")) if slot else None
             if arquivo is None:
                 continue
             try:
@@ -1622,7 +2214,10 @@ class Manipulador(BaseHTTPRequestHandler):
             return
         if not self.estado.com_acoes:
             return self._erro(403, "as ações estão desligadas neste servidor")
-        slot = _indice_sprites()["por_id"].get(slot_id)
+        # O recortador manda `nova=1` na URL (e `nova: true` nas opcoes): os
+        # dois viram variante nova da colecao, nunca troca da arte-base.
+        nova_na_url = (parse_qs(urlsplit(self.path).query).get("nova") or [""])[0] == "1"
+        slot =_indice_sprites()["por_id"].get(slot_id)
         arquivo = self._arquivo_do_slot(slot) if isinstance(slot, dict) else None
         if arquivo is None:
             return self._erro(404, "peça desconhecida")
@@ -1632,6 +2227,22 @@ class Manipulador(BaseHTTPRequestHandler):
             if pedido is None:
                 return
             bruto, opcoes = pedido
+            variante = "v01"
+            if slot.get("grupo") == "lutador":
+                pedido_variante = str(opcoes.get("variante", ""))
+                if opcoes.get("nova") or nova_na_url:
+                    usadas = _variantes_no_indice(_indice_sprites())(
+                        str(slot.get("parte")), str((slot.get("alvo") or {}).get("nivel")),
+                        str((slot.get("alvo") or {}).get("chave")))
+                    numero = 1
+                    while f"v{numero:02d}" in usadas:
+                        numero += 1
+                    variante = f"v{numero:02d}"
+                elif re.fullmatch(r"v[0-9a-z_-]{1,20}", pedido_variante):
+                    variante = pedido_variante
+                arquivo = self._arquivo_do_slot(slot, variante)
+                if arquivo is None:
+                    return self._erro(400, "variante invalida")
             if len(bruto) > SPRITE_MAX:
                 return self._erro(413, "a imagem passa de 20 MB")
             if arquivo.exists() and not bool(opcoes.get("substituir")):
@@ -1675,6 +2286,173 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._json({"feito": True, "avisos": avisos,
                            "slot": self._slot_publico(slot, indice),
                            "progresso": _progresso_sprites(indice)})
+
+    def _variante_mutar(self, slot_id: str, variante: str | None):
+        """Apagar a variante INTEIRA (todas as carinhas) ou trazer de volta a
+        ultima apagada. Quem a tinha fixa volta ao sorteio, e a tela diz quem."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        slot = _indice_sprites()["por_id"].get(slot_id)
+        if _pasta_do_alvo(slot) is None:
+            return self._erro(404, "peça desconhecida")
+        try:
+            if variante:
+                ordem = sorted(_indice_sprites()["variantes"].get(
+                    (str(slot.get("parte")), str((slot.get("alvo") or {}).get("nivel")),
+                     str((slot.get("alvo") or {}).get("chave"))), {}))
+                numero = ordem.index(variante) + 1 if variante in ordem else 0
+                feito = apagar_variante(slot, variante)
+                nome = f"A variante {numero}" if numero else "A variante"
+                mensagem = (f"{nome} de {manifesto_sprites.nome_da_parte(str(slot.get('parte'))).lower()} "
+                            f"foi apagada (todas as carinhas dela).{_frase_do_sorteio(feito['nomes'])} "
+                            "Desfazer traz de volta.")
+            else:
+                feito = desfazer_variante(slot)
+                mensagem = "Pronto: a variante apagada voltou." + (
+                    f" A escolha fixa voltou para {', '.join(feito['nomes'])}." if feito["nomes"] else "")
+        except LookupError as exc:
+            return self._erro(404, str(exc))
+        except OSError:
+            return self._erro(409, "o desenho está aberto em outro programa; tente de novo")
+        indice = _indice_sprites(mudou=slot_id)
+        return self._json({"feito": True, "mensagem": mensagem, "voltaram_ao_sorteio": feito["nomes"] if variante else [],
+                           "slot": self._slot_publico(slot, indice),
+                           "progresso": _progresso_sprites(indice)})
+
+    # ------------------------------------------------------------ provador
+    def _provador_get(self, tipo: str, consulta: dict):
+        indice = _indice_sprites()
+        lutador = _lutador_do_provador(str((consulta.get("lutador") or [""])[0]), indice)
+        if lutador is None:
+            return self._erro(404, "lutador não encontrado")
+        expressao = str((consulta.get("expressao") or ["neutro"])[0])
+        if expressao not in manifesto_sprites.FAMILIA:
+            expressao = "neutro"
+        escolha = _escolha_normalizada((consulta.get("escolha") or [""])[0])
+        if tipo == "provador":
+            return self._json(provador_resposta(lutador, escolha, expressao))
+        if tipo == "previa":
+            corpo, pecas = _previa_do_provador(lutador, escolha, expressao)
+            if self._saiu:
+                return
+            try:
+                self.send_response(200)
+                self._cabecalhos_comuns("image/png", len(corpo))
+                self.send_header("X-Previa-Pecas", str(pecas))
+                self.end_headers()
+                self.wfile.write(corpo)
+            except CLIENTE_SAIU:
+                self._cliente_saiu()
+            return
+        fixadas = {} if lutador["exemplo"] else _ler_guarda_roupa().get(lutador["id"], {})
+        pecas = _pecas_do_lutador(lutador, indice, escolha, fixadas)
+        if tipo == "peca":
+            parte = str((consulta.get("parte") or [""])[0])
+            variante = str((consulta.get("variante") or [""])[0])
+            achada = next((p for p in pecas if p["parte"] == parte), None)
+            if achada is None or variante not in achada["colecao"]:
+                return self._erro(404, "esta peça não tem esta variante")
+            estado = manifesto_sprites.estado_na_variante(parte, expressao, achada["colecao"][variante])
+            arquivo = _arquivo_da_variante(parte, achada["nivel"], achada["alvo"], variante, estado or "")
+            peca = _abrir_peca(arquivo, parte, achada["nivel"], lutador["cor"]) if arquivo else None
+            if peca is None:
+                return self._erro(404, "esta variante não tem esta carinha")
+            peca.thumbnail((160, 160))
+            saida = io.BytesIO()
+            peca.save(saida, "PNG", optimize=True)
+            return self._bytes(saida.getvalue(), "image/png")
+        # "Ver no Godot" para ESTE lutador, com a combinacao da tela.
+        if not GODOT_PREVIA.is_file():
+            return self._erro(503, "a prévia do Godot não está instalada neste PC")
+        combinacao = [(p["parte"], p["nivel"], p["alvo"], p["atual"]) for p in pecas]
+        chave = f"prov:{lutador['id']}:" + ",".join("%s=%s/%s/%s" % (p, n, a, v) for p, n, a, v in combinacao)
+        situacao, dado = pedir_previa_godot(chave, {"chave": chave, "lutador": lutador, "pecas": combinacao})
+        if situacao == "pronta":
+            return self._bytes(dado, "image/png")
+        if situacao == "erro":
+            return self._erro(502, dado)
+        texto = ("na fila: o Godot está montando outra folha…" if situacao == "na_fila"
+                 else "montando no Godot…")
+        return self._json({"situacao": situacao, "mensagem": texto}, 202)
+
+    def _provador_post(self, acao: str):
+        if self._aparelho() is None:
+            return
+        corpo = self._corpo()
+        if corpo is None:
+            return
+        indice = _indice_sprites()
+        lutador = _lutador_do_provador(str(corpo.get("lutador") or ""), indice)
+        if lutador is None:
+            return self._erro(404, "lutador não encontrado")
+        expressao = str(corpo.get("expressao") or "neutro")
+        if expressao not in manifesto_sprites.FAMILIA:
+            expressao = "neutro"
+        escolha = _escolha_normalizada(corpo.get("escolha") or {})
+        parte = str(corpo.get("parte") or "")
+        if parte and parte not in manifesto_sprites.CAMADA_Z:
+            return self._erro(400, "peça desconhecida")
+        if acao == "sortear":
+            # So na tela: experimentar nao grava nada (vale quando ele Fixa).
+            fixadas = {} if lutador["exemplo"] else _ler_guarda_roupa().get(lutador["id"], {})
+            pecas = _pecas_do_lutador(lutador, indice, escolha, fixadas)
+            nova = {p["parte"]: p["atual"] for p in pecas if p["situacao"] == "experimento"}
+            sorteio = secrets.SystemRandom()
+            mudou = []
+            for p in pecas:
+                if (parte and p["parte"] != parte) or len(p["ordem"]) < 2:
+                    continue
+                nova[p["parte"]] = sorteio.choice([v for v in p["ordem"] if v != p["atual"]])
+                mudou.append(p["parte"])
+            aviso = ("Sorteado só na tela: toque em Fixar para o jogo usar." if mudou
+                     else "Esta peça só tem um desenho: não há o que sortear.")
+            return self._json(provador_resposta(lutador, nova, expressao, aviso))
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        if lutador["exemplo"]:
+            return self._erro(400, "o lutador de exemplo não guarda escolha; escolha um lutador de verdade para fixar")
+        try:
+            if acao == "fixar":
+                fixadas = _ler_guarda_roupa(estrito=True).get(lutador["id"], {})
+                pecas = _pecas_do_lutador(lutador, indice, escolha, fixadas)
+                alvos = [p for p in pecas if (p["parte"] == parte if parte else len(p["ordem"]) > 1)]
+                if not alvos:
+                    return self._erro(400, "não há peça com mais de um desenho para fixar"
+                                      if not parte else "esta peça não tem desenho")
+
+                def fixar(dados):
+                    for p in alvos:
+                        dados.setdefault(lutador["id"], {})[p["parte"]] = p["atual"]
+                _mudar_guarda_roupa(fixar)
+                for p in alvos:
+                    escolha.pop(p["parte"], None)
+                if parte:
+                    p = alvos[0]
+                    aviso = (f"Fixado em {lutador['nome']}: {manifesto_sprites.nome_da_parte(parte).lower()} "
+                             f"{p['ordem'].index(p['atual']) + 1} de {len(p['ordem'])}. O jogo usa sempre este desenho.")
+                else:
+                    aviso = (f"Combinação fixada ({len(alvos)} peças). O jogo usa sempre esta combinação "
+                             f"em {lutador['nome']}.")
+            else:
+                def soltar(dados):
+                    fixas = dados.get(lutador["id"], {})
+                    for nome in ([parte] if parte else list(fixas)):
+                        fixas.pop(nome, None)
+                _mudar_guarda_roupa(soltar)
+                if parte:
+                    escolha.pop(parte, None)
+                    aviso = (f"{manifesto_sprites.nome_da_parte(parte)} de volta ao sorteio: o jogo escolhe "
+                             f"por {lutador['nome']}.")
+                else:
+                    escolha = {}
+                    aviso = f"Tudo voltou ao sorteio: o jogo escolhe cada peça de {lutador['nome']}."
+        except GuardaRoupaIlegivel as exc:
+            return self._erro(409, str(exc))
+        except OSError:
+            return self._erro(409, "não consegui gravar o guarda-roupa no PC; tente de novo")
+        return self._json(provador_resposta(lutador, escolha, expressao, aviso))
 
     # ------------------------------------------------------------ atelie
     def _atelie_catalogo(self, consulta):
@@ -1720,6 +2498,36 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._erro(404, "imagem nao existe")
         return self._bytes(corpo, "image/gif" if parte == "previa" else "image/png")
 
+    # ------------------------------------------------ folha verde ou magenta
+    def _recortador_arquivo(self, sessao: str, parte: str, consulta: dict | None = None):
+        """Previa temporaria do recortador; nunca e arquivo da biblioteca.
+
+        `recorte-N` sai CRU; com `?destino=<lugar>` (e `olhos=<modo>` quando o
+        lugar e de olhos) sai encaixado no gabarito DAQUELE lugar. O encaixe e
+        feito aqui, na hora de mandar: em 06/10 ele era feito ao subir a folha,
+        com a peca que estava no seletor, e olhos cairam na zona da sombra."""
+        with self.estado.trava:
+            dados = self.estado.atelie.get(sessao)
+        if not dados or dados["dono"] != self._dono or "recortador" not in dados:
+            return self._erro(404, "previa nao existe")
+        corpo = dados["recortador"].get(parte)
+        if corpo is None:
+            return self._erro(404, "recorte nao existe")
+        destino = str(((consulta or {}).get("destino") or [""])[0])
+        if not destino or not parte.startswith("recorte-"):
+            return self._bytes(corpo, "image/png")
+        slot = _indice_sprites()["por_id"].get(destino)
+        if not isinstance(slot, dict):
+            return self._erro(404, "peça desconhecida")
+        modo = str(((consulta or {}).get("olhos") or [_olhos_padrao()])[0])
+        if modo not in sprites_recortador.MODOS_OLHOS:
+            return self._erro(400, "modo de olhos desconhecido")
+        recorte = dados["recortes"][int(parte.split("-", 1)[1])]
+        pronto = sprites_recortador.encaixar(
+            recorte, str(slot.get("parte") or ""), grupo=str(slot.get("grupo") or ""),
+            tamanho=tuple(slot.get("tamanho_px") or (1024, 1024)), olhos=modo)
+        return self._bytes(self._atelie_png(pronto), "image/png")
+
     def _atelie_corpo(self):
         """(imagem, opcoes) de JSON/base64 ou multipart, limitado antes de ler."""
         try:
@@ -1758,6 +2566,13 @@ class Manipulador(BaseHTTPRequestHandler):
             opcoes = json.loads(campos.get("opcoes", b"{}").decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             opcoes = {}
+        # O recortador de folhas usa os campos diretos do multipart; a tela
+        # antiga continua mandando o objeto `opcoes`.
+        if isinstance(opcoes, dict):
+            for chave in ("variante", "nova"):
+                if chave in campos and chave not in opcoes:
+                    valor = campos[chave].decode("utf-8", "ignore")
+                    opcoes[chave] = valor in ("1", "true", "True") if chave == "nova" else valor
         return campos.get("imagem", b""), opcoes if isinstance(opcoes, dict) else {}
 
     def _atelie_importar(self):
@@ -1812,6 +2627,60 @@ class Manipulador(BaseHTTPRequestHandler):
                            "previa": f"{raiz}/previa",
                            "quadros_urls": [f"{raiz}/quadro-{i}" for i in range(len(resultado.alinhado.quadros))],
                            "salvo": bool(opcoes.get("salvar"))})
+
+    def _recortador_importar(self):
+        """Sobe uma folha e guarda so as previas na memoria deste aparelho."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as acoes estao desligadas neste servidor")
+        pedido = self._atelie_corpo()
+        if pedido is None:
+            return
+        imagem, opcoes = pedido
+        nivel = str(opcoes.get("juncao") or "medio")
+        if nivel not in sprites_recortador.NIVEIS:
+            return self._erro(400, "juncao precisa ser pouco, medio, muito ou pares")
+        try:
+            origem = sprites_importar.abrir_bytes(imagem)
+            resultado = sprites_recortador.recortar(
+                origem, juntar=sprites_recortador.JUNCAO.get(nivel, sprites_recortador.JUNCAO["medio"]),
+                area_min=max(1, int(opcoes.get("area_min") or 50)),
+                margem=max(0, int(opcoes.get("margem") or 8)), pares=nivel == "pares")
+        except (TypeError, ValueError) as exc:
+            return self._erro(400, str(exc))
+        # Os recortes ficam CRUS: o encaixe no gabarito e do destino, na hora
+        # de mandar (`_recortador_arquivo` com `?destino=`). A `parte` que a
+        # casca antiga ainda manda aqui e ignorada de proposito.
+        imagens = [r.imagem for r in resultado.recortes]
+        marcada = Image.fromarray(resultado.limpo, "RGBA")
+        caneta = ImageDraw.Draw(marcada)
+        for i, recorte in enumerate(resultado.recortes, 1):
+            caneta.rectangle(recorte.caixa, outline=(20, 20, 26, 255), width=3)
+            caneta.text((recorte.caixa[0] + 3, recorte.caixa[1] + 3), str(i),
+                        fill=(255, 255, 255, 255), stroke_width=2, stroke_fill=(20, 20, 26, 255))
+        sessao = secrets.token_urlsafe(12).replace("-", "_")
+        arquivos = {"limpa": self._atelie_png(resultado.limpo),
+                    "marcada": self._atelie_png(np.asarray(marcada, np.uint8))}
+        arquivos.update({f"recorte-{i}": self._atelie_png(q) for i, q in enumerate(imagens)})
+        with self.estado.trava:
+            # Cada folha guarda os recortes crus na memoria: so as ultimas
+            # RECORTADOR_SESSOES deste aparelho ficam (antes nada saia).
+            minhas = [s for s, d in self.estado.atelie.items()
+                      if d.get("dono") == self._dono and "recortador" in d]
+            for velha in minhas[:max(0, len(minhas) - RECORTADOR_SESSOES + 1)]:
+                self.estado.atelie.pop(velha, None)
+            self.estado.atelie[sessao] = {"dono": self._dono, "recortador": arquivos,
+                                          "recortes": resultado.recortes}
+        raiz = f"/api/sprites/recortar/arquivo/{sessao}"
+        return self._json({"sessao": sessao, "fundo": resultado.fundo, "juncao": nivel,
+                           "avisos": resultado.avisos, "limpa": f"{raiz}/limpa",
+                           "folha": f"{raiz}/marcada", "olhos_padrao": _olhos_padrao(),
+                           "recortes": [{"id": i, "caixa": list(r.caixa), "area": r.area,
+                                         "tamanho": [int(q.shape[1]), int(q.shape[0])],
+                                         "tipo": r.tipo, "orientacao": r.orientacao,
+                                         "url": f"{raiz}/recorte-{i}"}
+                                        for i, (r, q) in enumerate(zip(resultado.recortes, imagens))]})
 
     def _biblioteca_bilhete(self, pagina: str):
         if self._aparelho() is None:

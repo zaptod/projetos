@@ -166,6 +166,33 @@ def test_atelie_limita_corpo_antes_de_ler(servidor):
     assert resposta.status == 413
 
 
+def _folha_recortador():
+    imagem = Image.new("RGB", (120, 80), "#ff00ff")
+    for caixa, cor in [((12, 18, 30, 42), (32, 64, 192)), ((38, 18, 56, 42), (32, 64, 192)),
+                       ((80, 20, 106, 50), (224, 80, 48))]:
+        for x in range(caixa[0], caixa[2]):
+            for y in range(caixa[1], caixa[3]):
+                imagem.putpixel((x, y), cor)
+    saida = io.BytesIO()
+    imagem.save(saida, "PNG")
+    return base64.b64encode(saida.getvalue()).decode("ascii")
+
+
+def test_recortador_sobe_folha_e_devolve_previas_temporarias(servidor):
+    pedido = {"imagem": _folha_recortador(), "opcoes": {"juncao": "medio"}}
+    assert _pedir(servidor, "POST", "/api/sprites/recortar", pedido)[0].status == 401
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    resposta, bruto = _pedir(servidor, "POST", "/api/sprites/recortar", pedido, token)
+    assert resposta.status == 200
+    dados = json.loads(bruto)
+    assert dados["fundo"] == "magenta" and len(dados["recortes"]) == 2
+    assert dados["recortes"][0]["tamanho"] == [60, 40]
+    resposta, previa = _pedir(servidor, "GET", dados["limpa"], token=token)
+    assert resposta.status == 200, previa
+    assert Image.open(io.BytesIO(previa)).mode == "RGBA"
+
+
 def _png_rgba(cor, tamanho=(1024, 1024)):
     imagem = Image.new("RGBA", tamanho, cor)
     imagem.putpixel((0, 0), (0, 0, 0, 0))
@@ -236,7 +263,7 @@ def test_sprites_modulares_anexa_substitui_desfaz_e_monta_previa(servidor, bibli
     dados, _ = _catalogo(servidor, token)
     assert _slot(dados, pele)["tem_anterior"] is True and _slot(dados, olhos)["tem_anterior"] is False
     assert _pedir(servidor, "POST", _rota_slot(pele, "desfazer"), {}, token)[0].status == 200
-    arquivo = biblioteca_sprites / "partes/lutador/pele/comum/_/base.png"
+    arquivo = biblioteca_sprites / "partes/lutador/pele/comum/_/v01/base.png"
     assert Image.open(arquivo).getpixel((512, 512))[:3] == (255, 0, 0)
     # Sem versao anterior, o desfazer responde em portugues e nao mexe em nada.
     resposta, bruto = _pedir(servidor, "POST", _rota_slot(pele, "desfazer"), {}, token)
@@ -276,11 +303,165 @@ def test_sprites_modulares_versoes_em_ordem_pelo_carimbo(servidor, biblioteca_sp
     slot = "lutador/boca/comum/_/neutro"
     for cor in ((10, 0, 0, 255), (20, 0, 0, 255), (30, 0, 0, 255)):
         assert _anexar(servidor, token, slot, cor, substituir=True)[0].status == 200
-    arquivo = biblioteca_sprites / "partes/lutador/boca/comum/_/neutro.png"
+    arquivo = biblioteca_sprites / "partes/lutador/boca/comum/_/v01/neutro.png"
     nomes = [v.name for v in manifesto_sprites.versoes(arquivo)]
     assert len(nomes) == 2 and nomes == sorted(nomes) and all(len(n) == 24 for n in nomes)
     assert _pedir(servidor, "POST", _rota_slot(slot, "desfazer"), {}, token)[0].status == 200
     assert Image.open(arquivo).getpixel((512, 512))[0] == 20
+
+
+def test_sprites_modulares_nova_variante_ganha_id_e_nao_mistura_carinha(servidor, biblioteca_sprites):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    slot = "lutador/olhos/comum/_/neutro"
+    assert _anexar(servidor, token, slot, (10, 10, 10, 255))[0].status == 200
+    resposta, bruto = _pedir(servidor, "POST", _rota_slot(slot, "anexar"),
+                              {"imagem": _png_rgba((20, 20, 20, 255)), "opcoes": {"nova": True}}, token)
+    assert resposta.status == 200
+    dados, _ = _catalogo(servidor, token)
+    assert _slot(dados, slot)["variantes"] == ["v01", "v02"]
+    assert (biblioteca_sprites / "partes/lutador/olhos/comum/_/v02/neutro.png").is_file()
+
+
+def test_recortador_manda_nova_na_url_e_vira_variante(servidor, biblioteca_sprites):
+    """Integracao recortador + guarda-roupa: `anexar?nova=1` cria a proxima vNN
+    (antes do guarda-roupa a API recusava com 409) e nunca troca a v01."""
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    slot = "lutador/olhos/comum/_/neutro"
+    assert _anexar(servidor, token, slot, (10, 10, 10, 255))[0].status == 200
+    for cor in ((20, 20, 20, 255), (30, 30, 30, 255)):
+        resposta, bruto = _pedir(servidor, "POST", _rota_slot(slot, "anexar") + "?nova=1",
+                                  {"imagem": _png_rgba(cor)}, token)
+        assert resposta.status == 200, bruto
+    dados, _ = _catalogo(servidor, token)
+    assert _slot(dados, slot)["variantes"] == ["v01", "v02", "v03"]
+    base = biblioteca_sprites / "partes/lutador/olhos/comum/_"
+    assert Image.open(base / "v01/neutro.png").getpixel((512, 512))[0] == 10
+    assert Image.open(base / "v03/neutro.png").getpixel((512, 512))[0] == 30
+
+
+def _folha_de_olhos_b64(vao=40):
+    from painel.sprites import folha_de_olhos
+    saida = io.BytesIO()
+    Image.fromarray(folha_de_olhos.folha((255, 0, 255), vao), "RGB").save(saida, "PNG")
+    return base64.b64encode(saida.getvalue()).decode("ascii")
+
+
+def _caixa_png(bruto):
+    img = Image.open(io.BytesIO(bruto)).convert("RGBA")
+    return img.size, img.getchannel("A").point(lambda a: 255 if a >= 16 else 0).getbbox()
+
+
+def test_recortador_encaixa_no_destino_ao_mandar_nao_ao_subir(servidor, biblioteca_sprites):
+    """06/10 (conferente): o encaixe era feito ao SUBIR a folha, com a peça do
+    seletor naquela hora (Sombra), e 4 olhos mandados aos Olhos caíram na
+    zona da sombra (256..767 x 552..726). Agora o recorte fica cru e o
+    encaixe é do destino, na hora de mandar."""
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    # a casca velha ainda manda `parte` ao subir: é ignorada
+    pedido = {"imagem": _folha_de_olhos_b64(), "opcoes": {"juncao": "pares", "parte": "sombra"}}
+    resposta, bruto = _pedir(servidor, "POST", "/api/sprites/recortar", pedido, token)
+    assert resposta.status == 200, bruto
+    dados = json.loads(bruto)
+    assert dados["juncao"] == "pares" and dados["olhos_padrao"] in ("separar", "girar", "vista-de-cima")
+    assert [r["tipo"] for r in dados["recortes"]] == ["par"] * 6
+    url = dados["recortes"][0]["url"]
+    tamanho, _ = _caixa_png(_pedir(servidor, "GET", url, token=token)[1])
+    assert tamanho == tuple(dados["recortes"][0]["tamanho"]) and tamanho != (1024, 1024)   # cru
+    from urllib.parse import quote
+    olhos = quote("lutador/olhos/comum/_/neutro", safe="")
+    for modo in ("separar", "girar"):
+        resposta, png = _pedir(servidor, "GET", f"{url}?destino={olhos}&olhos={modo}", token=token)
+        assert resposta.status == 200, png
+        tamanho, caixa = _caixa_png(png)
+        assert tamanho == (1024, 1024)
+        assert caixa[0] >= 480 and caixa[2] <= 645 and caixa[1] >= 340 and caixa[3] <= 684, (modo, caixa)
+    sombra = quote("lutador/sombra/comum/_/base", safe="")
+    _, caixa = _caixa_png(_pedir(servidor, "GET", f"{url}?destino={sombra}", token=token)[1])
+    assert caixa[1] >= 532 and caixa[3] <= 748
+    arma = quote("arma/arma/tipo/reta/base", safe="")
+    tamanho, _ = _caixa_png(_pedir(servidor, "GET", f"{url}?destino={arma}", token=token)[1])
+    assert tamanho == (1024, 256)
+    assert _pedir(servidor, "GET", f"{url}?destino={olhos}&olhos=torto", token=token)[0].status == 400
+    assert _pedir(servidor, "GET", f"{url}?destino=nao%2Fexiste", token=token)[0].status == 404
+    # o PNG encaixado entra como variante nova e o arquivo gravado tem os olhos nas zonas
+    _, png = _pedir(servidor, "GET", f"{url}?destino={olhos}&olhos=separar", token=token)
+    resposta, bruto = _pedir(servidor, "POST", _rota_slot("lutador/olhos/comum/_/neutro", "anexar") + "?nova=1",
+                             {"imagem": base64.b64encode(png).decode("ascii")}, token)
+    assert resposta.status == 200, bruto
+    gravado = Image.open(biblioteca_sprites / "partes/lutador/olhos/comum/_/v01/neutro.png").convert("RGBA")
+    alfa = gravado.getchannel("A").point(lambda a: 255 if a >= 16 else 0)
+    assert alfa.crop((0, 0, 1024, 512)).getbbox()[1] >= 340
+    cima, baixo = alfa.crop((0, 0, 1024, 512)).getbbox(), alfa.crop((0, 512, 1024, 1024)).getbbox()
+    assert cima[0] >= 480 and cima[2] <= 645 and cima[1] >= 340 and cima[3] <= 500, cima
+    assert baixo[0] >= 480 and baixo[2] <= 645 and baixo[1] + 512 >= 524 and baixo[3] + 512 <= 684, baixo
+
+
+def test_recortador_padrao_dos_olhos_vem_da_decisao(servidor, biblioteca_sprites, tmp_path, monkeypatch):
+    token = _parear(servidor)
+    arquivo = tmp_path / "recortador-par-de-olhos.json"
+    monkeypatch.setattr(api_http.decisoes, "caminho_item", lambda projeto, item: arquivo)
+    assert api_http._olhos_padrao() == "separar"                       # sem o nó: a recomendada
+    arquivo.write_text(json.dumps({"vigente": None}), encoding="utf-8")
+    assert api_http._olhos_padrao() == "separar"                       # pendente
+    arquivo.write_text(json.dumps({"vigente": {"opcao": "girar"}}), encoding="utf-8")
+    dados, _ = _catalogo(servidor, token)
+    assert dados["recortador_olhos"] == "girar"
+    arquivo.write_text("{quebrado", encoding="utf-8")
+    assert api_http._olhos_padrao() == "separar"
+
+
+def test_recortador_guarda_so_as_ultimas_folhas_do_aparelho(servidor):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    pedido = {"imagem": _folha_recortador(), "opcoes": {"juncao": "medio"}}
+    urls = []
+    for _ in range(api_http.RECORTADOR_SESSOES + 2):
+        urls.append(json.loads(_pedir(servidor, "POST", "/api/sprites/recortar", pedido, token)[1])["limpa"])
+    assert _pedir(servidor, "GET", urls[0], token=token)[0].status == 404
+    assert _pedir(servidor, "GET", urls[-1], token=token)[0].status == 200
+    guardadas = [d for d in servidor.RequestHandlerClass.estado.atelie.values() if "recortador" in d]
+    assert len(guardadas) == api_http.RECORTADOR_SESSOES
+
+
+def test_godot_que_estoura_e_parado_com_a_arvore(monkeypatch, tmp_path):
+    """06/10: com o PC ocupado a folha levou 62 s e o limite era 45 s; o
+    `_console.exe` abre o Godot como filho, então parar só o console deixava
+    o Godot rodando. Agora são 150 s e a árvore inteira é parada."""
+    assert api_http.GODOT_TIMEOUT_S >= 150
+    chamadas = []
+
+    class Lento:
+        pid = 4242
+        returncode = None
+
+        def __init__(self, cmd, **kw):
+            chamadas.append(("popen", cmd))
+
+        def communicate(self, timeout=None):
+            chamadas.append(("esperou", timeout))
+            if timeout == api_http.GODOT_TIMEOUT_S:
+                raise api_http.subprocess.TimeoutExpired("godot", timeout)
+            return "", ""
+
+        def kill(self):
+            chamadas.append(("kill",))
+
+    def rodar(cmd, **kw):
+        chamadas.append(("run", cmd))
+        return api_http.subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(api_http.subprocess, "Popen", Lento)
+    monkeypatch.setattr(api_http.subprocess, "run", rodar)
+    resultado = api_http._godot_folha("", "Júlia", tmp_path, tmp_path / "folha.png", cor=(40, 200, 9))
+    assert resultado["estado"] == "erro" and "foi parado" in resultado["erro"]
+    assert "--cor=#28C809" in [c for c in chamadas if c[0] == "popen"][0][1]
+    assert ("esperou", api_http.GODOT_TIMEOUT_S) in chamadas
+    if os.name == "nt":
+        assert ("run", ["taskkill", "/PID", "4242", "/T", "/F"]) in chamadas
+    assert ("kill",) in chamadas
 
 
 def test_sprites_modulares_contadores_seguem_o_contrato(servidor, biblioteca_sprites):

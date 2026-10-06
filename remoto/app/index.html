@@ -673,6 +673,53 @@
     </div>
   </section>
   <section id="tela-atelie" class="oculto livro atelie" aria-label="Ateliê de sprites">
+    <div class="abas atelie-modos" role="group" aria-label="Ateliê">
+      <button class="acao" id="atelie-modo-montar" type="button" aria-pressed="true">🧩 Montar peças</button>
+      <button class="acao" id="atelie-modo-provador" type="button" aria-pressed="false">👕 Provador</button>
+    </div>
+    <div id="atelie-provador" class="oculto">
+      <div class="cartao" id="provador">
+        <h2>👕 Provador</h2>
+        <p class="fraco">Troque as peças de um lutador como num jogo de vestir. O jogo sorteia uma combinação fixa para cada lutador; o cadeado guarda a sua escolha.</p>
+        <div id="provador-escolher">
+          <div class="campos atelie-campos">
+            <label>Buscar lutador <input id="provador-busca" type="search" placeholder="nome do lutador" autocomplete="off"></label>
+            <label>Classe <select id="provador-classe"><option value="">Todas as classes</option></select></label>
+          </div>
+          <div id="provador-lista" class="provador-lista" role="list" aria-label="Lutadores"></div>
+          <p id="provador-lista-nota" class="fraco"></p>
+        </div>
+        <div id="provador-quem" class="provador-quem oculto">
+          <div><strong id="provador-nome"></strong><span id="provador-classe-nome" class="fraco"></span></div>
+          <button class="acao" id="provador-trocar" type="button">Trocar de lutador</button>
+        </div>
+        <div id="provador-palco-caixa" class="provador-palco-caixa oculto">
+          <!-- O lutador montado fica PRESO à vista (em pé no topo, deitado à
+               esquerda): apertar ‹ › lá embaixo não o tira da tela. -->
+          <figure class="provador-palco">
+            <img id="provador-previa" class="provador-previa" alt="O lutador montado com a combinação atual">
+            <figcaption id="provador-legenda" class="fraco"></figcaption>
+          </figure>
+          <div class="provador-mesa">
+          <p class="fraco">Carinha: <strong id="provador-expressao-nome">neutra</strong></p>
+          <div class="modular-expressoes" id="provador-expressoes" role="group" aria-label="Carinhas do provador"></div>
+          <button class="acao modular-todas" id="provador-todas" type="button" aria-expanded="false">Ver todas as 24</button>
+          <div id="provador-pecas" class="provador-pecas"></div>
+          <p id="provador-sem-desenho" class="fraco"></p>
+          <p id="provador-exemplo" class="fraco oculto">Lutador de exemplo: dá para experimentar, mas só um lutador de verdade guarda escolha.</p>
+          <div class="botoes provador-geral">
+            <button class="acao" id="provador-sortear" type="button">🎲 Sortear tudo</button>
+            <button class="acao primario" id="provador-fixar" type="button">🔒 Fixar tudo</button>
+            <button class="acao" id="provador-soltar" type="button">↩ Tudo ao sorteio</button>
+            <button class="acao" id="provador-ver-godot" type="button">Ver no Godot</button>
+          </div>
+          <img id="provador-folha" class="modular-folha oculto" alt="Folha das seis carinhas deste lutador montada no Godot">
+          </div>
+        </div>
+        <p id="provador-aviso" class="fraco" role="status"></p>
+      </div>
+    </div>
+    <div id="atelie-montar">
     <div class="cartao" id="sprites-modulares">
       <h2>🎨 Montar sprites</h2>
       <p class="fraco">Cada desenho é uma parte parada. O jogo junta tudo e faz o movimento.</p>
@@ -694,14 +741,37 @@
       <div class="botoes modular-previacao"><button class="acao" id="modular-ver-godot" type="button">Ver no Godot</button></div>
       <img id="modular-folha" class="modular-folha oculto" alt="Folha das seis carinhas montada no Godot">
       <div id="modular-expressoes-caixa" class="oculto">
-        <p class="fraco">Carinha: <strong id="modular-expressao-nome">neutro</strong></p>
+        <p class="fraco">Carinha: <strong id="modular-expressao-nome">neutra</strong></p>
         <div class="modular-expressoes" id="modular-expressoes" role="group" aria-label="Carinhas"></div>
         <button class="acao modular-todas" id="modular-todas" type="button" aria-expanded="false">Ver todas as 24</button>
       </div>
       <p id="modular-carregando" class="fraco oculto" role="status">carregando…</p>
       <div id="modular-slots" class="modular-slots"></div>
-      <input id="modular-arquivo" class="oculto" type="file" accept="image/png">
+      <input id="modular-arquivo" class="oculto" type="file" accept="image/png" multiple>
       <p id="modular-aviso" class="fraco"></p>
+    </div>
+    <div class="cartao" id="recortador-folha">
+      <h2>✂️ Recortar folha</h2>
+      <p class="fraco">Folha da IA com fundo verde ou magenta. Cada desenho vira uma variante nova.</p>
+      <input id="recortador-arquivo" type="file" accept="image/png,image/jpeg,image/*">
+      <div class="campos atelie-campos">
+        <label>Juntar pedaços <select id="recortador-juncao"><option value="pouco">pouco</option><option value="medio" selected>médio</option><option value="muito">muito</option><option value="pares">pares de olhos</option></select></label>
+        <label>Mandar para <select id="recortador-destino"></select></label>
+      </div>
+      <div id="recortador-olhos-caixa" class="oculto">
+        <div class="campos atelie-campos">
+          <label>Par de olhos <select id="recortador-olhos">
+            <option value="separar">separar: cada olho no seu lugar</option>
+            <option value="girar">girar o par 90°</option>
+            <option value="vista-de-cima">já desenhado visto de cima</option>
+          </select></label>
+        </div>
+        <p class="fraco">A IA desenha os olhos lado a lado; no jogo, visto de cima, eles ficam um em cima do outro.</p>
+      </div>
+      <div class="botoes"><button class="acao" id="recortador-refazer" type="button">Refazer</button><button class="acao primario" id="recortador-mandar" type="button">Mandar selecionados</button></div>
+      <p id="recortador-aviso" class="fraco" role="status"></p>
+      <figure id="recortador-folha-caixa" class="oculto"><img id="recortador-limpa" alt="Folha limpa com os desenhos marcados"><figcaption id="recortador-fundo" class="fraco"></figcaption></figure>
+      <div id="recortador-lista" class="recortador-lista"></div>
     </div>
     <details class="cartao">
       <summary>Ateliê antigo (animação de lado)</summary>
@@ -729,6 +799,7 @@
       <div id="atelie-previas" class="atelie-previas"></div>
     </div>
     </details>
+    </div>
   </section>
   <section id="tela-relatorios" class="oculto livro pergaminho" aria-label="Pergaminhos">
     <div class="abas" id="abas-relatorio"></div>
@@ -835,5 +906,6 @@
 <script src="equipe.js"></script>
 <script src="biblioteca.js"></script>
 <script src="atelie.js"></script>
+<script src="provador.js"></script>
 </body>
 </html>

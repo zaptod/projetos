@@ -22,6 +22,7 @@ func _initialize() -> void:
 	_testar_plano()
 	_testar_biblioteca()
 	_testar_partes_lutador()
+	_testar_guarda_roupa()
 	_testar_timeline()
 	_testar_revisao_3()
 	_testar_revisao_4()
@@ -210,6 +211,54 @@ func _testar_partes_lutador() -> void:
 	neutro.omitir = {"olhos": true}
 	neutro.desenhar("neutro")
 	_checar(neutro.ampliacao.keys() == ["mouth_happy"], "rosto: peca de olhos tira so os olhos (neutro: %s)" % [neutro.ampliacao.keys()])
+
+
+## Guarda-roupa: o sorteio e o rendezvous sobre FNV-1a + fmix32 explicitos (o
+## mesmo do Python; a comparacao em massa e palco/testes/test_sorteio_variantes.py),
+## a semente e o slug do nome, variante nova nao mexe em quem nao a escolhe,
+## pasta que nao e variante nao conta e a fixada vence.
+func _testar_guarda_roupa() -> void:
+	_checar(PartesLutador.fnv1a32("") == 0x811C9DC5 and PartesLutador.fnv1a32("a") == 0xE40C292C
+		and PartesLutador.fnv1a32("foobar") == 0xBF9CF968, "guarda-roupa: FNV-1a 32 com os vetores de referencia")
+	# fmix32 do MurmurHash3: vetores tirados do Python (manifesto_sprites.mistura32)
+	_checar(PartesLutador.mistura32(0) == 0 and PartesLutador.mistura32(1) == 0x514E28B7
+		and PartesLutador.mistura32(0xFFFFFFFF) == 0x81F16F39 and PartesLutador.mistura32(0x811C9DC5) == 0xAB3E7C0B,
+		"guarda-roupa: fmix32 com os vetores de referencia (sem estouro do int de 64 bits)")
+	var opcoes := ["v03", "v01", "v02"]
+	# "v01": o mesmo que manifesto_sprites._sorteio_variante devolve no Python
+	_checar(PartesLutador._sorteio_variante("Celeste a Impiedosa", "olhos", opcoes) == "v01"
+		and PartesLutador._sorteio_variante("celeste_a_impiedosa", "olhos", opcoes) == "v01",
+		"guarda-roupa: sorteio pelo slug do nome, igual ao Python")
+	# rendezvous: com v01..vN, a Celeste fica na v01 ate a v04 chegar e na v04
+	# dali em diante (a regra antiga, h % n, trocava a cada variante nova)
+	var trilha := []
+	for n in range(1, 10):
+		var ids := []
+		for i in range(1, n + 1):
+			ids.append("v%02d" % i)
+		trilha.append(PartesLutador._sorteio_variante("Celeste a Impiedosa", "olhos", ids))
+	_checar(trilha == ["v01", "v01", "v01", "v04", "v04", "v04", "v04", "v04", "v04"],
+		"guarda-roupa: variante nova so muda quem passa a escolhe-la (%s)" % [trilha])
+	var bib := "user://teste_guarda_roupa"
+	var pasta := bib + "/partes/lutador/olhos/personagem/celeste_a_impiedosa"
+	for rel in ["v01/neutro.png", "v02/neutro.png", "v02/furia.png", "v03/neutro.png", "v04/base.png", "rascunho/neutro.png"]:
+		DirAccess.make_dir_recursive_absolute((pasta + "/" + rel).get_base_dir())
+		FileAccess.open(pasta + "/" + rel, FileAccess.WRITE).close()
+	var resolver := func(fixada: String) -> Dictionary:
+		var guarda := FileAccess.open(bib + "/partes/guarda_roupa.json", FileAccess.WRITE)
+		guarda.store_string(JSON.stringify({"celeste_a_impiedosa": {"olhos": fixada}}))
+		guarda.close()
+		PartesLutador.configurar_biblioteca(bib)
+		return PartesLutador.resolver("olhos", "Celeste a Impiedosa", "Berserker (Fúria)", "furia")
+	var sorteada: Dictionary = resolver.call("")
+	# se a v04 (so base.png) contasse, a sorteada seria ela (trilha acima)
+	_checar(sorteada.get("nivel") == "personagem" and sorteada.get("variante") == "v01" and sorteada.get("estado") == "neutro",
+		"guarda-roupa: sem fixada, a sorteada (v01), sem 'v04' so com base nem 'rascunho' (%s)" % [sorteada])
+	var fixada: Dictionary = resolver.call("v02")
+	_checar(fixada.get("variante") == "v02" and fixada.get("estado") == "furia"
+		and str(fixada.get("caminho", "")).ends_with("/v02/furia.png"), "guarda-roupa: a fixada vence o sorteio (%s)" % [fixada])
+	_checar(resolver.call("v04").get("variante") == "v01", "guarda-roupa: fixada que nao e variante valida cai no sorteio")
+	PartesLutador.configurar_biblioteca("")
 
 
 func _doc(n: int) -> Dictionary:
