@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-00cae350",
+      "em": "2026-10-07T16:04:53",
+      "evento": "2026-10-07T16:04:52",
+      "linha": 141,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "trocar-sem-corrente",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Você disse que, tirando a corrente, o palco estava perfeito. Só o palco mostra os sprites do Ateliê; o duelo publicado ainda é o visual antigo. Hoje só as peças do Lutador (olhos, boca, chapéu) chegam ao palco; armas, efeitos e habilidades estou ligando agora. Antes de ir ao ar, faço um A/B novo para você ver.",
   "criado": "2026-10-07T10:07:43.143706",
   "depende_de": [],
