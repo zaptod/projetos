@@ -40,3 +40,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Sprites: guarda-roupa de variantes** — Sorteio fixo por lutador + provador (06/10/2026) · “06/10 pelo chat: 'vários olhos aleatórios ... igual aqueles jogos de colocar roupa' (orquestrador escolheu a recomendada; o Adrian pode trocar no app)” `sprites-guarda-roupa`
 - ✅ **Sprites: recortador de folha** — Tira só verde ou magenta e separa cada sprite (06/10/2026) · “06/10 pelo chat (pedido direto do Adrian)” `sprites-recortador`
 - ✅ **Recortador: par de olhos desenhado de frente** — Separar o par e pôr cada olho no seu lugar (recomendado) (06/10/2026) `recortador-par-de-olhos`
+- ⏳ **Corrente: quem desenha agora que a esteira desligou** — A arte da corrente nova (elos, couro/corda e as 6 cabeças) vem de você no Ateliê, ou a corrente desenhada por código já basta para trocar o duelo? `corrente-arte-atelie`
