@@ -893,6 +893,93 @@ class FichaAnteriorSemDonaVivaTests(_BaseDaDona):
         self.assertEqual(0, self.m.main([]))
         self.assertEqual([self.VOO], self.escolhidos)
 
+    # --- a `.bak` uma gravacao atras (conferente do f79a894) -------------
+    # Medido as 23:47 de 06/10/2026, depois do 23:37: principal com
+    # `em_voo: null` e a `.bak` com {"canal": "builds", "alvo":
+    # "generation_00096:estreia:celular", "destino": "tiktok", "etapa":
+    # "clicou", "desde": 23:42:21} — e a linha do TikTok dela no ledger as
+    # 23:42:50. Sem o conserto, principal perdida = "a conferir" (+ Telegram)
+    # para um video que ja tinha saido.
+    DESDE = 1791340941.2106843                  # 06/10/2026 23:42:21 (local)
+
+    def _ledger(self, *linhas, quebra=False):
+        def publicados(canal):
+            if quebra:
+                raise self.m.LedgerIlegivel(f"{canal}: OSError: preso")
+            return [dict(l) for l in linhas]
+        self.m._publicados_do_canal = publicados
+
+    def _linha(self, quando, vid=None, plataforma="youtube", publicado=True):
+        return {"quando": quando, "plataforma": plataforma,
+                "video_id": vid or self.VOO, "publicado": publicado,
+                "url": "publicado no YouTube"}
+
+    def test_o_pouso_grava_a_principal_e_a_bak(self):
+        """As duas fichas sem voo depois do pouso. Antes: a `.bak` ficava com
+        o ultimo `clicou`."""
+        self.addCleanup(self.m._DONA.clear)
+        self.m._gravar_dona("rodada")
+        with self.m._em_voo("builds", "generation_00096:estreia:celular",
+                            "tiktok"):
+            self.m._ao_escrever("[tiktok] arquivo entregue (x.mp4)")
+            self.m._ao_escrever("[tiktok] publicar clicado; confirmando...")
+        ler = lambda c: json.loads(c.read_text(encoding="utf-8"))  # noqa: E731
+        self.assertIsNone(ler(self.m._arquivo_da_dona())["em_voo"])
+        self.assertIsNone(ler(self.m._arquivo_da_reserva())["em_voo"])
+
+    def test_principal_vazia_e_bak_com_voo_ja_no_ledger_nao_marca(self):
+        """O caso medido: o voo da `.bak` ja saiu e esta no ledger."""
+        self._ficha(b"")
+        self._reserva(dict(self.BOA, em_voo=self._voo("clicou",
+                                                       desde=self.DESDE)))
+        self._ledger(self._linha("2026-10-06T23:42:50"))
+        self.assertEqual(0, self.m.main([]))
+        self.assertNotIn(self.VOO, self._marcados())
+        self.assertFalse(any("pode ter saido publico" in t
+                             for t in self.telegram), self.telegram)
+
+    def test_principal_com_voo_clicou_ja_no_ledger_nao_marca(self):
+        """A dona morreu depois de gravar a linha e antes de pousar."""
+        self._ficha(dict(self.BOA, em_voo=self._voo("clicou",
+                                                     desde=self.DESDE)))
+        self._ledger(self._linha("2026-10-06T23:42:21"))   # o mesmo segundo
+        self.assertEqual(0, self.m.main([]))
+        self.assertNotIn(self.VOO, self._marcados())
+
+    def test_linha_de_antes_do_voo_rascunho_ou_outro_destino_nao_contam(self):
+        self._ficha(dict(self.BOA, em_voo=self._voo("clicou",
+                                                     desde=self.DESDE)))
+        self._ledger(self._linha("2026-10-06T23:42:20"),
+                     self._linha("2026-10-06T23:43:00", publicado=False),
+                     self._linha("2026-10-06T23:43:00", plataforma="tiktok"),
+                     self._linha("2026-10-06T23:43:00", vid=self.OUTRO))
+        self.assertEqual(0, self.m.main([]))
+        self.assertIn(self.VOO, self._marcados())
+        self.assertEqual([self.OUTRO], self.escolhidos)
+
+    def test_ledger_ilegivel_marca_como_antes(self):
+        self._ficha(b"")
+        self._reserva(dict(self.BOA, em_voo=self._voo("clicou",
+                                                       desde=self.DESDE)))
+        self._ledger(quebra=True)
+        self.assertEqual(0, self.m.main([]))
+        self.assertIn(self.VOO, self._marcados())
+        self.assertEqual([self.OUTRO], self.escolhidos)
+
+    def test_principal_vazia_e_bak_em_escolhido_pousa(self):
+        """O caso espelhado: a principal se perdeu (podia estar em
+        `entregue`/`clicou`) e a `.bak` diz `escolhido`. Antes: nao pousava,
+        e a rodada podia subir o mesmo video de novo."""
+        self._ficha(b"")
+        self._reserva(dict(self.BOA, em_voo=self._voo("escolhido",
+                                                       desde=self.DESDE)))
+        self._ledger()
+        self.assertEqual(0, self.m.main([]))
+        self.assertIn(self.VOO, self._marcados())
+        self.assertEqual([self.OUTRO], self.escolhidos)
+        self.assertTrue(any("ou depois" in t for t in self.telegram),
+                        self.telegram)
+
     def test_a_gravacao_faz_fsync_e_guarda_a_anterior(self):
         from unittest import mock
         self.m._linha = lambda *_a, **_k: None

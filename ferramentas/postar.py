@@ -1230,6 +1230,155 @@ def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
         raise ParteMeioNoAr(texto, erro=erro, ids=ids) from exc
 
 
+# ------------------------------------------- parte que so saiu no TikTok
+# A DIVIDA DO YOUTUBE (06/10/2026, decisao do Adrian
+# `publicacao/youtube-caiu-depois-do-tiktok`: "subir a MESMA parte no
+# YouTube"). As 00:37 de 06/10 a `historia_00054:celular:p02` saiu so no
+# TikTok (o Studio levou 126 s para abrir). A fila conta qualquer destino como
+# publicado, entao a reposicao e as rodadas seguintes levavam ao YouTube a
+# p03: no canal a serie ficava com a Parte 1 e a 3, sem a 2, para sempre.
+# Agora a parte que saiu no TikTok e nao no YouTube e DIVIDA: o YouTube do
+# horario sobe ela, e o TikTok segue com a proxima da fila. O YouTube fica um
+# horario atras do TikTok — foi o que ele escolheu.
+#
+# SO DESTA DATA EM DIANTE. As tres de 28/09 (h22 p03, h27 p01, h32 p04) tem
+# caminho proprio, `--so-youtube` (decisao `partes-so-no-tiktok`); despeja-las
+# pela grade seria decisao de conteudo, e nao conserto. Para incluir as
+# antigas, mova a data; nada mais precisa mudar.
+# 05/10, E NAO 06/10 (medido no ledger as 23:59 de 06/10): partes no TikTok
+# e fora do YouTube eram 4 — h16 p01 (16/09), h54 p01 (05/10 23:50, o 23:37
+# que caiu junto com o 00:37 da decisao), h54 p02 (06/10 00:49) e h60 p01
+# (06/10 12:10). Com 06/10 a h54 p01 ficava de fora, e a p02 nunca saia (a
+# ordem no YouTube pede a p01 antes): a serie da decisao ficaria com buraco
+# para sempre. A h16 p01 (16/09) fica de fora do corte: decisao do Adrian em
+# 07/10 (`publicacao/h16-p01-so-no-tiktok`) e subi-la pelo `--so-youtube`.
+# E a devida RETIDA sobe mesmo havendo parte limpa na fila (decisao
+# `publicacao/divida-retida-fura-valvula`, 07/10: "sobe mesmo assim").
+CORTE_DA_DIVIDA_DO_YOUTUBE = "2026-10-05"
+
+
+def _divida_do_youtube() -> tuple:
+    """(parte que o YouTube deve, quando ela saiu no TikTok, motivos).
+
+    Sem divida: `(None, "", motivos)`, com o motivo de cada parte devida que
+    nao pode sair agora. Nunca levanta: sem a resposta, o YouTube segue com a
+    fila normal (o buraco de antes, e nao o horario vazio).
+
+    Divida e a parte que SAIU no TikTok (`_saiu`, linha a partir de
+    `CORTE_DA_DIVIDA_DO_YOUTUBE`) e NAO saiu no YouTube, com as partes
+    anteriores da serie ja no YouTube — a ordem que vale e a do canal do
+    YouTube. Entre series, a de menor parte primeiro; empate, a que saiu antes
+    no TikTok.
+
+    As guardas sao as do `--so-youtube` (duplicata pelo ledger e pelo titulo,
+    lista "a conferir" do YouTube — e ela que segura a parte com pedaco no ar,
+    `ParteMeioNoAr` —, render, mp4 no catalogo e a vistoria mecanica) e o
+    teto por fonte NO YOUTUBE. O parecer da IA fica de fora: a parte ja passou
+    por ele para ir ao TikTok. A que nao passa nao trava o canal.
+    """
+    try:
+        return _procurar_divida_do_youtube()
+    except Exception as exc:                                   # noqa: BLE001
+        return None, "", [f"nao consegui procurar a divida do YouTube "
+                          f"({type(exc).__name__}: {exc})"[:160]]
+
+
+def _procurar_divida_do_youtube() -> tuple:
+    from contos.publicar import catalogo, qualidade, serie
+    from contos.roteiro import roteiro as R
+    from builds import travas
+
+    publicados = serie.publicados()
+    no_youtube, partes_no_youtube = set(), set()
+    for l in publicados:
+        # Linha sem plataforma e do YouTube (era o unico destino).
+        if (str(l.get("plataforma") or "youtube").lower() != "youtube"
+                or not _saiu(l)):
+            continue
+        vid = str(l.get("video_id") or "")
+        no_youtube.add(vid)
+        if l.get("parte"):
+            fonte = str(l.get("fonte_id") or vid.split(":")[0])
+            partes_no_youtube.add((fonte, int(l.get("parte"))))
+    devidas: dict = {}
+    for l in publicados:
+        quando = str(l.get("quando") or "")
+        vid = str(l.get("video_id") or "")
+        if (l.get("plataforma") != "tiktok" or not _saiu(l)
+                or quando < CORTE_DA_DIVIDA_DO_YOUTUBE
+                or not vid or vid in no_youtube):
+            continue
+        devidas.setdefault(vid, quando)
+    if not devidas:
+        return None, "", []
+
+    motivos: list = []
+    no_catalogo = {v.id: v for v in catalogo.listar()}
+    candidatas = []
+    for vid, quando in devidas.items():
+        v = no_catalogo.get(vid)
+        if v is None:
+            motivos.append(f"{vid}: o mp4 nao esta mais no catalogo")
+            continue
+        candidatas.append((int(v.parte or 0), quando, v))
+    candidatas.sort(key=lambda c: (c[0], c[1]))
+    try:
+        cheias = _fontes_cheias_hoje(publicados, "youtube")
+    except Exception:                                          # noqa: BLE001
+        cheias = set()                 # "nao sei" nao barra (ver a tabela)
+    vistas = set()
+    for parte, quando, v in candidatas:
+        if v.fonte_id in vistas:
+            continue                   # so a MENOR parte devida de cada serie
+        vistas.add(v.fonte_id)
+        faltam = [n for n in range(1, parte)
+                  if (v.fonte_id, n) not in partes_no_youtube]
+        if faltam:
+            motivo = (f"a parte {faltam[0]} da serie ainda nao esta no "
+                      "YouTube")
+        elif serie.ja_publicado(v.id, "youtube"):
+            motivo = "ja esta no YouTube pelo ledger"
+        elif titulo_repetido(v, "historias", "youtube"):
+            motivo = "o titulo ja esta no ar no YouTube (ledger)"
+        elif not _sem_a_conferir([v], "historias"):
+            motivo = "esta na lista 'a conferir' do YouTube"
+        elif travas.ocupada(f"historias__render__{v.fonte_id}"):
+            motivo = "a historia esta sendo renderizada"
+        elif v.fonte_id in cheias:
+            motivo = (f"a historia ja saiu {TETO_POR_FONTE_NO_DIA}x hoje no "
+                      "YouTube")
+        else:
+            laudo = qualidade.vistoriar_parte(v.fonte_id, v.parte, v.caminho,
+                                              R.carregar(v.fonte_id))
+            motivo = ("" if laudo["ok"] else "a vistoria reprovou: "
+                      + "; ".join(laudo["erros"])[:120])
+        if not motivo:
+            return v, quando, motivos
+        motivos.append(f"{v.id}: {motivo}")
+    return None, "", motivos
+
+
+def _outra_parte_no_tiktok(ficha: dict, tk_alvo, recusados=None) -> None:
+    """A ficha diz qual parte o TikTok levou quando NAO e a do YouTube.
+
+    `alvo`/`titulo`/`parte` da ficha continuam sendo os do YouTube (a parte
+    devida); os do TikTok ganham campos proprios, e o relatorio mostra os dois.
+    """
+    ficha.update({"tiktok_alvo": tk_alvo.id, "tiktok_titulo": tk_alvo.titulo,
+                  "tiktok_parte": tk_alvo.parte})
+    if recusados:
+        ficha["recusados"] = list(recusados)
+
+
+def _valvula_da_outra_parte(ficha: dict, tk_alvo) -> None:
+    """A valvula da parte que foi SO ao TikTok, fora das marcas da ficha (que
+    sao da parte do YouTube). Chame so com o TikTok confirmado."""
+    marcas = {"canal": "historias", "alvo": tk_alvo.id}
+    _retida_chegou_ao_tiktok(tk_alvo, marcas)
+    if marcas.get("retido"):
+        ficha["tiktok_retido"] = marcas["retido"]
+
+
 def postar_historia(*, so_ver: bool = False) -> dict:
     from contos.publicar import serie
 
@@ -1252,29 +1401,66 @@ def postar_historia(*, so_ver: bool = False) -> dict:
             return {"canal": "historias", "feito": False,
                     "motivo": f"o video {ja_yt.get('video_id')} saiu no "
                               "YouTube mas nao esta mais no catalogo"}
-        _linha(f"[postar] historias: YouTube ja saiu nesta hora; "
-               f"levando {alvo.id} so para o TikTok.")
+        # A PARTE DO YOUTUBE PODE SER DIVIDA (06/10/2026): ela ja esta no
+        # TikTok, e levar a mesma deixaria o TikTok do horario vazio
+        # (`_tiktok_das_historias` recusa repetir). O TikTok leva a proxima.
+        tk_alvo, recusados = alvo, []
+        if serie.ja_publicado(alvo.id, "tiktok"):
+            tk_alvo, recusados = proxima_historia()
+            if tk_alvo is None:
+                return {"canal": "historias", "feito": False,
+                        "motivo": f"o YouTube ja saiu nesta hora com "
+                                  f"{alvo.id}, que ja esta no TikTok, e nao "
+                                  f"ha outra parte publicavel para o TikTok"}
+        _linha(f"[postar] historias: YouTube ja saiu nesta hora ({alvo.id}); "
+               f"levando {tk_alvo.id} so para o TikTok.")
         falha_tk: dict = {}
         ficha = {"canal": "historias", "feito": True, "alvo": alvo.id,
                  "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
                  "parte": alvo.parte, "partes": alvo.partes,
                  "visibilidade": _visibilidade_das_historias(),
                  "so_tiktok": True,
-                 "tiktok": _tiktok_das_historias(alvo, falha_tk)}
+                 "tiktok": _tiktok_das_historias(tk_alvo, falha_tk)}
+        if tk_alvo is not alvo:
+            _outra_parte_no_tiktok(ficha, tk_alvo, recusados)
         _anotar_falha_do_tiktok(ficha, falha_tk)
         if _tiktok_confirmado(ficha["tiktok"]):
-            _retida_chegou_ao_tiktok(alvo, ficha)
+            if tk_alvo is alvo:
+                _retida_chegou_ao_tiktok(alvo, ficha)
+            else:
+                _valvula_da_outra_parte(ficha, tk_alvo)
         return ficha
-    alvo, recusados = proxima_historia()
-    if alvo is None:
-        motivo = "nao ha parte publicavel"
-        if recusados:
-            motivo += " — recusadas: " + " | ".join(recusados[:3])
-        return {"canal": "historias", "feito": False, "motivo": motivo}
+    # A DIVIDA DO YOUTUBE VEM ANTES DA FILA (decisao de 06/10/2026, ver
+    # `CORTE_DA_DIVIDA_DO_YOUTUBE`): a parte que saiu so no TikTok sobe no
+    # YouTube deste horario, e o TikTok leva a proxima da fila — que ja pula
+    # a devida, porque ela conta como publicada pelo TikTok.
+    divida, divida_quando, motivos_da_divida = _divida_do_youtube()
+    for motivo in motivos_da_divida[:3]:
+        _linha(f"[postar] historias: divida do YouTube que nao sai agora — "
+               f"{motivo}"[:200])
+    if divida is not None:
+        alvo, recusados, tk_alvo = divida, [], None
+        if tiktok_agora and not ja_tk:
+            tk_alvo, recusados = proxima_historia()
+        _linha(f"[postar] historias: o YouTube deve {divida.id} (saiu no "
+               f"TikTok em {divida_quando[:16]}); sobe ela"
+               + (f", e o TikTok leva {tk_alvo.id}" if tk_alvo else "") + ".")
+    else:
+        alvo, recusados = proxima_historia()
+        if alvo is None:
+            motivo = "nao ha parte publicavel"
+            if recusados:
+                motivo += " — recusadas: " + " | ".join(recusados[:3])
+            return {"canal": "historias", "feito": False, "motivo": motivo}
+        tk_alvo = alvo
     if so_ver:
-        return {"canal": "historias", "feito": False, "veria": alvo.id,
-                "titulo": alvo.titulo, "recusados": recusados,
-                "motivo": "so vendo"}
+        veria = {"canal": "historias", "feito": False, "veria": alvo.id,
+                 "titulo": alvo.titulo, "recusados": recusados,
+                 "motivo": "so vendo"}
+        if divida is not None:
+            veria["youtube_devido"] = divida_quando
+            veria["veria_tiktok"] = tk_alvo.id if tk_alvo else ""
+        return veria
     # EXPLICITO, e registrado. Antes ia `None` nos dois lugares: a publicacao
     # resolvia `public` pelo config (certo) mas o registro gravava `null`
     # (inutil) — e a pergunta "os videos estao publicos?" so tinha resposta
@@ -1310,8 +1496,9 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         else:
             # QUALQUER FALHA DO YOUTUBE SEGUE PARA O TIKTOK (auditoria de
             # 15/09/2026). Subir aqui deixava o TikTok daquele horario vazio
-            # para sempre. Se o TikTok subir, a parte sai da fila como na cota:
-            # o YouTube fica sem ela ate existir fila por plataforma.
+            # para sempre. Se o TikTok subir, a parte sai da fila como na cota,
+            # e o YouTube a sobe depois como DIVIDA (`_divida_do_youtube`,
+            # decisao de 06/10/2026), na reposicao ou num horario seguinte.
             falha_yt = f"{type(exc).__name__}: {exc}"[:200]
             _linha(f"[postar] historias: YouTube falhou ({falha_yt}). "
                    "Sigo para o TikTok.")
@@ -1319,6 +1506,8 @@ def postar_historia(*, so_ver: bool = False) -> dict:
              "titulo": alvo.titulo, "url": url,
              "parte": alvo.parte, "partes": alvo.partes,
              "visibilidade": visibilidade, "recusados": recusados}
+    if divida is not None:
+        ficha["youtube_devido"] = divida_quando
     _valvula_da_parte(ficha, alvo)
     if titulo_repetido(alvo, "historias"):
         ficha["titulo_repetido"] = True
@@ -1337,26 +1526,43 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         ficha["tiktok"] = ""
         ficha["tiktok_fora_da_grade"] = True
         _linha("[postar] historias: este horario nao e da grade do TikTok.")
+    elif ja_tk:
+        # O TIKTOK DESTE HORARIO JA SAIU: nao e tentado. A marca e a simetrica
+        # de `so_tiktok`, e e por ela que `_juntar_reposicao` junta o YouTube
+        # reposto na ficha de antes (06/10/2026).
+        ficha["tiktok"] = ""
+        ficha["so_youtube"] = True
+    elif tk_alvo is None:
+        # O YouTube levou a divida e a fila nao tem outra parte para o TikTok.
+        ficha["tiktok"] = ""
+        ficha["tiktok_sem_parte"] = True
     else:
         falha_tk: dict = {}
-        ficha["tiktok"] = "" if ja_tk else _tiktok_das_historias(alvo,
-                                                                  falha_tk)
+        if tk_alvo is not alvo:
+            _outra_parte_no_tiktok(ficha, tk_alvo, recusados)
+        ficha["tiktok"] = _tiktok_das_historias(tk_alvo, falha_tk)
         _anotar_falha_do_tiktok(ficha, falha_tk)
     # Deu TikTok e nao deu YouTube: a rodada fez alguma coisa, e o relatorio
     # tem que dizer isso em vez de chamar tudo de falha. So com o post
     # CONFIRMADO: "cliquei mas o TikTok nao confirmou" nao e publicacao
     # (revisao de 15/09/2026).
-    if _tiktok_confirmado(ficha["tiktok"]):
+    tk_saiu = _tiktok_confirmado(ficha["tiktok"])
+    if tk_saiu:
         ficha["feito"] = True
     # A PARTE RETIDA QUE SAIU FICA A CONFERIR (valvula de qualidade): so sai
     # retida quando nao havia outra, e quem confere e uma pessoa.
     # SO ONDE ELA SAIU (05/10/2026): marcada no TikTok sem estar la, a parte
-    # some da recuperacao e o fim da serie nunca chega ao TikTok.
-    if ficha.get("retido") and ficha["feito"]:
+    # some da recuperacao e o fim da serie nunca chega ao TikTok. Com a
+    # divida (06/10/2026) o TikTok pode ter levado OUTRA parte: as marcas da
+    # ficha sao da parte do YouTube, e a do TikTok passa pela valvula a parte.
+    mesmo_no_tiktok = tk_saiu and tk_alvo is alvo
+    if ficha.get("retido") and (url or mesmo_no_tiktok):
         onde = (("youtube",) if url else ()) + (
-            ("tiktok",) if _tiktok_confirmado(ficha["tiktok"]) else ())
+            ("tiktok",) if mesmo_no_tiktok else ())
         _marcar_retido(alvo, ficha["retido"], onde)
-    _registrar_valvula(ficha)
+    _registrar_valvula(dict(ficha, feito=bool(url) or mesmo_no_tiktok))
+    if tk_saiu and tk_alvo is not alvo:
+        _valvula_da_outra_parte(ficha, tk_alvo)
     return ficha
 
 
@@ -2987,6 +3193,9 @@ def _juntar_reposicao(r: dict, nova: dict) -> tuple:
     """(ficha da rodada, ficha extra ou None) depois de uma reposicao.
 
     - so faltava o TikTok e ele foi de novo: a mesma ficha, com o TikTok novo;
+    - so faltava o YouTube e ele subiu a MESMA parte (a divida de 06/10/2026:
+      o TikTok tinha levado a parte e o YouTube caiu): a mesma ficha, com o
+      YouTube novo;
     - nada a repor (o horario ja tem os dois): a ficha de antes;
     - um video DIFERENTE saiu (o YouTube caiu e o TikTok tinha ido): as duas.
     """
@@ -2995,11 +3204,25 @@ def _juntar_reposicao(r: dict, nova: dict) -> tuple:
     if nova.get("so_tiktok") and nova.get("alvo") == r.get("alvo"):
         junta = dict(r)
         junta["tiktok"] = nova.get("tiktok", "")
-        for chave in ("tiktok_falha", "tiktok_clicou"):
+        for chave in ("tiktok_falha", "tiktok_clicou", "tiktok_alvo",
+                      "tiktok_titulo", "tiktok_parte", "tiktok_retido"):
             junta.pop(chave, None)
             if nova.get(chave):
                 junta[chave] = nova[chave]
         if _tiktok_confirmado(junta["tiktok"]):
+            junta["feito"] = True
+        junta["reposto"] = True
+        return junta, None
+    if nova.get("so_youtube") and nova.get("alvo") == r.get("alvo"):
+        junta = dict(r)
+        junta["url"] = nova.get("url", "")
+        for chave in ("youtube_falhou", "motivo", "cota_youtube",
+                      "youtube_meio_no_ar", "youtube_erro",
+                      "youtube_ids_no_ar", "youtube_devido"):
+            junta.pop(chave, None)
+            if nova.get(chave):
+                junta[chave] = nova[chave]
+        if junta["url"]:
             junta["feito"] = True
         junta["reposto"] = True
         return junta, None
@@ -3871,25 +4094,44 @@ def avisar(resultados: list) -> None:
             linhas.append(f"    {titulo}  (parte {r['parte']}/{r['partes']})")
         else:
             linhas.append(f"    {titulo}")
+        # A DIVIDA DO YOUTUBE (06/10/2026): a parte do YouTube saiu antes no
+        # TikTok. Com ela, cada destino pode ter levado uma parte diferente.
+        devido = str(r.get("youtube_devido") or "")
+        devido = (f" — parte devida (saiu no TikTok às {devido[11:16]})"
+                  if devido else "")
         if r.get("so_tiktok"):
             linhas.append("    ▸ YouTube   já saiu neste horário")
         elif r.get("cota_youtube"):
-            linhas.append("    ▸ YouTube   🚫 limite diário da conta")
+            linhas.append("    ▸ YouTube   🚫 limite diário da conta"
+                          f"{devido}")
+        elif r.get("youtube_meio_no_ar"):
+            linhas.append("    ▸ YouTube   ❌ pedaço da parte já no ar e o "
+                          "seguinte falhou (a parte espera uma pessoa na "
+                          "lista a conferir)")
         elif r.get("youtube_falhou"):
             motivo = str(r.get("motivo") or "").split(": ", 1)[-1]
             linhas.append(f"    ▸ YouTube   ❌ falhou: {motivo[:100]} "
-                          "(a parte volta no próximo horário)")
+                          f"(a parte volta no próximo horário){devido}")
         else:
             linhas.append("    ▸ YouTube   "
                           f"{_estado_da_plataforma(r.get('url'))}"
-                          f" · {r.get('visibilidade') or '?'}")
+                          f" · {r.get('visibilidade') or '?'}{devido}")
+        outra = ""
+        if r.get("tiktok_alvo"):
+            outra = (f" — outra parte: {r.get('tiktok_parte') or '?'}/"
+                     f"{r.get('partes') or '?'} (`{r['tiktok_alvo']}`)")
         if r.get("tiktok_fora_da_grade"):
             linhas.append("    ▸ TikTok    ⏸ fora da grade do TikTok "
                           "neste horário")
+        elif r.get("so_youtube"):
+            linhas.append("    ▸ TikTok    já saiu neste horário")
+        elif r.get("tiktok_sem_parte"):
+            linhas.append("    ▸ TikTok    🚫 nenhuma outra parte "
+                          "publicável (a deste horário já estava lá)")
         else:
             linhas.append("    ▸ TikTok    "
                           f"{_estado_da_plataforma(r.get('tiktok'))}"
-                          f" · {_conta_do_destino('tiktok', canal)}")
+                          f" · {_conta_do_destino('tiktok', canal)}{outra}")
         linhas.append(f"    `{r.get('alvo', '')}`")
         if r.get("veto_vencido"):
             # Uma passada so desde 15/09/2026: "as 3 rodadas" mentia.
@@ -3907,6 +4149,9 @@ def avisar(resultados: list) -> None:
                 linhas.append("    ⚠ saiu RETIDA (a IA reprovou ou ninguem "
                               "assistiu): nao havia outra parte. Esta na "
                               "lista a conferir.")
+        if r.get("tiktok_retido"):
+            linhas.append("    ⚠ a parte do TikTok saiu RETIDA: esta na "
+                          "lista a conferir do TikTok.")
         if r.get("titulo_repetido"):
             linhas.append("    ⚠ saiu com titulo JA PUBLICADO: nao havia "
                           "outro video na fila. Os dois competem entre si.")
@@ -4421,6 +4666,14 @@ def _em_voo(canal: str, alvo_id: str, destino: str):
         yield
     finally:
         _DONA["em_voo"] = None
+        # O POUSO GRAVA DUAS VEZES (conferente do f79a894, 06/10/2026). A
+        # `.bak` e sempre a gravacao ANTERIOR: com uma gravacao so, ela
+        # guardava o ultimo "clicou" JA CONFIRMADO, e se a principal se
+        # perdesse a rodada seguinte marcava "a conferir" um video que ja
+        # tinha saido (medido as 23:47 de 06/10: principal `em_voo: null`,
+        # `.bak` com a `generation_00096` no TikTok em "clicou" — e a linha
+        # dela no ledger as 23:42:50). A segunda gravacao poe o pouso nas duas.
+        _pulsar(forcar=True)
         _pulsar(forcar=True)
 
 
@@ -4550,7 +4803,10 @@ def _voo_anterior() -> tuple:
         if estado == "nao_sei":
             _linha("[postar] a ficha da trava nao serve; decidi pela "
                    f"anterior ({reserva.name}).")
-        return True, voo_b, dona_b or {"em_voo": voo_b}, ""
+        # `pela_reserva`: a `.bak` e uma gravacao ATRAS da que se perdeu, e o
+        # voo dela e o MINIMO que aconteceu (`_pousar_voo_perdido`).
+        return True, voo_b, dict(dona_b or {"em_voo": voo_b},
+                                 pela_reserva=True), ""
     return False, None, None, (
         f"a ficha da rodada anterior ({principal}) "
         + ("sumiu" if estado == "ausente" else f"esta invalida ({problema})")
@@ -4756,17 +5012,71 @@ def _avisar_morte(dona: dict, laudo: dict, motivo: str) -> None:
             + ". Ela pode ter deixado um rascunho no canal.")
 
 
+def _voo_no_ledger(voo: dict) -> dict | None:
+    """A linha PUBLICADA do voo no ledger, gravada depois do comeco dele.
+
+    Mesmo alvo (`video_id`), mesmo destino (`plataforma`), `_saiu` (o
+    criterio unico de "publicado") e `quando` >= `desde` (o segundo em que o
+    voo comecou; `quando` e a hora local da escrita, sem fracao). `None`
+    quando nao acha OU nao da para saber (ledger ilegivel, voo sem `desde`):
+    na duvida, quem chama marca "a conferir".
+    """
+    from datetime import datetime
+    try:
+        desde = datetime.fromtimestamp(float(voo["desde"])).replace(
+            microsecond=0)
+        linhas = _publicados_do_canal(voo["canal"])
+        for linha in reversed(linhas):
+            if (str(linha.get("video_id") or "") != voo["alvo"]
+                    or str(linha.get("plataforma") or "youtube")
+                    != voo["destino"]):
+                continue
+            try:
+                quando = datetime.fromisoformat(str(linha.get("quando")))
+            except ValueError:
+                continue
+            if (quando.tzinfo is None and quando >= desde
+                    and _saiu(linha)):
+                return linha
+    except Exception:                                          # noqa: BLE001
+        return None
+    return None
+
+
 def _pousar_voo_perdido(anterior: dict | None) -> bool:
     """O voo que a dona anterior deixou no ar vai para "a conferir".
 
     True quando nao ha nada a fazer ou a marca gravou; False quando havia voo
     e a marca NAO gravou — e entao esta rodada nao publica.
+
+    Duas excecoes ao "voo em `entregue`/`clicou` pousa" (conferente do
+    f79a894, 06/10/2026):
+
+    - VOO QUE JA ESTA NO LEDGER nao pousa: linha publicada do mesmo alvo no
+      mesmo destino, gravada depois do comeco do voo (`_voo_no_ledger`). O
+      video saiu e foi registrado; a fila ja nao o escolhe, e a marca seria
+      so alarme falso (com Telegram). Ledger ilegivel: marca, como antes.
+    - DECIDIDO PELA `.bak` (`pela_reserva`), `escolhido` tambem pousa: a
+      `.bak` e uma gravacao atras da principal que se perdeu, entao o voo
+      dela e o MINIMO — a principal podia ja estar em `entregue` ou
+      `clicou`, e subir de novo e pior que nao postar.
     """
     voo = (anterior or {}).get("em_voo")
-    if not voo or _ORDEM_DA_ETAPA.get(voo.get("etapa"), 0) < 1:
+    minimo = 0 if (anterior or {}).get("pela_reserva") else 1
+    if not voo or _ORDEM_DA_ETAPA.get(voo.get("etapa"), -1) < minimo:
         return True
+    linha = _voo_no_ledger(voo)
+    if linha:
+        _linha(f"[postar] o voo de {voo['alvo']} no {voo['destino']} que a "
+               f"ficha anterior guardava ('{voo['etapa']}') ja esta no ledger "
+               f"({str(linha.get('quando'))[:16]}): saiu e foi registrado; "
+               "nada a conferir.")
+        return True
+    etapa = (f"'{voo['etapa']}' ou depois (a ficha principal se perdeu; "
+             "decidi pela anterior)" if minimo == 0
+             else f"'{voo['etapa']}'")
     texto = (f"a publicacao de {voo['alvo']} no {voo['destino']} parou na "
-             f"etapa '{voo['etapa']}' ({_descrever_dona(anterior)} nao "
+             f"etapa {etapa} ({_descrever_dona(anterior)} nao "
              "terminou): pode ter saido publico — confira")
     try:
         from builds.publicar import desfecho
@@ -5027,6 +5337,13 @@ def _main(args) -> int:
             _linha(f"           {r['titulo'][:76]}")
         if r.get("url"):
             _linha(f"           youtube: {r['url']}")
+        if r.get("youtube_devido"):
+            # A divida do YouTube (06/10/2026): o alvo acima e o do YouTube.
+            _linha(f"           youtube: parte devida (saiu no TikTok em "
+                   f"{str(r['youtube_devido'])[:16]})")
+        if r.get("tiktok_alvo") or r.get("veria_tiktok"):
+            _linha(f"           tiktok leva outra parte: "
+                   f"{r.get('tiktok_alvo') or r.get('veria_tiktok')}")
         if r.get("feito"):
             # O TikTok aparece SEMPRE que houve postagem, inclusive quando
             # falhou: um destino que some do relatorio e um destino que passa
@@ -5034,6 +5351,8 @@ def _main(args) -> int:
             estado = r.get("tiktok")
             if r.get("tiktok_fora_da_grade"):
                 estado = "fora da grade do TikTok neste horario"
+            elif r.get("so_youtube"):
+                estado = "ja saiu neste horario"
             _linha(f"           tiktok:  {estado or 'NAO SUBIU'}"[:96])
         if not r.get("feito"):
             _linha(f"           {r.get('motivo', '')}")

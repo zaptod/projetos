@@ -71,6 +71,8 @@ class PedacoNoArTests(unittest.TestCase):
         self.m._valvula_da_parte = lambda ficha, alvo: ""
         # A fila: nada foi registrado, entao ela escolhe a MESMA parte.
         self.m.proxima_historia = lambda **k: (ALVO, [])
+        # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
+        self.m._divida_do_youtube = lambda: (None, "", [])
         self.marcas = {}
         _trocar(self, desfecho, "marcar_para_conferir",
                 lambda canal, vid, estado, plataforma="tiktok", **k:

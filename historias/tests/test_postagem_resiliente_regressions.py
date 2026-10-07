@@ -198,6 +198,8 @@ class YouTubeCaidoNaoDerrubaTikTokTests(unittest.TestCase):
         _trocar(self, catalogo, "publicar_youtube", cai)
         video = _Video("historia_00012:celular:p01", fonte_id="historia_00012")
         self.m.proxima_historia = lambda **k: (video, [])
+        # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
+        self.m._divida_do_youtube = lambda: (None, "", [])
         self.m._visibilidade_das_historias = lambda: "public"
         self.m._veto_vencido = lambda alvo: False
         self.m._veto_lembrado = lambda alvo: ""

@@ -288,6 +288,8 @@ class QuandoSaiFicaMarcadoTests(unittest.TestCase):
         self.m._registrar_valvula = lambda ficha: None
         self.alvo = _video("historia_00032", 5)
         self.m.proxima_historia = lambda **k: (self.alvo, [])
+        # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
+        self.m._divida_do_youtube = lambda: (None, "", [])
         self.marcas = []
         _trocar(self, desfecho, "marcar_para_conferir",
                 lambda canal, vid, estado, plataforma="tiktok", **k:

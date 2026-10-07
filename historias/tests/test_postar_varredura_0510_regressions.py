@@ -286,6 +286,8 @@ class ConsertadaNaPostagemTests(unittest.TestCase):
         self.m._situacao_do_parecer = lambda alvo: "consertado"
         self.alvo = _video("historia_00044", 4)
         self.m.proxima_historia = lambda **k: (self.alvo, [])
+        # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
+        self.m._divida_do_youtube = lambda: (None, "", [])
         self.marcas = []
         _trocar(self, desfecho, "marcar_para_conferir",
                 lambda canal, vid, estado, plataforma="tiktok", **k:
@@ -327,6 +329,8 @@ class RetidaQueFalhouNoTikTokVoltaAtrasadaTests(unittest.TestCase):
         self.m._veto_lembrado = lambda _a: ""
         self.alvo = _video("historia_00042", 6)
         self.m.proxima_historia = lambda **k: (self.alvo, [])
+        # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
+        self.m._divida_do_youtube = lambda: (None, "", [])
         self.marcas = {"youtube": set(), "tiktok": set()}
         _trocar(self, desfecho, "marcar_para_conferir",
                 lambda canal, vid, estado, plataforma="tiktok", **k:
