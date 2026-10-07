@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-af69943d",
+      "em": "2026-10-07T00:43:55",
+      "evento": "2026-10-07T00:43:49",
+      "linha": 137,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "subir",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Medido no ledger em 06/10 23:59: das partes de histórias, 4 estavam no TikTok e fora do YouTube; 3 são de 05-06/10 e entram na dívida do YouTube (decisão youtube-caiu-depois-do-tiktok). A h16 p01 é antiga e ficou de fora do corte (como as 3 de 28/09, que subiram pelo postar.py --so-youtube). Não conferi o canal (a API do canal de histórias está recusando com 401 desde 06/10 20:42), então pode existir rascunho dela lá. Serve para decidir se o canal do YouTube fica com a série completa.",
   "criado": "2026-10-07T00:18:36.250257",
   "depende_de": [],
