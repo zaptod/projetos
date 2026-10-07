@@ -79,6 +79,10 @@ var n_eventos := 0
 var eventos_no_corte := 0
 var vfx_criados := 0
 var _marcas_cache := {}
+## Rosto do Atelie que mostrou OUTRA carinha no lugar da pedida (a pedida nao
+## esta desenhada): "<parte>/<nivel>/<alvo>/<vNN>" -> {pedida: usada}. O
+## lutador_padrao anota; vai para o relatorio, para dizer o que falta desenhar.
+var rosto_herdado := {}
 
 
 func _ready() -> void:
@@ -527,7 +531,7 @@ func _objetos(p: float, i: int, ctx: Dictionary) -> void:
 		if no == null:
 			var tipo := str(t.get("tipo", ""))
 			var pai := camada_solo if tipo in ["area", "trap", "portal"] else camada_objetos
-			no = _instanciar(bib.objeto(tipo, str(t.get("elemento", "")), str(t.get("nome", ""))), pai)
+			no = _instanciar(bib.objeto(tipo, str(t.get("elemento", "")), str(t.get("nome", "")), str(t.get("forma", ""))), pai)
 			if no.has_method("configurar"):
 				no.configurar(t, ctx)
 			obj_nos[id] = no
@@ -673,6 +677,8 @@ func _escrever_relatorio(ok: bool, rc: int) -> void:
 		"eventos": {"agendados": n_eventos, "no_corte": eventos_no_corte, "vfx": vfx_criados},
 		"pecas": bib.escolhas,
 		"reservas": bib.reservas.keys(),
+		"rosto_herdado": rosto_herdado,
+		"pngs_ilegiveis": bib.pngs_ilegiveis.keys(),
 		"avisos": avisos,
 		"laco_ms": Time.get_ticks_msec() - t0_ms,
 		"video": {"adaptador": RenderingServer.get_video_adapter_name(),

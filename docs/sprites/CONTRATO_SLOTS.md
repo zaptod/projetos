@@ -31,7 +31,7 @@ Este documento é a proposta do **manifesto de slots**. É ele que guia o painel
 | projétil, orbe, summon, trap, portal | 512×512 | centro = centro do objeto, apontando para +x; o diâmetro da hitbox ocupa a largura toda |
 | área (chão e borda) | 512×512 | círculo da área = largura toda |
 | feixe (beam) | 1024×128 (corpo, repete ao longo) + 256×256 (ponta) | +x é o sentido do feixe |
-| evento (acerto, KO…) | 512×512 (KO 1024×1024) | centro = ponto do evento |
+| evento (acerto, KO…) | 512×512 | centro = ponto do evento (o KO estoura maior no vídeo: 4 m contra ~1,2–2,4 m do acerto) |
 | arena: chão | 1024×1024 que se repete (3 m por repetição, como hoje) | — |
 | arena: obstáculo | 512×512 visto de cima | a largura do obstáculo é a largura da imagem |
 | HUD | 1024×128 por peça | — |
@@ -315,8 +315,14 @@ palco/biblioteca/partes/lutador/<parte>/<nivel>/<alvo>/<variante>/<estado>.png (
   dígitos>-vNN/` (o Desfazer a traz de volta). Como não começa com `v`, nem o
   palco nem `dono_da_parte` a contam; quem a tinha fixa sai do guarda-roupa.
   Rotas, telas e medidas: `docs/sessoes/app-e-bot.md`, seção "Provador".
-- **Para o que o palco JÁ procura** (arma, skill, evento, camadas de estado), o painel grava também a **cena-embrulho** no caminho de hoje. Ela é uma `.tscn` de 1 quadro com `folha_animada.gd` (ou `peca.gd` + Sprite2D, para a arma), apontando para o PNG da árvore `partes/`. A Oficina já gera esse embrulho (`painel/sprites/exportar.py:256-357`).
-  - Com isso, arma, skill, efeito e camada de estado anexados aparecem **sem mudar uma linha do Godot**.
+- **Arma, skill, efeito e camada de estado: o palco lê o PNG direto** (07/10/2026; antes ficava no disco e o vídeo saía com o desenho antigo — medido no `duelo_00091`). Nenhuma cena-embrulho é gravada: a `Biblioteca` do palco (`palco/nucleo/biblioteca.gd`) lê o `manifesto_slots.json`, acha o PNG no `destino` do slot e monta a peça na hora (`palco/nucleo/peca_png.gd`). O PNG entra na mesma cadeia de antes, logo antes da cena do mesmo nível (o mais específico vence; no mesmo nível, o Ateliê vence a cena antiga):
+  - arma: estilo (PNG) > `armas/estilos/<estilo>` > tipo (PNG) > `armas/tipos/<tipo>` > padrão. Gabarito 1024×256: a mão na borda esquerda no meio, a ponta na borda direita (`empunhadura`/`ponta` no `.json` ao lado mudam isso). **A Corrente fica fora**: a peça dela é a de Verlet; a arte dela são elos e cabeças (F4);
+  - skill (projétil, área-chão, invocação, estrutura; projétil da arma pela `forma`; orbe no estado `orbitando`): skill > `skills/<skill>` > elemento > **comum** ↔ cena por elemento, na ordem da constante `ORDEM_DO_COMUM` (§5.3; padrão: a arte do Adrian por elemento vence o Comum, o Comum vence a provisória CC0). O comum é tingido pela cor do elemento clareada 30% (sem elemento, pela `cor` do objeto). Beam e portal ficam fora (precisam de código para esticar e ligar a e b);
+  - efeito: variante > `eventos/<tipo>_<variante>` > elemento (conjuração/impacto) > tier > tipo > comum > padrão. Imagem parada: o Godot cresce, gira com o golpe e apaga em 0,35 s (KO 0,6 s);
+  - em volta do lutador: PNG > `lutadores/<categoria>/<nome>` > desenho por código.
+  - PNG que não abre não vira peça: a cadeia segue para o desenho de hoje, a falha fica guardada (não reabre) e vai ao relatório (`pngs_ilegiveis`). A textura é pré-multiplicada e a peça desenha com mistura pré-multiplicada: sem franja escura em volta do desenho (o `fix_alpha_border` do importador não existe no GDScript).
+  - O `.json` ao lado do PNG é lido se existir (`tingir`, `empunhadura`, `ponta`, `tamanho_m`, `duracao_s`) e nunca exigido.
+  - O relatório do render (`<mp4>.palco.json → rosto_herdado`) lista as carinhas do rosto que caíram em outra porque não foram desenhadas (ex.: só o `neutro` desenhado → `tonto: neutro`).
 - **O `sprites_usuario/` do Ateliê** (catálogo por animação de lado, `catalogo.json`) não serve para a bolinha modular. O painel novo usa `partes/`. Ver PERGUNTAS 6.
 
 ### Prévia para o painel
@@ -424,7 +430,7 @@ apague essa pele pelo painel (Apagar tem volta) ou à mão.
 
 ### 5.1 `camada_estado`: o que aparece em volta do lutador
 
-**Já é lido hoje.** A busca é `lutador_padrao.gd:59-103`. As peças entram como filhas do lutador, escaladas pelo raio e sem girar.
+**Lido pelo palco** (desde 07/10/2026 também o PNG de `partes/`, §4). A busca é `lutador_padrao.gd:59-103`. As peças entram como filhas do lutador, escaladas pelo raio e sem girar.
 
 | parte | alvos | qtd | fonte |
 |---|---|---|---|
@@ -442,11 +448,11 @@ apague essa pele pelo painel (Apagar tem volta) ou à mão.
 
 | parte | alvos | qtd | o Godot lê hoje? |
 |---|---|---|---|
-| `arma` (a peça inteira, presa na mão) | 8 tipos (reserva) + 54 estilos | 62 | **sim**: `armas/estilos/<estilo>` > `armas/tipos/<tipo>` (`biblioteca.gd:84-89`) |
+| `arma` (a peça inteira, presa na mão) | 8 tipos (reserva) + 54 estilos | 62 | **sim** (07/10): PNG do estilo > `armas/estilos/<estilo>` > PNG do tipo > `armas/tipos/<tipo>`; a Corrente fica na peça de Verlet |
 | `corrente_cabo`, `corrente_elos`, `corrente_couro`, `corrente_corda` | Corrente | 4 | não: os elos são desenhados por código em `armas/tipos/corrente.gd` |
 | `corrente_cabeca` | bola_espinhos, martelo, peso, ponta, foice, dardo | 6 | não (`timeline.py:245-250`) |
-| `projetil_arma` (o que a arma atira) | faca, flecha, shuriken, chakram | 4 | sim, pelo nome (`skills/<nome>`), mas o nome é o da arma: precisa de busca por `forma` |
-| `orbe` (Mágica) | orbitando, carregando, disparando (o estado cai em `orbitando`) | 3 | sim (`skills/magica` > `objetos/orbe/arcano`) |
+| `projetil_arma` (o que a arma atira) | faca, flecha, shuriken, chakram | 4 | **sim** (07/10): o PNG pela `forma` da trilha; a cena pelo nome (`skills/<nome>`) |
+| `orbe` (Mágica) | orbitando, carregando, disparando (o estado cai em `orbitando`) | 3 | **só `orbitando`** (07/10): o PNG `orbitando` vale para os três estados; a peça ainda não troca a imagem por estado |
 | `brilho_raridade` | brilho_leve, brilho_medio, particulas, aura_dourada, chamas_miticas | 5 | não |
 | `encantamento` | os 12 de `ENCANTAMENTOS` | 12 | não (o inventário marca como bloqueado: falta dado na timeline) |
 | `rastro` | corte, estocada, esmagamento, chicote, puxada | 5 | não (hoje é uma `Line2D` na cor da arma, `palco.gd:428-445`) |
@@ -459,16 +465,16 @@ apague essa pele pelo painel (Apagar tem volta) ou à mão.
 
 ### 5.3 `skill`
 
-**Cadeia:** `skill/<nome>` → `elemento/<elemento>` → `comum` (do tipo) → arte CC0 de hoje. É exatamente a ordem que o palco já usa (`biblioteca.gd:101-107`).
+**Cadeia:** `skill/<nome>` → `elemento/<elemento>` → `comum` (do tipo) → arte CC0 de hoje. Entre o Comum e uma cena por elemento que já exista, quem ganha é a constante `ORDEM_DO_COMUM` de `palco/nucleo/biblioteca.gd` (Grimório `builds/comum-tingido-ordem`; padrão `seu-vence`: a arte do Adrian por elemento — PNG do Ateliê ou cena da Oficina, como o `objetos/projetil/fogo.tscn` — vence o Comum, e o Comum vence só a provisória CC0, reconhecida pelo script `objeto_cc0.gd`).
 
 | tipo de skill | partes | por skill | por elemento | o Godot lê hoje? |
 |---|---|---|---|---|
-| PROJETIL (34) | `projetil` | 34 | 12 | sim |
-| AREA (33) | `area_chao`, `area_borda` | 66 | 24 | o chão sim, numa imagem só; a borda separada não |
+| PROJETIL (34) | `projetil` | 34 | 12 | sim (PNG desde 07/10) |
+| AREA (33) | `area_chao`, `area_borda` | 66 | 24 | o chão sim (PNG desde 07/10); a borda separada não |
 | BEAM (6) | `feixe_corpo`, `feixe_ponta` | 12 | 24 | **não**: o feixe vai de A até B e a `folha_animada` não estica; precisa de código (a Oficina também recusa beam) |
-| SUMMON (4) | `invocacao` | 4 | 12 | sim |
-| TRAP (3) | `estrutura` | 3 | 12 | sim |
-| DASH (6) | `portal` (só o Portal Arcano cria objeto, `entities.py:1370`) | 1 | 12 | sim |
+| SUMMON (4) | `invocacao` | 4 | 12 | sim (PNG desde 07/10; o Comum sem elemento toma a `cor` da invocação) |
+| TRAP (3) | `estrutura` | 3 | 12 | sim (PNG desde 07/10; largura da trilha) |
+| DASH (6) | `portal` (só o Portal Arcano cria objeto, `entities.py:1370`) | 1 | 12 | **não** pelo PNG: o portal liga a e b e não tem posição própria (precisa de código); a cena de hoje continua |
 | BUFF, CHANNEL, TRANSFORM | vão para `camada_estado` (§5.1) | — | — | sim |
 
 **A skill não varia por estado.** O `prog` (0 a 1 da vida do objeto) e o `ativ` da área (aviso → dano) são feitos pelo Godot.
@@ -506,13 +512,15 @@ Cadeia: arena → tema (17) → padrão.
 
 ## 6. O que o Godot já lê e o que precisa de código
 
-| grupo | hoje | o que falta |
+Estado medido em 07/10/2026 (render de prova do `duelo_00091` e `palco/testes/test_partes_palco.py`). O palco lê o PNG que o Ateliê grava em `partes/` (§4); sem PNG, o desenho de antes.
+
+| grupo | o palco lê o PNG do Ateliê? | o que falta |
 |---|---|---|
-| lutador (9 partes) | **não** | um resolvedor de partes no `lutador_padrao.gd`: mesma regra do dono (§2.2), desenhar cada camada por z, `tela` sem giro e `olhar` com giro `ang` + squash (`esc_x/esc_y`), tingir a pele pela `cor`. O `rosto.gd` passa a usar a imagem da parte quando existir e o desenho de hoje quando não |
-| camada_estado | **sim** (embrulho `.tscn`) | nada |
-| arma | **sim** para a peça inteira | busca por `forma` do `projetil_arma`; peças da corrente; raridade, encantamento e rastro |
-| skill | **sim** para projétil, área (1 imagem), summon, trap e portal | feixe (beam); borda da área separada |
-| efeito | **sim** | nada |
+| lutador (9 partes) | **sim** (`palco/nucleo/partes_lutador.gd`, regra do dono §2.2) | — |
+| camada_estado | **sim** (`biblioteca.gd`, PNG antes de `lutadores/<categoria>/<nome>`; PNG que não abre cai no desenho por código) | — |
+| arma | **sim** para a peça inteira (estilo > tipo), o projétil da arma pela `forma` e o orbe em `orbitando` | a Corrente (fica a peça de Verlet; elos e cabeças são a F4); o orbe por estado (`carregando`, `disparando`); raridade, encantamento e rastro |
+| skill | **sim** para projétil, chão da área, invocação e estrutura (trap); a ordem entre o Comum e a cena por elemento é a constante `ORDEM_DO_COMUM` (Grimório `builds/comum-tingido-ordem`) | borda da área; feixe (beam: estica de a até b); portal (liga a e b) |
+| efeito | **sim** (os 17 eventos, as 31 variantes, conjuração e impacto) | — |
 | arena, hud | não | ler chão, parede, obstáculo, clima e as peças do HUD |
 
 ---

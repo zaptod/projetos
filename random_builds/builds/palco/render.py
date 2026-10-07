@@ -146,6 +146,11 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
                     "sem_hitstop_s": round(esperado / fps, 3)},
         "sons": sons_rel, "eventos": rel.get("eventos"), "pecas": rel.get("pecas"),
         "reservas": rel.get("reservas"), "avisos_godot": rel.get("avisos"),
+        # rosto do Atelie que mostrou outra carinha no lugar da pedida (a pedida
+        # nao esta desenhada): "<parte>/<nivel>/<alvo>/<vNN>" -> {pedida: usada}
+        "rosto_herdado": rel.get("rosto_herdado") or {},
+        # PNG do Atelie que nao abriu (a cadeia seguiu para o desenho de hoje)
+        "pngs_ilegiveis": rel.get("pngs_ilegiveis") or [],
         "tempo": {"godot_s": filme["segundos"], "laco_godot_ms": rel.get("laco_ms"), "encode_s": segundos_encode},
         "avi_mb": round(tamanho_avi / 2 ** 20, 1),
         "nivel": {"lufs_antes": lufs_avi, "ganho_db": round(ganho, 2)}, "medidas": medidas,

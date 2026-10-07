@@ -127,6 +127,8 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ⏳ **Corrente: quem desenha agora que a esteira desligou** — A arte da corrente nova (elos, couro/corda e as 6 cabeças) vem de você no Ateliê, ou a corrente desenhada por código já basta para trocar o duelo? `corrente-arte-atelie`
 - ⏳ **Duelo pelo palco: trocar já os que não têm corrente?** — Enquanto a corrente não fica pronta, os duelos SEM corrente (77%) já podem sair pelo palco Godot, onde aparece o que você desenha no Ateliê? `duelo-palco-sem-corrente`
 - ⏳ **Seus desenhos do Ateliê: guardar no git?** — A pasta com os desenhos que você anexa no Ateliê (palco/biblioteca/partes) entra no git ou fica só neste PC? `arte-atelie-no-git`
+- ⏳ **Desenho 'Comum' de habilidade: vale para todos os elementos?** — Quando você desenhar o projétil (ou a área) 'Comum', ele deve aparecer pintado da cor de cada elemento no lugar das artes que já existem por elemento? `comum-tingido-ordem`
+- ⏳ **Rosto desenhado só em algumas carinhas: o que aparece nas outras?** — Se você desenhar a boca (ou os olhos) só em algumas carinhas, o que o lutador mostra nas carinhas que faltam? `boca-de-uma-carinha`
 
 <!-- decisoes:fim -->
 
@@ -757,3 +759,8 @@ revisão 3 por isso). Na worktree, `PYTHONPATH=<worktree>`.
   `duelo_00031` e `duelo_00030`: mesmos quadros, mesmos golpes no mesmo
   quadro, mesmo som (0% calado); medidas em `docs/palco/README.md`. A troca do
   duelo de produção espera o nó `palco-duelo-ab`; só 9:16 (o 16:9 falta).
+  **Ponte do Ateliê (07/10):** o palco passou a ler o PNG que o Ateliê grava em
+  `palco/biblioteca/partes/` também para arma, skill, efeito e camada de estado
+  (antes só o lutador; arma anexada saía `armas/_padrao`). Regras e cadeia em
+  `docs/sprites/CONTRATO_SLOTS.md` §4; teste `palco/testes/test_partes_palco.py`;
+  prova em `E:\tmp\prova_atelie2\`. O `.palco.json` ganhou `rosto_herdado`.

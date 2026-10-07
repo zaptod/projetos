@@ -1,0 +1,227 @@
+{
+ "_origem": {
+  "area": "duelo_00091 seed 249526405",
+  "summon": "duelo_00091 seed 249526405",
+  "projetil": "duelo_00091 seed 249526405",
+  "projetil_arma": "duelo_00090 seed 1291237080",
+  "orbe": "duelo_00089 seed 559538145",
+  "trap": "duelo_00086 seed 1309408613"
+ },
+ "trilhas": {
+  "area": {
+   "id": 1,
+   "tipo": "area",
+   "nome": "Esporos Alucinógenos",
+   "dono": "p1",
+   "elemento": "NATUREZA",
+   "cor": 2659880,
+   "efeito": "CHARME",
+   "raio_max": 3.0,
+   "i0": 2,
+   "i1": 30,
+   "x": [
+    8.037,
+    8.037,
+    8.037
+   ],
+   "y": [
+    8.922,
+    8.922,
+    8.922
+   ],
+   "r": [
+    0.15,
+    0.3,
+    0.45
+   ],
+   "ativ": [
+    1,
+    1,
+    1
+   ],
+   "prog": [
+    0.033,
+    0.067,
+    0.1
+   ]
+  },
+  "summon": {
+   "id": 2,
+   "tipo": "summon",
+   "nome": "Invocação: Espírito",
+   "dono": "p2",
+   "elemento": "DEFAULT",
+   "cor": 11842815,
+   "forma": "BASICO",
+   "raio": 0.8,
+   "raio_ataque": 1.5,
+   "raio_protecao": 0.0,
+   "i0": 2,
+   "i1": 678,
+   "x": [
+    8.973,
+    8.973,
+    8.973
+   ],
+   "y": [
+    7.763,
+    7.763,
+    7.763
+   ],
+   "ang": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "hp": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "prog": [
+    0.002,
+    0.003,
+    0.005
+   ]
+  },
+  "projetil": {
+   "id": 10,
+   "tipo": "projetil",
+   "nome": "Necrose",
+   "dono": "p2",
+   "elemento": "TREVAS",
+   "cor": 9921993,
+   "efeito": "NECROSE",
+   "vida0": 3.0,
+   "i0": 278,
+   "i1": 284,
+   "x": [
+    3.379,
+    3.427,
+    3.475
+   ],
+   "y": [
+    5.282,
+    5.407,
+    5.531
+   ],
+   "r": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "ang": [
+    -290.9,
+    -290.9,
+    -290.9
+   ],
+   "prog": [
+    0.006,
+    0.011,
+    0.017
+   ]
+  },
+  "projetil_arma": {
+   "id": 5,
+   "tipo": "projetil_arma",
+   "nome": "Faca",
+   "dono": "p1",
+   "elemento": "DEFAULT",
+   "cor": 3694808,
+   "efeito": "",
+   "forma": "faca",
+   "vida0": 2.983,
+   "i0": 48,
+   "i1": 262,
+   "x": [
+    3.046,
+    3.298,
+    3.549
+   ],
+   "y": [
+    9.943,
+    9.854,
+    9.765
+   ],
+   "r": [
+    0.175,
+    0.175,
+    0.175
+   ],
+   "ang": [
+    -13.5,
+    -7.5,
+    -1.5
+   ],
+   "prog": [
+    0.0,
+    0.005,
+    0.011
+   ]
+  },
+  "orbe": {
+   "id": 1,
+   "tipo": "orbe",
+   "nome": "Mágica",
+   "dono": "p2",
+   "elemento": "ARCANO",
+   "cor": 16410298,
+   "i0": 0,
+   "i1": 42,
+   "x": [
+    8.1,
+    8.051,
+    8.009
+   ],
+   "y": [
+    9.0,
+    9.001,
+    9.005
+   ],
+   "r": [
+    0.15,
+    0.154,
+    0.158
+   ],
+   "estado": [
+    1,
+    1,
+    1
+   ]
+  },
+  "trap": {
+   "id": 11,
+   "tipo": "trap",
+   "nome": "Muro Ardente",
+   "dono": "p1",
+   "elemento": "FOGO",
+   "cor": 16739870,
+   "largura": 2.0,
+   "altura": 3.0,
+   "angulo": 0.0,
+   "bloqueia_movimento": true,
+   "i0": 201,
+   "i1": 531,
+   "x": [
+    5.205,
+    5.205,
+    5.205
+   ],
+   "y": [
+    15.505,
+    15.505,
+    15.505
+   ],
+   "hp": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "prog": [
+    0.003,
+    0.007,
+    0.01
+   ]
+  }
+ }
+}

@@ -118,7 +118,29 @@ func _parte(nome: String, expr: String) -> Dictionary:
 	var chave := nome + ":" + expr
 	if not _partes_modulares.has(chave):
 		_partes_modulares[chave] = PartesLutador.resolver(nome, nome_personagem, classe_personagem, expr)
+		_anotar_heranca(nome, expr, _partes_modulares[chave])
 	return _partes_modulares[chave]
+
+
+## A peca do rosto achada mostra outra carinha (o representante ou o neutro)
+## porque a pedida nao foi desenhada: o palco junta isso no relatorio
+## (`rosto_herdado`), para o Adrian saber quais expressoes faltam.
+func _anotar_heranca(nome: String, expr: String, parte: Dictionary) -> void:
+	if parte.is_empty() or not PartesLutador.PARTES_DE_EXPRESSAO.has(nome):
+		return
+	var usada := str(parte.get("estado", expr))
+	if usada == expr:
+		return
+	var palco = _ctx.get("palco")
+	var anotacoes = palco.get("rosto_herdado") if palco != null else null
+	if typeof(anotacoes) != TYPE_DICTIONARY:
+		return
+	var pasta := str(parte.get("caminho", "")).get_base_dir()
+	var i := pasta.find("partes/lutador/")
+	var dono := pasta.substr(i + 15) if i >= 0 else pasta
+	if not anotacoes.has(dono):
+		anotacoes[dono] = {}
+	anotacoes[dono][expr] = usada
 
 
 ## A textura da peca, lida do disco UMA vez por lutador (o _draw roda a cada
