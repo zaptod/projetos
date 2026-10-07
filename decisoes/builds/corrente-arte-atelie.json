@@ -3,7 +3,15 @@
   "contexto": "Você tinha decidido 'arte da corrente pela esteira de sprites', mas a esteira foi desligada e agora quem desenha é você no Ateliê. A mecânica nova (bola física com momento) está pronta e desligada; a vitrine compara a antiga com a nova na mesma luta. A corrente aparece em 23% dos duelos (21 de 91).",
   "criado": "2026-10-07T10:07:40.818629",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-07T16:03:53",
+      "opcao": "codigo-agora",
+      "origem": "app"
+    }
+  ],
   "id": "corrente-arte-atelie",
   "midias": [
     {
@@ -29,7 +37,11 @@
   ],
   "pergunta": "A arte da corrente nova (elos, couro/corda e as 6 cabeças) vem de você no Ateliê, ou a corrente desenhada por código já basta para trocar o duelo?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Corrente: quem desenha agora que a esteira desligou",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-07T16:03:53",
+    "opcao": "codigo-agora"
+  }
 }
