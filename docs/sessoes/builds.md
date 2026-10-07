@@ -126,6 +126,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Recortador: par de olhos desenhado de frente** — Separar o par e pôr cada olho no seu lugar (recomendado) (06/10/2026) `recortador-par-de-olhos`
 - ⏳ **Corrente: quem desenha agora que a esteira desligou** — A arte da corrente nova (elos, couro/corda e as 6 cabeças) vem de você no Ateliê, ou a corrente desenhada por código já basta para trocar o duelo? `corrente-arte-atelie`
 - ⏳ **Duelo pelo palco: trocar já os que não têm corrente?** — Enquanto a corrente não fica pronta, os duelos SEM corrente (77%) já podem sair pelo palco Godot, onde aparece o que você desenha no Ateliê? `duelo-palco-sem-corrente`
+- ⏳ **Seus desenhos do Ateliê: guardar no git?** — A pasta com os desenhos que você anexa no Ateliê (palco/biblioteca/partes) entra no git ou fica só neste PC? `arte-atelie-no-git`
 
 <!-- decisoes:fim -->
 

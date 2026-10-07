@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Hoje ela está fora do git: se o disco E: der problema, os desenhos somem, e as cópias de trabalho do Codex não enxergam a pasta (renderizam sem suas peças). O repositório vai ser mostrado a outras pessoas.",
+  "criado": "2026-10-07T10:07:45.102443",
+  "depende_de": [],
+  "historico": [],
+  "id": "arte-atelie-no-git",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Seus desenhos ficam com histórico e backup; quem vê o repositório vê seus desenhos",
+      "id": "git",
+      "pede_comentario": false,
+      "rotulo": "Guardar no git (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Fica fora do git; faço uma cópia de segurança automática para outra pasta",
+      "id": "so-pc",
+      "pede_comentario": false,
+      "rotulo": "Só no PC"
+    }
+  ],
+  "pergunta": "A pasta com os desenhos que você anexa no Ateliê (palco/biblioteca/partes) entra no git ou fica só neste PC?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Seus desenhos do Ateliê: guardar no git?",
+  "vigente": null
+}
