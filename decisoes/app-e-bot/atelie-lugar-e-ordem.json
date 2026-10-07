@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-4d3fc3ba",
+      "em": "2026-10-07T16:05:59",
+      "evento": "2026-10-07T16:05:56",
+      "linha": 145,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "proprio",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Hoje o Ateliê fica dentro de ⚔️ Arena › aba Ateliê, e o 'Recortar folha' está abaixo de todos os cartões (umas 2 telas de rolagem). O 'Ateliê antigo (animação de lado)' continua no fim da tela.",
   "criado": "2026-10-07T11:18:35.919520",
   "depende_de": [],
