@@ -1073,9 +1073,11 @@ class VigiaTrabalho:
                        "nó criado pelo vigia de trabalho do coordenador)").strip()
         brutas = [{"id": str(o.get("id") or ""), "rotulo": str(o["rotulo"]).strip()[:80],
                    "descricao": str(o.get("descricao") or "").strip()[:300]} for o in opcoes]
+        pedido = re.fullmatch(r"(pedido-[0-9a-f]+)(?:-\d+)?", did)
         try:
             item, _ = self.decisoes.adicionar_e_commitar(projeto, titulo, pergunta, brutas,
-                                                         contexto=contexto_no)
+                                                         contexto=contexto_no,
+                                                         pedido=pedido.group(1) if pedido else "")
         except Exception as exc:                              # noqa: BLE001
             self.avisar(f"❔ não consegui criar o nó da dúvida de {did}: {exc}")
             return

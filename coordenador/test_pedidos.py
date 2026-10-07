@@ -166,6 +166,7 @@ def test_pedido_cria_orquestrador_com_o_texto(mesa):
     ident, kw, tarefa = mesa.despachante.criados[0]
     assert ident == p["id"] and kw["ia"] == "claude" and kw["cargo"] == "orquestrador"
     assert "corrija a tela do Agora" in tarefa
+    assert f"--pedido {p['id']}" in tarefa
     assert mesa.despachante.fundos == [["rodar", "--id", p["id"]]]
     assert _pedido(mesa)["situacao"] == "trabalhando"
 
@@ -355,8 +356,7 @@ def test_pergunta_de_estado_fica_com_o_cerebro():
                                    "progresso ao vivo e a resposta final do conferente " * 3)
 
 
-def test_resposta_do_grimorio_vira_pedido_e_fica_lida(mesa):
-    """04/10/2026: "Por que nao tem ninguem lendo as decisoes?"."""
+def test_resposta_do_grimorio_sem_origem_fica_lida_sem_abrir_pedido(mesa):
     eventos = [{"id": "arquivo-de-videos", "projeto": "geral", "titulo": "Liberar espaço",
                 "opcao": "drive-desktop", "opcao_rotulo": "Google Drive para computador",
                 "comentario": "", "lida": False}]
@@ -371,11 +371,11 @@ def test_resposta_do_grimorio_vira_pedido_e_fica_lida(mesa):
     mesa.grimorio = (lambda: [e for e in eventos if not e["lida"]], marcar, lambda: itens)
     mesa.passo()
     assert marcados and marcados[0][0] == "geral/arquivo-de-videos"
-    p = _pedido(mesa)
-    assert marcados[0][1] == [f"tarefa:{p['id']}"]
-    assert "Google Drive para computador" in p["texto"] and "move para o G:" in p["texto"]
-    assert p["origem"] == "grimorio"
-    assert mesa.despachante.criados[0][1]["cargo"] == "orquestrador"
+    assert marcados[0][1] == ["nada"]
+    assert mesa.para_o_app()["pedidos"] == []
+    assert mesa.despachante.criados == []
+    assert mesa.para_o_app()["grimorio_sem_origem"][0]["texto"] == (
+        "resposta sem pedido de origem: geral/arquivo-de-videos = Google Drive para computador")
     mesa.passo()                                   # ja lida: nao cria de novo
     assert len(marcados) == 1
 
@@ -595,10 +595,52 @@ def test_marca_grimorio_na_resposta_espera_e_a_resposta_volta_ao_mesmo(mesa):
     marcados = _grimorio(mesa, eventos, {"qual-voz": {"opcoes": []}, "outra": {"opcoes": []}})
     mesa.passo()
     lista = mesa.para_o_app()["pedidos"]
-    assert len(lista) == 2                      # so a OUTRA resposta abriu pedido novo
+    assert len(lista) == 1                      # a OUTRA resposta nao abre pedido novo
     assert marcados[0][:2] == ("historias/qual-voz", [f"tarefa:{p['id']}"])
     assert mesa.despachante.fundos[1][:3] == ["corrigir", "--id", p["id"]]
     assert "A grave" in _pedido(mesa, p["id"])["texto"]
+
+
+def test_resposta_com_origem_retoma_o_mesmo_pedido_sem_novo_delegado(mesa):
+    p = mesa.registrar("me explique qual voz usar")
+    mesa.passo()
+    mesa.despachante.estados[p["id"]]["thread_id"] = "t1"
+    mesa.despachante.terminar(p["id"], arquivos=0, aplicado=False,
+                              resposta="GRIMÓRIO: historias/qual-voz")
+    mesa.passo()
+    eventos = [{"id": "qual-voz", "projeto": "historias", "titulo": "Qual voz",
+                "opcao": "grave", "opcao_rotulo": "A grave", "comentario": "",
+                "em": "2026-10-03T10:30:00", "lida": False}]
+    itens = {"qual-voz": {"origem": {"pedido": p["id"]}, "opcoes": []}}
+    marcados = _grimorio(mesa, eventos, itens)
+    antes = len(mesa.despachante.criados)
+    mesa.passo()
+    assert len(mesa.para_o_app()["pedidos"]) == 1
+    assert marcados[0][:2] == ("historias/qual-voz", [f"tarefa:{p['id']}"])
+    assert len(mesa.despachante.criados) == antes
+
+
+def test_mesmo_evento_com_origem_so_anota_uma_vez(mesa):
+    p = mesa.registrar("corrija o defeito X do app")
+    with pedidos._TRAVA:
+        dados = pedidos._ler()
+        dados["pedidos"][0]["situacao"] = "respondido"
+        pedidos._gravar(dados)
+    evento = {"id": "decisao", "projeto": "geral", "opcao": "sim",
+              "opcao_rotulo": "Sim", "comentario": "", "em": "2026-10-03T10:30:00",
+              "n": 9, "lida": False}
+    itens = {"decisao": {"origem": {"pedido": p["id"]}, "opcoes": []}}
+    marcados = []
+    mesa.grimorio = (lambda: [evento],
+                     lambda ref, gerou, nota="", origem="leitor": marcados.append((ref, gerou)),
+                     lambda: itens)
+    mesa.ler_grimorio()
+    mesa.ler_grimorio()
+    atual = _pedido(mesa, p["id"])
+    assert len(atual["respostas_grimorio"]) == 1
+    assert sum("Resposta do Adrian no Grimório" in c["texto"]
+               for c in mesa.para_o_app()["conversa"]) == 1
+    assert mesa.despachante.criados == [] and len(marcados) == 2
 
 
 def test_continuacao_do_adrian_acorda_o_pedido_que_esperava_o_grimorio(mesa):

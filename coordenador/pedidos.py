@@ -605,6 +605,11 @@ def _texto_da_resposta(ref, rotulo, descricao="", comentario="", *, ja_dada=Fals
             + (f"\nComentário dele: {comentario}" if comentario else ""))
 
 
+def _chave_da_resposta_do_grimorio(ev):
+    return "/".join([str(ev.get("projeto") or ""), str(ev.get("id") or ""),
+                     str(ev.get("em") or ""), str(ev.get("n") or ev.get("linha") or "")])
+
+
 _BLOCO_EVENTOS = 256_000
 _TETO_EVENTOS = 64_000_000
 
@@ -1866,7 +1871,9 @@ class MesaPedidos:
         if self._estado_do(ident) is None:
             corpo = ("# PEDIDO do Adrian (" + ("Telegram" if pedido.get("origem") == "telegram"
                                                  else "app") + ")\n\n"
-                     + self._corpo_do_pedido(pedido) + "\n\n" + _COMO_RESPONDER)
+                     + self._corpo_do_pedido(pedido) + "\n\n"
+                     + "Se criar um nó no Grimório para este pedido, passe `--pedido "
+                     + pedido["id"] + "` no comando `decisoes adicionar`.\n\n" + _COMO_RESPONDER)
             if ia == "codex":
                 # o Codex nao recebe o prompt do cargo: vai junto com a tarefa
                 try:
@@ -2146,7 +2153,7 @@ class MesaPedidos:
                 return pedido
         return None
 
-    def _retomar_com_resposta(self, ev, no, opcao, extra=""):
+    def _retomar_com_resposta(self, ev, no, opcao, extra="", pedido_origem=""):
         """A resposta do Adrian volta ao MESMO pedido, como continuacao.
 
         Lacuna 2 (05/10/2026): cada resposta virava um pedido NOVO, e o
@@ -2154,12 +2161,24 @@ class MesaPedidos:
         servidor ja fez com a escolha (a `acao_servidor` executada)."""
         with _TRAVA:
             dados = _ler()
-            pedido = self._pedido_esperando(dados, ev.get("projeto"), ev["id"])
+            pedido = next((p for p in dados["pedidos"] if p.get("id") == pedido_origem), None) \
+                if pedido_origem else self._pedido_esperando(dados, ev.get("projeto"), ev["id"])
             if pedido is None:
                 return None
-            ref = pedido.get("grimorio_ref")
+            ref = pedido.get("grimorio_ref") or f"{ev.get('projeto')}/{ev['id']}"
             texto = _texto_da_resposta(ref, ev.get("opcao_rotulo") or ev.get("opcao"),
                                        opcao.get("descricao"), ev.get("comentario"))
+            chave = _chave_da_resposta_do_grimorio(ev)
+            respostas = list(pedido.get("respostas_grimorio") or [])
+            if any(r.get("chave") == chave for r in respostas):
+                return pedido["id"]
+            if pedido.get("situacao") != "esperando_voce":
+                respostas.append({"chave": chave, "texto": texto, "em": _iso()})
+                pedido["respostas_grimorio"] = respostas[-20:]
+                _linha(dados, pedido, texto, de="adrian", origem="grimorio", tipo="progresso")
+                _linha(dados, pedido, "a resposta do Grimório foi anotada neste pedido já fechado")
+                _gravar(dados)
+                return pedido["id"]
             # a `resposta_cobrada` fica (conferente hf1): a cobranca pode ter
             # virado pergunta ao Grimorio; a original vai junto no fim
             pedido["desfecho_cobrado"] = False
@@ -2921,12 +2940,28 @@ class MesaPedidos:
             _linha(dados, pedido, "em espera: " + motivo)
 
     # ------------------------------------------------------------ pulso
-    def ler_grimorio(self, leitor=None, marcar=None, carregar=None):
-        """Cada resposta NAO LIDA do Grimorio vira um pedido para um orquestrador do
-        servidor, e a resposta fica marcada como lida apontando para ele.
+    def _anotar_sem_pedido_de_origem(self, ev, opcao):
+        ref = f"{ev.get('projeto')}/{ev['id']}"
+        rotulo = ev.get("opcao_rotulo") or opcao.get("rotulo") or ev.get("opcao") or "?"
+        texto = f"resposta sem pedido de origem: {ref} = {rotulo}"
+        chave = _chave_da_resposta_do_grimorio(ev)
+        with _TRAVA:
+            dados = _ler()
+            linhas = list(dados.get("grimorio_sem_origem") or [])
+            if any(l.get("chave") == chave for l in linhas):
+                return texto
+            linhas.append({"chave": chave, "texto": texto, "em": _iso()})
+            dados["grimorio_sem_origem"] = linhas[-40:]
+            dados["conversa"].append({"id": uuid.uuid4().hex[:12], "em": _iso(),
+                                      "pedido": None, "de": "orquestrador",
+                                      "origem": "grimorio", "tipo": "progresso",
+                                      "texto": texto})
+            dados["conversa"] = dados["conversa"][-400:]
+            _gravar(dados)
+        return texto
 
-        04/10/2026, o Adrian: "Por que nao tem ninguem lendo as decisoes?". Quem lia
-        era so a sessao do VS Code: fechada ela, a resposta ficava parada."""
+    def ler_grimorio(self, leitor=None, marcar=None, carregar=None):
+        """Le as respostas do Grimorio sem inventar pedidos novos."""
         if leitor is None or marcar is None or carregar is None:
             if self.grimorio is None:
                 return []
@@ -2944,13 +2979,15 @@ class MesaPedidos:
                 # contratado e nenhuma frase e interpretada
                 criados.append(self._acao_do_grimorio(ev, no, opcao, ref, marcar))
                 continue
-            # Lacuna 2: um pedido PERGUNTOU isto e esta parado esperando: a
-            # resposta volta a ele, e nao abre um pedido novo
-            retomado = self._retomar_com_resposta(ev, no, opcao)
+            origem = no.get("origem") if isinstance(no.get("origem"), dict) else {}
+            pedido_origem = str(origem.get("pedido") or "").strip()
+            # A origem aponta para o pedido logico, nao para a tentativa do
+            # trabalhador: uma resposta nunca abre `pedido-xxxx-1` novo.
+            retomado = self._retomar_com_resposta(ev, no, opcao, pedido_origem=pedido_origem)
             if retomado:
                 try:
                     marcar(ref, [f"tarefa:{retomado}"],
-                           nota="lida pelo servidor; voltou ao pedido que esperava a decisão",
+                           nota="lida pelo servidor; voltou ao pedido de origem",
                            origem="leitor")
                 except Exception as exc:                      # noqa: BLE001
                     with _TRAVA:
@@ -2961,25 +2998,14 @@ class MesaPedidos:
                             _gravar(dados)
                 criados.append(retomado)
                 continue
-            texto = (f"O Adrian respondeu no Grimório ({ev.get('projeto')}/{ev['id']}): "
-                     f"«{ev.get('titulo') or no.get('titulo')}»\n"
-                     f"Pergunta: {no.get('pergunta') or ''}\n"
-                     f"Escolheu: {ev.get('opcao_rotulo') or ev.get('opcao')} — {opcao.get('descricao') or ''}\n"
-                     + (f"Comentário dele: {ev['comentario']}\n" if ev.get("comentario") else "")
-                     + f"Contexto do nó: {no.get('contexto') or ''}\n\n"
-                     "APLIQUE a escolha: faça o que ela pede (ou contrate quem faça), confira e "
-                     "responda curto. Se já estiver feito, confirme e encerre. Se a escolha precisar "
-                     "de algo que só ele faz (login, conta), diga exatamente o quê.")
-            pedido = self.registrar(texto, "grimorio", novo=True)
+            texto = self._anotar_sem_pedido_de_origem(ev, opcao)
             try:
-                marcar(ref, [f"tarefa:{pedido['id']}"],
-                       nota="lida pelo servidor; virou pedido ao orquestrador", origem="leitor")
+                marcar(ref, ["nada"], nota=texto, origem="leitor")
             except Exception as exc:                          # noqa: BLE001
                 with _TRAVA:
                     dados = _ler()
-                    _linha(dados, pedido, f"não consegui marcar {ref} como lida: {exc}")
+                    dados["grimorio_sem_origem"][-1]["erro"] = str(exc)[:200]
                     _gravar(dados)
-            criados.append(pedido["id"])
         return criados
 
     def _acao_do_grimorio(self, ev, no, opcao, ref, marcar):
@@ -3017,7 +3043,9 @@ class MesaPedidos:
         self._registrar_no_diario("ok" if ok else "erro", f"{ref}: {comando}: {feito}", ref=ref)
         resultado = (f"O servidor executou `{comando}` e conferiu: {feito}" if ok else
                      f"O servidor NÃO conseguiu `{comando}`: {feito}")
-        retomado = self._retomar_com_resposta(ev, no, opcao, extra=resultado)
+        origem = no.get("origem") if isinstance(no.get("origem"), dict) else {}
+        retomado = self._retomar_com_resposta(
+            ev, no, opcao, extra=resultado, pedido_origem=str(origem.get("pedido") or "").strip())
         with _TRAVA:
             dados = _ler()
             if retomado:
@@ -3260,6 +3288,7 @@ class MesaPedidos:
                                  "reserva": True, "texto": str(p.get("resposta") or ""),
                                  "pode_passar": p["id"] in livres})
         return {"pedidos": pedidos, "conversa": conversa,
+                "grimorio_sem_origem": list(dados.get("grimorio_sem_origem") or []),
                 "novo_assunto": bool(dados.get("novo_assunto")),
                 "na_fila": sum(1 for p in pedidos if p.get("situacao") in VIVOS)}
 

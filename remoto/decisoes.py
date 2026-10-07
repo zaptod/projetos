@@ -434,7 +434,8 @@ def _dependencias(brutas, itens: dict) -> list[dict]:
 
 def adicionar(projeto: str, titulo: str, pergunta: str, opcoes, midias=(), *,
               id: str | None = None, contexto: str = "", comentario: bool = True,
-              depende_de=(), copiar: bool = False) -> dict:
+              depende_de=(), copiar: bool = False, pedido: str = "",
+              tipo_origem: str = "manual") -> dict:
     """Registra uma decisao nova e regenera a arvore. Nao commita."""
     if projeto not in PROJETOS:
         raise Recusa(f"projeto desconhecido: {projeto} ({', '.join(PROJETOS)})")
@@ -448,6 +449,9 @@ def adicionar(projeto: str, titulo: str, pergunta: str, opcoes, midias=(), *,
             raise Recusa(f"id inválido: {item_id}")
         if item_id in itens:
             raise Recusa(f"já existe uma decisão com o id {item_id}")
+        pedido = str(pedido or "").strip()
+        if tipo_origem not in ("chat", "manual"):
+            raise Recusa("tipo de origem desconhecido")
         item = {"id": item_id, "projeto": projeto, "titulo": titulo,
                 "pergunta": str(pergunta or "").strip(),
                 "contexto": str(contexto or "").strip(),
@@ -456,6 +460,7 @@ def adicionar(projeto: str, titulo: str, pergunta: str, opcoes, midias=(), *,
                 "comentario": bool(comentario),
                 "depende_de": _dependencias(depende_de, itens),
                 "situacao": "pendente", "vigente": None, "historico": [],
+                "origem": {"pedido": pedido} if pedido else {"tipo": tipo_origem},
                 # Com microssegundos: a arvore e o README seguem a ordem em que
                 # as decisoes nasceram, e as de um mesmo segundo empatariam.
                 "criado": datetime.now().isoformat(timespec="microseconds")}
@@ -751,7 +756,12 @@ def leitor(*, todos: bool = False, projeto: str | None = None,
         if projeto and evento.get("projeto") != projeto:
             continue
         lida = _lida(evento, itens)
-        if lida and not todos:
+        sem_origem = any(str(c.get("nota") or "").startswith(
+            "resposta sem pedido de origem:")
+            for c in (itens.get(evento["id"]) or {}).get("consequencias") or []
+            if c.get("evento") == evento["em"]
+            and int(c.get("linha") or evento["n"]) == evento["n"])
+        if lida and not todos and not sem_origem:
             continue
         registro = dict(evento, lida=lida, **_sinais(evento, itens))
         if todos:
@@ -1330,6 +1340,8 @@ def main(argv=None) -> int:
                      help='"decisao=opcao" (repita)')
     add.add_argument("--sem-comentario", action="store_true")
     add.add_argument("--id", default=None)
+    add.add_argument("--pedido", default="",
+                     help="id do pedido da Mesa que originou este no")
     add.add_argument("--commit", action="store_true", help="commita por caminho")
     lista = sub.add_parser("listar")
     lista.add_argument("--projeto", choices=PROJETOS)
@@ -1380,7 +1392,8 @@ def main(argv=None) -> int:
         if args.comando == "adicionar":
             opcoes = dict(id=args.id, contexto=args.contexto,
                           comentario=not args.sem_comentario,
-                          depende_de=args.depende, copiar=args.copiar)
+                          depende_de=args.depende, copiar=args.copiar,
+                          pedido=args.pedido)
             if args.commit:
                 item, desfecho = adicionar_e_commitar(
                     args.projeto, args.titulo, args.pergunta, args.opcao, args.midia,

@@ -93,6 +93,15 @@ def test_caso_zero_sem_eventos_o_leitor_nao_inventa(mundo, capsys):
         D.marcar("palco", ["nada"])
 
 
+def test_resposta_sem_pedido_de_origem_lida_ainda_aparece_ao_chat(mundo):
+    D.adicionar("builds", "Cor do palco", "Qual cor?", ["azul=Azul"], id="cor")
+    D.responder("cor", "azul", commitar=False)
+    D.marcar("cor", ["nada"],
+             nota="resposta sem pedido de origem: builds/cor = Azul", commitar=False)
+    (evento,) = D.leitor()
+    assert evento["id"] == "cor" and evento["lida"] is True
+
+
 # ========================================================== os tres sinais
 def test_comentario_livre_precisa_de_leitura(mundo, capsys):
     _arvore()

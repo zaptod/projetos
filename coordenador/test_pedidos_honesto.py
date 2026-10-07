@@ -730,13 +730,14 @@ def test_deixar_desligado_desliga_mesmo_com_o_contexto_falando_de_paralelo(mesa,
     assert delegados.ler_config()["delegados_paralelo"] == 1
 
 
-def test_opcao_sem_acao_continua_virando_pedido(mesa, delegados):
+def test_opcao_sem_acao_e_sem_origem_nao_vira_pedido(mesa, delegados):
+    # Uma porta so (07/10/2026): resposta sem pedido de origem nao contrata ninguem.
     opcoes = [dict(o) for o in OPCOES_GERENTE]
     opcoes[0].pop("acao_servidor")
     Grimorio(opcoes).ligar(mesa).responder("ligar")
     mesa.passo()
     assert delegados.ler_config()["gerente_ligado"] is False
-    assert len(mesa.despachante.criados) == 1                         # um orquestrador
+    assert len(mesa.despachante.criados) == 0
 
 
 def test_acao_invalida_no_no_falha_sem_rodar(mesa, delegados):

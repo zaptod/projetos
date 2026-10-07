@@ -257,6 +257,20 @@ def test_eventos_uma_linha_por_resposta(mundo):
     assert D.caminho_eventos() == mundo.repo / "decisoes" / "_eventos.jsonl"
 
 
+def test_adicionar_guarda_a_origem_do_pedido_ou_manual(mundo):
+    no = D.adicionar("builds", "Decidir voz", "Qual?", ["sim=Sim"], id="voz",
+                     pedido="pedido-1234abcd")
+    manual = D.adicionar("builds", "Decidir cor", "Qual?", ["sim=Sim"], id="cor")
+    chat = D.adicionar("builds", "Decidir luz", "Qual?", ["sim=Sim"], id="luz",
+                       tipo_origem="chat")
+    assert no["origem"] == {"pedido": "pedido-1234abcd"}
+    assert manual["origem"] == {"tipo": "manual"}
+    assert chat["origem"] == {"tipo": "chat"}
+    assert D.main(["adicionar", "--projeto", "builds", "--titulo", "Pelo pedido",
+                   "--opcao", "Sim", "--id", "pelo-pedido", "--pedido", "pedido-1234abcd"]) == 0
+    assert D.carregar()["pelo-pedido"]["origem"] == {"pedido": "pedido-1234abcd"}
+
+
 # ============================================================ os textos
 def test_bloco_da_sessao_e_regenerado_sem_mexer_no_resto(mundo):
     D.adicionar("geral", "Modo de trabalho", "?", ["um=Um projeto por vez"], id="modo")
