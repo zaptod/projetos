@@ -179,9 +179,10 @@ duas vezes: a 1ª com o som da esquerda, a 2ª com o da direita (46,6 s).
 - **Lacunas da timeline v1** (docs/palco/timeline.md): choque de projéteis, fim
   do projétil e o motivo, texto flutuante, eventos de movimento (pulo,
   aterrissagem, knockback). O palco usa o que existe.
-- **16G, o que falta:** o perfil 16:9 (o palco só desenha 9:16), trocar o
-  duelo de produção, o palco na geração, e medir o render com a sessão
-  bloqueada. Só depois da aprovação do Adrian (nó `palco-duelo-ab`).
+- **16G, o que falta:** o perfil 16:9 (o palco só desenha 9:16), LIGAR a
+  chave do duelo de produção (pronta e desligada desde 07/10, seção abaixo;
+  decisão do Adrian no nó `duelo-palco-sem-corrente`) e medir o render com a
+  sessão bloqueada (não testado: o Adrian estava usando o PC).
 
 ## 16G, primeira metade: o A/B com a edição (30/09/2026)
 
@@ -215,3 +216,106 @@ O clipe do pygame tem 3-4 quadros a menos do que declara (o renderer repete o
 último); o do palco tem o que o corte pede. O som do B é o mesmo mix do A
 (`luta.sons` pelo mesmo `som_da_luta`): sem hitstop nestes dois, o que muda
 no A/B é só o desenho.
+
+## 16G, segunda metade: o duelo de produção pelo palco (07/10/2026)
+
+Pronto e **DESLIGADO**. A chave é `random_builds/config/palco.json →
+producao.duelo_celular`:
+
+| valor | o `final_celular.mp4` do duelo sai |
+|---|---|
+| `"desligado"` (padrão; qualquer valor desconhecido ou config ilegível também) | pelo pygame, como sempre |
+| `"sem_corrente"` | pelo palco se NENHUM lutador usa arma do tipo Corrente; com corrente (ou arma que o banco não conhece), pelo pygame |
+| `"todos"` | pelo palco |
+
+Só o 9:16 (110 de 110 publicações de duelo são celular); o `final_normal.mp4`
+continua no pygame. Nos 91 duelos do disco, `sem_corrente` mandaria 70 (77%)
+pelo palco e 21 ficariam no pygame.
+
+**Como.** `PipelineController._entregar_duelo` (duelo novo, `--rerender` e o
+`som-da-luta` no lugar passam por ele; o `som-da-luta --destino` numa cópia
+segue no pygame) pergunta à chave antes de renderizar o celular. Ligada, `builds/palco/producao.py` monta o B com o MESMO miolo do A/B
+(`edicao.montar_sobre_o_palco`) em `<duelo>/palco/`, mede e só então troca:
+primeiro `_segments_celular/` (que a guarda da luta muda da publicação mede),
+depois o mp4 por `os.replace`. Reprovou ou quebrou (Godot, import, re-simulação
+que não bate, guarda): o AVI e os mp4 do B são apagados, o motivo vai para
+`<duelo>/palco_celular.json` e para o diário (status `log`, que não dispara a
+apuração) e o celular sai pelo pygame. **O duelo nunca deixa de sair por causa
+do palco.** Prévia (`--preview`) nunca vai pelo palco.
+
+**Guardas do B** (falhou uma, fica o pygame): a luta re-simulada bate com o
+`fight.json` (vencedor, duração); a conferência do render (quadros, faixa,
+volume, quadro liso, hitstop Python = Godot); o composto não caiu no
+transcode simples; todo momento de golpe do A no mesmo quadro do B e
+vice-versa; K.O. no mesmo quadro; duração da IMAGEM = A + hitstop, com folga de
+`folga_quadros` (3); nenhum trecho preto; congelado só depois do K.O.; o
+trecho de luta e o arquivo inteiro passam pela régua da publicação
+(`publicar.audio.medir`); o trecho calado no máximo `limite_calado` (25%).
+
+A 1ª versão media a duração do ARQUIVO e barrou um B perfeito: a faixa de
+áudio passa ~0,1 s do último quadro (no A também: `duelo_00091` com 840
+quadros = 28,0 s e arquivo de 28,1 s). A guarda mede quadros/30.
+
+**Prova** (`E:\tmp_pytest\ab_0710\`, cópias fora do catálogo; o
+`_entregar_duelo` de verdade com a chave forçada só no processo; palco da
+worktree, sem as peças do Ateliê, que outra sessão estava ligando):
+
+| | `duelo_00091` (Dupla × Dupla), `sem_corrente` | `duelo_00090` (Arremesso × Corrente) | duelo NOVO (gravar + entregar), 22 s |
+|---|---|---|---|
+| saiu por | palco | `sem_corrente`: pygame ("corrente: Vex Fylermar (Acieloth)"); `todos`: palco | palco |
+| quadros A / B | 840 / 855 (palco 856; hitstop 16 = 0,533 s) | 840 / 858 (hitstop 18 = 0,6 s) | — / 660 (hitstop 19) |
+| golpes no mesmo quadro | 33 de 33 (maior diferença 0,004 s) | 50 de 50 (0) | 36 de 36 (0) |
+| K.O. A / B (relógio sem hitstop) | 24,5 / 24,5 s | 24,5 / 24,5 s | 17,87 / 17,867 s |
+| trecho de luta A → B | -17,8 → -17,8 LUFS; -15,2 → -15,3 dB; 0% → 0% calado | -16,7 → -16,7; -13,8 → -13,8; 0% → 0% | -17,8 LUFS, -14,9 dB, 0% |
+| vídeo inteiro A → B | -16,8 → -16,6 LUFS | -15,4 → -15,5 | -16,7 |
+| preto / congelado | nenhum / A 25,96 s e B 27,59 s até o fim (depois do K.O.) | nenhum / A 27,06 s e B 27,62 s | nenhum / 21,02 s (K.O. 18,47) |
+| tempo do palco | 182 s (timeline 3, Godot 87, x264 34, edição 51, medidas 3) | 208 s (2 / 91 / 40 / 60 / 4) | 129 s; o duelo inteiro 3,6 min |
+
+O B tem 1 quadro a menos que o clipe do palco no `00091` (855 × 856): a edição
+arredonda a duração para 3 casas (28,533 × 30 = 855,99) e o último quadro, já
+parado depois do K.O., cai. Dentro da folga. A primeira passada da prova
+(10:21, antes do conserto da guarda de duração) caiu no pygame sozinha — o
+caminho de falha também foi exercido de verdade.
+
+**Reserva da geração:** `geracao.json → minutos_por_duelo_palco` = 8 (o
+duelo do pygame segue com 5), só com a chave ligada (`noite.minutos_por_duelo`).
+
+**Peso:** `<duelo>/palco/` fica com o clipe do palco (19 MB para 28 s), a
+timeline, o plano B e as medidas — ~0,9 GB por semana de lote no E:.
+
+### Depois da conferência (07/10, tarde)
+
+- **Nome por trás do veredito.** A placa do palco ficava atrás do nome grande
+  do vencedor. O job ganhou `nomes_ate_quadro` (o quadro do B em que o
+  veredito da edição entra, `edicao.quadro_do_veredito`, arredondado para
+  baixo): `palco.gd` esconde as placas dali em diante e devolve o campo no
+  relatório; o render CONFERE (palco.gd sem o campo = erro, e o celular cai
+  no pygame). Não dá para fazer só pela edição: a placa está no pixel do
+  clipe. Vale também para o `palco ab --edicao`.
+- **Cor da placa.** Era a do lado (azul p1, salmão p2) e o HUD da edição usa a
+  do lutador. A timeline do duelo ganha `cor_nome` = `cor` do lutador
+  (`edicao.nomes_na_cor_do_lutador`) e o `palco.gd` usa `cor_nome` se houver;
+  o anel continua no `cor_lado`.
+- **Falha silenciosa.** Cada falha segue `log` no diário; com
+  `producao.falhas_para_avisar` (3) falhas SEGUIDAS sai UM `erro` (o bot
+  avisa) com o motivo da última, e um duelo que passa pelo palco zera a conta
+  (com `ok` "palco voltou" se tinha avisado). Estado em
+  `<runtime>/palco_producao.json`. Duelo com corrente não conta.
+- **Restos.** Chave voltando a `desligado` (ou duelo com corrente no
+  `sem_corrente`) apaga `<duelo>/palco/` junto do `palco_celular.json`.
+- **Godot ausente** falha antes de re-simular a luta (`config.godot` e
+  `config.projeto` primeiro): na conferência levava 5,5 s para descobrir.
+- **`folha_animada.gd`** (a peça que a Oficina exporta; o fogo do Adrian) fazia
+  `float()` de lista nos canais da trilha: SCRIPT ERROR a cada projétil. Agora
+  `_numero()`, como o `peca_png.gd` da ponte; teste em
+  `palco/testes/test_folha_animada.py` (falha com o arquivo antigo).
+
+A/B de novo (13:00, palco de a5296e6 + estes consertos, `duelo_00091`,
+`E:\tmp_pytest\ab_0710\duelo_00091_sem_corrente{,_palco_atelie}\`): sem peças e
+com peças de TESTE do Ateliê numa cópia da biblioteca (garras magenta, sai
+verde, acerto/K.O. em estrela, invocação ciano, e a pele do Adrian). Os dois
+pelo palco: 33/33 golpes no mesmo quadro, K.O. 24,5/24,5 s, 855 quadros,
+trecho de luta -17,8 LUFS e 0% calado como o A, nomes escondidos no quadro 819
+(relatório do Godot confirma), nenhum aviso do Godot. Com peças, o relatório
+lista 8 lugares servidos por `partes/` (as duas armas, 3 acertos, K.O., 2
+invocações). Palco 282 s (Godot 165 s, com import) e 190 s (Godot 77 s).

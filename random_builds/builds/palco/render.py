@@ -46,7 +46,9 @@ def _ler_json(caminho: Path) -> dict:
 def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False,
                quadros: int | None = None, remapeamento: list | None = None,
                sons_da_luta: list | None = None, cfg: dict | None = None,
-               manter_avi: bool = False) -> dict:
+               manter_avi: bool = False, nomes_ate_quadro: int | None = None) -> dict:
+    """`nomes_ate_quadro`: os nomes sobre os lutadores somem a partir deste
+    quadro do video (o duelo esconde no veredito); None = sempre visiveis."""
     cfg = config.carregar() if cfg is None else cfg
     timeline, saida = Path(timeline).resolve(), Path(saida).resolve()
     saida.parent.mkdir(parents=True, exist_ok=True)
@@ -75,6 +77,8 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
         job["remapeamento"] = {"relogio": "gravacao", "trechos": [list(t) for t in remapeamento]}
     if sons_da_luta is not None:
         job["sons"] = sons_da_luta
+    if nomes_ate_quadro is not None:
+        job["nomes_ate_quadro"] = int(nomes_ate_quadro)
     arquivo_job = trabalho / "job.json"
     arquivo_job.write_text(json.dumps(job, ensure_ascii=False, indent=1), encoding="utf-8")
 
@@ -138,6 +142,11 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
         problemas.append(f"so {sons_rel.get('ids_distintos')} som(ns) distinto(s) tocado(s), minimo {minimo}")
     if sons_rel.get("faltando"):
         problemas.append(f"sons sem arquivo: {sorted(sons_rel['faltando'])}")
+    if nomes_ate_quadro is not None and rel.get("nomes_ate_quadro") != int(nomes_ate_quadro):
+        # palco.gd de antes de 07/10 nao conhece o campo: o nome ficaria por
+        # tras do veredito sem ninguem saber
+        problemas.append(f"o palco nao escondeu os nomes no quadro {int(nomes_ate_quadro)} "
+                         f"(relatorio: {rel.get('nomes_ate_quadro')})")
 
     resumo = {
         "ok": not problemas, "problemas": problemas, "saida": str(saida), "timeline": str(timeline),
@@ -146,6 +155,7 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
                     "sem_hitstop_s": round(esperado / fps, 3)},
         "sons": sons_rel, "eventos": rel.get("eventos"), "pecas": rel.get("pecas"),
         "reservas": rel.get("reservas"), "avisos_godot": rel.get("avisos"),
+        "nomes_ate_quadro": rel.get("nomes_ate_quadro"),
         # rosto do Atelie que mostrou outra carinha no lugar da pedida (a pedida
         # nao esta desenhada): "<parte>/<nivel>/<alvo>/<vNN>" -> {pedida: usada}
         "rosto_herdado": rel.get("rosto_herdado") or {},

@@ -79,20 +79,28 @@ func configurar(dados: Dictionary, _ctx: Dictionary) -> void:
 		_cor = UtilPalco.cor(mid[0]) if typeof(mid) == TYPE_ARRAY else Color.WHITE
 	elif tingir.begins_with("#"):
 		_cor = Color(tingir)
-	_ang = deg_to_rad(float(dados.get("dir", dados.get("ang", 0.0))))
+	_ang = deg_to_rad(_numero(dados, "dir", _numero(dados, "ang", 0.0)))
+
+
+## Campo numerico ou o padrao. Os dados de objeto podem trazer LISTA no lugar
+## de numero (`ang`, `r`...): float() de uma lista e SCRIPT ERROR a cada
+## projetil (o fogo da Oficina, 07/10/2026). Mesmo conserto do peca_png.gd.
+static func _numero(dados: Dictionary, campo: String, padrao: float) -> float:
+	var v = dados.get(campo)
+	return float(v) if typeof(v) == TYPE_INT or typeof(v) == TYPE_FLOAT else padrao
 
 
 func atualizar(amostra: Dictionary, ctx: Dictionary) -> void:
 	_evento = amostra.is_empty()
-	idade += float(ctx.get("dt_mundo", 1.0 / 30.0))
+	idade += _numero(ctx, "dt_mundo", 1.0 / 30.0)
 	if _evento:
 		if idade >= _vida():
 			queue_free()
 			return
 	else:
-		_r = float(amostra.get("r", _r))
-		_ang = deg_to_rad(float(amostra.get("ang", rad_to_deg(_ang))))
-		_prog = float(amostra.get("prog", -1.0))
+		_r = _numero(amostra, "r", _r)
+		_ang = deg_to_rad(_numero(amostra, "ang", rad_to_deg(_ang)))
+		_prog = _numero(amostra, "prog", -1.0)
 	queue_redraw()
 
 

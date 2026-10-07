@@ -6,9 +6,11 @@ resolvidos pela cadeia do jogo, chama o Godot em Movie Maker, comprime o AVI
 uma vez so (h264 + aac) e CONFERE a saida (resolucao, quadros, faixa de
 audio, volume do trecho de luta). Falha e erro, nunca rc 0 calado.
 
-Nada aqui entra no catalogo de publicacao: a saida mora em
-`outputs/_palco/`, que o catalogo nao varre. A troca do visual e a 16G, e so
-com a aprovacao do Adrian.
+O que sai pelos comandos daqui (`main.py palco ...`) mora em
+`outputs/_palco/`, que o catalogo nao varre. A unica porta para a producao e
+`producao` (16G, segunda metade): com a chave `producao.duelo_celular` do
+config ligada, o `final_celular.mp4` de um duelo sai pelo palco. Ela vem
+DESLIGADA; ligar e decisao do Adrian.
 
 Modulos:
     config     o config/palco.json e onde estao o Godot e o projeto
@@ -21,5 +23,9 @@ Modulos:
     checagens  ffprobe e ebur128 na saida
     sintetica  timeline de mentira para os testes
     ab         a MESMA luta no visual velho e no palco, lado a lado
+    edicao     16G: a edicao do duelo (HUD, textos, som, musica) sobre o palco
+    producao   16G: o celular do duelo de PRODUCAO pelo palco, atras da chave
+               (padrao "desligado"); o controller so o importa dentro de um
+               try, e qualquer falha devolve o celular ao pygame
     cli        `main.py palco ...` e `main.py duelo --palco`
 """

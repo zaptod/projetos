@@ -15,5 +15,7 @@
   "_checagens": "Falha aqui e ERRO do render (rc 1), nunca rc 0 calado.",
   "_min_ids_distintos": "o aceite da 16A/16D: >= 6 sons distintos por luta (o sintetizado tinha 25x o mesmo hit)",
   "checagens": {"piso_lufs": -40.0, "piso_media_db": -45.0, "min_ids_distintos": 6},
-  "duelo": {"camera_largura_min_m": 5.5, "camera_espera_zoom_in": 2.5}
+  "duelo": {"camera_largura_min_m": 5.5, "camera_espera_zoom_in": 2.5},
+  "_producao": "16G, segunda metade (07/10/2026): de onde sai o final_celular.mp4 do DUELO de producao (builds/palco/producao.py). duelo_celular: \"desligado\" (pygame, como sempre; qualquer valor desconhecido tambem), \"sem_corrente\" (pelo palco so se nenhum lutador usa arma do tipo Corrente; Grimorio builds/duelo-palco-sem-corrente, PENDENTE) ou \"todos\". So o 9:16; o final_normal segue no pygame. O B monta em <duelo>/palco/ e so vai para o lugar depois das guardas (golpes e K.O. no mesmo quadro, duracao = A + hitstop com folga de folga_quadros, nada preto, congelado so depois do K.O., luta e video inteiro pela regua da publicacao, trecho de luta calado no maximo limite_calado). Falhou: o celular sai pelo pygame e o motivo fica em <duelo>/palco_celular.json; falhas_para_avisar falhas SEGUIDAS viram um erro no diario (o bot avisa uma vez) e um duelo que passa zera a conta. O palco esconde os nomes sobre os lutadores quando o veredito entra e pinta o nome na cor do lutador. Ligar e decisao do Adrian; com a chave ligada a geracao reserva minutos_por_duelo_palco (geracao.json) por duelo.",
+  "producao": {"duelo_celular": "desligado", "limite_calado": 0.25, "folga_quadros": 3, "falhas_para_avisar": 3}
 }

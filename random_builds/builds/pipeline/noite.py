@@ -1022,6 +1022,32 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
         return resultado
 
 
+def _palco_ligado() -> bool:
+    """A chave do duelo pelo palco (`config/palco.json -> producao`). Erro ao
+    ler = desligada: a geracao nunca para por causa do palco."""
+    try:
+        from ..palco import producao
+        return producao.ligado()
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def minutos_por_duelo(config: dict, palco_ligado: bool | None = None) -> float:
+    """A reserva de UM duelo no relogio da rodada.
+
+    Com o celular pelo palco (16G, chave em `config/palco.json`), o duelo
+    paga a timeline, o Godot e o x264 do palco alem do que ja pagava (o
+    pygame grava a luta e faz o 16:9; o celular composto troca de clipe, nao
+    soma). Vale o maior dos dois: no modo `sem_corrente` nao se sabe antes de
+    sortear o par se ele vai pelo palco."""
+    base = float(config.get("minutos_por_duelo", 5))
+    if palco_ligado is None:
+        palco_ligado = _palco_ligado()
+    if palco_ligado:
+        return max(base, float(config.get("minutos_por_duelo_palco", base)))
+    return base
+
+
 def planos(config: dict, *, duelos=None, builds=None, estoque=None,
            estoque_builds=None, metas=None, contagem=None) -> list[dict]:
     """O que gerar nesta rodada, e em que ordem: a NECESSIDADE manda.
@@ -1059,7 +1085,7 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
         "por_dia": duelos_por_dia(),
         "pedido": duelos, "maximo": int(config.get(
             "maximo_de_duelos_por_rodada", 6)),
-        "minutos": float(config.get("minutos_por_duelo", 5)),
+        "minutos": minutos_por_duelo(config),
         "ligado": True})
 
     preparo = 0

@@ -81,6 +81,30 @@ def luta_no_relogio_do_palco(luta: dict, relogio: Relogio, *, perfil: str, clipe
     return nova
 
 
+def quadro_do_veredito(edit_plan: dict, quadros_b: int) -> int | None:
+    """O quadro do B em que o veredito da edicao entra (a mesma conta do
+    `edicao_sobre_o_palco`: o veredito fica o MESMO tanto antes do fim). Dali
+    em diante o palco esconde os nomes sobre os lutadores: o nome grande do
+    vencedor ficava por cima da placa (conferencia de 07/10/2026). None = o
+    plano nao tem veredito."""
+    eventos = edit_plan.get("events") or []
+    ver = (eventos[0].get("veredito") if eventos else None) or {}
+    if not isinstance(ver, dict) or ver.get("de") is None:
+        return None
+    dur_a = float(eventos[0]["duration"])
+    de_b = round(max(0.0, round(int(quadros_b) / FPS, 3) - (dur_a - float(ver["de"]))), 3)
+    return int(de_b * FPS + 1e-6)
+
+
+def nomes_na_cor_do_lutador(doc: dict) -> dict:
+    """`cor_nome` = a cor do lutador (a do HUD da edicao), e nao a do lado
+    (azul/salmao de p1/p2). So o nome muda; o anel continua no `cor_lado`."""
+    for lutador in doc.get("lutadores") or []:
+        if isinstance(lutador, dict) and lutador.get("cor") is not None:
+            lutador["cor_nome"] = lutador["cor"]
+    return doc
+
+
 def edicao_sobre_o_palco(edit_plan: dict, fight: dict, *, clipe: Path, duracao: float,
                          relogio: Relogio, perfil: str = "celular") -> tuple[dict, dict]:
     """(plano B, fight B): a edicao do A, com o clipe do palco e o relogio dele."""
@@ -204,32 +228,38 @@ class _Espelho(io.TextIOBase):
         self.destino.flush()
 
 
-def ab_com_edicao(duelo_id: str, *, pasta: Path | None = None, perfil: str = "celular") -> dict:
-    """A (o duelo como esta) x B (palco + a mesma edicao): mp4s, lado a lado e medidas."""
+def montar_sobre_o_palco(fight: dict, edit_plan: dict, pasta: Path, *, perfil: str = "celular",
+                         musica: dict | None = None, render_config: dict | None = None,
+                         cfg: dict | None = None, rotulo: str = "") -> dict:
+    """O B: a luta re-simulada, desenhada pelo palco, com a edicao do duelo por cima.
+
+    E o miolo do `ab_com_edicao` (A/B) e do duelo de PRODUCAO pelo palco
+    (`producao.entregar_celular`): os dois tem de montar o MESMO video. Tudo
+    sai em `pasta` (timeline, clipe do palco, plano B, `final_<perfil>.mp4`
+    e `_segments_<perfil>/`). `musica`/`render_config` None = os do
+    `PipelineController` pela seed do fight (o que o A usou).
+    """
     if perfil != "celular":
         raise ErroPalco("o palco so desenha 9:16 (viewport 1080x1920); o 16:9 e da segunda metade da 16G")
-    from ..generation.random_engine import RandomEngine
-    from ..pipeline.controller import PipelineController
+    import time
+
     from ..video.renderer import VideoRenderer
 
-    cfg = config.carregar()
-    pasta_duelo = config.OUTPUTS / duelo_id
-    fight = json.loads((pasta_duelo / "fight.json").read_text(encoding="utf-8"))
-    edit_plan = json.loads((pasta_duelo / "edit_plan.json").read_text(encoding="utf-8"))
+    cfg = config.carregar() if cfg is None else cfg
     luta = fight["luta"]
-    final_a = pasta_duelo / f"final_{perfil}.mp4"
-    if not final_a.is_file():
-        raise ErroPalco(f"{duelo_id} nao tem final_{perfil}.mp4")
     if not isinstance(luta.get("sons"), list):
-        raise ErroPalco(f"{duelo_id} e de antes do som real (sem luta.sons): o A nao teria o som de hoje")
+        raise ErroPalco(f"{rotulo or 'o duelo'} e de antes do som real (sem luta.sons): o B sairia sem o som de hoje")
     trechos = [[float(a), float(b), 1.0] for a, b in (luta.get("clipes") or {}).get(perfil, {}).get("trechos") or []]
     duelo_cfg = cfg.get("duelo") or {}
-    print(f"[16G] {duelo_id}: {luta['p1']} x {luta['p2']} | seed {luta['seed']} | {luta['cenario']}", flush=True)
+    print(f"[16G] {rotulo}: {luta['p1']} x {luta['p2']} | seed {luta['seed']} | {luta['cenario']}", flush=True)
     from ..tournament.runner import corrente_da_luta
+    tempos = {}
+    inicio = time.time()
     doc, _ = fonte.timeline_da_luta(p1=luta["p1"], p2=luta["p2"], seed=int(luta["seed"]), cenario=luta["cenario"],
                                     corrente_v2=corrente_da_luta(luta, fight),
                                     tentativas=1, camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
                                     camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
+    tempos["timeline_s"] = round(time.time() - inicio, 1)
     res = doc.get("resultado") or {}
     if res.get("vencedor") != luta.get("vencedor") or \
             abs(float(res.get("duracao_jogo") or 0) - float(luta.get("duracao") or 0)) > 0.1:
@@ -238,15 +268,19 @@ def ab_com_edicao(duelo_id: str, *, pasta: Path | None = None, perfil: str = "ce
     remap = {"relogio": "gravacao", "trechos": trechos} if trechos else None
     if remap:
         doc["remapeamento"] = remap
-    pasta = Path(pasta) if pasta else config.SAIDAS / f"g16_{duelo_id}"
+    pasta = Path(pasta)
     pasta.mkdir(parents=True, exist_ok=True)
+    nomes_na_cor_do_lutador(doc)
     from .cli import _salvar_timeline
     arquivo = _salvar_timeline(doc, pasta / "timeline.gcpf")
 
-    # 1. o palco, SEM o HUD dele: o HUD e o da edicao, como no A
-    clipe = pasta / f"palco_{perfil}.mp4"
-    resumo = render.renderizar(arquivo, clipe, hud=False)
+    # 1. o palco, SEM o HUD dele: o HUD e o da edicao, como no A; os nomes
+    # sobre os lutadores somem quando o veredito entra
     paradas = plano.paradas_de_hitstop(doc, plano.hitstop_do_estilo(config.projeto(cfg)), remap)
+    quadros_previstos = plano.quadros(int(doc["n"]) / int(doc["hz"]), remap) + sum(paradas.values())
+    nomes_ate = quadro_do_veredito(edit_plan, quadros_previstos)
+    clipe = pasta / f"palco_{perfil}.mp4"
+    resumo = render.renderizar(arquivo, clipe, hud=False, cfg=cfg, nomes_ate_quadro=nomes_ate)
     relogio = Relogio(paradas)
     if sum(paradas.values()) != int((resumo.get("hitstop") or {}).get("quadros") or 0):
         raise ErroPalco("o hitstop das paradas nao bate com o do render")
@@ -256,13 +290,42 @@ def ab_com_edicao(duelo_id: str, *, pasta: Path | None = None, perfil: str = "ce
     plano_b, fight_b = edicao_sobre_o_palco(edit_plan, fight, clipe=clipe, duracao=duracao_b,
                                             relogio=relogio, perfil=perfil)
     (pasta / "edit_plan.json").write_text(json.dumps(plano_b, ensure_ascii=False, indent=1), encoding="utf-8")
-    controller = PipelineController()
-    musica = controller._musica(RandomEngine(fight["seed"]))
+    if render_config is None or musica is None:
+        from ..generation.random_engine import RandomEngine
+        from ..pipeline.controller import PipelineController
+        controller = PipelineController()
+        render_config = controller.render_config if render_config is None else render_config
+        musica = controller._musica(RandomEngine(fight["seed"])) if musica is None else musica
     espelho = _Espelho(sys.stdout)
+    inicio = time.time()
     with contextlib.redirect_stdout(espelho):
-        final_b = VideoRenderer(controller.render_config, perfil, False).render(plano_b, fight_b, pasta, musica)
+        final_b = VideoRenderer(render_config, perfil, False).render(plano_b, fight_b, pasta, musica)
+    tempos["edicao_s"] = round(time.time() - inicio, 1)
     if "composto falhou" in "".join(espelho.texto):
         raise ErroPalco("o gameplay composto (HUD/callouts) falhou no B e caiu no transcode simples")
+    tempos.update({"godot_s": (resumo.get("tempo") or {}).get("godot_s"),
+                   "encode_s": (resumo.get("tempo") or {}).get("encode_s")})
+    return {"doc": doc, "remap": remap, "trechos": trechos, "timeline": arquivo, "clipe": clipe,
+            "resumo": resumo, "paradas": paradas, "relogio": relogio, "plano_b": plano_b,
+            "fight_b": fight_b, "final": Path(final_b), "musica": musica, "tempos": tempos}
+
+
+def ab_com_edicao(duelo_id: str, *, pasta: Path | None = None, perfil: str = "celular") -> dict:
+    """A (o duelo como esta) x B (palco + a mesma edicao): mp4s, lado a lado e medidas."""
+    if perfil != "celular":
+        raise ErroPalco("o palco so desenha 9:16 (viewport 1080x1920); o 16:9 e da segunda metade da 16G")
+    pasta_duelo = config.OUTPUTS / duelo_id
+    fight = json.loads((pasta_duelo / "fight.json").read_text(encoding="utf-8"))
+    edit_plan = json.loads((pasta_duelo / "edit_plan.json").read_text(encoding="utf-8"))
+    luta = fight["luta"]
+    final_a = pasta_duelo / f"final_{perfil}.mp4"
+    if not final_a.is_file():
+        raise ErroPalco(f"{duelo_id} nao tem final_{perfil}.mp4")
+    pasta = Path(pasta) if pasta else config.SAIDAS / f"g16_{duelo_id}"
+    b = montar_sobre_o_palco(fight, edit_plan, pasta, perfil=perfil, rotulo=duelo_id)
+    doc, remap, trechos, resumo = b["doc"], b["remap"], b["trechos"], b["resumo"]
+    paradas, relogio, fight_b, final_b, musica = b["paradas"], b["relogio"], b["fight_b"], b["final"], b["musica"]
+    duracao_b = float(resumo["quadros"]) / FPS
 
     # 3. o lado a lado (1a passada com o som do A, 2a com o do B)
     lado = ab.lado_a_lado(final_a, final_b, pasta / f"ab_{perfil}.mp4", rotulos=("A HOJE", "B PALCO"))

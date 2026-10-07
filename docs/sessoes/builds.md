@@ -235,7 +235,8 @@ passo só começa se termina antes de post−15. A regra velha (`grade_proibida`
 (`PADRAO` = esquema antigo de madrugada). Uma rodada dura até 55 min
 (`rodada_de_dia`) e o disparo seguinte continua; com job de identidade
 esperando, a geração para 20 min antes e o resto é do worker. De dia: até 11
-duelos e 3 builds por rodada. Duelo reserva 5 min, build **27**, imagem 8,
+duelos e 3 builds por rodada. Duelo reserva 5 min (**8** com o celular pelo
+palco ligado, `minutos_por_duelo_palco`, §9), build **27**, imagem 8,
 payoff 18. A build era 15 até 01/10: o primeiro disparo de dia (15:02,
 `generation_00090`, com a pista das histórias rodando junto) levou **26,1
 min** e terminou 15:28, 6 min dentro da folga do post das 15:37; sozinha, de
@@ -684,6 +685,46 @@ apontando para `E:\projetos`: rodar o `main.py` de outra worktree usa o
 `neural_fights` de `E:\projetos`, não o da worktree (a 1ª vitrine saiu com a
 revisão 3 por isso). Na worktree, `PYTHONPATH=<worktree>`.
 
+## 9. O duelo de produção pelo palco (16G, segunda metade, 07/10/2026)
+
+**Pronto e DESLIGADO.** Chave: `config/palco.json → producao.duelo_celular`
+= `"desligado"` (padrão; valor desconhecido ou config ilegível também) |
+`"sem_corrente"` (pelo palco só se nenhum lutador usa arma do tipo Corrente;
+arma fora do banco fica no pygame) | `"todos"`. Ligar é do Adrian: nó
+`builds/duelo-palco-sem-corrente` (pendente). Só o `final_celular.mp4`; o
+16:9 segue no pygame. Nos 91 duelos do disco, `sem_corrente` mandaria 70
+(77%) pelo palco.
+
+`_entregar_duelo` (duelo novo, `--rerender`, `som-da-luta` no lugar) chama
+`builds/palco/producao.py` antes do celular; o B é montado em `<duelo>/palco/`
+pelo mesmo miolo do A/B (`edicao.montar_sobre_o_palco`), medido, e só então
+`_segments_celular/` e o mp4 vão para o lugar. Falhou qualquer guarda (golpes e
+K.O. no mesmo quadro, duração da imagem = A + hitstop ± 3 quadros, nada preto,
+congelado só depois do K.O., luta e vídeo pela régua da publicação, luta
+calada ≤ 25%) ou o Godot: o celular sai pelo pygame, o motivo fica em
+`<duelo>/palco_celular.json` e no diário (status `log`). O duelo nunca deixa
+de sair por causa do palco. Detalhes e medidas: `docs/palco/README.md`.
+Depois da conferência (07/10): as placas de nome somem quando o veredito entra
+(job `nomes_ate_quadro`, conferido pelo relatório do Godot) e saem na cor do
+lutador (`cor_nome`); 3 falhas SEGUIDAS viram um `erro` no diário (o bot avisa
+uma vez; um duelo pelo palco zera, estado em `<runtime>/palco_producao.json`);
+a chave desligada apaga `<duelo>/palco/`; Godot ausente falha antes de
+re-simular.
+Com a chave ligada o controller importa `builds.palco.producao`, sempre dentro
+de um try (a frase do contrato "O palco", abaixo, de que a troca "espera o nó
+`palco-duelo-ab`", vale para LIGAR a chave, não para o código, que já existe).
+
+Prova em `E:\tmp_pytest\ab_0710\` (cópias, fora do catálogo): `duelo_00091`
+(sem corrente) e `duelo_00090` em `todos` saíram pelo palco com 33/33 e 50/50
+golpes no mesmo quadro, K.O. igual, trecho de luta igual ao A (-17,8 e -16,7
+LUFS, 0% calado), B = A + hitstop (0,53 e 0,6 s); `duelo_00090` em
+`sem_corrente` ficou no pygame (corrente). Palco de um duelo de 28 s: 182–208
+s (Godot 87–91, x264 34–40, edição 51–60) com as histórias rodando junto; um
+duelo novo inteiro de 22 s levou 3,6 min. Reserva da geração com a chave
+ligada: `geracao.json → minutos_por_duelo_palco` = 8 (`noite.minutos_por_duelo`).
+**Sessão bloqueada: não testado** (o Adrian estava no PC); se quebrar, a guarda
+rc 4/quadro liso derruba o B e o celular sai pelo pygame.
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre
@@ -742,8 +783,8 @@ revisão 3 por isso). Na worktree, `PYTHONPATH=<worktree>`.
 - **O palco** (Onda 16D) — o projeto Godot `palco/` desenha a luta a partir da
   timeline e grava o vídeo COM o som do jogo; o lado Python é
   `builds/palco/` (`main.py palco ...`, `main.py duelo --palco [--ab]`).
-  **Não publica e não entra no catálogo**: sai em `outputs/_palco/`. A troca do
-  visual é a 16G, com a aprovação do Adrian. Como funciona, comandos, guardas
+  Os comandos `palco ...` **não publicam e não entram no catálogo**: saem em
+  `outputs/_palco/`. A troca do visual é a 16G, com a aprovação do Adrian. Como funciona, comandos, guardas
   e medidas: `docs/palco/README.md`; como trocar arte e som:
   `docs/palco/COMO-EDITAR.md`. O `main.py` só importa `builds.palco` no ramo
   `palco`/`--palco`: erro no palco não derruba publicar nem a geração noturna.

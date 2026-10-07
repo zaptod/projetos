@@ -59,6 +59,11 @@ var arm := {}
 var arm_sec := {}          # segunda lamina da arma Dupla, espelhada na outra mao
 var cab := {}
 var rotulo := {}
+# Quadro a partir do qual os nomes sobre os lutadores somem (job
+# `nomes_ate_quadro`; -1 = nunca). O duelo de producao esconde os nomes
+# quando o veredito da edicao entra: o nome grande do vencedor ficava por
+# cima da placa do palco (conferencia de 07/10/2026).
+var nomes_ate := -1
 var rastro := {}
 var orbital_px := {}      # slot -> alcance real da hitbox do Orbital, em px
 var obj_nos := {}
@@ -129,6 +134,7 @@ func _preparar(args: Dictionary) -> bool:
 			return false
 		job = dados
 	relatorio_em = str(args.get("relatorio", job.get("relatorio", "")))
+	nomes_ate = int(job.get("nomes_ate_quadro", -1))
 	var carregado = load(ESTILO) if ResourceLoader.exists(ESTILO) else null
 	estilo = (carregado as EstiloPalco).duplicate() if carregado is EstiloPalco else EstiloPalco.new()
 	for campo in estilo.sobrepor(job.get("estilo", {})):
@@ -262,7 +268,7 @@ func _montar_cena(arena: Dictionary) -> void:
 			lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			lb.size = Vector2(tela.x * 0.8, estilo.nome_px * 1.5)
 			lb.add_theme_font_size_override("font_size", int(estilo.nome_px * tela.y / 1920.0))
-			lb.add_theme_color_override("font_color", UtilPalco.cor(c.get("cor_lado", 0xFFFFFF)).lightened(0.25))
+			lb.add_theme_color_override("font_color", UtilPalco.cor(c.get("cor_nome", c.get("cor_lado", 0xFFFFFF))).lightened(0.25))
 			lb.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 			lb.add_theme_constant_override("outline_size", int(estilo.nome_px * 0.28))
 			camada_rotulos.add_child(lb)
@@ -380,7 +386,7 @@ func _desenhar_quadro(f: int) -> void:
 		var morto := (int(s.get("flags", 0)) & 2) != 0
 		var oculto := (int(s.get("flags", 0)) & (1 << 16)) != 0
 		var lb: Label = rotulo[slot]
-		lb.visible = not oculto
+		lb.visible = not oculto and (nomes_ate < 0 or quadro < nomes_ate)
 		var topo := Vector2(float(s["x"]), float(s["y"]) - (0.0 if morto else float(s.get("z", 0.0))) - float(cab[slot].get("raio_corpo", 0.85)) * 1.18) * PX
 		var na_tela := mundo.transform * topo
 		# O nome nunca sai da tela: o texto (e nao a caixa, que e larga) e
@@ -677,6 +683,7 @@ func _escrever_relatorio(ok: bool, rc: int) -> void:
 		"eventos": {"agendados": n_eventos, "no_corte": eventos_no_corte, "vfx": vfx_criados},
 		"pecas": bib.escolhas,
 		"reservas": bib.reservas.keys(),
+		"nomes_ate_quadro": nomes_ate,
 		"rosto_herdado": rosto_herdado,
 		"pngs_ilegiveis": bib.pngs_ilegiveis.keys(),
 		"avisos": avisos,

@@ -346,6 +346,9 @@ class PipelineController:
                 edit_plan = json.load(fh)
         music = self._musica(engine)
         for profile in self.perfis:
+            if (profile == "celular" and not preview
+                    and self._celular_pelo_palco(out_dir, fight, edit_plan, music)):
+                continue
             renderer = VideoRenderer(self.render_config, profile, preview)
             final = renderer.render(edit_plan, fight, out_dir, music)
             print(f"[render:{profile}] {final} ({edit_plan['total_duration']}s)")
@@ -357,6 +360,32 @@ class PipelineController:
         except Exception as erro:
             print(f"[capa] falhou ({type(erro).__name__}: {erro}) — o video "
                   f"continua publicavel sem miniatura")
+
+    def _celular_pelo_palco(self, out_dir: Path, fight: dict, edit_plan: dict,
+                            music: dict | None) -> bool:
+        """16G: o celular do duelo pelo palco, se `config/palco.json ->
+        producao.duelo_celular` mandar (padrao "desligado") e o B passar nas
+        guardas. False = renderize pelo pygame, como sempre.
+
+        `builds.palco` so e importado aqui e qualquer erro dele (import,
+        Godot, guarda) vira False: o palco nunca derruba o duelo."""
+        try:
+            from ..palco import producao
+            if not producao.ligado():
+                # re-render com a chave desligada: o registro de um palco
+                # antigo mentiria sobre o mp4, e a pasta dele ficaria orfa
+                producao.limpar_resto(out_dir)
+                return False
+            feito = producao.entregar_celular(out_dir, fight, edit_plan,
+                                              render_config=self.render_config,
+                                              musica=music)
+        except Exception as erro:                              # noqa: BLE001
+            print(f"[palco] indisponivel ({type(erro).__name__}: {erro}); "
+                  f"celular pelo pygame")
+            return False
+        if feito.get("pelo_palco"):
+            print(f"[render:celular] {out_dir / 'final_celular.mp4'} (palco)")
+        return bool(feito.get("pelo_palco"))
 
     # ------------------------------------------------------------------- luta
     def luta(self, p1: str | None = None, p2: str | None = None,
