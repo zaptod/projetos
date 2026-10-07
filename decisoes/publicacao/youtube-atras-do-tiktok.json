@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Hoje 3 partes saíram só no TikTok (h54 p01, h54 p02, h60 p01) porque a página do YouTube não carregou. Pela regra nova, o YouTube sobe uma delas por horário, mas o TikTok leva uma parte NOVA no mesmo horário, então a dívida nunca baixa: numa simulação de 14 horários ela ficou em 3 o tempo todo e a h62 p04 levou 11 horários para chegar ao YouTube. A promessa era 'no máximo um horário atrás'.",
+  "criado": "2026-10-07T01:21:36.787607",
+  "depende_de": [],
+  "historico": [],
+  "id": "youtube-atras-do-tiktok",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Enquanto o YouTube dever, ele sobe 2 partes por horário (a devida + a nova do TikTok) até zerar; mais trabalho por horário, atraso some em ~3 horários",
+      "id": "alcancar",
+      "pede_comentario": false,
+      "rotulo": "YouTube alcança (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "No horário com dívida, o TikTok não leva parte nova (sai um build/gordura no lugar); os dois ficam iguais rápido, mas a série anda mais devagar no TikTok",
+      "id": "tiktok-espera",
+      "pede_comentario": false,
+      "rotulo": "TikTok espera"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Fica como está: o YouTube vai sempre 3 horários atrás, por ordem de chegada no TikTok",
+      "id": "deixar",
+      "pede_comentario": false,
+      "rotulo": "Deixar atrás"
+    }
+  ],
+  "pergunta": "Quando o YouTube deve uma parte, o TikTok continua levando parte nova ou espera o YouTube alcançar?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "YouTube fica 3 horários atrás do TikTok",
+  "vigente": null
+}

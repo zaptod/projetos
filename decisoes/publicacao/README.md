@@ -14,3 +14,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Parte que caiu só no YouTube** — Subir a MESMA parte no YouTube (06/10/2026) `youtube-caiu-depois-do-tiktok`
 - ✅ **Parte devida ao YouTube que é RETIDA** — Sobe mesmo assim (07/10/2026) `divida-retida-fura-valvula`
 - ✅ **h16 p01 só no TikTok desde 16/09** — Subir pelo --so-youtube (07/10/2026) `h16-p01-so-no-tiktok`
+- ⏳ **YouTube fica 3 horários atrás do TikTok** — Quando o YouTube deve uma parte, o TikTok continua levando parte nova ou espera o YouTube alcançar? `youtube-atras-do-tiktok`
