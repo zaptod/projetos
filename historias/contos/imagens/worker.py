@@ -18,6 +18,7 @@ Tres regras que vieram de bug real no outro projeto e valem igual aqui:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import shutil
@@ -221,6 +222,36 @@ def _pausado(alvo: str = "picasso"):
     return False, ""
 
 
+class OutraFaixa(NaoRodou):
+    """A historia e do gerador da OUTRA faixa: fica para ela (adiado)."""
+
+
+# A FAIXA DE IMAGEM DESTE PROCESSO (06/10/2026, decisao do Adrian
+# `historias/imagens-dois-geradores-juntos` = "Duas historias ao mesmo tempo,
+# uma em cada gerador"). Cada faixa e um PROCESSO (`main.py auto --gerador X`),
+# entao isto e por processo de proposito: a `travas.trava` e reentrante por
+# thread, e duas faixas no mesmo processo dividiriam o que nao podem. Vazio =
+# o comportamento de sempre (o rodizio escolhe e a cena cai no proximo).
+_FAIXA = {"gerador": ""}
+
+
+def faixa_atual() -> str:
+    return str(_FAIXA.get("gerador") or "")
+
+
+@contextlib.contextmanager
+def na_faixa(gerador: str):
+    """`with na_faixa("gemini"):` — toda imagem gerada aqui dentro vai SO ao
+    gemini: historia sem dono passa a ser dele, historia do outro levanta
+    `OutraFaixa`, e cena que falha 2x NAO cai no gerador da outra faixa."""
+    anterior = _FAIXA.get("gerador") or ""
+    _FAIXA["gerador"] = str(gerador or "").lower()
+    try:
+        yield
+    finally:
+        _FAIXA["gerador"] = anterior
+
+
 def _permitidos(config: dict) -> list[str]:
     """Os geradores que o `imagens.json` deixa na roda (`geradores_imagem`)."""
     return [str(g).lower() for g in config.get("geradores_imagem", []) or []]
@@ -395,10 +426,35 @@ def _gerar_pelo_correio(historia_id: str, *, limite: int | None = None,
     prazo_s = float(config.get("espera_correio_s", 420))
     entregador = entregador or _entregar_imagem
     ordem = _ordem_de_geradores(config)
-    if divisao == "por-historia" and not ordem:
-        raise NaoRodou("nenhum gerador de imagem esta livre ou em cota")
     fixado = fila.gerador_da_historia(historia_id)
     permitidos = _permitidos(config)
+    faixa = faixa_atual()
+    if divisao == "por-historia" and faixa:
+        # UMA FAIXA, UM GERADOR (06/10/2026): as duas historias em paralelo
+        # nunca disputam a mesma conta. A historia sem dono na roda passa a
+        # ser desta faixa; a do outro fica para ele; e a lista de caixas tem
+        # SO este gerador (a cena que falha 2x fica para a proxima rodada, em
+        # vez de cair na conta que a outra faixa esta usando).
+        if faixa not in permitidos:
+            raise NaoRodou(f"o {faixa} (gerador desta faixa) nao esta na roda "
+                           "(geradores_imagem)")
+        if faixa not in ordem:
+            raise NaoRodou(f"o {faixa} (gerador desta faixa) nao esta livre ou "
+                           "em cota agora")
+        dono = fila.dono_das_imagens(historia_id, permitidos)
+        if dono and dono != faixa:
+            raise OutraFaixa(f"{historia_id} e do {dono}; fica para a faixa dele")
+        if not dono:
+            antigo = fixado or fila.gerador_herdado(historia_id)
+            if antigo and antigo not in permitidos:
+                _saiu_da_roda(historia_id, antigo, faixa, log, gravar=False)
+            fila.definir_gerador_da_historia(historia_id, faixa)
+            log(f"[imagens] {historia_id}: {faixa} fixado para a historia "
+                f"(faixa do {faixa}).")
+        fixado = faixa
+        ordem = [faixa]
+    if divisao == "por-historia" and not ordem:
+        raise NaoRodou("nenhum gerador de imagem esta livre ou em cota")
     if divisao == "por-historia" and fixado and fixado not in permitidos:
         # GERADOR QUE SAIU DA RODA (06/10/2026, decisao `geral/picasso-fora-da-roda`:
         # "o picasso morreu tambem, nao podemos mais contar com ele"). Fora de

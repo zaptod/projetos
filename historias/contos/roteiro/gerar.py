@@ -464,10 +464,15 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                 headless: bool = False, config: dict | None = None,
                 tipo: str | None = None,
                 espera_da_conta: float = ESPERA_DA_CONTA_S,
-                log=print) -> dict:
+                ao_nascer=None, log=print) -> dict:
     """Conduz a conversa inteira e devolve {historia_id, partes, cenas}.
 
     `tipo` (favela, normal, babaca): o molde sai do rodizio DAQUELE tipo.
+
+    `ao_nascer(historia_id)` e chamado assim que o id e reservado, ANTES de o
+    `roteiro.json` existir: e onde a rodada em paralelo pega a posse da
+    historia, para a outra faixa nao a ver como "pela metade" e retoma-la
+    junto (06/10/2026).
     """
     from ..llm.cliente import abrir_cliente
 
@@ -541,9 +546,13 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
             biblia = S.parse_biblia(texto, partes)
             problemas = S.problemas_da_biblia(biblia)
 
-            historia_id = historia_id or R.proximo_id()
+            # `reservar_id` cria a pasta sem corrida: duas faixas em paralelo
+            # (06/10/2026) com `R.proximo_id()` tirariam o mesmo numero.
+            historia_id = historia_id or R.reservar_id()
             pasta = OUTPUTS / historia_id
             pasta.mkdir(parents=True, exist_ok=True)
+            if ao_nascer is not None:
+                ao_nascer(historia_id)
             diario.mudar_de_casa(pasta / "log.txt")
             log(f"[serie] {historia_id}: a biblia chegou.")
             _guardar_conversa(pasta, "biblia.txt", texto)
@@ -714,7 +723,8 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
                    tema: str | None = None, historia_id: str | None = None,
                    headless: bool = False, config: dict | None = None,
                    tipo: str | None = None,
-                   ao_tentar=None, ao_falhar=None, log=print) -> dict:
+                   ao_tentar=None, ao_falhar=None, ao_nascer=None,
+                   log=print) -> dict:
     """Escreve a serie com o primeiro provedor que conseguir.
 
     Decisao do Adrian (16/09/2026): o DeepSeek escreve; se ele falhar, o
@@ -756,7 +766,8 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
                                cenas_por_parte=cenas_por_parte, tema=tema,
                                historia_id=historia_id, headless=headless,
                                config=config, tipo=tipo,
-                               espera_da_conta=espera, log=log)
+                               espera_da_conta=espera, ao_nascer=ao_nascer,
+                               log=log)
         except Exception as exc:                               # noqa: BLE001
             ultimo = exc
             historia_id = historia_id or getattr(exc, "historia_id", None)

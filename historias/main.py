@@ -294,6 +294,9 @@ def cmd_auto(args, pipeline) -> int:
                   f"{t['situacao']}")
         print(f"\nagenda: {', '.join(agenda.horario_do_disparo(config, h) for h in config['horas'])}"
               f"  ({'ativa' if config.get('ativo', True) else 'DESLIGADA'})")
+        faixas = agenda.faixas(config)
+        print("paralelo: " + (f"uma historia por gerador ({', '.join(faixas)})"
+                              if faixas else "desligado (uma historia por vez)"))
         pendentes = agenda.incompletas()
         for p in pendentes:
             print(f"  pendente: {p['historia_id']} - "
@@ -313,8 +316,16 @@ def cmd_auto(args, pipeline) -> int:
                   f"{exc})")
         return 0
 
-    # Sem bandeira: E a rodada. E isto que a tarefa do Windows chama.
-    resultado = agenda.rodar(config=config, headless=args.headless)
+    # Sem bandeira: E a rodada. E isto que a tarefa do Windows chama. Com o
+    # paralelo ligado (`paralelo_por_gerador`, decisao de 06/10/2026), ela e
+    # o SUPERVISOR, que lanca uma faixa por gerador (`--gerador X`).
+    if args.gerador:
+        resultado = agenda.rodar(config=config, headless=args.headless,
+                                 gerador=args.gerador)
+    elif agenda.faixas(config):
+        resultado = agenda.rodar_faixas(config=config, headless=args.headless)
+    else:
+        resultado = agenda.rodar(config=config, headless=args.headless)
     if resultado.get("erros"):
         return 1
     return 0
@@ -627,6 +638,10 @@ def main() -> int:
                     help="horas a instalar (padrao: as de config/agenda.json)")
     au.add_argument("--headless", action="store_true",
                     help="navegador invisivel (nao funciona para o LLM)")
+    au.add_argument("--gerador", default=None, type=str.lower,
+                    choices=("gemini", "chatgpt", "picasso", "grok"),
+                    help="roda so a FAIXA deste gerador de imagem (o "
+                         "supervisor das historias em paralelo chama assim)")
 
     cf = sub.add_parser("conferir",
                         help="procura defeito no que ja esta no disco")

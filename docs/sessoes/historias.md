@@ -210,6 +210,45 @@ uma chave de `config/agenda.json` — nenhum número mora no código. Plano medi
   … -> TRABALHA/sai`. Testes: `tests/test_lote_semanal_regressions.py` (relógio
   congelado, `_trabalhar` dublado, OUTPUTS desviado).
 
+## 1b. Duas histórias em paralelo, uma em cada gerador (06/10/2026)
+
+Decisão `historias/imagens-dois-geradores-juntos` = "Duas histórias ao mesmo tempo, uma em
+cada gerador". Sem o PicassoIA a fábrica fazia ~1 parte/h: uma história por vez, com um
+gerador só (o rosto não muda: `imagens-divisao`), e só uma conta trabalhava. **Chave:**
+`config/agenda.json` → `paralelo_por_gerador` `{ligado, maximo: 2, relancar_min: 60,
+vigiar_s: 30}`. **Sai desligado** (`ligado: false`): uma história por vez, como antes.
+
+- **Supervisor** (`agenda.rodar_faixas`, o que `main.py auto` vira quando ligado): mesmo
+  plano antes da trava, segura `historias__auto` (o bot, o app e o painel olham ela) e lança
+  um processo por gerador da roda (`geradores_imagem`, até `maximo`): `main.py auto
+  --gerador X --saida outputs/_logs/auto_saida_X.txt`. A faixa que termina é relançada
+  depois de `relancar_min` **enquanto a outra trabalha** (os disparos de hora em hora
+  encontram `historias__auto` ocupada); quando as duas acabam, ele sai.
+- **Faixa** (`agenda.rodar(gerador=X)`): trava `historias__auto__X`, log
+  `outputs/_logs/auto_<data>_X.txt`, e o gerador conferido antes do plano (fora de cota/ficha
+  = `"gerador fora"`, sai sem escrever roteiro). Tudo dentro de `worker.na_faixa(X)`: toda
+  imagem vai **só** a X — história sem dono na roda passa a ser dela, a do outro levanta
+  `worker.OutraFaixa` (`NaoRodou`: o reparo adia), e a cena que falha 2x **não** cai na conta
+  da outra faixa (fica pendente para a próxima rodada). É por processo de propósito:
+  `travas.trava` é reentrante **por thread**.
+- **Posse de uma história** (`agenda.trava_da_historia` = `historias__historia__<id>`,
+  `agenda._posse`): a incompleta (`_escolher_incompleta`, truncada primeiro, a primeira que
+  pode ser da faixa e que a outra não segura), o conserto (`reparo.rodada(posse=...)`: o
+  barrado que não é dela é pulado e não gasta o `limite`) e a **história nova**, que nasce
+  com dono: `gerar_serie(ao_nascer=...)` segura a história e fixa o gerador assim que o id é
+  reservado, antes de o `roteiro.json` existir (sem isso a outra faixa a veria "pela metade"
+  e a retomaria junto). Dono = `fila.dono_das_imagens` (fixado na roda, senão o herdado).
+- **O que não se divide**: o id novo (`roteiro.reservar_id`, `mkdir` atômico — antes duas
+  bíblias juntas tirariam o mesmo número), o `_reparos.json` (`reparo._registro_travado`,
+  trava `historias__reparos_json`), e o **serviço do dia + parecer do estoque**, que só a
+  faixa do Gemini faz (`agenda._da_casa`; Gemini parado passa os dois à outra).
+- **Continua disputado** (cada um espera/cai pela trava da conta, como já era): o roteiro
+  (`deepseek → chatgpt → gemini`, conta ocupada passa ao próximo), o reescritor de prompt
+  recusado (ChatGPT) na faixa do Gemini, a folha do parecer (ChatGPT) e o disco/CPU de dois
+  renders juntos (o E: é HDD: ver "Render que parece travado é disco").
+- Testes: `tests/test_duas_historias_em_paralelo_regressions.py`. `main.py auto --listar`
+  mostra a linha `paralelo:`.
+
 ## 2. Quem escreve e quem julga
 
 Em **`config/llm.json`** → `papeis`; quem lê é `contos/llm/papeis.py`. Cada lista é
@@ -367,8 +406,15 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   separa) e o "Parte N" que sobra; igual à marca vira só a marca. **Formato único**:
   `Marca — Título da parte (Parte n/N)` ou `Marca (Parte n/N)` — o "(Parte n/N)" do fim é o
   único marcador (é dele que `titulos.chave` e `capa.sem_o_selo` dependem). Depois: 25
-  títulos mudaram, 269 iguais, 0 com prefixo repetido. Ficam 5 com a marca **no meio**
-  (`TÚMULO 214 — A Mulher do Túmulo 214`), fora da regra. O mp4 e a capa já renderizados
+  títulos mudaram, 269 iguais, 0 com prefixo repetido. **A marca no meio** (decisão
+  `historias/titulo-marca-no-meio` = "Tirar a marca da frente", 06/10/2026): quando o
+  título da parte já traz o nome da série em qualquer lugar (mesma comparação, com borda de
+  palavra — `Rua Sete` não casa com `Rua Setembro`), a marca da frente sai e fica `A Mulher
+  do Túmulo 214 (Parte 1/5)` (`roteiro._marca_dentro`). Medido no acervo (HEAD contra a
+  árvore): **5 de 312** títulos mudaram, os mesmos 5 do nó (h41 p01, h39 p01, h45 p01 e h36
+  p06 já no ar nos dois destinos — o título publicado não muda; **h47 p05** não publicada,
+  com mp4 e capa ainda com o título antigo até um re-render). Testes:
+  `tests/test_titulo_marca_no_meio_regressions.py`. O mp4 e a capa já renderizados
   continuam com o título antigo na primeira imagem até um re-render. Junto: a capa
   (`capa.sem_o_selo`) só tirava "(Parte 6)" e não "(Parte 1/6)", e a h54 p01 saiu com o
   selo "PARTE 1" e "(PARTE 1/6)" embaixo; agora tira os dois. Testes:
@@ -603,7 +649,9 @@ processo** — trava que já é sua devolve `True` de novo). `travas.do_perfil(<
 geração segura a conta pela história toda (horas) — contra isso funciona **trocar de
 provedor**, não esperar. `travas.do_perfil("picasso", "historias")` é o **PicassoIA**,
 disputado com o worker de builds quando a conta é a mesma (espera 20 s e desiste com
-`NaoRodou`). `historias__auto` garante uma rodada automática por máquina;
+`NaoRodou`). `historias__auto` garante uma rodada automática por máquina (com o paralelo
+ligado, é o supervisor que a segura; cada faixa tem `historias__auto__<gerador>` e cada
+história em trabalho `historias__historia__<id>`, §1b);
 `historias__render__<id>` impede dois renders da mesma história.
 
 **O parecer que ninguém assistiu** (decisão dele em 27/09/2026: parecer só pela folha

@@ -275,6 +275,24 @@ def gerador_herdado(historia_id: str) -> str:
     return max(contagem, key=contagem.get)
 
 
+def dono_das_imagens(historia_id: str, permitidos) -> str:
+    """O gerador que da o rosto a historia, se ele esta NA RODA; senao ``""``.
+
+    A mesma ordem do worker: o fixado (`gerador_imagem`) vale se estiver em
+    `permitidos`; sem fixado, o herdado das cenas ja feitas. Fixado ou herdado
+    fora da roda (o PicassoIA desde 06/10/2026) nao e dono de nada: a cena que
+    falta vai para quem pegar a historia. ``""`` = a historia ainda nao e de
+    ninguem — e a pergunta que a rodada em paralelo faz antes de pegar uma
+    historia (decisao `historias/imagens-dois-geradores-juntos`, 06/10/2026).
+    """
+    permitidos = [str(g).lower() for g in (permitidos or [])]
+    fixado = gerador_da_historia(historia_id).lower()
+    if fixado:
+        return fixado if fixado in permitidos else ""
+    herdado = gerador_herdado(historia_id)
+    return herdado if herdado in permitidos else ""
+
+
 def definir_gerador_da_historia(historia_id: str, gerador: str) -> None:
     """Fixa o gerador que dara unidade visual a uma historia."""
     dados = _meta(historia_id)

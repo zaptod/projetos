@@ -36,6 +36,7 @@ pessoa decidir.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 import time
@@ -157,31 +158,52 @@ def consertado(video_id: str) -> bool:
         return False
 
 
+TRAVA_DO_REGISTRO = "historias__reparos_json"
+
+
+@contextlib.contextmanager
+def _registro_travado():
+    """Ler-mudar-gravar o `_reparos.json` sob trava entre PROCESSOS.
+
+    Com as duas historias em paralelo (06/10/2026) duas rodadas consertam ao
+    mesmo tempo, e a gravacao de uma apagaria a anotacao da outra (a conta de
+    tentativas que decide o insistente). Sem a trava em 30 s grava assim
+    mesmo: perder a anotacao e menos ruim que parar o conserto.
+    """
+    from builds import travas
+    with travas.trava(TRAVA_DO_REGISTRO, esperar=30.0):
+        yield
+
+
 def _anotar(video_id: str, motivo: str, feito: str, *,
             passada: bool = False) -> int:
-    dados = _ler()
-    ficha = dados.setdefault(str(video_id), {"tentativas": 0})
-    ja_gasta = _passada_da_ficha(ficha)
-    ja_consertado = _conserto_da_ficha(ficha)
-    ficha["tentativas"] = int(ficha.get("tentativas") or 0) + 1
-    ficha["quando"] = datetime.now().isoformat(timespec="seconds")
-    ficha["motivo"] = str(motivo)[:200]
-    ficha["feito"] = feito
-    # A passada, uma vez gasta, fica gasta. O conserto aplicado tambem: uma
-    # falha da maquina depois dele troca o `feito`, mas nao desfaz o conserto.
-    ficha["passada"] = bool(passada) or ja_gasta
-    ficha["consertado"] = ja_consertado or (bool(passada) and _e_conserto(feito))
-    _gravar(dados)
-    return ficha["tentativas"]
+    with _registro_travado():
+        dados = _ler()
+        ficha = dados.setdefault(str(video_id), {"tentativas": 0})
+        ja_gasta = _passada_da_ficha(ficha)
+        ja_consertado = _conserto_da_ficha(ficha)
+        ficha["tentativas"] = int(ficha.get("tentativas") or 0) + 1
+        ficha["quando"] = datetime.now().isoformat(timespec="seconds")
+        ficha["motivo"] = str(motivo)[:200]
+        ficha["feito"] = feito
+        # A passada, uma vez gasta, fica gasta. O conserto aplicado tambem: uma
+        # falha da maquina depois dele troca o `feito`, mas nao desfaz o
+        # conserto.
+        ficha["passada"] = bool(passada) or ja_gasta
+        ficha["consertado"] = ja_consertado or (bool(passada)
+                                                and _e_conserto(feito))
+        _gravar(dados)
+        return ficha["tentativas"]
 
 
 def esquecer(video_id: str) -> None:
     """O video passou: a conta zera. Sem isto, um video consertado na
     terceira tentativa entraria na quarta como insistente."""
-    dados = _ler()
-    if str(video_id) in dados:
-        del dados[str(video_id)]
-        _gravar(dados)
+    with _registro_travado():
+        dados = _ler()
+        if str(video_id) in dados:
+            del dados[str(video_id)]
+            _gravar(dados)
 
 
 # O MESMO DEFEITO TEM TRES NOMES. O nosso detector diz "colagem"; o Gemini,
@@ -936,12 +958,18 @@ def _confirmar_com_a_ia(video, historia_id: str, parte: int, *,
         return None
 
 
-def rodada(*, limite: int = 2, headless: bool = False, log=print) -> dict:
+def rodada(*, limite: int = 2, headless: bool = False, log=print,
+           posse=None) -> dict:
     """Conserta o que estiver barrado. Chamada pela agenda, antes de criar.
 
     `limite` porque cada conserto custa geracao de imagem mais um render: uma
     noite com seis barrados nao pode virar seis renders enfileirados na frente
     da criacao, que e o que abastece a grade.
+
+    `posse(historia_id)` (rodada em paralelo, 06/10/2026) e um gerenciador de
+    contexto que diz se ESTA rodada pode consertar a historia (True) e a
+    segura enquanto conserta; o barrado que nao e dela e pulado e nao gasta o
+    `limite`. Sem `posse`, os `limite` primeiros, como sempre.
     """
     from . import agenda
 
@@ -958,10 +986,20 @@ def rodada(*, limite: int = 2, headless: bool = False, log=print) -> dict:
     # e o barrado seguinte nunca era tentado.
     insistentes = [v.id for v, _e in barrados if insistente(v.id)]
     tentaveis = [(v, e) for v, e in barrados if not insistente(v.id)]
-    for video, erros in tentaveis[:limite]:
-        log(f"[reparo] {video.id}: {erros[0][:100]}")
-        resultado = reparar(video, erros, pipeline=pipeline,
-                            headless=headless, log=log)
+    if posse is None:
+        tentaveis = tentaveis[:limite]
+    feitos = 0
+    for video, erros in tentaveis:
+        if feitos >= limite:
+            break
+        with (posse(video.fonte_id) if posse is not None
+              else contextlib.nullcontext(True)) as minha:
+            if not minha:
+                continue
+            feitos += 1
+            log(f"[reparo] {video.id}: {erros[0][:100]}")
+            resultado = reparar(video, erros, pipeline=pipeline,
+                                headless=headless, log=log)
         acoes.append({"video": video.id, **resultado})
         if resultado.get("ok"):
             consertados += 1

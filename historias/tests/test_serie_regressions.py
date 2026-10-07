@@ -855,8 +855,12 @@ class CorridaQueMorreTests(unittest.TestCase):
         from contos.roteiro import gerar
         fonte = Path(gerar.__file__).read_text(encoding="utf-8")
         corpo = fonte[fonte.index("def gerar_serie("):]
-        self.assertLess(corpo.index("S.parse_biblia("), corpo.index("R.proximo_id()"),
+        # 06/10/2026: `R.reservar_id()` (proximo id + mkdir atomico, para as
+        # duas historias em paralelo nao tirarem o mesmo numero).
+        self.assertLess(corpo.index("S.parse_biblia("),
+                        corpo.index("historia_id or R.reservar_id()"),
                         "o id nao pode ser tirado antes de a biblia existir")
+        self.assertNotIn("historia_id or R.proximo_id()", corpo)
 
     def test_a_falha_deixa_o_motivo_escrito(self):
         from contos.roteiro import gerar

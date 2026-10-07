@@ -27,8 +27,10 @@ TRES CUIDADOS, cada um vindo de uma coisa medida:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import re
+import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -40,7 +42,10 @@ RAIZ = Path(__file__).resolve().parents[2]
 OUTPUTS = RAIZ / "outputs"
 CONFIG = RAIZ / "config" / "agenda.json"
 
-# Uma so rodada automatica por vez, em qualquer processo desta maquina.
+# Uma so rodada automatica por vez, em qualquer processo desta maquina. Com as
+# duas historias em paralelo (06/10/2026) quem a segura e o SUPERVISOR
+# (`rodar_faixas`), que e o que o bot, o app e o painel enxergam como "rodada
+# em andamento"; cada faixa segura a sua (`trava_da_faixa`).
 TRAVA = "historias__auto"
 # Horas aceitas no config: hora cheia, 0 a 23.
 HORAS_VALIDAS = range(24)
@@ -1060,8 +1065,281 @@ def dias_de_estoque() -> int:
                 if v.id not in ja and v.perfil == "celular"])
 
 
+# ================================================================ faixas
+# DUAS HISTORIAS AO MESMO TEMPO, UMA EM CADA GERADOR (decisao do Adrian no
+# Grimorio `historias/imagens-dois-geradores-juntos` = "Duas historias ao
+# mesmo tempo, uma em cada gerador", 06/10/2026). Sem o PicassoIA a fabrica
+# fazia ~1 parte/h: uma historia por vez com UM gerador (o rosto nao muda no
+# meio, decisao `imagens-divisao`), entao so uma conta trabalhava. Medido no
+# correio (8 dias): Gemini ~20 imagens/h, ChatGPT ~15-30/h.
+#
+# Cada FAIXA e um PROCESSO (`main.py auto --gerador X`) com a sua trava: a
+# `travas.trava` e reentrante por thread, e o stdout redirecionado, o
+# `worker.na_faixa` e o relogio sao do processo. O SUPERVISOR (`rodar_faixas`,
+# o que a tarefa do Windows chama) segura `historias__auto`, lanca uma faixa
+# por gerador da roda e relanca a que terminou enquanto a outra trabalha.
+#
+# O que nao se divide: a POSSE de uma historia (`trava_da_historia`: retomar,
+# terminar e consertar), o id novo (`roteiro.reservar_id`), o `_reparos.json`
+# (`reparo._registro_travado`), e o servico do dia + o parecer do estoque, que
+# so a faixa do Gemini faz (`_da_casa`).
+
+def trava_da_faixa(gerador: str) -> str:
+    return f"{TRAVA}__{str(gerador).lower()}"
+
+
+def trava_da_historia(historia_id: str) -> str:
+    """A posse de UMA historia entre as faixas (retomar, terminar, consertar)."""
+    return f"historias__historia__{historia_id}"
+
+
+def faixas(config: dict | None = None) -> list:
+    """Os geradores que ganham uma faixa cada; `[]` = uma rodada so (como era).
+
+    `paralelo_por_gerador.ligado` no agenda.json liga; as faixas sao os
+    geradores da roda (`geradores_imagem` de `config/imagens.json`, na ordem
+    dele) ate `maximo` (2: decisao `geral/fila-pesada-de-dia`, "2 em
+    paralelo"). Menos de dois, ou `divisao` que nao e por historia = desligado.
+    """
+    config = carregar() if config is None else config
+    ajuste = config.get("paralelo_por_gerador") or {}
+    if not (isinstance(ajuste, dict) and ajuste.get("ligado")):
+        return []
+    try:
+        from ..imagens import fila
+        imagens = fila.carregar_config()
+    except Exception:                                          # noqa: BLE001
+        return []
+    if str(imagens.get("divisao") or "por-historia") != "por-historia":
+        return []
+    geradores = []
+    for gerador in imagens.get("geradores_imagem") or []:
+        gerador = str(gerador).lower()
+        if gerador and gerador not in geradores:
+            geradores.append(gerador)
+    lista = geradores[:max(0, int(ajuste.get("maximo") or 2))]
+    return lista if len(lista) >= 2 else []
+
+
+def _faixa(config: dict) -> str:
+    return str((config or {}).get("faixa_de_imagem") or "").lower()
+
+
+def _da_casa(config: dict) -> bool:
+    """Esta rodada faz o servico do dia e o parecer do estoque?
+
+    Fora do paralelo, sempre. No paralelo, so a faixa do gerador que ASSISTE
+    video (o Gemini, `parecer.ASSISTEM_VIDEO`): o parecer roda no mesmo
+    processo que as imagens dele, em vez de esperar a conta da outra faixa;
+    e a metrica do dia nao roda duas vezes.
+    """
+    faixa = _faixa(config)
+    if not faixa:
+        return True
+    lista = faixas(config) or [faixa]
+    try:
+        from ..publicar import parecer
+        juizes = [g for g in lista if g in parecer.ASSISTEM_VIDEO]
+    except Exception:                                          # noqa: BLE001
+        juizes = []
+    candidatos = juizes + [g for g in lista if g not in juizes]
+    # A faixa do juiz parada (fora de cota) nao leva o servico junto: a
+    # metrica e a conferencia do dia passam para a faixa que esta rodando.
+    for gerador in candidatos:
+        if not _gerador_pronto(gerador):
+            return faixa == gerador
+    return faixa == candidatos[0]
+
+
+def _dono_de_outra_faixa(historia_id: str, config: dict) -> str:
+    """O gerador da OUTRA faixa que e dono da historia, ou "" se pode ser
+    desta (sem dono na roda, ou desta mesma)."""
+    faixa = _faixa(config)
+    if not faixa:
+        return ""
+    from ..imagens import fila
+    try:
+        permitidos = fila.carregar_config().get("geradores_imagem") or []
+    except Exception:                                          # noqa: BLE001
+        permitidos = []
+    dono = fila.dono_das_imagens(historia_id, permitidos)
+    return dono if dono and dono != faixa else ""
+
+
+@contextlib.contextmanager
+def _posse(historia_id: str, config: dict, log=print):
+    """`with _posse(id, config) as minha:` — True se ESTA faixa fica com a
+    historia, que fica segura ate o `with` acabar. A da outra faixa (ou a que
+    ela esta usando agora) e False."""
+    from builds import travas
+
+    outro = _dono_de_outra_faixa(historia_id, config)
+    if outro:
+        log(f"[auto] {historia_id} e do {outro}; fica para a faixa dele.")
+        yield False
+        return
+    with travas.trava(trava_da_historia(historia_id), esperar=0.0) as minha:
+        if not minha:
+            log(f"[auto] {historia_id} esta com a outra faixa agora; pulo.")
+        yield minha
+
+
+def _gerador_pronto(gerador: str) -> str:
+    """"" se o gerador da faixa pode gerar agora; senao, o motivo.
+
+    Na duvida (nao consegui conferir), "": quem decide e o worker, na hora de
+    pedir a imagem. Uma faixa parada por um erro de leitura seria pior.
+    """
+    try:
+        from ..imagens import fila, worker
+        config = fila.carregar_config()
+        roda = [str(g).lower() for g in config.get("geradores_imagem") or []]
+        if gerador not in roda:
+            return (f"o {gerador} nao esta na roda de imagens "
+                    "(geradores_imagem)")
+        if gerador not in worker._ordem_de_geradores(config):
+            return f"o {gerador} nao gera agora (ficha ou cota)"
+    except Exception:                                          # noqa: BLE001
+        return ""
+    return ""
+
+
+def _sem_trabalho(plano: dict, config: dict, agora, log) -> dict:
+    """O disparo que nao tem o que fazer: diz por que e sai (sem trava)."""
+    log(f"[auto] {plano.get('por_que')}. Saindo.")
+    if (plano.get("motivo") == "impedido"
+            and config.get("avisar_telegram", True)):
+        _avisar_uma_vez_por_dia(
+            "impedido-" + ("picasso" if "PicassoIA" in str(
+                plano.get("impedimento")) else "disco"),
+            f"⚠️ *historias: nao crio agora*\n{plano.get('impedimento')}",
+            agora, log)
+    return {"feito": "nada", "motivo": plano.get("motivo") or
+            "fora da janela", "modo": plano.get("modo")}
+
+
+def _lancar_faixa(gerador: str, headless: bool = False):
+    """Abre `main.py auto --gerador X` num processo proprio (sem janela).
+
+    A saida do console vai para `auto_saida_<gerador>.txt`, aberta pelo
+    Python (`--saida`), pelo mesmo motivo do `auto.cmd`: console que ninguem
+    esvazia trava o `print` (08/09/2026). O log de verdade e o
+    `auto_<data>_<gerador>.txt` da faixa.
+    """
+    saida = OUTPUTS / "_logs" / f"auto_saida_{gerador}.txt"
+    saida.parent.mkdir(parents=True, exist_ok=True)
+    argv = [sys.executable, "-u", "-X", "utf8", str(RAIZ / "main.py"), "auto",
+            "--gerador", str(gerador), "--saida", str(saida)]
+    if headless:
+        argv.append("--headless")
+    return subprocess.Popen(
+        argv, cwd=str(RAIZ), stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def rodar_faixas(*, config: dict | None = None, headless: bool = False,
+                 tela=print, lancar=None) -> dict:
+    """O SUPERVISOR das duas historias em paralelo. Nunca abre navegador.
+
+    Sem faixas (`paralelo_por_gerador` desligado), e a `rodar` de sempre.
+    Com elas: o mesmo plano de antes da trava (disparo sem trabalho sai sem
+    lancar nada), a trava `historias__auto` (o bot, o app e o painel olham
+    ela), e um processo por faixa. Uma faixa que termina e relancada depois
+    de `relancar_min` enquanto a outra ainda trabalha — o papel que o disparo
+    de hora em hora tinha, e que a trava ocupada do supervisor tomaria. Sai
+    quando nenhuma faixa esta viva.
+
+    `lancar(gerador, headless)` devolve algo com `.poll()` e `.pid` (os
+    testes passam um duble; o padrao abre o processo de verdade).
+    """
+    from builds import travas
+    from builds.identity import controle
+
+    config = config or carregar()
+    lista = faixas(config)
+    if not lista:
+        return rodar(config=config, headless=headless, tela=tela)
+    agora = _relogio()
+    destino = OUTPUTS / "_logs" / f"auto_{agora:%Y%m%d}.txt"
+    log = _diario(destino, tela)
+    log(f"[auto] disparo das {agora:%H:%M} (duas historias em paralelo: "
+        f"{' e '.join(lista)})")
+    if not config.get("ativo", True):
+        log("[auto] a agenda esta desligada (`ativo: false`). Nada a fazer.")
+        return {"feito": "nada", "motivo": "agenda desligada"}
+    if controle.pausado_para():
+        log("[auto] a pipeline esta PAUSADA (pagina Vila). Saindo sem criar "
+            "nada; o proximo disparo tenta de novo.")
+        return {"feito": "nada", "motivo": "pausado"}
+    plano = planejar(config, agora)
+    if not plano.get("fazer"):
+        return _sem_trabalho(plano, config, agora, log)
+    if plano.get("modo") != "livre":
+        log(f"[auto] modo {plano['modo']}: {plano.get('por_que')}.")
+
+    ajuste = config.get("paralelo_por_gerador") or {}
+    relancar_s = 60.0 * float(ajuste.get("relancar_min") or 60)
+    vigiar_s = float(ajuste.get("vigiar_s") or 30)
+    lancar = lancar or _lancar_faixa
+    with travas.trava(TRAVA, esperar=0.0) as minha:
+        if not minha:
+            log("[auto] ja tem uma rodada em andamento. Saindo.")
+            return {"feito": "nada", "motivo": "ja rodando"}
+        vivos, fim, codigos, lancadas, ocupadas = {}, {}, {}, {}, set()
+        while True:
+            for gerador in lista:
+                proc = vivos.get(gerador)
+                if proc is not None:
+                    codigo = proc.poll()
+                    if codigo is None:
+                        continue
+                    del vivos[gerador]
+                    fim[gerador] = _relogio()
+                    codigos[gerador] = codigo
+                    log(f"[auto] a faixa do {gerador} terminou (codigo "
+                        f"{codigo}).")
+                if gerador in fim:
+                    # So volta enquanto a OUTRA trabalha, e no ritmo dos
+                    # disparos: quando as duas acabam, o supervisor sai e o
+                    # proximo disparo do Agendador recomeca.
+                    if not vivos:
+                        continue
+                    if (_relogio() - fim[gerador]).total_seconds() < relancar_s:
+                        continue
+                if travas.ocupada(trava_da_faixa(gerador)):
+                    if gerador not in ocupadas:
+                        ocupadas.add(gerador)
+                        log(f"[auto] a faixa do {gerador} ja esta rodando "
+                            "(fora deste supervisor); nao lanco outra.")
+                    continue
+                try:
+                    vivos[gerador] = lancar(gerador, headless)
+                except Exception as exc:                       # noqa: BLE001
+                    log(f"[auto] nao consegui lancar a faixa do {gerador}: "
+                        f"{type(exc).__name__}: {exc}")
+                    fim[gerador] = _relogio()
+                    codigos[gerador] = -1
+                    continue
+                lancadas[gerador] = lancadas.get(gerador, 0) + 1
+                log(f"[auto] faixa do {gerador} lancada (pid "
+                    f"{getattr(vivos[gerador], 'pid', '?')}); log em "
+                    f"auto_{agora:%Y%m%d}_{gerador}.txt.")
+            if not vivos:
+                break
+            _dormir(vigiar_s)
+    if not lancadas:
+        return {"feito": "nada", "motivo": "ja rodando"}
+    erros = [f"a faixa do {g} saiu com codigo {c}"
+             for g, c in codigos.items() if c]
+    log(f"[auto] as faixas terminaram: "
+        + ", ".join(f"{g} {c}" for g, c in codigos.items()) + ".")
+    return {"feito": "faixas", "faixas": codigos, "lancadas": lancadas,
+            "erros": erros}
+
+
 def rodar(*, config: dict | None = None, headless: bool = False,
-          tela=print) -> dict:
+          tela=print, gerador: str | None = None) -> dict:
     """Uma rodada. Devolve o que aconteceu — nunca levanta por conta da tarefa.
 
     O Agendador nao le excecao: o que ele ve e o codigo de saida. Entao aqui
@@ -1071,15 +1349,24 @@ def rodar(*, config: dict | None = None, headless: bool = False,
     cria historia atras de historia ate o alvo, a janela fechar ou um passo
     falhar. Os disparos seguintes do dia encontram a trava ocupada e saem; se
     a rodada morrer, o proximo disparo recomeca de onde ela parou.
+
+    `gerador` (06/10/2026): a rodada e a FAIXA daquele gerador — trava
+    propria (`trava_da_faixa`), log proprio (`auto_<data>_<gerador>.txt`), so
+    historias sem dono ou dele, e toda imagem so nele (`worker.na_faixa`).
     """
     from builds import travas
     from builds.identity import controle
 
     config = config or carregar()
+    gerador = str(gerador or "").lower()
+    if gerador:
+        config = {**config, "faixa_de_imagem": gerador}
     agora = _relogio()
-    destino = OUTPUTS / "_logs" / f"auto_{agora:%Y%m%d}.txt"
+    destino = OUTPUTS / "_logs" / (f"auto_{agora:%Y%m%d}_{gerador}.txt"
+                                   if gerador else f"auto_{agora:%Y%m%d}.txt")
     log = _diario(destino, tela)
-    log(f"[auto] disparo das {agora:%H:%M}")
+    log(f"[auto] disparo das {agora:%H:%M}"
+        + (f" (faixa do {gerador})" if gerador else ""))
 
     if not config.get("ativo", True):
         log("[auto] a agenda esta desligada (`ativo: false`). Nada a fazer.")
@@ -1090,29 +1377,31 @@ def rodar(*, config: dict | None = None, headless: bool = False,
             "nada; o proximo disparo tenta de novo.")
         return {"feito": "nada", "motivo": "pausado"}
 
+    if gerador:
+        # O GERADOR DA FAIXA PRIMEIRO: fora de cota, a faixa nao escreve um
+        # roteiro que depois ficaria sem imagem; a outra segue sozinha.
+        motivo = _gerador_pronto(gerador)
+        if motivo:
+            log(f"[auto] {motivo}: esta faixa nao trabalha agora.")
+            return {"feito": "nada", "motivo": "gerador fora", "erro": motivo}
+
     # O PLANO VEM ANTES DA TRAVA: o disparo que nao tem nada a fazer (noite
     # com video, reposicao com estoque cheio) sai sem disputar nada. A tarefa
     # perdida que roda quando o PC volta de manha tambem cai aqui.
     plano = planejar(config, agora)
     if not plano.get("fazer"):
-        log(f"[auto] {plano.get('por_que')}. Saindo.")
-        if (plano.get("motivo") == "impedido"
-                and config.get("avisar_telegram", True)):
-            _avisar_uma_vez_por_dia(
-                "impedido-" + ("picasso" if "PicassoIA" in str(
-                    plano.get("impedimento")) else "disco"),
-                f"⚠️ *historias: nao crio agora*\n{plano.get('impedimento')}",
-                agora, log)
-        return {"feito": "nada", "motivo": plano.get("motivo") or
-                "fora da janela", "modo": plano.get("modo")}
+        return _sem_trabalho(plano, config, agora, log)
     if plano.get("modo") != "livre":
         log(f"[auto] modo {plano['modo']}: {plano.get('por_que')}.")
 
-    with travas.trava(TRAVA, esperar=0.0) as minha:
+    with travas.trava(trava_da_faixa(gerador) if gerador else TRAVA,
+                      esperar=0.0) as minha:
         if not minha:
             log("[auto] ja tem uma rodada em andamento. Saindo — uma historia "
                 "leva ~4h e duas ao mesmo tempo brigariam pelo mesmo "
-                "navegador e pela mesma conta do PicassoIA.")
+                "navegador e pela mesma conta do PicassoIA."
+                if not gerador else
+                f"[auto] a faixa do {gerador} ja esta rodando. Saindo.")
             return {"feito": "nada", "motivo": "ja rodando"}
         # Daqui para baixo mora o trabalho de verdade, e e onde o `print` das
         # bibliotecas de navegador aparece. Ele vai para o diario: num console
@@ -1129,7 +1418,11 @@ def rodar(*, config: dict | None = None, headless: bool = False,
             # a hora e ecoa na tela quando existe tela de verdade.
             comeco = time.monotonic()
             try:
-                return _emendar(config, plano, headless, print)
+                if not gerador:
+                    return _emendar(config, plano, headless, print)
+                from ..imagens import worker
+                with worker.na_faixa(gerador):
+                    return _emendar(config, plano, headless, print)
             except Exception as exc:                           # noqa: BLE001
                 # A rodada nao pode morrer calada: o unico jeito de descobrir
                 # seria abrir o log, e quem abre o log ja desconfiou de algo.
@@ -1402,6 +1695,26 @@ def revisar_estoque(config: dict, *, headless: bool = False,
             "nao_assistidos": nao_assistidos, "pulados": pulados}
 
 
+def _escolher_incompleta(pendentes: list, config: dict, pilha, log):
+    """Qual historia pela metade esta rodada termina (ou None).
+
+    Fora do paralelo, como sempre: a primeira truncada, senao a primeira
+    pendente. Numa faixa (06/10/2026): na mesma ordem, a primeira que pode ser
+    dela (sem dono na roda, ou do gerador dela) e que a outra faixa nao esta
+    segurando; a posse fica em `pilha` ate quem chamou fechar.
+    """
+    truncadas = [p for p in pendentes if p.get("partes_sem_texto")]
+    if not _faixa(config):
+        if truncadas:
+            return truncadas[0]
+        return pendentes[0] if pendentes else None
+    resto = [p for p in pendentes if not p.get("partes_sem_texto")]
+    for alvo in truncadas + resto:
+        if pilha.enter_context(_posse(alvo["historia_id"], config, log)):
+            return alvo
+    return None
+
+
 def _trabalhar(config: dict, headless: bool, log) -> dict:
     from .controller import Pipeline
 
@@ -1413,9 +1726,13 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
             log(f"[auto] faltam {sobra:.0f} min para a janela fechar. Nao "
                 "comeco trabalho pesado: ele invadiria a hora do silencio.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
+    # No paralelo (06/10/2026) so a faixa do Gemini faz o servico e o
+    # parecer (`_da_casa`); fora dele, a rodada de sempre faz os dois.
+    da_casa = _da_casa(config)
     if config.get("servico_do_dia"):
-        _servico_do_dia(config, headless, log)
-    if janela and config.get("revisar_estoque_a_noite", True):
+        if da_casa:
+            _servico_do_dia(config, headless, log)
+    if janela and da_casa and config.get("revisar_estoque_a_noite", True):
         # A chave guarda o nome antigo (era so de madrugada); hoje vale para
         # qualquer janela pesada: parecer do Gemini no que ainda nao foi
         # olhado, antes de consertar e de criar.
@@ -1425,29 +1742,30 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
             log(f"[auto] a revisao do estoque falhou: "
                 f"{type(exc).__name__}: {exc}")
 
+    faixa = _faixa(config)
     if config.get("retomar_incompletas", True):
         pendentes = incompletas()
-        # ROTEIRO PELA METADE VEM PRIMEIRO, e nao vai para `_terminar`: ele
-        # gera imagem e video, e fazer isso numa serie truncada seria fabricar
-        # exatamente o que nao pode ir ao ar. Ela precisa das PARTES QUE
-        # FALTAM antes de qualquer outra coisa.
-        truncadas = [p for p in pendentes if p.get("partes_sem_texto")]
-        if truncadas:
-            alvo = truncadas[0]
-            faltam = alvo["partes_sem_texto"]
-            log(f"[auto] {alvo['historia_id']} esta pela METADE: falta o "
-                f"texto das partes {faltam}. Retomo antes de qualquer imagem "
-                "— serie truncada nao pode virar video.")
-            return _retomar_texto(pipeline, alvo["historia_id"], faltam,
-                                  headless, log,
-                                  guarda=_guarda_da_grade(config, log))
-        if pendentes:
-            alvo = pendentes[0]
-            log(f"[auto] terminando {alvo['historia_id']} antes de criar "
-                f"outra: {alvo['imagens_faltando']} imagem(ns) e "
-                f"{len(alvo['partes_sem_video'])} video(s) pendentes.")
-            return _terminar(pipeline, alvo["historia_id"], headless, log,
-                             criada=False, guarda=_guarda_da_grade(config, log))
+        with contextlib.ExitStack() as pilha:
+            # ROTEIRO PELA METADE VEM PRIMEIRO, e nao vai para `_terminar`:
+            # ele gera imagem e video, e fazer isso numa serie truncada seria
+            # fabricar exatamente o que nao pode ir ao ar. Ela precisa das
+            # PARTES QUE FALTAM antes de qualquer outra coisa.
+            alvo = _escolher_incompleta(pendentes, config, pilha, log)
+            if alvo is not None and alvo.get("partes_sem_texto"):
+                faltam = alvo["partes_sem_texto"]
+                log(f"[auto] {alvo['historia_id']} esta pela METADE: falta o "
+                    f"texto das partes {faltam}. Retomo antes de qualquer "
+                    "imagem — serie truncada nao pode virar video.")
+                return _retomar_texto(pipeline, alvo["historia_id"], faltam,
+                                      headless, log,
+                                      guarda=_guarda_da_grade(config, log))
+            if alvo is not None:
+                log(f"[auto] terminando {alvo['historia_id']} antes de criar "
+                    f"outra: {alvo['imagens_faltando']} imagem(ns) e "
+                    f"{len(alvo['partes_sem_video'])} video(s) pendentes.")
+                return _terminar(pipeline, alvo["historia_id"], headless,
+                                 log, criada=False,
+                                 guarda=_guarda_da_grade(config, log))
 
     # CONSERTAR VEM ANTES DE CRIAR, e a ordem e a coisa toda. Um video
     # barrado ja custou roteiro, imagens e render; recuperar ele e mais
@@ -1456,8 +1774,12 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     # ninguem conserta faz a maquina produzir sem parar para cobrir um
     # buraco que continua ali.
     from . import reparo
+    # No paralelo cada faixa conserta so o que pode ser dela, segurando a
+    # historia enquanto conserta (`_posse`).
+    na_faixa = ({"posse": lambda historia_id: _posse(historia_id, config, log)}
+                if faixa else {})
     conserto = reparo.rodada(limite=int(config.get("reparos_por_rodada") or 2),
-                             headless=headless, log=log)
+                             headless=headless, log=log, **na_faixa)
     if conserto["barrados"]:
         log(f"[auto] {conserto['consertados']} de {conserto['barrados']} "
             "video(s) barrado(s) consertados.")
@@ -1521,39 +1843,56 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
         + (f" do tipo {tipo}" if tipo else "")
         + f" via {' -> '.join(escritores)} "
         f"({partes} partes de {config.get('cenas_por_parte')} cenas)...")
-    try:
-        criada = pipeline.gerar(
-            provedor=escritores[0], provedores=escritores, tipo=tipo or None,
-            partes=partes,
-            cenas_por_parte=int(config.get("cenas_por_parte") or 14),
-            tema=(config.get("tema") or None),
-            headless=headless, log=log)
-    except Exception as exc:                                   # noqa: BLE001
-        log(f"[auto] o roteiro FALHOU: {type(exc).__name__}: {exc}")
-        return {"feito": "nada", "motivo": "roteiro falhou", "erro": str(exc)}
+    with contextlib.ExitStack() as posse_da_nova:
+        # NO PARALELO A HISTORIA NOVA NASCE COM DONO (06/10/2026): assim que
+        # o id e reservado (depois da biblia, antes do `roteiro.json`), esta
+        # faixa segura a historia e fixa o gerador dela. Sem isso a outra
+        # faixa a veria "pela METADE" no meio da escrita e a retomaria junto.
+        extra = {}
+        if faixa:
+            def _nasceu(nova: str) -> None:
+                from builds import travas
+                from ..imagens import fila
+                posse_da_nova.enter_context(
+                    travas.trava(trava_da_historia(nova), esperar=0.0))
+                fila.definir_gerador_da_historia(nova, faixa)
+                log(f"[auto] {nova}: nasce na faixa do {faixa} (todas as "
+                    "imagens dela sao dele).")
+            extra["ao_nascer"] = _nasceu
+        try:
+            criada = pipeline.gerar(
+                provedor=escritores[0], provedores=escritores,
+                tipo=tipo or None, partes=partes,
+                cenas_por_parte=int(config.get("cenas_por_parte") or 14),
+                tema=(config.get("tema") or None),
+                headless=headless, log=log, **extra)
+        except Exception as exc:                               # noqa: BLE001
+            log(f"[auto] o roteiro FALHOU: {type(exc).__name__}: {exc}")
+            return {"feito": "nada", "motivo": "roteiro falhou",
+                    "erro": str(exc)}
 
-    historia_id = criada["historia_id"]
-    log(f"[auto] {historia_id}: {criada['partes']} parte(s), "
-        f"{criada['cenas']} cenas — {criada.get('titulo', '')}")
+        historia_id = criada["historia_id"]
+        log(f"[auto] {historia_id}: {criada['partes']} parte(s), "
+            f"{criada['cenas']} cenas — {criada.get('titulo', '')}")
 
-    # A CONFERENCIA DE LINGUAGEM VEM ANTES DAS IMAGENS, que e onde o dinheiro
-    # e o tempo vao (84 imagens, ~40 min de PicassoIA, depois ~1h de render).
-    # Descobrir na hora de publicar que a historia nao pode ir ao ar seria
-    # pagar tudo isso para nada.
-    from ..roteiro import linguagem
-    from ..roteiro import roteiro as R
-    achados = linguagem.conferir(R.carregar(historia_id))
-    for linha in linguagem.resumo(achados):
-        log(f"[linguagem] {linha}")
-    if achados["pare"]:
-        log(f"[auto] {historia_id}: NAO vou gerar imagem. O assunto derruba o "
-            "video pelo que ele e, nao pela palavra — e um strike custa o "
-            "canal, nao um video.")
-        return {"feito": "nada", "motivo": "historia impublicavel",
-                "historia_id": historia_id,
-                "erro": "; ".join(linguagem.resumo(achados))[:300]}
-    return _terminar(pipeline, historia_id, headless, log, criada=True,
-                     guarda=guarda)
+        # A CONFERENCIA DE LINGUAGEM VEM ANTES DAS IMAGENS, que e onde o
+        # dinheiro e o tempo vao (84 imagens, ~40 min de PicassoIA, depois
+        # ~1h de render). Descobrir na hora de publicar que a historia nao
+        # pode ir ao ar seria pagar tudo isso para nada.
+        from ..roteiro import linguagem
+        from ..roteiro import roteiro as R
+        achados = linguagem.conferir(R.carregar(historia_id))
+        for linha in linguagem.resumo(achados):
+            log(f"[linguagem] {linha}")
+        if achados["pare"]:
+            log(f"[auto] {historia_id}: NAO vou gerar imagem. O assunto "
+                "derruba o video pelo que ele e, nao pela palavra — e um "
+                "strike custa o canal, nao um video.")
+            return {"feito": "nada", "motivo": "historia impublicavel",
+                    "historia_id": historia_id,
+                    "erro": "; ".join(linguagem.resumo(achados))[:300]}
+        return _terminar(pipeline, historia_id, headless, log, criada=True,
+                         guarda=guarda)
 
 
 def estoque_por_tipo(aprovados=None) -> dict:

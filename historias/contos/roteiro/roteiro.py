@@ -388,6 +388,17 @@ def _sem_a_marca(proprio: str, marca: str) -> str:
     return proprio
 
 
+def _marca_dentro(proprio: str, marca: str) -> bool:
+    """A marca da serie aparece, palavra por palavra, no titulo da parte?
+
+    Mesma comparacao de `_sem_a_marca` (sem acento, caixa, pontuacao e artigo
+    do comeco), em qualquer lugar do titulo e com borda de palavra: `Rua
+    Sete` casa com `A Noite em que a Rua Sete Entendeu`, `Rua Setembro` nao.
+    """
+    alvo = _comparavel(marca)
+    return bool(alvo) and f" {alvo} " in f" {_comparavel(proprio)} "
+
+
 def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
     """O que vai na tela e no YouTube.
 
@@ -426,6 +437,14 @@ def titulo_da_parte(roteiro: dict, numero: int = 1) -> str:
     if houve_corte and proprio:
         proprio = proprio[0].upper() + proprio[1:]
     ordem = f"Parte {numero}" + (f"/{total}" if total else "")
+    # A MARCA NO MEIO SAI DA FRENTE (decisao `historias/titulo-marca-no-meio`
+    # = "Tirar a marca da frente", 06/10/2026): quando o titulo da parte ja
+    # traz o nome da serie no meio, a marca na frente o repetia
+    # (`TÚMULO 214 — A Mulher do Túmulo 214 (Parte 1/5)`, 5 de 312 partes de
+    # serie medidas em 06/10). Fica `A Mulher do Túmulo 214 (Parte 1/5)`; o
+    # "(Parte n/N)" do fim continua sendo o unico marcador de parte.
+    if marca and proprio and _marca_dentro(proprio, marca):
+        marca = ""
     # A marca vem PRIMEIRO: e ela que se repete, e o olho a encontra no fim
     # de uma fileira de miniaturas. O titulo da parte vem depois, porque e o
     # que muda.
@@ -1052,6 +1071,26 @@ def proximo_id() -> str:
     existentes = [int(p.name.split("_")[1]) for p in OUTPUTS.glob("historia_*")
                   if p.name.split("_")[-1].isdigit()]
     return f"historia_{(max(existentes) + 1 if existentes else 1):05d}"
+
+
+def reservar_id() -> str:
+    """O proximo id com a pasta JA criada, sem corrida entre processos.
+
+    `proximo_id` + `mkdir(exist_ok=True)` dava o MESMO id a duas rodadas cujas
+    biblias chegassem juntas, e as duas escreveriam na mesma pasta. Com as
+    duas historias em paralelo (decisao `historias/imagens-dois-geradores-
+    juntos`, 06/10/2026) isso deixou de ser teorico. O `mkdir` sem
+    `exist_ok` e atomico: quem perde a corrida tenta o id seguinte.
+    """
+    OUTPUTS.mkdir(parents=True, exist_ok=True)
+    for _ in range(1000):
+        historia_id = proximo_id()
+        try:
+            (OUTPUTS / historia_id).mkdir()
+        except FileExistsError:
+            continue
+        return historia_id
+    raise RuntimeError("nao consegui reservar um id de historia novo")
 
 
 def salvar(roteiro: dict, historia_id: str | None = None, *,

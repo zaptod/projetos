@@ -90,10 +90,16 @@ class OndeAGuardaVaeTests(unittest.TestCase):
     def test_a_truncada_NAO_passa_por_terminar(self):
         """`_terminar` gera imagem e video — e o que nao pode acontecer."""
         corpo = self._fonte("contos", "pipeline", "agenda.py")
-        trecho = corpo[corpo.index("truncadas = ["):]
-        alvo = trecho[:trecho.index("if pendentes:")]
+        # 06/10/2026: a escolha foi para `_escolher_incompleta` (as duas
+        # historias em paralelo); o ramo da truncada continua so retomando.
+        trecho = corpo[corpo.index(
+            'if alvo is not None and alvo.get("partes_sem_texto"):'):]
+        alvo = trecho[:trecho.index("if alvo is not None:")]
         self.assertIn("_retomar_texto(", alvo)
         self.assertNotIn("_terminar(", alvo)
+        escolha = corpo[corpo.index("def _escolher_incompleta("):
+                        corpo.index("def _trabalhar(")]
+        self.assertIn("return truncadas[0]", escolha)
 
     def test_incompletas_marca_a_truncada_e_para_ali(self):
         corpo = self._fonte("contos", "pipeline", "agenda.py")
