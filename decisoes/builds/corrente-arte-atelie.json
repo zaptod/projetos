@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-c9800372",
+      "em": "2026-10-07T16:03:55",
+      "evento": "2026-10-07T16:03:53",
+      "linha": 140,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "codigo-agora",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Você tinha decidido 'arte da corrente pela esteira de sprites', mas a esteira foi desligada e agora quem desenha é você no Ateliê. A mecânica nova (bola física com momento) está pronta e desligada; a vitrine compara a antiga com a nova na mesma luta. A corrente aparece em 23% dos duelos (21 de 91).",
   "criado": "2026-10-07T10:07:40.818629",
   "depende_de": [],
