@@ -1,0 +1,42 @@
+{
+  "comentario": true,
+  "contexto": "Decisão youtube-caiu-depois-do-tiktok (06/10): subir a MESMA parte no YouTube. A válvula de qualidade (27/09) diz que parte retida só sai no lugar do horário vazio. Hoje (07/10 00:12) o YouTube deve 3 partes: h54 p01 e p02 (retidas; já estão no TikTok desde 05/10 23:50 e 06/10 00:49, marcadas 'a conferir' lá) e h60 p01 (aprovada). A fila tem 2 partes limpas e 53 retidas. Se a devida retida esperar a válvula, a h54 fica com buraco no YouTube enquanto houver parte limpa; se não esperar, uma retida vai ao YouTube na frente de uma limpa (fica 'a conferir' no YouTube). Serve para fechar a regra da dívida do YouTube no postar.",
+  "criado": "2026-10-07T00:18:34.167351",
+  "depende_de": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-07T00:43:35",
+      "opcao": "sobe",
+      "origem": "app"
+    }
+  ],
+  "id": "divida-retida-fura-valvula",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "A série fica completa e em ordem no YouTube; a retida vai ao ar no YouTube e fica na lista a conferir (como já foi no TikTok) (recomendado)",
+      "id": "sobe",
+      "pede_comentario": false,
+      "rotulo": "Sobe mesmo assim"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "A devida retida só sobe no YouTube quando não houver parte limpa; até lá o YouTube segue a fila normal",
+      "id": "espera",
+      "pede_comentario": false,
+      "rotulo": "Espera a válvula"
+    }
+  ],
+  "pergunta": "Quando o YouTube deve uma parte (saiu só no TikTok) e essa parte é RETIDA (a IA reprovou ou ninguém assistiu ao conserto), ela sobe no YouTube mesmo havendo parte limpa na fila?",
+  "projeto": "publicacao",
+  "situacao": "decidida",
+  "titulo": "Parte devida ao YouTube que é RETIDA",
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-07T00:43:35",
+    "opcao": "sobe"
+  }
+}
