@@ -5,7 +5,16 @@
   "depende_de": [],
   "historico": [],
   "id": "duelo-palco-sem-corrente",
-  "midias": [],
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\duelo-palco-sem-corrente\\ab_celular.mp4",
+      "rotulo": "A/B: hoje (A) x palco (B), sem desenhos"
+    },
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\duelo-palco-sem-corrente\\ab_celular-2.mp4",
+      "rotulo": "A/B com desenhos de TESTE do Ateliê (armas, acerto, K.O., invocação)"
+    }
+  ],
   "opcoes": [
     {
       "desbloqueia": [],
