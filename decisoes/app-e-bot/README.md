@@ -19,4 +19,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Obsidian no celular: como o PC chega lá** — Syncthing (grátis) (06/10/2026) `obsidian-no-celular`
 - ✅ **Conversa: pergunta que não está na lista** — O modelo decide (06/10/2026) `conversa-pergunta-livre`
 - ✅ **Ateliê: onde fica e o que vem primeiro** — Objeto próprio, três modos no topo (recomendado) (07/10/2026) `atelie-lugar-e-ordem`
-- ⏳ **Ateliê: os dois 'Apagar' do mesmo cartão** — Quando um lugar tem 2 ou mais variantes, como ficam os botões Apagar/Trocar do topo do cartão? `atelie-dois-apagar`
+- ✅ **Ateliê: os dois 'Apagar' do mesmo cartão** — Renomear para ficar claro (recomendado) (07/10/2026) `atelie-dois-apagar`
