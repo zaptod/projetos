@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-6d47da78",
+      "em": "2026-10-07T19:35:12",
+      "evento": "2026-10-07T19:35:05",
+      "linha": 147,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "permitir",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "pedido de permissao da tarefa pedido-00cae350",
   "criado": "2026-10-07T18:54:45.286616",
   "depende_de": [],
