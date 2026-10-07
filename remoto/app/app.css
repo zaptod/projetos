@@ -703,6 +703,7 @@ details.recolhido[open] > summary { margin-bottom: 8px; }
 .coord-msg.adrian { align-self: flex-end; background: rgba(92, 193, 133, .16); }
 .coord-msg.coordenador { align-self: flex-start; }
 .coord-msg .fraco { display: block; font-size: 11px; margin-top: 2px; }
+.coord-msg .botoes { margin-top: 6px; white-space: normal; }
 .coord-escrever { display: flex; gap: 6px; align-items: flex-end; }
 .coord-escrever textarea { flex: 1; min-width: 0; font: inherit; padding: 6px; border-radius: 8px; }
 .coord-proposta { padding: 8px 0; border-top: 1px solid var(--linha); overflow-wrap: anywhere; }

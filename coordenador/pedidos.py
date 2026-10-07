@@ -310,16 +310,28 @@ ESQUEMA_PAPO = {"type": "object", "additionalProperties": False, "required": ["r
 # 06/10/2026: "O modelo decide"). Texto fora da lista fixa, do app ou do
 # Telegram, passa primeiro pelo modelo leve: pergunta ou conversa ele responde
 # na hora e nao abre pedido; pedido de trabalho vai para a equipe. Sem modelo
-# (proibido, teto, erro, prazo, resposta suja), vira pedido como antes: na
-# duvida, nada que ele pediu se perde. "pedido: ..." pula o modelo.
+# (proibido, teto, erro, prazo, resposta suja) a mensagem fica GUARDADA na
+# conversa, com uma resposta franca, e NADA vai a equipe (07/10/2026: antes
+# virava pedido, e uma pergunta contratava um trabalhador so porque o modelo
+# caiu). Quem passa para a equipe e o Adrian: o toque «Passar para a equipe»
+# no app (`passar_para_equipe`) ou "pedido: ..." no comeco, que pula o modelo.
 ESQUEMA_TRIAGEM = {"type": "object", "additionalProperties": False,
                    "required": ["tipo", "resposta"],
                    "properties": {"tipo": {"type": "string", "enum": ["conversa", "trabalho"]},
                                   "resposta": {"type": "string"}}}
 _PREFIXO_PEDIDO = re.compile(r"^\s*pedido\s*[:\-–—]\s*", re.IGNORECASE)
 LIVRE_LEMBRETE = "(Se era um pedido para a equipe, mande de novo começando com «pedido:».)"
+LIVRE_LEMBRETE_APP = "(Se era um pedido para a equipe, toque «Passar para a equipe».)"
 LIVRE_RESERVA = ("Recebi. Ainda estou lendo: se for pergunta, eu respondo aqui; se for "
                  "trabalho, passo para a equipe.")
+# o modelo que falhou de passagem (erro, prazo, resposta fora do formato ou
+# com id/arquivo) tenta de novo no pulso seguinte; parado (proibido, teto,
+# limite por hora) nao adianta tentar
+TRIAGEM_TENTATIVAS = 2
+LIVRE_SEM_MODELO = ("Não consegui ler a sua mensagem agora ({motivo}). Ela ficou guardada "
+                    "aqui e não passei nada para a equipe.")
+LIVRE_SEM_MODELO_COMO = {"app": "Se é um trabalho, toque «Passar para a equipe».",
+                         "telegram": "Se é um trabalho, mande de novo começando com «pedido:»."}
 _ROTULO = {"recebido": "recebido", "trabalhando": "trabalhando", "esperando": "em espera",
            "entregue": "entregue, esperando aplicar e conferir",
            "parado_limite": "parado no limite — volta sozinho",
@@ -544,6 +556,16 @@ def _segundos_desde(iso, agora):
         return (agora - datetime.fromisoformat(str(iso))).total_seconds()
     except (TypeError, ValueError):
         return None
+
+
+def _modelo_parado(exc) -> bool:
+    """O modelo leve recusou por estar PARADO (Claude proibido, teto do
+    Codex, limite por hora): tentar de novo no pulso seguinte nao adianta."""
+    try:
+        from .cerebro import CerebroIndisponivel
+    except Exception:                                         # noqa: BLE001
+        return False
+    return isinstance(exc, CerebroIndisponivel)
 
 
 def _aprovado(resposta: str) -> bool:
@@ -1292,10 +1314,9 @@ class MesaPedidos:
                 _gravar(dados)
         feitas = []
         for ident, prompt, reserva, livre in trabalho:
+            de_novo = False
             if livre:
-                por, texto = self._triar(prompt)
-                if por == "ia":
-                    texto = f"{texto} {LIVRE_LEMBRETE}"
+                por, texto, de_novo = self._triar(prompt)
             else:
                 texto, por = reserva, "modelo"
                 if self.conversador is not None:
@@ -1305,17 +1326,34 @@ class MesaPedidos:
                             texto, por = bruto[:700], "ia"
                     except Exception:                         # noqa: BLE001
                         pass            # sem modelo agora: vale a resposta-modelo
-            feitas.append((ident, texto, por))
             # cada resposta vai a tela assim que fica pronta (nao espera as outras)
             with _TRAVA:
                 dados = _ler()
                 pedido = next((p for p in dados["pedidos"] if p.get("id") == ident), None)
                 if pedido is None or pedido.get("papo") != "pensando":
-                    continue
+                    continue            # o Adrian passou para a equipe enquanto isso
                 if por == "trabalho":
                     self._virar_trabalho(dados, pedido)
                     _gravar(dados)
+                    feitas.append((ident, "", por))
                     continue
+                origem = pedido.get("origem")
+                if por == "sem_modelo":
+                    # 07/10/2026: o modelo nao decidiu. Nunca vira trabalho
+                    # sozinho (uma pergunta contrataria um trabalhador); fica
+                    # guardada na conversa e ele decide
+                    falhas = int(pedido.get("triagem_falhas") or 0) + 1
+                    pedido.update(triagem_falhas=falhas, triagem_motivo=texto[:200])
+                    if de_novo and falhas < TRIAGEM_TENTATIVAS:
+                        _gravar(dados)            # continua "pensando": o proximo pulso tenta
+                        feitas.append((ident, texto, "de_novo"))
+                        continue
+                    texto = (LIVRE_SEM_MODELO.format(motivo=texto) + " "
+                             + LIVRE_SEM_MODELO_COMO["telegram" if origem == "telegram"
+                                                     else "app"])
+                elif livre:
+                    texto = f"{texto} {self._lembrete(origem)}"
+                feitas.append((ident, texto, por))
                 pedido.update(papo="respondido", papo_por=por, resposta=texto[:2000],
                               atualizado_em=_iso())
                 _linha(dados, pedido, texto, tipo="final", limite=2000)
@@ -1325,25 +1363,68 @@ class MesaPedidos:
         return feitas
 
     def _triar(self, prompt):
-        """("ia", resposta) quando o modelo diz que e conversa e escreve uma
-        resposta limpa; ("trabalho", "") em todo o resto (sem modelo, erro,
-        prazo, resposta vazia ou com id/arquivo): na duvida, a equipe recebe."""
+        """(por, texto, de_novo) da pergunta livre:
+        - ("ia", resposta, False): o modelo diz conversa e escreve uma
+          resposta limpa;
+        - ("trabalho", "", False): o modelo diz trabalho -- a equipe recebe;
+        - ("sem_modelo", motivo, de_novo): o modelo NAO decidiu. `de_novo`
+          quando vale tentar no pulso seguinte (erro, prazo, resposta fora do
+          formato, vazia ou com id/arquivo); False quando ele esta parado
+          (proibido, teto, limite por hora) ou desligado.
+
+        07/10/2026: "sem modelo" deixou de ser "trabalho". Uma pergunta que o
+        modelo nao leu contratava um trabalhador (o caminho que o Adrian
+        trocou pelo "O modelo decide"); agora ela fica na conversa e ele
+        decide com um toque."""
         if self.triador is None:
-            return "trabalho", ""
+            return "sem_modelo", "quem lê as mensagens está desligado", False
         try:
-            dados = self.triador(prompt) or {}
-        except Exception:                                     # noqa: BLE001
-            return "trabalho", ""
-        if not isinstance(dados, dict):
-            return "trabalho", ""
+            dados = self.triador(prompt)
+        except Exception as exc:                              # noqa: BLE001
+            if _modelo_parado(exc):
+                return "sem_modelo", "quem lê as mensagens está parado agora", False
+            return "sem_modelo", "quem lê as mensagens não respondeu", True
+        if not isinstance(dados, dict) or dados.get("tipo") not in ("conversa", "trabalho"):
+            return "sem_modelo", "a leitura veio fora do formato", True
+        if dados["tipo"] == "trabalho":
+            return "trabalho", "", False
         texto = " ".join(str(dados.get("resposta") or "").split())
-        if dados.get("tipo") == "conversa" and texto and not _SUJEIRA.search(texto):
-            return "ia", texto[:700]
-        return "trabalho", ""
+        if texto and not _SUJEIRA.search(texto):
+            return "ia", texto[:700], False
+        return "sem_modelo", "a resposta veio incompleta", True
+
+    @staticmethod
+    def _lembrete(origem) -> str:
+        """O que fazer se a conversa era um pedido: no app, o botao; no
+        Telegram (sem botao), o «pedido:»."""
+        return LIVRE_LEMBRETE if origem == "telegram" else LIVRE_LEMBRETE_APP
+
+    def passar_para_equipe(self, ident, origem="app"):
+        """O toque «Passar para a equipe» (07/10/2026): a pergunta livre que
+        ficou como conversa -- o modelo a leu como conversa, nao conseguiu
+        ler, ou ainda esta lendo -- vira o pedido de sempre, com o recibo.
+        So o Adrian faz isso; o servidor nunca passa sozinho o que o modelo
+        nao leu. KeyError: nao existe; ValueError: ja e trabalho, ou e conversa
+        da lista fixa (saudacao, agradecimento)."""
+        with _TRAVA:
+            dados = _ler()
+            pedido = next((p for p in dados["pedidos"] if p.get("id") == ident), None)
+            if pedido is None:
+                raise KeyError(f"não há a mensagem {ident}")
+            if not pedido.get("conversa"):
+                raise ValueError("esta mensagem já está com a equipe")
+            if pedido.get("forma") != "livre":
+                raise ValueError("saudação e agradecimento não viram pedido: escreva o pedido "
+                                 "numa mensagem nova")
+            _linha(dados, pedido, "você passou esta mensagem para a equipe", origem=origem)
+            self._virar_trabalho(dados, pedido)
+            pedido["passado_por"] = origem
+            _gravar(dados)
+        return dict(pedido, continuacao=False)
 
     def _virar_trabalho(self, dados, pedido):
-        """A pergunta livre que o modelo leu como trabalho (ou que ele nao pode
-        ler): vira o pedido de sempre, com o recibo na hora."""
+        """A pergunta livre que o modelo leu como trabalho (ou que o Adrian
+        passou para a equipe): vira o pedido de sempre, com o recibo na hora."""
         for chave in ("conversa", "curto", "forma", "papo", "papo_desde", "resposta"):
             pedido.pop(chave, None)
         agora = _iso()
@@ -3161,7 +3242,13 @@ class MesaPedidos:
                 # o app so mostra Permitir/Negar enquanto a ficha espera; ja
                 # decidida, o pulso executa (ou registra o "negou") em segundos
                 p["permissao_estado"] = dict(pe, pendente=self._permissao_pendente(pe, p))
-        conversa = list(dados["conversa"][-120:])
+        # 07/10/2026: a resposta a uma pergunta livre que ainda e conversa leva
+        # `pode_passar` -- o app mostra «Passar para a equipe» nela
+        livres = {p["id"] for p in dados["pedidos"]
+                  if p.get("conversa") and p.get("forma") == "livre"}
+        conversa = [dict(c, pode_passar=True)
+                    if c.get("pedido") in livres and c.get("tipo") == "final" else c
+                    for c in dados["conversa"][-120:]]
         for p in dados["pedidos"]:
             # a conversa que ninguem respondeu (o coordenador parado): passado
             # o prazo, a tela mostra a resposta-modelo guardada, sem gravar
@@ -3170,7 +3257,8 @@ class MesaPedidos:
                 conversa.append({"id": "reserva-" + p["id"], "em": _iso(self.relogio()),
                                  "pedido": p["id"], "de": "orquestrador",
                                  "origem": p.get("origem", "app"), "tipo": "final",
-                                 "reserva": True, "texto": str(p.get("resposta") or "")})
+                                 "reserva": True, "texto": str(p.get("resposta") or ""),
+                                 "pode_passar": p["id"] in livres})
         return {"pedidos": pedidos, "conversa": conversa,
                 "novo_assunto": bool(dados.get("novo_assunto")),
                 "na_fila": sum(1 for p in pedidos if p.get("situacao") in VIVOS)}
@@ -3227,6 +3315,10 @@ def atender_conversa():
 
 def registrar(texto, origem="app", *, novo=False, responde_a=None, triar=None):
     return MESA.registrar(texto, origem, novo=novo, responde_a=responde_a, triar=triar)
+
+
+def passar_para_equipe(ident, origem="app"):
+    return MESA.passar_para_equipe(ident, origem)
 
 
 def reabrir(ident, motivo="reaberto", continuacao=None):

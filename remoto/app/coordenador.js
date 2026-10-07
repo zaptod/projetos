@@ -182,7 +182,7 @@ function coordTrabalho(t) {
 }
 
 // ------------------------------------------------ a Conversa com o cerebro (02/10)
-const CoordConv = {aba: "painel", enviando: false, armado: null};
+const CoordConv = {aba: "painel", enviando: false, armado: null, passar: null, passando: null};
 
 function coordAba(aba) {
   CoordConv.aba = aba;
@@ -198,8 +198,43 @@ function coordMensagem(m) {
   const de = m.de === "adrian" ? "adrian" : "coordenador";
   const quem = de === "adrian" ? "você" : m.de === "orquestrador" ? "🧭 orquestrador" : "🛰 coordenador";
   const pelo = m.origem === "telegram" ? " · pelo Telegram" : "";
-  return el("div", {class: `coord-msg ${de}`}, m.texto || "",
+  const bolha = el("div", {class: `coord-msg ${de}`}, m.texto || "",
     el("span", {class: "fraco"}, `${quem} · ${quandoCurto(m.em) || ""}${pelo}`));
+  if (m.pode_passar && m.pedido) bolha.append(coordPassarBotao(m.pedido));
+  return bolha;
+}
+
+// 07/10 (Grimório app-e-bot/conversa-pergunta-livre, "O modelo decide"): a
+// pergunta livre que ficou como conversa — o modelo a leu como conversa, ou
+// não conseguiu ler — vira trabalho só pelo toque dele. Dois toques: um toque
+// perdido ao rolar a conversa não contrata ninguém.
+function coordPassarBotao(id) {
+  const b = el("button", {class: "acao coord-passar", type: "button"},
+    CoordConv.passar === id ? "Tocar de novo para passar" : "↪ Passar para a equipe");
+  b.disabled = CoordConv.passando === id;
+  b.addEventListener("click", () => {
+    if (CoordConv.passar !== id) {
+      CoordConv.passar = id;
+      b.textContent = "Tocar de novo para passar";
+      setTimeout(() => { if (CoordConv.passar === id) { CoordConv.passar = null; b.textContent = "↪ Passar para a equipe"; } }, 4000);
+      return;
+    }
+    CoordConv.passar = null;
+    coordPassar(id);
+  });
+  return el("div", {class: "botoes"}, b);
+}
+
+async function coordPassar(id) {
+  if (CoordConv.passando) return;
+  CoordConv.passando = id;
+  try {
+    const r = await api(`/api/coordenador/pedido/${encodeURIComponent(id)}/equipe`, {method: "POST",
+      headers: {"Content-Type": "application/json"}, body: "{}"});
+    avisar(pedidoAvisoDoEnvio(r || {}));
+  } catch (err) { avisar(err.message, true); }
+  CoordConv.passando = null;
+  coordConversaCarregar();
 }
 
 function coordProposta(p) {

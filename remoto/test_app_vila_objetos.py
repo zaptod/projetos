@@ -150,8 +150,9 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v49 = guarda-roupa de variantes (vNN) + provador; v50 = recortador de folha
     # verde/magenta junto com o guarda-roupa (06/10); v51 = o Provador (jogo de
     # vestir), a galeria de variantes no cartao e "+ Nova variante" com varios arquivos;
-    # v52 = recortador encaixa no DESTINO, pares de olhos, prévia do Provador presa (06/10).
-    assert "painel-casca-v52" in sw
+    # v52 = recortador encaixa no DESTINO, pares de olhos, prévia do Provador presa (06/10);
+    # v53 = «Passar para a equipe» na resposta a uma pergunta livre (07/10).
+    assert "painel-casca-v53" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

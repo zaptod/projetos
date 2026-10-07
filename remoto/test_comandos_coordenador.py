@@ -87,21 +87,40 @@ def test_mensagem_curta_no_telegram_nao_abre_pedido(cerebro, texto):
 def test_texto_curto_fora_da_lista_fixa_e_pedido_no_telegram(cerebro, texto, monkeypatch):
     """Conferente 5 (05/10/2026): o "curto" por contagem de palavras engolia
     pedidos de verdade. So a lista fixa e conversa fixa; desde 06/10 (Grimorio,
-    "O modelo decide") o resto espera o modelo, e sem ele vira pedido."""
+    "O modelo decide") o resto espera o modelo. O modelo diz trabalho: vira
+    pedido, e o recibo vai pelo aviso do Telegram, com o /responder no fim."""
     from coordenador import pedidos
     avisos = []
     monkeypatch.setattr(pedidos.MESA, "avisar", avisos.append)
+    monkeypatch.setattr(pedidos.MESA, "triador", lambda _p: {"tipo": "trabalho", "resposta": ""})
     resposta, _ = comandos.executar(texto)
     assert resposta.startswith("🧭 Li. Já te respondo aqui"), resposta
     assert "Entendi" not in resposta
-    # o coordenador sem modelo (o triador do teste e None): vira pedido, e o
-    # recibo vai pelo aviso do Telegram, com o /responder no fim
-    assert pedidos.MESA.triador is None
     pedidos.MESA.atender_conversa()
     item = pedidos.para_o_app()["pedidos"][0]
     assert item["situacao"] == "recebido" and item.get("conversa") is None
     assert len(avisos) == 1 and avisos[0].startswith("🧭 Entendi: «"), avisos
     assert avisos[0].rstrip().endswith(f"/responder {item['id'][len('pedido-'):]} <texto>)")
+
+
+def test_texto_livre_no_telegram_sem_modelo_fica_guardado_e_nao_abre_pedido(cerebro, monkeypatch):
+    """07/10/2026: sem modelo (o triador do teste e None), a mensagem NAO vira
+    pedido sozinha (antes, uma pergunta contratava um trabalhador so porque o
+    modelo caiu). Fica guardada e a resposta ensina o «pedido:»."""
+    from coordenador import pedidos
+    avisos = []
+    monkeypatch.setattr(pedidos.MESA, "avisar", avisos.append)
+    assert pedidos.MESA.triador is None
+    resposta, _ = comandos.executar("por que o vídeo das 17h não saiu?")
+    assert resposta.startswith("🧭 Li. Já te respondo aqui"), resposta
+    pedidos.MESA.atender_conversa()
+    item = pedidos.para_o_app()["pedidos"][0]
+    assert item["situacao"] == "respondido" and item["conversa"] is True
+    assert item["papo_por"] == "sem_modelo"
+    assert len(avisos) == 1 and avisos[0].startswith("🧭 Não consegui ler a sua mensagem agora")
+    assert avisos[0].endswith("mande de novo começando com «pedido:».") and "/responder" not in avisos[0]
+    resposta, _ = comandos.executar("pedido: por que o vídeo das 17h não saiu?")
+    assert resposta.startswith("🧭 Entendi: «por que o vídeo das 17h não saiu?».")
 
 
 def test_pergunta_livre_no_telegram_o_modelo_responde_sem_abrir_pedido(cerebro, monkeypatch):

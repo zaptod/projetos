@@ -19,7 +19,13 @@ LISTA FIXA dizia o que e conversa.
 Depois, o Adrian decidiu no Grimorio (app-e-bot/conversa-pergunta-livre,
 06/10/2026, "O modelo decide"): o texto fora da lista passa pelo modelo leve,
 que responde a pergunta na hora sem abrir pedido, ou passa o trabalho a
-equipe. Sem modelo, vira pedido como antes; "pedido: ..." pula o modelo.
+equipe. "pedido: ..." pula o modelo.
+
+07/10/2026: SEM modelo (proibido, teto, erro, prazo, resposta suja) a
+mensagem deixou de virar pedido sozinha -- uma pergunta contratava um
+trabalhador so porque o modelo caiu. Ela fica guardada na conversa, com uma
+resposta franca, e o Adrian a passa para a equipe com um toque (ou
+"pedido: ..."). O erro de passagem tenta de novo no pulso seguinte.
 """
 from __future__ import annotations
 
@@ -333,7 +339,7 @@ def test_pergunta_livre_o_modelo_responde_na_hora_e_nao_abre_pedido(mesa):
     feitas = mesa.atender_conversa()
     assert [(f[0], f[2]) for f in feitas] == [(r["id"], "ia")]
     assert _finais(mesa)[-1] == ("Daqui eu não vejo a publicação das 17h. "
-                                 + pedidos.LIVRE_LEMBRETE)
+                                 + pedidos.LIVRE_LEMBRETE_APP)
     p = _pedido(mesa, r["id"])
     assert p["situacao"] == "respondido" and p["papo"] == "respondido" and p["papo_por"] == "ia"
     assert not [c for c in mesa.para_o_app()["conversa"]
@@ -366,29 +372,169 @@ def test_pedido_de_trabalho_o_modelo_passa_a_equipe_com_o_recibo(mesa):
     assert len(mesa.despachante.criados) == 1
 
 
+def _guardada_sem_trabalho(mesa, ident, origem="app"):
+    """A pergunta que o modelo nao leu: conversa respondida com a resposta
+    franca, nenhum recibo, ninguem contratado em pulso nenhum."""
+    p = _pedido(mesa, ident)
+    assert p["conversa"] is True and p["situacao"] == "respondido"
+    assert p["papo"] == "respondido" and p["papo_por"] == "sem_modelo"
+    final = _finais(mesa)[-1]
+    assert final.startswith("Não consegui ler a sua mensagem agora (")
+    assert "Ela ficou guardada aqui e não passei nada para a equipe." in final
+    assert final.endswith(pedidos.LIVRE_SEM_MODELO_COMO[origem])
+    assert "pedido-" not in final
+    assert not [c for c in mesa.para_o_app()["conversa"]
+                if c["pedido"] == ident and c["tipo"] == "recibo"]
+    for _ in range(3):
+        mesa.passo()
+        mesa.relogio.andar(seconds=130)
+    assert mesa.despachante.criados == []
+    assert mesa.atender_conversa() == []                           # nada responde duas vezes
+    return p
+
+
 @pytest.mark.parametrize("devolve", [
     RuntimeError("o Codex saiu com o código 1"),
+    TimeoutError("45 s"),
     {},
     "conversa",                                                     # nao e o schema
     {"tipo": "conversa", "resposta": ""},
     {"tipo": "conversa", "resposta": "O pedido-4d72f571 está na fila."},
     {"tipo": "conversa", "resposta": "Olhei o postar.py e nada."},
     {"tipo": "talvez", "resposta": "Não sei."},
-    None,                                                           # sem modelo
 ])
-def test_sem_modelo_bom_a_pergunta_vira_pedido_e_nada_se_perde(mesa, devolve):
-    """Na duvida, o caminho de antes: o pedido vai a equipe."""
-    if devolve is None:
-        mesa.triar, mesa.triador = True, None
-    else:
-        _triando(mesa, devolve)
+def test_modelo_que_falha_de_passagem_tenta_de_novo_e_depois_guarda_sem_contratar(mesa, devolve):
+    """07/10/2026. Antes: sem resposta boa do modelo, a pergunta virava
+    pedido e um trabalhador era contratado para ela. Agora: uma tentativa a
+    mais no pulso seguinte; falhou de novo, fica guardada na conversa e nada
+    vai a equipe."""
+    vistos = _triando(mesa, devolve)
+    r = mesa.registrar(PERGUNTA)
+    feitas = mesa.atender_conversa()
+    assert [(f[0], f[2]) for f in feitas] == [(r["id"], "de_novo")]
+    p = _pedido(mesa, r["id"])
+    assert p["papo"] == "pensando" and p["triagem_falhas"] == 1     # ainda lendo
+    assert not _finais(mesa)
+    mesa.passo()
+    assert mesa.despachante.criados == []
+    feitas = mesa.atender_conversa()
+    assert [(f[0], f[2]) for f in feitas] == [(r["id"], "sem_modelo")]
+    assert len(vistos) == 2
+    p = _guardada_sem_trabalho(mesa, r["id"])
+    assert p["triagem_falhas"] == 2 and p["triagem_motivo"]
+
+
+def test_erro_de_passagem_que_some_na_segunda_tentativa_responde(mesa):
+    respostas = [RuntimeError("o Codex saiu com o código 1"),
+                 {"tipo": "conversa", "resposta": "Daqui eu não vejo a publicação das 17h."}]
+
+    def triador(_prompt):
+        r = respostas.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+    mesa.triar, mesa.triador = True, triador
     r = mesa.registrar(PERGUNTA)
     mesa.atender_conversa()
-    p = _pedido(mesa, r["id"])
-    assert p["situacao"] == "recebido" and not p.get("conversa")
+    feitas = mesa.atender_conversa()
+    assert [(f[0], f[2]) for f in feitas] == [(r["id"], "ia")]
+    assert _finais(mesa) == ["Daqui eu não vejo a publicação das 17h. "
+                             + pedidos.LIVRE_LEMBRETE_APP]
+
+
+def test_modelo_parado_nao_tenta_de_novo_e_guarda_na_hora(mesa):
+    """Proibido, teto do Codex, limite por hora (o `CerebroIndisponivel`):
+    tentar no pulso seguinte nao adianta. E sem triador ligado, o mesmo."""
+    from coordenador import cerebro
+    vistos = _triando(mesa, cerebro.CerebroIndisponivel("limite de 30 pensamentos por hora"))
+    r = mesa.registrar(PERGUNTA)
+    assert [(f[0], f[2]) for f in mesa.atender_conversa()] == [(r["id"], "sem_modelo")]
+    assert len(vistos) == 1
+    p = _guardada_sem_trabalho(mesa, r["id"])
+    assert "parado" in _finais(mesa)[-1] and "pensamentos" not in _finais(mesa)[-1]
+    assert p["triagem_falhas"] == 1
+    mesa.triador = None                                              # sem modelo ligado
+    r2 = mesa.registrar("e o das 21h?")
+    assert [(f[0], f[2]) for f in mesa.atender_conversa()] == [(r2["id"], "sem_modelo")]
+    _guardada_sem_trabalho(mesa, r2["id"])
+
+
+def test_passar_para_equipe_vira_o_mesmo_pedido_com_recibo_e_um_trabalhador(mesa):
+    """O toque «Passar para a equipe»: o MESMO id vira trabalho (nada de
+    segundo pedido nem segundo trabalhador), e so pelo toque dele."""
+    _triando(mesa, RuntimeError("caiu"))
+    r = mesa.registrar(PERGUNTA)
+    mesa.atender_conversa()
+    mesa.atender_conversa()
+    _guardada_sem_trabalho(mesa, r["id"])
+    linha = [c for c in mesa.para_o_app()["conversa"] if c["tipo"] == "final"][-1]
+    assert linha["pedido"] == r["id"] and linha["pode_passar"] is True
+    n_pedidos = len(mesa.para_o_app()["pedidos"])
+    item = mesa.passar_para_equipe(r["id"])
+    assert item["id"] == r["id"] and item["situacao"] == "recebido" and not item.get("conversa")
+    assert item["passado_por"] == "app"
     assert _recibo(mesa, r["id"]).startswith("Entendi: «por que o vídeo das 17h não saiu?».")
+    app = mesa.para_o_app()
+    assert len(app["pedidos"]) == n_pedidos
+    assert not [c for c in app["conversa"] if c.get("pode_passar")]   # o botao some
     mesa.passo()
     assert _pedido(mesa, r["id"])["situacao"] == "trabalhando"
+    assert len(mesa.despachante.criados) == 1
+    with pytest.raises(ValueError, match="já está com a equipe"):
+        mesa.passar_para_equipe(r["id"])                           # toque repetido
+    mesa.passo()
+    assert len(mesa.despachante.criados) == 1
+
+
+def test_passar_para_equipe_enquanto_o_modelo_ainda_le(mesa):
+    """Ele passou antes da leitura acabar: a thread da conversa nao responde
+    por cima nem abre outro pedido."""
+    vistos = _triando(mesa, {"tipo": "conversa", "resposta": "Oi!"})
+    r = mesa.registrar(PERGUNTA)
+    assert mesa.para_o_app()["pedidos"][0]["papo"] == "pensando"
+    mesa.passar_para_equipe(r["id"])
+    assert mesa.atender_conversa() == [] and vistos == []
+    assert _pedido(mesa, r["id"])["situacao"] == "recebido"
+    assert not _finais(mesa)
+
+
+def test_passar_para_equipe_depois_da_resposta_do_modelo(mesa):
+    """O risco que o Adrian aceitou ("um pedido de verdade pode ser tomado
+    por conversa"): a resposta diz, e ele passa com um toque."""
+    _triando(mesa, {"tipo": "conversa", "resposta": "Entendi, a voz estava baixa."})
+    r = mesa.registrar("a voz do vídeo de ontem estava baixa")
+    mesa.atender_conversa()
+    assert [c["pode_passar"] for c in mesa.para_o_app()["conversa"]
+            if c["tipo"] == "final"] == [True]
+    mesa.passar_para_equipe(r["id"])
+    mesa.passo()
+    assert _pedido(mesa, r["id"])["situacao"] == "trabalhando"
+
+
+def test_passar_para_equipe_recusa_o_que_nao_e_pergunta_livre(mesa):
+    oi = mesa.registrar("oi")
+    with pytest.raises(ValueError, match="saudação e agradecimento"):
+        mesa.passar_para_equipe(oi["id"])
+    trabalho = mesa.registrar("pedido: arrume o botão Publicar do app")
+    with pytest.raises(ValueError, match="já está com a equipe"):
+        mesa.passar_para_equipe(trabalho["id"])
+    with pytest.raises(KeyError):
+        mesa.passar_para_equipe("pedido-00000000")
+    mesa.atender_conversa()
+    assert not [c for c in mesa.para_o_app()["conversa"] if c.get("pode_passar")]
+
+
+def test_telegram_sem_modelo_guarda_e_ensina_o_pedido(mesa):
+    avisos = []
+    mesa.avisar = avisos.append
+    from coordenador import cerebro
+    _triando(mesa, cerebro.CerebroIndisponivel("teto"))
+    r = mesa.registrar(PERGUNTA, "telegram")
+    mesa.atender_conversa()
+    _guardada_sem_trabalho(mesa, r["id"], origem="telegram")
+    assert len(avisos) == 1 and avisos[0].startswith("🧭 Não consegui ler a sua mensagem agora")
+    assert avisos[0].endswith("mande de novo começando com «pedido:».")
+    assert "pedido-" not in avisos[0]
 
 
 @pytest.mark.parametrize("texto", ["pedido: arrume o botão Publicar do app",

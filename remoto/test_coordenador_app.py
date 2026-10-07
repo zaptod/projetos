@@ -210,9 +210,61 @@ def test_pergunta_livre_espera_o_modelo_e_nao_abre_pedido(servidor, cerebro_isol
     linhas = [(m["pedido"], m["tipo"], m["texto"]) for m in conversa["conversa"]
               if m.get("de") == "orquestrador"]
     assert (dados["id"], "final", "Daqui eu não vejo a publicação das 17h. "
-            + pedidos.LIVRE_LEMBRETE) in linhas
+            + pedidos.LIVRE_LEMBRETE_APP) in linhas
     assert any(p == trabalho["id"] and t == "recibo" and x.startswith("Entendi: «conserte")
                for p, t, x in linhas)
+    # 07/10: a resposta a pergunta livre leva o «Passar para a equipe»; o recibo nao
+    passar = {m["pedido"]: m.get("pode_passar") for m in conversa["conversa"]
+              if m.get("de") == "orquestrador"}
+    assert passar[dados["id"]] is True and not passar[trabalho["id"]]
+
+
+def test_passar_para_equipe_pela_rota(servidor, cerebro_isolado, monkeypatch):
+    """07/10/2026: sem modelo a pergunta livre fica guardada (nada vai a
+    equipe); o toque «Passar para a equipe» faz do MESMO id o pedido de
+    trabalho. Pareamento, `--acoes` e JSON; 404, 409 no toque repetido e na
+    saudacao."""
+    from coordenador import pedidos
+    token = _parear(servidor)
+    _, dados = _pedir(servidor, "POST", "/api/coordenador/falar",
+                      {"texto": "por que o vídeo das 17h não saiu?"}, token)
+    assert dados["para"] == "conversa"
+    monkeypatch.setattr(pedidos.MESA, "triador", lambda _p: (_ for _ in ()).throw(
+        RuntimeError("o Codex caiu")))
+    pedidos.MESA.atender_conversa()
+    pedidos.MESA.atender_conversa()                 # a segunda tentativa tambem cai
+    _, conversa = _pedir(servidor, "GET", "/api/coordenador/conversa", token=token)
+    final = [m for m in conversa["conversa"] if m.get("pedido") == dados["id"]
+             and m.get("tipo") == "final"]
+    assert len(final) == 1 and final[0]["pode_passar"] is True
+    assert final[0]["texto"].startswith("Não consegui ler a sua mensagem agora")
+    assert final[0]["texto"].endswith(pedidos.LIVRE_SEM_MODELO_COMO["app"])
+    assert [p["situacao"] for p in conversa["pedidos"]] == ["respondido"]
+    rota = f"/api/coordenador/pedido/{dados['id']}/equipe"
+    assert _pedir(servidor, "POST", rota, {})[0] == 401                     # sem pareamento
+    status, item = _pedir(servidor, "POST", rota, {}, token)
+    assert status == 200 and item["id"] == dados["id"] and item["situacao"] == "recebido"
+    assert item["para"] == "orquestrador"
+    assert item["titulo"] == "por que o vídeo das 17h não saiu?"
+    _, conversa = _pedir(servidor, "GET", "/api/coordenador/conversa", token=token)
+    assert [(p["id"], p["situacao"]) for p in conversa["pedidos"]] == [(dados["id"], "recebido")]
+    assert not [m for m in conversa["conversa"] if m.get("pode_passar")]
+    assert any(m.get("pedido") == dados["id"] and m.get("tipo") == "recibo"
+               for m in conversa["conversa"])
+    status, erro = _pedir(servidor, "POST", rota, {}, token)
+    assert status == 409 and "já está com a equipe" in erro["erro"]
+    status, _ = _pedir(servidor, "POST", "/api/coordenador/pedido/pedido-00000000/equipe",
+                       {}, token)
+    assert status == 404
+    _, oi = _pedir(servidor, "POST", "/api/coordenador/falar", {"texto": "oi"}, token)
+    status, erro = _pedir(servidor, "POST", f"/api/coordenador/pedido/{oi['id']}/equipe",
+                          {}, token)
+    assert status == 409 and "saudação" in erro["erro"]
+    servidor.RequestHandlerClass.estado.com_acoes = False
+    try:
+        assert _pedir(servidor, "POST", rota, {}, token)[0] == 403
+    finally:
+        servidor.RequestHandlerClass.estado.com_acoes = True
 
 
 def test_pedido_vira_item_do_orquestrador_e_aparece_na_conversa(servidor, cerebro_isolado):

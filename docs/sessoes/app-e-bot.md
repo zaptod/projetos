@@ -84,7 +84,9 @@ Telegram (texto sem `/`) passa por `coordenador.pedidos.e_de_estado`:
 
 - pergunta curta de estado ("o app está no ar?") vai ao cérebro
   (`coordenador/cerebro.py`, Codex só leitura, responde em segundos);
-- o resto é **pedido**: `pedidos.registrar` grava em
+- desde 06/10 o texto livre passa antes pelo modelo, que decide se é
+  conversa ou trabalho (ver "A pergunta livre" abaixo);
+- o trabalho é **pedido**: `pedidos.registrar` grava em
   `%LOCALAPPDATA%\neural-fights\coordenador\pedidos.json` e volta na hora. O
   pulso do coordenador (`pedidos.passo`, numa thread) contrata um trabalhador
   `orquestrador` (`remoto.delegar`, `.claude/agents/orquestrador.md`) por
@@ -125,6 +127,35 @@ atrás do teto do Claude. Agora (detalhes em `docs/sessoes/coordenador.md`,
   fim, para o `/responder`;
 - os avisos (toasts) do app não falam mais de "retrato" nem mostram o id.
   Casca `v45`.
+
+**A pergunta livre: o modelo decide** (Grimório
+`app-e-bot/conversa-pergunta-livre`, 06/10; código em `coordenador/pedidos.py`,
+38f2163, e a segurança de 07/10). O texto que não é da lista fixa nem
+pergunta de estado do cérebro (`e_de_estado`: "?" + "no ar"/"caiu"/"rodando"…)
+nasce conversa `forma: "livre"`, "pensando", **sem pedido**. A thread
+`conversa` do coordenador pergunta ao modelo leve (o Codex só leitura do
+cérebro, esforço baixo; medido em 07/10 00:45: 8 de 8 mensagens reais
+classificadas certo, 4,5–8,0 s cada):
+- **conversa** → responde na conversa (e no Telegram, pelo `avisar`), com o
+  lembrete: no app "toque «Passar para a equipe»", no Telegram "mande de
+  novo começando com «pedido:»";
+- **trabalho** → o MESMO id vira o pedido de sempre, com o recibo;
+- **o modelo não decidiu** (erro, prazo, resposta fora do formato ou com
+  id/arquivo: tenta de novo UMA vez no pulso seguinte; parado — Claude
+  proibido, teto do Codex, limite por hora — ou desligado: na hora) → a
+  mensagem **fica guardada na conversa** com "Não consegui ler a sua
+  mensagem agora (…). Ela ficou guardada aqui e não passei nada para a
+  equipe." e **nada vai à equipe**. Até 06/10 virava pedido, e uma pergunta
+  contratava um trabalhador só porque o modelo caiu.
+
+Quem passa uma conversa para a equipe é o Adrian: o botão **↪ Passar para a
+equipe** (dois toques) na resposta de toda pergunta livre que ainda é
+conversa (`pode_passar` na linha, do `para_o_app`), rota `POST
+/api/coordenador/pedido/<id>/equipe` (pareamento, `--acoes`, JSON; 404, 409
+"já está com a equipe" / saudação). É o mesmo id (`passar_para_equipe`),
+nunca um segundo pedido nem um segundo trabalhador. No Telegram, "pedido:
+…" no começo pula o modelo. As respostas do Grimório (`origem: grimorio`) e
+a mensagem da Mesa (`triar=False`) não passam pela triagem. Casca `v53`.
 
 Duas portas de saída para o Adrian comandar o sistema de fora do PC:
 

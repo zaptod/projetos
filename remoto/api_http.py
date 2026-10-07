@@ -1988,6 +1988,9 @@ class Manipulador(BaseHTTPRequestHandler):
         achado = re.fullmatch(r"/api/coordenador/pedido/(pedido-[0-9a-f]{8})/responder", rota)
         if achado:
             return self._coordenador_responder_pedido(achado.group(1))
+        achado = re.fullmatch(r"/api/coordenador/pedido/(pedido-[0-9a-f]{8})/equipe", rota)
+        if achado:
+            return self._coordenador_passar_para_equipe(achado.group(1))
         achado = re.fullmatch(r"/api/coordenador/proposta/([0-9a-f]{12})", rota)
         if achado:
             return self._coordenador_proposta(achado.group(1))
@@ -3121,6 +3124,33 @@ class Manipulador(BaseHTTPRequestHandler):
         return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
                            "situacao": item["situacao"], "titulo": _titulo_do_pedido(item),
                            "continuacao": True})
+
+    def _coordenador_passar_para_equipe(self, ident: str):
+        """«Passar para a equipe» (07/10/2026, Grimório
+        app-e-bot/conversa-pergunta-livre = "O modelo decide"): a pergunta
+        livre que ficou como conversa -- o modelo a leu como conversa ou não
+        conseguiu ler -- vira pedido de trabalho pelo toque DELE. É o mesmo
+        pedido (o mesmo id), não um segundo: nenhum trabalhador a mais.
+        Pareamento e `--acoes` (contrata um trabalhador, como o falar); 404
+        desconhecida, 409 já é trabalho ou é saudação/agradecimento."""
+        if self._aparelho() is None:
+            return
+        if not self.estado.com_acoes:
+            return self._erro(403, "as ações estão desligadas neste servidor")
+        if self._corpo() is None:                 # "{}": JSON, como as outras rotas
+            return
+        from coordenador import pedidos
+        try:
+            item = pedidos.passar_para_equipe(ident, "app")
+        except KeyError:
+            return self._erro(404, "mensagem desconhecida")
+        except ValueError as exc:
+            return self._erro(409, str(exc))
+        except OSError as exc:
+            return self._erro(503, f"não consegui passar para a equipe: {exc}")
+        return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
+                           "situacao": item["situacao"], "para": "orquestrador",
+                           "titulo": _titulo_do_pedido(item), "continuacao": False})
 
     def _coordenador_proposta(self, ident: str):
         """Confirmar ou recusar uma proposta do cerebro (vence em 30 min)."""

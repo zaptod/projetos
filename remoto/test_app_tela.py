@@ -503,8 +503,10 @@ def test_a_conversa_responde_como_gente_e_o_pedido_ganha_recibo(tela_isolada, mo
         page.wait_for_function("() => document.querySelector('#coord-mensagens')"
                                ".innerText.includes('Daqui eu não vejo a publicação das 17h.')")
         texto = mensagens.inner_text()
-        assert "começando com «pedido:»" in texto and "pensando…" not in texto
+        assert "toque «Passar para a equipe»" in texto and "pensando…" not in texto
         assert "Entendi" not in texto
+        # 07/10: a resposta a pergunta livre leva o botão (só ela: o "Orquestrador?" não)
+        assert page.locator("#coord-mensagens .coord-passar").count() == 1
         assert [p["situacao"] for p in pedidos.para_o_app()["pedidos"]] == ["respondido"] * 2
         page.locator("#toast.oculto").wait_for(state="attached")
         mensagens.screenshot(path=str(CAPTURAS / "conversa-pergunta-livre-390x844.png"))
@@ -522,6 +524,46 @@ def test_a_conversa_responde_como_gente_e_o_pedido_ganha_recibo(tela_isolada, mo
         assert "pedido-" not in page.locator("#toast").inner_text()
         page.locator("#toast.oculto").wait_for(state="attached")
         mensagens.screenshot(path=str(CAPTURAS / "conversa-recibo-390x844.png"))
+        # 07/10: o modelo caiu duas vezes -- a mensagem fica guardada, nada vai
+        # à equipe, e ele a passa com dois toques no botão da resposta
+        def caiu(_prompt):
+            raise RuntimeError("o Codex caiu")
+        monkeypatch.setattr(pedidos.MESA, "triador", caiu)
+        page.locator("#coord-texto").fill("e o das 21h, saiu?")
+        page.locator("#coord-enviar").click()
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('pensando…')")
+        pedidos.atender_conversa()
+        pedidos.atender_conversa()
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('Não consegui ler a sua mensagem agora')")
+        guardada = next(p for p in pedidos.para_o_app()["pedidos"]
+                        if p["texto"] == "e o das 21h, saiu?")
+        assert guardada["situacao"] == "respondido" and guardada["conversa"] is True
+        assert sum(1 for p in pedidos.para_o_app()["pedidos"]
+                   if p["situacao"] == "recebido") == 1          # só o «arrume o botão»
+        botoes = page.locator("#coord-mensagens .coord-passar")
+        assert botoes.count() == 2
+        botao = botoes.last
+        botao.scroll_into_view_if_needed()
+        caixa = botao.bounding_box()
+        assert caixa and caixa["width"] > 40 and caixa["x"] + caixa["width"] <= 390
+        mensagens.screenshot(path=str(CAPTURAS / "conversa-sem-modelo-390x844.png"))
+        page.locator("#toast.oculto").wait_for(state="attached")
+        botao.click()
+        assert botao.inner_text() == "Tocar de novo para passar"
+        assert next(p for p in pedidos.para_o_app()["pedidos"]
+                    if p["id"] == guardada["id"])["situacao"] == "respondido"   # 1 toque: nada
+        botao.click()
+        page.wait_for_function("() => document.querySelector('#coord-mensagens')"
+                               ".innerText.includes('Entendi: «e o das 21h, saiu?».')")
+        passada = next(p for p in pedidos.para_o_app()["pedidos"] if p["id"] == guardada["id"])
+        assert passada["situacao"] == "recebido" and not passada.get("conversa")
+        assert len(pedidos.para_o_app()["pedidos"]) == 4          # o mesmo id, nenhum a mais
+        assert page.locator("#coord-mensagens .coord-passar").count() == 1   # o dela sumiu
+        assert "pedido-" not in page.locator("#toast").inner_text()
+        page.locator("#toast.oculto").wait_for(state="attached")
+        mensagens.screenshot(path=str(CAPTURAS / "conversa-passada-390x844.png"))
         nav.close()
     assert not erros, erros
 
