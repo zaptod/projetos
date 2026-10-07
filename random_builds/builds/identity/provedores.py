@@ -12,7 +12,7 @@ from . import (dreamface_selectors, picasso_selectors, selectors,
 # picasso antes de digen e o que faz as duas imagens ja estarem no disco
 # quando o payoff e reivindicado. O grafo de dependencia se resolve sozinho
 # dentro da MESMA rodada, sem escalonador e sem estado novo.
-TODOS = (slots.PICASSO, slots.DIGEN)
+TODOS = (slots.CORREIO, slots.DIGEN)
 
 _SELETORES = {
     slots.DIGEN: selectors,
@@ -49,7 +49,8 @@ def cliente(provedor: str, ctx, page, ajustes: dict, rng=None,
 
 
 def rotulo(provedor: str) -> str:
-    return {slots.DIGEN: "Digen (video)",
+    return {slots.CORREIO: "correio das IAs (imagem)",
+            slots.DIGEN: "Digen (video)",
             slots.PICASSO: "PicassoIA (imagem)",
             slots.DREAMFACE: "DreamFace (imagem)"}.get(provedor, provedor)
 

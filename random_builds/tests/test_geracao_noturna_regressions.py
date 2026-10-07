@@ -310,7 +310,7 @@ class Estoque(unittest.TestCase):
             video.fonte_id, video.variante = gid, variante
             return video
         payoff = "sem payoff (clipe do Digen): `identity worker`"
-        imagem = "sem imagem do personagem (PicassoIA)"
+        imagem = "sem imagem do personagem (correio das IAs)"
         videos = [
             build("generation_1", [payoff, imagem]),             # conta
             build("generation_1", [payoff], variante="B"),       # B nao conta

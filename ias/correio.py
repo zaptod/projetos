@@ -210,7 +210,8 @@ def enviar(ia: str, texto: str, *, de: str = "adrian", anexos=(),
 
 
 def pedir_imagem(caixa: str, prompt: str, *, proporcao: str, modelo: str | None = None,
-                 de: str = "adrian", dono: int | None = None) -> dict:
+                 de: str = "adrian", dono: int | None = None, anexos=(),
+                 mensagem_id: str | None = None) -> dict:
     """Deixa um PEDIDO DE IMAGEM na caixa de um gerador (ou na `livre`).
 
     O `texto` da mensagem e o prompt (a primeira linha de uma mensagem precisa
@@ -236,13 +237,23 @@ def pedir_imagem(caixa: str, prompt: str, *, proporcao: str, modelo: str | None 
     proporcao = str(proporcao or "").strip()
     if not proporcao or len(proporcao) > 12:
         raise CorreioInvalido("diga a proporção (ex.: 1:1)")
+    caminhos = []
+    for anexo in anexos or ():
+        p = Path(anexo)
+        if not p.is_file():
+            raise CorreioInvalido(f"anexo nao existe: {p}")
+        if p.suffix.lower() not in EXTENSOES_DE_ANEXO:
+            raise CorreioInvalido(f"anexo tem de ser imagem ({', '.join(EXTENSOES_DE_ANEXO)})")
+        if p.stat().st_size <= 0 or p.stat().st_size > ANEXO_MAX_BYTES:
+            raise CorreioInvalido("anexo vazio ou maior que 8 MB")
+        caminhos.append(str(p))
     mensagem = {
-        "id": novo_id(), "em": agora(), "de": str(de or "adrian")[:40],
+        "id": str(mensagem_id or novo_id()), "em": agora(), "de": str(de or "adrian")[:40],
         "para": caixa, "thread": thread_da_casa(caixa), "tipo": "imagem",
         "texto": prompt, "proporcao": proporcao,
         "modelo_pedido": (str(modelo)[:60] if modelo else None),
         "gerador": None if caixa == LIVRE else caixa,
-        "anexos": [], "situacao": "pendente", "resposta": None,
+        "anexos": caminhos, "situacao": "pendente", "resposta": None,
         "erro": None, "categoria": None, "nota": None, "imagem": None,
     }
     if dono:

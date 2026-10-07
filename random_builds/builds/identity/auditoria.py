@@ -35,7 +35,10 @@ METODO_MANUAL, FORCA_MANUAL = "verificacao_humana", "manual"
 # Abaixo disto o provedor nao gerou nada: so mostrou algo que ja existia.
 # Picasso: a geracao mais rapida medida foi ~4,6 s (chip do card); o Editor
 # Pro leva 11-14 s. Digen: nunca abaixo de dezenas de segundos.
-SUSPEITA_ESPERA_S = {slots.PICASSO: 6.0, slots.DIGEN: 20.0}
+# Correio (06/10/2026): os slots de imagem sairam do Picasso, mas o historico
+# antigo deles (e as imagens sem prova) e do Picasso, entao vale o mesmo
+# limiar; imagem nova do correio chega com prova e nem passa por aqui.
+SUSPEITA_ESPERA_S = {slots.PICASSO: 6.0, slots.CORREIO: 6.0, slots.DIGEN: 20.0}
 
 
 def _prompt_gravado(generation_id: str, slot: str) -> str | None:

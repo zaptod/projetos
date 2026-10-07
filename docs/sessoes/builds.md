@@ -1,5 +1,46 @@
 # Passagem: BUILDS / NEURAL FIGHTS
 
+## Imagens de identidade pelo correio (06/10/2026)
+
+`character`, `weapon` e a imagem intermediaria da juncao agora usam a caixa
+`livre` de `ias`: o carteiro escolhe somente os geradores de
+`ias/config.json:rodizio_imagem` (Gemini e ChatGPT hoje). O PicassoIA nao e
+escolhido automaticamente. A juncao so pede quando as duas imagens existem no
+disco e as envia como anexos; o correio exige a miniatura de cada anexo e a
+prova de que a imagem entregue pertence ao nosso turno antes de copiar o
+arquivo para a build.
+
+So jobs VIVOS (pendentes ou rodando) com `provider: picasso` migram na leitura
+para `correio`, sem criar outro job; done/failed ficam `picasso` (a 1a versao
+migrava todos e o queue.json real teve 210 restaurados em 07/10). O id do
+pedido fica gravado na fila antes de entrar no correio,
+portanto uma retomada consulta a mesma mensagem e nao pede uma segunda imagem.
+Pedido que falhou (ou cujo entregador morreu) nao e reaproveitado: a proxima
+tentativa nasce com id novo; reenfileirar zera o id ("faca de novo" nunca
+devolve a imagem antiga). Conta ocupada pelas historias ou rodizio sem
+gerador em cota NAO gasta tentativa: o job volta para a fila e a passada para
+(espera pela conta: `espera_conta_correio_s`, padrao 1800 s, nunca alem do
+prazo da rodada). Pedido com anexo so vai a gerador que conversa no chat.
+
+Conferencia de 07/10/2026 (reprovada e consertada):
+- o worker poe a raiz do repositorio no sys.path ao ser importado (o gerar.cmd
+  roda de `random_builds/`, onde `ias` nao era achado); `ias` que nao importa
+  e AMBIENTE: a passada para, nada gasta tentativa, a falha vai ao resumo;
+- o worker segura a trava da CONTA (Gemini/ChatGPT) antes de criar o pedido;
+  conta ocupada nunca entra no correio (la virava `falhou`, `erro` no diario
+  e alerta "0 h");
+- a imagem e gravada como PNG de verdade (o Gemini baixa JPEG), com a
+  proporcao conferida (3% de folga) e o detector de colagem das historias
+  (`contos.imagens.composicao`);
+- os rotulos de pendencia dizem "(correio das IAs)" e casam com
+  `noite._PENDENCIA_DO_WORKER`.
+O video `character_weapon` continua no Digen e espera a imagem da juncao.
+
+O Picasso permanece pausado e nao precisa ser retomado. Para liberar os jobs
+no novo caminho, use `python main.py identity retomar --provedor correio` se o
+correio tiver sido pausado; para conferir primeiro, use
+`python main.py identity status`.
+
 <!-- decisoes:inicio -->
 ## Decisões do Adrian (gerado — não edite à mão)
 

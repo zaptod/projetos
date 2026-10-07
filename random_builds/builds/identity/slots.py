@@ -47,8 +47,8 @@ IMAGEM, VIDEO = "imagem", "video"
 MIDIA = {CHARACTER: IMAGEM, WEAPON: IMAGEM, REFERENCIA: IMAGEM,
          CHARACTER_WEAPON: VIDEO}
 
-PICASSO, DIGEN = "picasso", "digen"
-PROVEDOR = {CHARACTER: PICASSO, WEAPON: PICASSO, REFERENCIA: PICASSO,
+CORREIO, PICASSO, DIGEN = "correio", "picasso", "digen"
+PROVEDOR = {CHARACTER: CORREIO, WEAPON: CORREIO, REFERENCIA: CORREIO,
             CHARACTER_WEAPON: DIGEN}
 
 # O payoff so pode ser gerado depois das duas imagens: sao elas que vao

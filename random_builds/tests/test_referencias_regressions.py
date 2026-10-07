@@ -20,9 +20,11 @@ Rode de dentro de random_builds/:
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -44,8 +46,18 @@ class GrafoTests(unittest.TestCase):
         self.raiz = Path(self._tmp.name)
         self._fila = fila.ARQUIVO_FILA
         self._outputs = icfg.OUTPUTS
+        self._ias = os.environ.get("NF_IAS_PASTA")
+        from builds.identity import controle, history
+        self._controle = controle.ARQUIVO
+        # O historico tambem: o `processar_correio` registra pronto/concluido,
+        # e sem isto o teste escrevia generation_77777 no history.jsonl REAL
+        # (achado na integracao de 07/10/2026).
+        self._history = history.ARQUIVO
         fila.ARQUIVO_FILA = self.raiz / "queue.json"
         icfg.OUTPUTS = self.raiz / "outputs"
+        os.environ["NF_IAS_PASTA"] = str(self.raiz / "ias")
+        controle.ARQUIVO = self.raiz / "controle.json"
+        history.ARQUIVO = self.raiz / "history.jsonl"
         (icfg.OUTPUTS / GID).mkdir(parents=True)
         # O GRAFO, nao a config: com `payoff_video=false` no identity.json
         # real o claim pula o payoff (`fila.jobs_desligados`, 05/10/2026), e
@@ -56,6 +68,13 @@ class GrafoTests(unittest.TestCase):
     def tearDown(self):
         fila.ARQUIVO_FILA = self._fila
         icfg.OUTPUTS = self._outputs
+        if self._ias is None:
+            os.environ.pop("NF_IAS_PASTA", None)
+        else:
+            os.environ["NF_IAS_PASTA"] = self._ias
+        from builds.identity import controle, history
+        controle.ARQUIVO = self._controle
+        history.ARQUIVO = self._history
         fila.jobs_desligados = self._desligados
         self._tmp.cleanup()
 
@@ -166,9 +185,9 @@ class GrafoTests(unittest.TestCase):
         self._enfileirar()
         self.assertIsNone(fila.claim(provedor=slots.DIGEN),
                           "o payoff do Digen saiu antes das imagens")
-        job = fila.claim(provedor=slots.PICASSO)
+        job = fila.claim(provedor=slots.CORREIO)
         self.assertIsNotNone(job)
-        self.assertEqual(slots.PICASSO, job["provider"])
+        self.assertEqual(slots.CORREIO, job["provider"])
 
     def test_reenfileirar_nao_perde_o_grafo(self):
         """`identity run` ressuscita o job; sem o grafo ele fura a fila."""
@@ -194,6 +213,348 @@ class GrafoTests(unittest.TestCase):
         self.assertEqual(slots.DIGEN, linha["provider"])
         self.assertEqual([slots.job_id(GID, slots.REFERENCIA)],
                          linha["depends_on"])
+
+    def test_job_pendente_do_picasso_migra_para_o_correio(self):
+        fila.ARQUIVO_FILA.parent.mkdir(parents=True, exist_ok=True)
+        fila.ARQUIVO_FILA.write_text(json.dumps([{
+            "generation_id": GID, "slot": slots.CHARACTER,
+            "job_id": slots.job_id(GID, slots.CHARACTER), "provider": "picasso",
+            "status": "pending", "prompt": "p", "aspect": "9:16", "attempts": 0,
+        }]), encoding="utf-8")
+        linha = fila.listar()[0]
+        self.assertEqual(slots.CORREIO, linha["provider"])
+        self.assertFalse(linha["enviado"])
+
+    def test_job_encerrado_do_picasso_fica_no_picasso(self):
+        """Conferencia 07/10/2026: a 1a versao migrou os 212 done/failed do
+        PicassoIA para o correio e zerou o `enviado` deles no queue.json real."""
+        fila.ARQUIVO_FILA.parent.mkdir(parents=True, exist_ok=True)
+        base = {"generation_id": GID, "prompt": "p", "aspect": "9:16", "attempts": 1,
+                "space_url": "https://picassoia.com/x", "enviado": True}
+        fila.ARQUIVO_FILA.write_text(json.dumps([
+            dict(base, slot=slots.CHARACTER, job_id=slots.job_id(GID, slots.CHARACTER),
+                 provider="picasso", status="done"),
+            dict(base, slot=slots.WEAPON, job_id=slots.job_id(GID, slots.WEAPON),
+                 provider="picasso", status="failed"),
+            # sem provedor gravado: encerrado e da era do PicassoIA
+            dict(base, slot=slots.REFERENCIA, job_id=slots.job_id(GID, slots.REFERENCIA),
+                 status="done"),
+        ]), encoding="utf-8")
+        for linha in fila.listar():
+            self.assertEqual(slots.PICASSO, linha["provider"], linha["job_id"])
+            self.assertTrue(linha["enviado"], linha["job_id"])
+
+    def test_job_vivo_sem_provedor_vai_ao_correio(self):
+        fila.ARQUIVO_FILA.parent.mkdir(parents=True, exist_ok=True)
+        fila.ARQUIVO_FILA.write_text(json.dumps([{
+            "generation_id": GID, "slot": slots.WEAPON,
+            "job_id": slots.job_id(GID, slots.WEAPON),
+            "status": "running", "prompt": "p", "aspect": "9:16", "attempts": 1,
+        }]), encoding="utf-8")
+        self.assertEqual(slots.CORREIO, fila.listar()[0]["provider"])
+
+
+def _png_9x16(tom: int = 0, formato: str = "PNG", tamanho=(576, 1024)) -> bytes:
+    """Imagem com gradiente (cor lisa pode parecer calha ao detector de
+    colagem) na forma pedida; `formato` JPEG = o que o Gemini baixa."""
+    import io
+    gradiente = Image.linear_gradient("L").resize(tamanho)
+    imagem = Image.merge("RGB", (gradiente, gradiente.transpose(Image.FLIP_TOP_BOTTOM),
+                                 Image.new("L", tamanho, tom)))
+    saida = io.BytesIO()
+    imagem.save(saida, format=formato)
+    return saida.getvalue()
+
+
+class CorreioDosBuildsTests(unittest.TestCase):
+    """O caminho do correio (Gemini/ChatGPT) dos builds, isolado de tudo o
+    que e real: fila, historico, controle, caixas do correio e travas."""
+
+    def setUp(self):
+        from builds import travas
+        from builds.identity import controle, history, worker
+        self._tmp = tempfile.TemporaryDirectory()
+        self.raiz = Path(self._tmp.name)
+        self.worker = worker
+        for alvo, nome, valor in (
+                (fila, "ARQUIVO_FILA", self.raiz / "queue.json"),
+                (icfg, "OUTPUTS", self.raiz / "outputs"),
+                (controle, "ARQUIVO", self.raiz / "controle.json"),
+                (history, "ARQUIVO", self.raiz / "history.jsonl"),
+                (fila, "jobs_desligados", lambda: frozenset()),
+                (worker, "_dormir", lambda _s: None)):
+            remendo = mock.patch.object(alvo, nome, valor)
+            remendo.start()
+            self.addCleanup(remendo.stop)
+        locks = self.raiz / "locks"
+        locks.mkdir()
+        remendo = mock.patch.object(travas, "_pasta", lambda: locks)
+        remendo.start()
+        self.addCleanup(remendo.stop)
+        # o rodizio de verdade le fichas e cotas reais; aqui ele e fixo
+        self.rodizio = mock.patch.object(worker, "_geradores_em_condicao",
+                                         return_value=(["gemini", "chatgpt"], []))
+        self.rodizio.start()
+        self.addCleanup(self.rodizio.stop)
+        remendo = mock.patch.dict(os.environ, {"NF_IAS_PASTA": str(self.raiz / "ias")})
+        remendo.start()
+        self.addCleanup(remendo.stop)
+        (icfg.OUTPUTS / GID).mkdir(parents=True)
+        self.addCleanup(self._tmp.cleanup)
+
+    def _imagem(self, slot: str, cor=(40, 30, 80)):
+        Image.new("RGB", (600, 1064), cor).save(icfg.OUTPUTS / GID / slots.ARQUIVO[slot])
+        self.assertTrue(artefato.utilizavel(GID, slot))
+
+    def _job(self, job_id):
+        return next(j for j in fila.listar() if j["job_id"] == job_id)
+
+    def _carteiro(self, chamadas, situacao="respondida", categoria=None, corpo=None):
+        from ias import correio, imagem
+
+        class CarteiroDuble:
+            def __init__(self, **kwargs):
+                chamadas.append(("ajustes", kwargs.get("ajustes")))
+
+            def entregar(self, pedido):
+                atual = correio.uma("livre", pedido["id"])
+                if atual and atual.get("situacao") != "pendente":
+                    return atual
+                chamadas.append(("pedido", pedido["id"], list(pedido.get("anexos") or [])))
+                if situacao != "respondida":
+                    return correio.atualizar("livre", pedido["id"], situacao=situacao,
+                                             categoria=categoria, erro="duble falhou")
+                salvo = imagem.guardar("chatgpt", pedido["id"], corpo or _png_9x16(),
+                                       {"comprovada": True, "metodo": "duble",
+                                        "forca": "teste"})
+                return correio.atualizar("livre", pedido["id"], situacao="respondida",
+                                         gerador="chatgpt", imagem=salvo)
+        return CarteiroDuble
+
+    @staticmethod
+    def _pedidos(chamadas):
+        return [c for c in chamadas if c[0] == "pedido"]
+
+    def _processar(self, job, chamadas, **kw):
+        duble = self._carteiro(chamadas, **{k: kw.pop(k) for k in
+                                            ("situacao", "categoria", "corpo") if k in kw})
+        with mock.patch("ias.carteiro.Carteiro", duble):
+            return self.worker.processar_correio(job, {"aspect": "9:16"}, rerender=False, **kw)
+
+    # ------------------------------------------------------------ juncao
+    def test_juncao_pelo_correio_anexa_as_duas_imagens_uma_vez(self):
+        """Sem os dois anexos, o chat refaz rosto ou arma da juncao."""
+        self._imagem(slots.CHARACTER)
+        self._imagem(slots.WEAPON, cor=(90, 20, 20))
+        fila.enqueue(GID, "junte personagem e arma", slot=slots.REFERENCIA)
+        job = fila.claim(provedor=slots.CORREIO)
+        chamadas = []
+        self._processar(job, chamadas)
+        # a retomada le o job DA FILA (com o id do pedido gravado)
+        self._processar(self._job(job["job_id"]), chamadas)
+        pedidos = self._pedidos(chamadas)
+        self.assertEqual(1, len(pedidos))
+        self.assertEqual([slots.ARQUIVO[slots.CHARACTER], slots.ARQUIVO[slots.WEAPON]],
+                         [Path(p).name for p in pedidos[0][2]])
+        meta = artefato.metadados(GID, slots.REFERENCIA) or {}
+        self.assertEqual(pedidos[0][1], meta["origem"]["pedido_correio"])
+        self.assertTrue(meta["origem"]["comprovada"])
+
+    # ---------------------------------------------------- formato e forma
+    def test_jpeg_do_gemini_vira_png_de_verdade(self):
+        """O Gemini baixa JPEG; a build guarda `*.png` (conferencia 07/10)."""
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        destino = self._processar(job, [], corpo=_png_9x16(formato="JPEG",
+                                                           tamanho=(1536, 2752)))
+        with Image.open(destino) as gravada:
+            self.assertEqual("PNG", gravada.format)
+            self.assertEqual((1536, 2752), gravada.size)
+
+    def test_imagem_fora_da_proporcao_e_recusada(self):
+        from builds.identity.client import GeracaoFalhou
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        with self.assertRaises(GeracaoFalhou) as caso:
+            self._processar(job, [], corpo=_png_9x16(tamanho=(1024, 1024)))
+        self.assertIn("fora de 9:16", str(caso.exception))
+        self.assertFalse(artefato.caminho(GID, slots.CHARACTER).exists())
+        self.assertIsNone(self._job(job["job_id"])["correio_id"],
+                          "a proxima tentativa reusaria a imagem quadrada")
+
+    def test_colagem_e_recusada(self):
+        """Dois paineis com calha no meio: o detector das historias."""
+        import io
+        from builds.identity.client import GeracaoFalhou
+        largura, altura = 576, 1024
+        # dois paineis com textura (cada linha varia) e uma calha branca fina
+        folha = Image.new("RGB", (largura, altura), (250, 250, 250))
+        painel = Image.effect_noise((largura, altura // 2 - 6), 60).convert("RGB")
+        folha.paste(painel, (0, 0))
+        folha.paste(painel.transpose(Image.FLIP_LEFT_RIGHT), (0, altura // 2 + 6))
+        corpo = io.BytesIO()
+        folha.save(corpo, format="PNG")
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        with self.assertRaises(GeracaoFalhou) as caso:
+            self._processar(job, [], corpo=corpo.getvalue())
+        self.assertIn("colagem", str(caso.exception))
+        self.assertFalse(artefato.caminho(GID, slots.CHARACTER).exists())
+
+    # ------------------------------------------ retomada e "faca de novo"
+    def test_pedido_que_falhou_nao_e_reaproveitado(self):
+        """Reusar o id de um pedido que falhou devolvia a MESMA falha a cada
+        tentativa: o job morria sem pedir a imagem de novo."""
+        from builds.identity.client import GeracaoFalhou
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        chamadas = []
+        with self.assertRaises(GeracaoFalhou):
+            self._processar(job, chamadas, situacao="falhou", categoria="conteudo")
+        primeiro = self._pedidos(chamadas)
+        self.assertEqual(1, len(primeiro))
+        job = self._job(job["job_id"])
+        self.assertEqual(primeiro[0][1], job["correio_id"])
+        chamadas.clear()
+        self._processar(job, chamadas)
+        segundo = self._pedidos(chamadas)
+        self.assertEqual(1, len(segundo), "a nova tentativa nao pediu de novo")
+        self.assertNotEqual(primeiro[0][1], segundo[0][1])
+        self.assertEqual(segundo[0][1], self._job(job["job_id"])["correio_id"])
+
+    def test_reenfileirar_zera_o_pedido_do_correio(self):
+        """"Faca de novo" com o id antigo copiava a imagem de antes."""
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        fila.registrar_correio(job["job_id"], "abc12345")
+        fila.concluir(job["job_id"], "x.png")
+        fila.enqueue(GID, "o personagem, de novo", slot=slots.CHARACTER)
+        self.assertIsNone(self._job(job["job_id"])["correio_id"])
+
+    # ----------------------------------------------------- conta ocupada
+    def _segurar_contas(self, *geradores):
+        """Segura as travas das contas em OUTRO thread (a trava e reentrante
+        por thread: no mesmo thread o worker a pegaria)."""
+        import threading
+        from builds import travas
+        pronto, soltar = threading.Event(), threading.Event()
+
+        def dono():
+            from contextlib import ExitStack
+            with ExitStack() as pilha:
+                for g in geradores:
+                    self.assertTrue(pilha.enter_context(
+                        travas.trava(travas.do_perfil(g, "geral"), esperar=0.0)))
+                pronto.set()
+                soltar.wait(10)
+        fio = threading.Thread(target=dono, daemon=True)
+        fio.start()
+        self.assertTrue(pronto.wait(5))
+        self.addCleanup(fio.join, 5)
+        self.addCleanup(soltar.set)
+
+    def test_conta_ocupada_nao_cria_pedido_nem_falha_no_correio(self):
+        """Conferencia 07/10/2026: a espera pela conta dentro do correio virava
+        `falhou` na caixa livre, `erro` no diario e alerta ("0 h")."""
+        from ias import correio
+        self._segurar_contas("gemini", "chatgpt")
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        chamadas = []
+        duble = self._carteiro(chamadas)
+        with mock.patch("ias.carteiro.Carteiro", duble):
+            with self.assertRaises(self.worker.CorreioOcupado) as caso:
+                self.worker.processar_correio(
+                    job, {"aspect": "9:16", "espera_conta_correio_s": 0}, rerender=False)
+        self.assertEqual([], correio.ler("livre"), "o pedido nasceu e ficou para tras")
+        self.assertEqual([], chamadas, "o carteiro foi chamado com as contas ocupadas")
+        self.assertNotIn("0 h", str(caso.exception))
+
+    def test_conta_livre_e_segurada_pelo_worker_ate_o_carteiro(self):
+        """O worker pega a conta antes do pedido; o Carteiro (mesmo thread)
+        a pega de novo na hora e recebe so aquele gerador."""
+        self._segurar_contas("chatgpt")
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        chamadas = []
+        self._processar(job, chamadas)
+        ajustes = next(c[1] for c in chamadas if c[0] == "ajustes")
+        self.assertEqual(["gemini"], ajustes["rodizio_imagem"])
+
+    def test_conta_ocupada_nao_gasta_tentativa_e_para_a_passada(self):
+        """Historias com as duas contas: espera, nao falha."""
+        self._segurar_contas("gemini", "chatgpt")
+        for slot in (slots.CHARACTER, slots.WEAPON):
+            fila.enqueue(GID, f"prompt {slot}", slot=slot)
+        with mock.patch.object(self.worker, "processar_correio",
+                               side_effect=self.worker.CorreioOcupado("ocupadas")) as proc:
+            feitos, quebrou = self.worker._passada_correio(False, False, None, prazo=None)
+        self.assertEqual((0, None), (feitos, quebrou))
+        self.assertEqual(1, proc.call_count, "a passada seguiu batendo nas contas ocupadas")
+        for job in fila.listar():
+            self.assertEqual("pending", job["status"])
+            self.assertEqual(0, job["attempts"], job["job_id"])
+
+    def test_espera_pela_conta_respeita_o_prazo(self):
+        import time as _time
+        fila.enqueue(GID, "o personagem", slot=slots.CHARACTER)
+        job = fila.claim(provedor=slots.CORREIO)
+        esperas = []
+        original = self.worker._conta_do_rodizio
+
+        def espiao(aspecto, espera_s, *resto):
+            esperas.append(espera_s)
+            return original(aspecto, espera_s, *resto)
+        with mock.patch.object(self.worker, "_conta_do_rodizio", espiao):
+            self._processar(job, [], prazo=_time.time() + 300)
+        self.assertEqual(1, len(esperas))
+        self.assertLessEqual(esperas[0], 300)
+        self.assertGreaterEqual(esperas[0], 60)
+
+    # ---------------------------------------------------------- ambiente
+    def test_sem_o_pacote_ias_a_passada_para_sem_queimar_a_fila(self):
+        """Conferencia 07/10/2026: "No module named 'ias'" virava falha de
+        CADA job (35 de 51 failed 3/3 em segundos)."""
+        for slot in (slots.CHARACTER, slots.WEAPON):
+            fila.enqueue(GID, f"prompt {slot}", slot=slot)
+        quebra = self.worker.CorreioSemAmbiente("o pacote ias nao importa")
+        with mock.patch.object(self.worker, "_importar_ias", side_effect=quebra):
+            feitos, quebrou = self.worker._passada_correio(False, False, None)
+        self.assertEqual((0, None), (feitos, quebrou))
+        for job in fila.listar():
+            self.assertEqual(("pending", 0), (job["status"], job["attempts"]), job["job_id"])
+        self.assertTrue(any("ambiente" in f for f in self.worker.falhas_da_ultima_rodada()))
+
+    def test_import_quebrado_no_meio_devolve_o_job_sem_tentativa(self):
+        for slot in (slots.CHARACTER, slots.WEAPON):
+            fila.enqueue(GID, f"prompt {slot}", slot=slot)
+        with mock.patch.object(self.worker, "processar_correio",
+                               side_effect=ModuleNotFoundError("No module named 'ias'")):
+            feitos, _ = self.worker._passada_correio(False, False, None)
+        self.assertEqual(0, feitos)
+        for job in fila.listar():
+            self.assertEqual(("pending", 0), (job["status"], job["attempts"]), job["job_id"])
+
+
+class CorreioRodandoDeRandomBuildsTests(unittest.TestCase):
+    """O gerar.cmd roda `main.py noite` DE DENTRO de random_builds/: ali a raiz
+    do repositorio (onde mora o pacote `ias`) nao esta no sys.path. O pytest
+    roda da raiz e nao pega isso; so um processo novo, com cwd em
+    random_builds/, pega (conferencia 07/10/2026)."""
+
+    def test_worker_acha_o_pacote_ias_rodando_de_random_builds(self):
+        import subprocess
+        import sys
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        codigo = ("import builds.identity.worker as w; c, k, i = w._importar_ias(); "
+                  "from ias import correio; print(w.__file__); print(correio.__file__)")
+        saida = subprocess.run([sys.executable, "-X", "utf8", "-c", codigo], cwd=str(ROOT),
+                               env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, saida.returncode, saida.stderr[-800:])
+        worker_em, correio_em = saida.stdout.strip().splitlines()[-2:]
+        self.assertEqual(ROOT.resolve(), Path(worker_em).resolve().parents[2],
+                         "o processo importou o worker de outra arvore")
+        self.assertEqual((ROOT.parent / "ias").resolve(), Path(correio_em).resolve().parent)
 
 
 class _ChooserFake:
@@ -626,7 +987,8 @@ class InterfaceDeProvedorTests(unittest.TestCase):
         for slot in slots.SLOTS:
             provedor = slots.provedor(slot)
             self.assertIn(slot, provedores.slots_de(provedor))
-            self.assertIsNotNone(provedores.seletores(provedor))
+            if provedor != slots.CORREIO:
+                self.assertIsNotNone(provedores.seletores(provedor))
 
 
 class MapeamentoDeReferenciaTests(unittest.TestCase):

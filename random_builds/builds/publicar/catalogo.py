@@ -185,13 +185,16 @@ def pendencias_da_build(pasta: Path, perfil: str) -> list[str]:
     else:
         # Video do Digen desligado: o payoff e a imagem personagem+arma.
         payoff = pasta / "character_weapon_reference.png"
-        falta_payoff = "sem imagem personagem+arma (PicassoIA): `identity worker`"
+        falta_payoff = "sem imagem personagem+arma (correio das IAs): `identity worker`"
     imagem = pasta / "character_image.png"
     estreia = pasta / "estreia" / "fight.json"
     if not payoff.is_file():
         lista.append(falta_payoff)
     if not imagem.is_file():
-        lista.append("sem imagem do personagem (PicassoIA)")
+        # 07/10/2026: as imagens sairam do PicassoIA para o correio (Gemini e
+        # ChatGPT). O rotulo casa com `noite._PENDENCIA_DO_WORKER`: mudar um
+        # e mudar o outro.
+        lista.append("sem imagem do personagem (correio das IAs)")
     if not estreia.is_file():
         lista.append(_falta_estreia(pasta))
     if final.is_file():

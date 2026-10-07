@@ -1056,13 +1056,13 @@ def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
             "modelo": getattr(cliente, "modelo_atual", "") or cliente.provedor}
 
 
-def gerar_no_chat(cliente, prompt: str, proporcao: str, *, log=print) -> dict:
+def gerar_no_chat(cliente, prompt: str, proporcao: str, *, anexos=None, log=print) -> dict:
     """Pede a imagem na casa (o chat ja aberto) pelo `perguntar` de sempre
     (diario, envio com prova, espera que agora reconhece imagem) e baixa a
     imagem que nasceu depois do NOSSO turno. `SemImagem` quando a IA respondeu
     so com texto."""
     pedido = pedido_de_imagem(prompt, proporcao)
-    texto = cliente.perguntar(pedido)
+    texto = cliente.perguntar(pedido, anexos=list(anexos or []))
     saida = baixar_da_resposta(cliente, pedido, proporcao, log=log)
     if saida is None:
         rotulo = correio.ROTULOS.get(cliente.provedor, cliente.provedor)

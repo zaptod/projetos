@@ -138,6 +138,15 @@ class CorreioEscreveEDobra(_Base):
         m = correio.enviar("gemini", "o que é isto?", anexos=[destino])
         self.assertEqual(m["anexos"], [str(destino)])
 
+    def test_pedido_de_imagem_conserva_referencias(self):
+        """A juncao dos builds precisa mandar as duas identidades ao chat."""
+        personagem = correio.guardar_anexo("gemini", "personagem.png",
+                                           b"\x89PNG" + b"x" * 100)
+        arma = correio.guardar_anexo("gemini", "arma.png", b"\x89PNG" + b"y" * 100)
+        pedido = correio.pedir_imagem("livre", "junte os dois", proporcao="9:16",
+                                      anexos=[personagem, arma])
+        self.assertEqual([str(personagem), str(arma)], pedido["anexos"])
+
     def test_casa_vai_e_volta(self):
         c = correio.casa("grok")
         c["url"] = "https://grok.com/c/abc"

@@ -163,13 +163,32 @@ def _normalizar(jobs: list[dict]) -> list[dict]:
         # Provedor e dependencia nasceram depois; um job gravado antes disso
         # ganha o padrao do proprio slot na leitura. Sem passo de upgrade: a
         # fila que ja esta no disco continua sendo processada.
-        job.setdefault("provider", slots.provedor(job["slot"]))
+        vivo = job.get("status", PENDENTE) in (PENDENTE, RODANDO)
+        imagem = job["slot"] in (slots.CHARACTER, slots.WEAPON, slots.REFERENCIA)
+        # Job encerrado (done/failed) sem provedor gravado e da era do
+        # PicassoIA: e o que a leitura dizia ate 06/10/2026, e o historico
+        # dele nao muda porque o padrao do slot mudou.
+        job.setdefault("provider", slots.provedor(job["slot"])
+                       if vivo or not imagem else slots.PICASSO)
+        # 06/10/2026: as imagens deixaram o PicassoIA e passaram ao correio.
+        # A migracao e preguicosa para reaproveitar a fila ja existente: se o
+        # arquivo ja chegou, o pre-passe do worker fecha o job; se nao, o
+        # mesmo job pendente segue para Gemini/ChatGPT, sem segunda linha.
+        # SO O JOB VIVO (pendente ou rodando) migra (conferencia 07/10/2026: a
+        # primeira versao migrava tambem os 212 done/failed e zerava o
+        # `enviado` deles no queue.json real). Um failed reaberto volta
+        # pendente e migra na leitura seguinte.
+        if vivo and imagem and job.get("provider") == slots.PICASSO:
+            job["provider"] = slots.CORREIO
+            job["enviado"] = False
+            job["videos_antes"] = None
         job.setdefault("depends_on",
                        [slots.job_id(job["generation_id"], dependencia)
                         for dependencia in slots.depende_de(job["slot"])])
         job.setdefault("aguardar_ate", None)
         # O que foi de fato anexado ao prompt (preenchido no envio).
         job.setdefault("referencias", None)
+        job.setdefault("correio_id", None)
         # No formato antigo so existia um clipe por espaco, entao ter
         # `space_url` gravado JA significava "o prompt foi enviado".
         job.setdefault("enviado", bool(job.get("space_url")))
@@ -253,6 +272,10 @@ def enqueue(generation_id: str, prompt: str, aspect: str = "9:16",
                             "aspect": aspect, "error": None, "attempts": 0,
                             "enviado": False, "videos_antes": None,
                             "referencias": None,
+                            # pedido do correio ZERADO pelo mesmo motivo do
+                            # `enviado`: com o id antigo a retomada copiava a
+                            # imagem de antes, byte por byte.
+                            "correio_id": None,
                             "updated_at": _agora(), **grafo})
                 _gravar(jobs)
                 return job
@@ -489,6 +512,12 @@ def registrar_espaco(job_id: str, url: str) -> dict | None:
     geracao pedindo o mesmo clipe de novo.
     """
     return _atualizar(job_id, {"space_url": url, "updated_at": _agora()})
+
+
+def registrar_correio(job_id: str, mensagem_id: str) -> dict | None:
+    """Grava o id antes de criar a mensagem, para uma retomada nao duplicar."""
+    return _atualizar(job_id, {"correio_id": str(mensagem_id) if mensagem_id else None,
+                               "updated_at": _agora()})
 
 
 def concluir(job_id: str, arquivo: str) -> dict | None:

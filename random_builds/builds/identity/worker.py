@@ -12,8 +12,11 @@ rodada — reabrir o Chrome a cada job e lento e chama atencao.
 from __future__ import annotations
 
 import json
+import os
 import random
+import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -477,6 +480,316 @@ def processar(client: DigenClient, job: dict, ajustes: dict,
     return caminho
 
 
+class CorreioOcupado(GeracaoFalhou):
+    """As contas do rodizio estao com outra pipeline (ou fora de cota): nao
+    houve tentativa, so espera. O job volta SEM gastar tentativa e a passada
+    para (sem isto tres noites de historias ocupando o Gemini e o ChatGPT
+    matavam o job de imagem sem ele ter sido pedido uma vez)."""
+
+
+class CorreioSemAmbiente(RuntimeError):
+    """O pacote `ias` (correio, carteiro) nao importa neste processo. E o
+    AMBIENTE, nao o job: nao gasta tentativa nem marca failed; a passada para
+    e a falha vai ao resumo da rodada. Conferencia de 07/10/2026: rodando de
+    `random_builds/` (como o gerar.cmd), "No module named 'ias'" era engolido
+    pelo `except Exception` da passada e 35 de 51 jobs queimaram 3/3 em
+    segundos."""
+
+
+# Falha do correio que e espera, e nao tentativa (`Carteiro._falhar`).
+_CATEGORIAS_DE_ESPERA = ("conta_ocupada", "rodizio")
+
+# De quanto em quanto tempo o worker volta a olhar as contas do rodizio.
+PASSO_CONTA_S = 20.0
+_dormir = time.sleep
+
+# Folga da proporcao pedida. O Gemini entrega 1536x2752 (0,558) para 9:16
+# (0,5625): 0,8% fora. Acima de 3% e outro formato (1:1, 3:4, 16:9).
+FOLGA_PROPORCAO = 0.03
+
+_RAIZ_DO_REPO = Path(__file__).resolve().parents[3]
+# Ja no import do worker, como em `historias/contos/imagens/worker.py`: quem
+# importa o worker (o gerar.cmd, de dentro de random_builds/) acha o `ias`.
+if str(_RAIZ_DO_REPO) not in sys.path:
+    sys.path.append(str(_RAIZ_DO_REPO))
+
+
+def _importar_ias():
+    """(correio, carteiro, imagem) do pacote `ias`, que mora na RAIZ do
+    repositorio e nao e instalado. Rodando de `random_builds/` a raiz nao esta
+    no sys.path: o mesmo conserto de `historias/contos/imagens/worker.py`
+    (04/10/2026). Se ainda assim nao importar: `CorreioSemAmbiente`."""
+    raiz = str(_RAIZ_DO_REPO)
+    if raiz not in sys.path:
+        sys.path.append(raiz)
+    try:
+        from ias import carteiro, correio, imagem
+    except Exception as exc:                                   # noqa: BLE001
+        raise CorreioSemAmbiente(
+            f"o pacote ias nao importa ({type(exc).__name__}: {exc}); "
+            f"raiz do repositorio {raiz}") from exc
+    return correio, carteiro, imagem
+
+
+def _tempo_legivel(segundos: float) -> str:
+    segundos = max(0.0, float(segundos))
+    if segundos < 90:
+        return f"{segundos:.0f} s"
+    if segundos < 5400:
+        return f"{segundos / 60:.0f} min"
+    return f"{segundos / 3600:.1f} h".replace(".0 h", " h").replace(".", ",")
+
+
+def _pedido_reaproveitavel(mensagem: dict, correio) -> bool:
+    """O pedido gravado no job ainda pode dar a imagem desta tentativa?
+
+    Respondido: sim (a imagem esta no correio; a retomada so copia). Pendente
+    e livre para mim: sim (o carteiro entrega o MESMO pedido). Falhou, ou
+    entregue por um processo que morreu no meio: nao — reusar o id so
+    devolveria a mesma falha a cada tentativa ate o job morrer sem ter pedido
+    de novo. Entregue por um processo VIVO: `CorreioOcupado` (outro esta
+    gerando agora; pedir de novo geraria duas vezes)."""
+    situacao = mensagem.get("situacao")
+    if situacao == "respondida":
+        return True
+    if situacao == "pendente":
+        return not correio.reservado_por_outro(mensagem)
+    if situacao == "entregue":
+        quem = correio._entregador(mensagem)
+        if quem and quem != os.getpid() and correio._pid_vivo(quem) is not False:
+            raise CorreioOcupado(
+                f"o pedido {mensagem.get('id')} esta sendo entregue pelo processo {quem}")
+        return False
+    return False
+
+
+def _geradores_em_condicao(aspecto: str, correio, carteiro, imagem) -> tuple[list, list]:
+    """Os geradores do rodizio que podem gerar ESTA imagem agora, do que gerou
+    ha mais tempo ao mais recente, e os motivos dos que ficaram de fora. So
+    gerador de chat: e o que recebe as referencias da juncao e o que da a
+    prova da casa (o turno que e nosso)."""
+    horas = float(carteiro.config().get("cota_pausa_h", 6))
+    candidatos, motivos = [], []
+    for g in imagem.rodizio_ordem():
+        info = imagem.gerador(g)
+        rotulo = info.get("rotulo") or g
+        if g not in correio.CHATS:
+            motivos.append(f"{rotulo}: nao gera pelo chat")
+            continue
+        if not info.get("disponivel"):
+            motivos.append(f"{rotulo}: {str(info.get('motivo') or '')[:90]}")
+            continue
+        if aspecto not in (info.get("proporcoes") or ()):
+            motivos.append(f"{rotulo}: nao faz {aspecto}")
+            continue
+        fora = imagem.fora_de_cota(g, horas)
+        if fora:
+            motivos.append(f"{rotulo}: {fora}")
+            continue
+        candidatos.append(g)
+    return candidatos, motivos
+
+
+@contextmanager
+def _conta_do_rodizio(aspecto: str, espera_s: float, correio, carteiro, imagem):
+    """Segura a trava da CONTA de um gerador do rodizio antes de o pedido
+    existir e devolve o gerador.
+
+    A espera pela conta acontece AQUI, e nao dentro do correio: la ela virava
+    `falhou` na caixa livre do app, `erro` no diario e alerta no Telegram
+    ("ocupadas por 0 h", conferencia de 07/10/2026). A trava e reentrante
+    por thread, entao o Carteiro, no mesmo thread, a pega na hora. Ninguem
+    livre ate `espera_s`, ou ninguem em condicao: `CorreioOcupado`, sem
+    pedido criado."""
+    import builds.travas as travas
+
+    inicio = time.monotonic()
+    while True:
+        candidatos, motivos = _geradores_em_condicao(aspecto, correio, carteiro, imagem)
+        if not candidatos:
+            raise CorreioOcupado("nenhum gerador do rodizio pode gerar agora: "
+                                 + ("; ".join(motivos) or "rodizio vazio")[:400])
+        for g in candidatos:
+            with travas.trava(travas.do_perfil(g, "geral"), esperar=0.0) as minha:
+                if minha:
+                    yield g
+                    return
+        if time.monotonic() - inicio >= espera_s:
+            raise CorreioOcupado(
+                f"as contas do rodizio ({', '.join(candidatos)}) seguiram com outra "
+                f"pipeline por {_tempo_legivel(time.monotonic() - inicio)}; "
+                "o job volta para a fila")
+        _dormir(PASSO_CONTA_S)
+
+
+def _proporcao(aspecto: str) -> float | None:
+    try:
+        largura, altura = (float(x) for x in str(aspecto).split(":"))
+        return largura / altura if largura > 0 and altura > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _gravar_como_png(origem: Path, destino: Path, aspecto: str) -> None:
+    """Grava a imagem do correio no destino como PNG DE VERDADE e confere a
+    forma. O Gemini baixa JPEG (`.jfif`) e a build guarda `*.png`: a copia
+    crua deixava um JPEG com nome de PNG (conferencia de 07/10/2026).
+    Forma fora de `aspecto` (com `FOLGA_PROPORCAO`) levanta `GeracaoFalhou`
+    sem gravar nada."""
+    from PIL import Image
+
+    with Image.open(origem) as aberta:
+        aberta.load()
+        largura, altura = aberta.size
+        alvo = _proporcao(aspecto)
+        if alvo and altura:
+            desvio = abs((largura / altura) / alvo - 1.0)
+            if desvio > FOLGA_PROPORCAO:
+                raise GeracaoFalhou(
+                    f"a imagem do correio veio {largura}x{altura}, fora de {aspecto} "
+                    f"({desvio * 100:.0f}% de desvio). Descartada.")
+        modo = "RGBA" if aberta.mode in ("RGBA", "LA", "P") else "RGB"
+        convertida = aberta.convert(modo)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporario = destino.with_name(destino.name + ".parcial")
+    convertida.save(temporario, format="PNG")
+    os.replace(temporario, destino)
+
+
+def _motivo_de_colagem(caminho: Path) -> str:
+    """O detector de colagem das historias (`composicao.motivo`: calha
+    atravessando a imagem). Medido em 07/10/2026 nas 202 imagens de
+    identidade das builds: nenhuma marcada. Sem o detector: "" (avisa)."""
+    try:
+        from contos.imagens import composicao
+    except Exception as exc:                                   # noqa: BLE001
+        print(f"[identity] AVISO: sem o detector de colagem ({type(exc).__name__}); "
+              "so a proporcao foi conferida.")
+        return ""
+    try:
+        return composicao.motivo(caminho)
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
+def processar_correio(job: dict, ajustes: dict, rerender: bool = True,
+                      preview: bool = False, prazo: float | None = None) -> Path:
+    """Pede imagem pelo correio e aceita somente o arquivo provado da casa.
+
+    O id do pedido fica no job ANTES de o pedido existir: a retomada (worker
+    morto no meio) consulta o MESMO pedido em vez de gerar outra imagem. Um
+    pedido que falhou (ou cujo entregador morreu) nao e reaproveitado: a
+    proxima tentativa nasce com id novo. Reenfileirar zera o id
+    (`queue.enqueue`): "faca de novo" nunca devolve a imagem antiga."""
+    correio, carteiro, imagem = _importar_ias()
+    from . import referencias, status
+
+    generation_id = job["generation_id"]
+    slot = job.get("slot", slots.CHARACTER)
+    job_id = job.get("job_id") or slots.job_id(generation_id, slot)
+    destino = artefato.caminho(generation_id, slot)
+    aspecto = job.get("aspect") or ajustes.get("aspect", "9:16")
+    if status.esta_completo(generation_id, slot):
+        return destino
+    if status.clipe_utilizavel(generation_id, slot):
+        return registrar(generation_id, slot, destino, job["prompt"], aspecto,
+                         rerender=rerender, preview=preview, job_id=job_id)
+
+    anexos = []
+    if slot == slots.REFERENCIA:
+        entradas = referencias.entradas_do_editor(generation_id)
+        if len(entradas) != 2:
+            raise EntradasFaltando(
+                f"a juncao precisa das duas imagens e achei {len(entradas)} em {generation_id}.")
+        # Dentro do teto de anexo do correio (8 MB): a imagem do Gemini em PNG
+        # passa de 6 MB; acima de 1536 px ela sobe reduzida, em JPEG.
+        pasta = config.identity_dir(generation_id) / "anexos_correio"
+        anexos = [referencias.para_upload(e, pasta) for e in entradas]
+
+    mensagem_id = str(job.get("correio_id") or "")
+    pedido = correio.uma(correio.LIVRE, mensagem_id) if mensagem_id else None
+    if pedido is not None and not _pedido_reaproveitavel(pedido, correio):
+        print(f"[identity] {job_id}: pedido {mensagem_id} ficou "
+              f"{pedido.get('situacao')}; peco de novo com outro id.")
+        pedido, mensagem_id = None, ""
+    if pedido is not None and pedido.get("situacao") == "respondida":
+        atual = pedido                                  # retomada: so copiar
+    else:
+        # Espera pela conta (as historias usam as mesmas): limitada e, com
+        # prazo, nunca alem dele. Estourar e `CorreioOcupado`, sem tentativa.
+        espera_conta = float(ajustes.get("espera_conta_correio_s", 1800))
+        if prazo is not None:
+            espera_conta = min(espera_conta, max(60.0, float(prazo) - time.time()))
+        with _conta_do_rodizio(aspecto, espera_conta, correio, carteiro,
+                               imagem) as gerador:
+            if pedido is None:
+                mensagem_id = mensagem_id or correio.novo_id()
+                queue.registrar_correio(job_id, mensagem_id)
+                pedido = correio.pedir_imagem(
+                    correio.LIVRE, job["prompt"], proporcao=aspecto, de="random_builds",
+                    dono=os.getpid(), anexos=anexos, mensagem_id=mensagem_id)
+            print(f"[identity] {job_id}: pedido {mensagem_id} ao {gerador} "
+                  f"({len(anexos)} anexo(s))")
+            resposta = carteiro.Carteiro(
+                ajustes={"resposta_timeout_s": float(ajustes.get("espera_correio_s", 420)),
+                         "janela_conversa_s": 0, "rodizio_imagem": [gerador],
+                         "espera_conta_max_s": 60.0},
+                avisar=lambda _texto: False,
+                avisar_arquivo=lambda _caminho, _legenda: False).entregar(pedido)
+        atual = correio.uma(correio.LIVRE, mensagem_id) or resposta or {}
+    if (atual.get("situacao") == "falhou"
+            and atual.get("categoria") in _CATEGORIAS_DE_ESPERA):
+        raise CorreioOcupado(str(atual.get("erro") or "as contas do rodizio estao ocupadas"))
+    resumo = atual.get("imagem") if isinstance(atual.get("imagem"), dict) else {}
+    origem = correio.arquivo_da_imagem(correio.LIVRE, mensagem_id)
+    if (atual.get("situacao") != "respondida" or not resumo.get("prova")
+            or origem is None or not origem.is_file()):
+        if atual.get("situacao") == "respondida":
+            queue.registrar_correio(job_id, "")      # resposta inutil: a proxima pede de novo
+        raise GeracaoFalhou(str(atual.get("erro") or "o correio nao entregou imagem com prova"))
+    try:
+        registro = json.loads(origem.with_suffix(".prova.json").read_text(encoding="utf-8"))
+        prova = registro.get("prova") if isinstance(registro, dict) else None
+    except (OSError, ValueError):
+        prova = None
+    if not isinstance(prova, dict) or not prova.get("comprovada"):
+        queue.registrar_correio(job_id, "")
+        raise GeracaoFalhou("imagem do correio sem prova de origem")
+    try:
+        _gravar_como_png(origem, destino, aspecto)
+    except GeracaoFalhou:
+        queue.registrar_correio(job_id, "")
+        raise
+    except Exception as exc:                                   # noqa: BLE001
+        queue.registrar_correio(job_id, "")
+        raise GeracaoFalhou(f"a imagem do correio nao abre ({type(exc).__name__}: "
+                            f"{str(exc)[:120]})") from exc
+    colagem = _motivo_de_colagem(destino)
+    if colagem:
+        destino.unlink(missing_ok=True)
+        queue.registrar_correio(job_id, "")
+        raise GeracaoFalhou(f"{slots.rotulo(slot)}: {colagem} Descartada.")
+    gemeo = artefato.duplicado_de(destino, generation_id, slot)
+    if gemeo:
+        destino.unlink(missing_ok=True)
+        queue.registrar_correio(job_id, "")
+        raise GeracaoFalhou(
+            f"o arquivo baixado para {slot} e identico ao de {gemeo}: "
+            "o correio devolveu a imagem errada. Descartado.")
+    gerador = str(atual.get("gerador") or "correio")
+    history.registrar(generation_id, history.PRONTO, slot=slot,
+                      provedor=gerador, pedido=mensagem_id)
+    # A prova da casa + QUAL pedido do correio e QUAL gerador: a auditoria
+    # liga a imagem da build a mensagem que a trouxe.
+    origem_da_build = dict(prova, pedido_correio=mensagem_id, gerador=gerador)
+    caminho = registrar(generation_id, slot, destino, job["prompt"], aspecto,
+                        rerender=rerender, preview=preview, job_id=job_id,
+                        origem=origem_da_build)
+    history.registrar(generation_id, history.CONCLUIDO, slot=slot,
+                      rerender=rerender, duracao_s=_duracao(destino))
+    return caminho
+
+
 def _de_iso(texto) -> datetime | None:
     """ISO gravado na fila -> datetime aware, ou None."""
     if not texto:
@@ -720,6 +1033,8 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
     """
     if _prazo_vencido(prazo):
         return 0, None
+    if provedor == slots.CORREIO:
+        return _passada_correio(rerender, preview, limite, prazo=prazo)
     sel = provedores.seletores(provedor)
     ajustes = config.settings(provedor)
     if controle.pausado_para(provedor):
@@ -877,6 +1192,70 @@ def _passada(provedor: str, headless: bool, rerender: bool, preview: bool,
                             f"{type(parede).__name__}: {str(parede)[:200]}",
                             etapa="identity.parede_de_planos")
     return concluidos, quebrou
+
+
+def _passada_correio(rerender: bool, preview: bool, limite: int | None,
+                     prazo: float | None = None) -> tuple[int, Exception | None]:
+    """Drena as imagens sem abrir o navegador dos provedores antigos."""
+    if controle.pausado_para(slots.CORREIO):
+        print(f"[identity] correio PAUSADO ({controle.estado()['resumo']}); "
+              "nenhum job novo sera pego.", flush=True)
+        return 0, None
+    try:
+        # ANTES de pegar job: sem o pacote `ias` nenhum job anda, e nao e
+        # culpa de nenhum deles (nao gasta tentativa, nao marca failed).
+        _importar_ias()
+    except CorreioSemAmbiente as exc:
+        print(f"[identity] passada do correio NAO rodou: {exc}", flush=True)
+        _anotar_falha("passada do correio (ambiente)", exc)
+        return 0, None
+    ajustes = config.settings()
+    max_attempts = int(ajustes.get("max_attempts", 3))
+    concluidos = 0
+    adiados: set[str] = set()
+    job = queue.claim(max_attempts, provedor=slots.CORREIO)
+    while job is not None:
+        if controle.parada_pedida():
+            queue.reagendar(job["job_id"], "parada pedida pelo operador")
+            break
+        try:
+            destino = processar_correio(job, ajustes, rerender, preview, prazo=prazo)
+            queue.concluir(job["job_id"], str(destino))
+            concluidos += 1
+            print(f"[identity] {job['job_id']}: OK pelo correio -> {destino}")
+        except CorreioOcupado as exc:
+            # Espera, nao falha: devolve sem gastar tentativa e encerra a
+            # passada (os proximos jobs esbarrariam nas mesmas contas).
+            queue.reagendar(job["job_id"], str(exc))
+            print(f"[identity] {job['job_id']}: correio ocupado ({exc}); fica para "
+                  "a proxima rodada.")
+            break
+        except (CorreioSemAmbiente, ImportError) as exc:
+            # Ambiente quebrado no meio (modulo que nao importa): o job nao
+            # tem culpa. Volta sem gastar tentativa, a passada para e avisa.
+            queue.reagendar(job["job_id"], f"ambiente: {exc}")
+            _anotar_falha(f"{job['job_id']} (ambiente)", exc)
+            print(f"[identity] {job['job_id']}: ambiente quebrado ({type(exc).__name__}: "
+                  f"{exc}); a passada do correio para.", flush=True)
+            break
+        except EntradasFaltando as exc:
+            queue.reagendar(job["job_id"], str(exc))
+            adiados.add(job["job_id"])
+        except Exception as exc:
+            atualizado = queue.falhar(job["job_id"], str(exc), max_attempts)
+            _anotar_falha(job["job_id"], exc)
+            history.registrar(job["generation_id"], history.FALHOU,
+                              slot=job.get("slot"), provedor=slots.CORREIO,
+                              erro=str(exc)[:200],
+                              estado=(atualizado or {}).get("status", "?"),
+                              tipo=type(exc).__name__)
+            print(f"[identity] {job['job_id']}: FALHOU pelo correio ({exc})")
+        if limite is not None and concluidos >= limite:
+            break
+        if _prazo_vencido(prazo):
+            break
+        job = queue.claim(max_attempts, adiados, provedor=slots.CORREIO)
+    return concluidos, None
 
 
 def _parar_na_parede(provedor: str, job: dict, exc: BaseException,

@@ -1058,6 +1058,20 @@ class Rodizio(_Base):
         self.assertEqual(travas.pedidos[:2], ["perfil__picasso__teste",
                                               "perfil__gemini__teste"])
 
+    def test_pedido_com_referencia_so_vai_a_quem_recebe_anexo(self):
+        """A juncao dos builds manda personagem e arma: o PicassoIA (fora do
+        chat) geraria sem as referencias, com outro rosto (07/10/2026)."""
+        travas = _TravasPorNome()
+        c = _novo(fabrica=carteiro_mod.fabrica_duble(), trava=travas)
+        anexo = correio.guardar_anexo("gemini", "personagem.png",
+                                      b"\x89PNG" + b"x" * 100)
+        m = correio.pedir_imagem("livre", "junte", proporcao="1:1", anexos=[anexo])
+        fim = c.uma_volta()
+        self.assertEqual(fim["situacao"], "respondida")
+        self.assertEqual(fim["gerador"], "gemini")
+        self.assertNotIn("perfil__picasso__teste", travas.pedidos)
+        self.assertTrue(correio.arquivo_da_imagem("livre", m["id"]).is_file())
+
     def test_pula_quem_esta_fora_de_cota(self):
         antiga = correio.pedir_imagem("picasso", "y", proporcao="1:1")
         correio.atualizar("picasso", antiga["id"], situacao="falhou", categoria="limite",

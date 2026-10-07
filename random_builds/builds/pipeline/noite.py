@@ -601,7 +601,10 @@ def estoque_de_builds(videos=None, publicados=None) -> list:
 # Pendencia que o WORKER resolve sozinho: imagem, payoff, re-render. Build
 # com qualquer outra (estreia impossivel, estreia nao gravada) nao esta "a
 # caminho" — e nao pode segurar a geracao de outra.
-_PENDENCIA_DO_WORKER = ("identity worker", "(PicassoIA)", "mp4 mais velho")
+# Os rotulos vem de `catalogo.pendencias_da_build`; "(PicassoIA)" fica para
+# pendencia escrita antes de 07/10/2026 (as imagens foram para o correio).
+_PENDENCIA_DO_WORKER = ("identity worker", "(correio das IAs)", "(PicassoIA)",
+                        "mp4 mais velho")
 
 
 def builds_em_preparo(videos=None, publicados=None, jobs=None) -> list[str]:

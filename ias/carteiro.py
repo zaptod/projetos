@@ -175,6 +175,17 @@ def config() -> dict:
     return base
 
 
+def _tempo_legivel(segundos: float) -> str:
+    """Duracao para gente: "45 s", "12 min", "3 h". Ate 07/10/2026 a espera
+    pela conta saia sempre em horas inteiras, e 10 min virava "0 h"."""
+    segundos = max(0.0, float(segundos))
+    if segundos < 90:
+        return f"{segundos:.0f} s"
+    if segundos < 5400:
+        return f"{segundos / 60:.0f} min"
+    return f"{segundos / 3600:.1f} h".replace(".0 h", " h").replace(".", ",")
+
+
 def _log_padrao(msg: str) -> None:
     print(f"{datetime.now():%d/%m %H:%M:%S} {msg}", flush=True)
 
@@ -241,13 +252,15 @@ class SessaoReal:
                                anexos=list(anexos) if anexos else None)
         return c.perguntar(texto, anexos=list(anexos) if anexos else None)
 
-    def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "") -> dict:
+    def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "",
+                     anexos=None) -> dict:
         """Pede a imagem NA CASA (o chat ja aberto) e baixa a que nasce depois
         do nosso turno (`imagem.gerar_no_chat`, pelo `perguntar` de sempre: o
         turno vai ao diario como os de texto)."""
         from . import imagem
         self._marcar_antes(imagem.pedido_de_imagem(prompt, proporcao))
-        return imagem.gerar_no_chat(self.cliente, prompt, proporcao, log=self.log)
+        return imagem.gerar_no_chat(self.cliente, prompt, proporcao,
+                                    anexos=anexos, log=self.log)
 
     def imagem_da_resposta(self, prompt: str) -> dict | None:
         """A imagem que a ULTIMA resposta de conversa trouxe (o Gemini que
@@ -405,7 +418,8 @@ class SessaoDuble:
         if self.turnos:
             self.turnos[-1]["url"] = self._url      # em que conversa foi o turno
 
-    def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "") -> dict:
+    def gerar_imagem(self, prompt: str, proporcao: str, mensagem_id: str = "",
+                     anexos=None) -> dict:
         self.turnos.append({"texto": prompt, "anexos": [], "imagem": proporcao})
         self._comecar_conversa()
         if self.antes_de_gerar:
@@ -695,7 +709,7 @@ class Carteiro:
                 self._diario(ia, "log", f"carteiro: esperando a pipeline soltar {nome}", mid)
             if self.relogio() - inicio >= limite:
                 motivo = (f"a conta do {correio.ROTULOS.get(ia, ia)} ficou com a pipeline por "
-                          f"{limite / 3600:.0f} h; não entreguei. Mande de novo mais tarde.")
+                          f"{_tempo_legivel(limite)}; não entreguei. Mande de novo mais tarde.")
                 self.log(f"[carteiro] {mid}: {motivo}")
                 return self._falhar(caixa, ia, mid, motivo, "conta_ocupada")
 
@@ -725,6 +739,12 @@ class Carteiro:
                     continue
                 if proporcao not in info["proporcoes"]:
                     motivos.append(f"{info['rotulo']}: não faz {proporcao}")
+                    continue
+                if mensagem.get("anexos") and g not in correio.CHATS:
+                    # Pedido com referencia (a juncao dos builds) so vai a quem
+                    # recebe anexo no chat: fora dele a imagem sairia sem as
+                    # referencias, com outro rosto e outra arma (07/10/2026).
+                    motivos.append(f"{info['rotulo']}: não recebe as imagens de referência")
                     continue
                 fora = imagem.fora_de_cota(g, horas)
                 if fora:
@@ -757,7 +777,7 @@ class Carteiro:
                          nota=f"rodízio: esperando {', '.join(ocupados)}")
             if self.relogio() - inicio >= limite:
                 motivo = (f"as contas do rodízio ({', '.join(ocupados)}) ficaram ocupadas "
-                          f"por {limite / 3600:.0f} h; não gerei. Peça de novo mais tarde.")
+                          f"por {_tempo_legivel(limite)}; não gerei. Peça de novo mais tarde.")
                 return self._falhar(caixa, caixa, mid, motivo, "conta_ocupada")
             self.dormir(PASSO_TRAVA_S)
 
@@ -1053,7 +1073,9 @@ class Carteiro:
                 resultado = sessao.recuperar_imagem(prompt, proporcao)
             else:
                 try:
-                    resultado = sessao.gerar_imagem(prompt, proporcao, mid)
+                    anexos = mensagem.get("anexos") or None
+                    resultado = (sessao.gerar_imagem(prompt, proporcao, mid, anexos=anexos)
+                                 if anexos else sessao.gerar_imagem(prompt, proporcao, mid))
                 except Exception as recusa:                    # noqa: BLE001
                     novo = getattr(sessao, "novo_chat", None)
                     if not (type(recusa).__name__ == "SemImagem" and callable(novo)):
@@ -1065,7 +1087,10 @@ class Carteiro:
                     correio.atualizar(caixa, mid, nota="recusou a imagem; tentando de novo "
                                                        "em conversa nova")
                     novo()
-                    resultado = sessao.gerar_imagem(REFORCO_IMAGEM + prompt, proporcao, mid)
+                    resultado = (sessao.gerar_imagem(
+                        REFORCO_IMAGEM + prompt, proporcao, mid, anexos=anexos)
+                        if anexos else sessao.gerar_imagem(REFORCO_IMAGEM + prompt,
+                                                           proporcao, mid))
             salvo = imagem.guardar(ia, mid, resultado.get("bytes") or b"",
                                    resultado.get("prova") or {})
         except Exception as exc:                               # noqa: BLE001

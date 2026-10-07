@@ -454,7 +454,7 @@ def main() -> None:
     ipausar = isub.add_parser(
         "pausar", help="para de pegar trabalho novo (o job atual termina). "
                        "Use quando a conta do site estiver em uso por outra pessoa")
-    ipausar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+    ipausar.add_argument("--provedor", choices=("tudo", "correio", "digen", "picasso"),
                          default="tudo",
                          help="pausar so um site (padrao: tudo)")
     ipausar.add_argument("--minutos", type=float, default=None, metavar="N",
@@ -462,7 +462,7 @@ def main() -> None:
     ipausar.add_argument("--motivo", default="", help="fica anotado no status")
 
     iretomar = isub.add_parser("retomar", help="tira a pausa e volta a pegar trabalho")
-    iretomar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+    iretomar.add_argument("--provedor", choices=("tudo", "correio", "digen", "picasso"),
                           default=None, help="retomar so um site (padrao: tudo)")
 
     iparar = isub.add_parser(
@@ -610,14 +610,14 @@ def main() -> None:
     tpausar = sub.add_parser(
         "pausar", help="para de pegar trabalho novo; o job atual termina "
                        "(use quando a conta do site estiver com outra pessoa)")
-    tpausar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+    tpausar.add_argument("--provedor", choices=("tudo", "correio", "digen", "picasso"),
                          default="tudo", help="pausar so um site (padrao: tudo)")
     tpausar.add_argument("--minutos", type=float, default=None, metavar="N",
                          help="volta sozinho depois de N minutos")
     tpausar.add_argument("--motivo", default="", help="fica anotado no status")
 
     tretomar = sub.add_parser("retomar", help="tira a pausa e volta a trabalhar")
-    tretomar.add_argument("--provedor", choices=("tudo", "digen", "picasso"),
+    tretomar.add_argument("--provedor", choices=("tudo", "correio", "digen", "picasso"),
                           default=None, help="retomar so um site (padrao: tudo)")
 
     tparar = sub.add_parser(

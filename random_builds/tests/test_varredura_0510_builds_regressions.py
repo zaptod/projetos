@@ -483,7 +483,7 @@ class ANoiteChamaOWorkerSoParaReabrir(_FilaNoTemp):
         self._so_a_juncao_reabrivel()
         self.assertEqual([slots.job_id(GID, slots.REFERENCIA)],
                          [j["job_id"] for j in noite.jobs_do_worker()])
-        self.assertEqual(slots.PICASSO, noite.proximo_do_worker())
+        self.assertEqual(slots.CORREIO, noite.proximo_do_worker())
         # Provedor pausado: a passada nao abriria nada, entao nao conta.
         with mock.patch("builds.identity.controle.pausado_para",
                         return_value=True):
