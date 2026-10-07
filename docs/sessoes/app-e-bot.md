@@ -70,7 +70,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **App: reorganizar as telas** — 4 objetos, um por pergunta (02/10/2026) `app-reorganizar`
 - ✅ **Obsidian no celular: como o PC chega lá** — Syncthing (grátis) (06/10/2026) `obsidian-no-celular`
 - ✅ **Conversa: pergunta que não está na lista** — O modelo decide (06/10/2026) `conversa-pergunta-livre`
-- ⏳ **Ateliê: onde fica e o que vem primeiro** — Já que você vai usar o Ateliê todo dia, ele vira um objeto próprio na prateleira do app, com o Recortar folha lá em cima? `atelie-lugar-e-ordem`
+- ✅ **Ateliê: onde fica e o que vem primeiro** — Objeto próprio, três modos no topo (recomendado) (07/10/2026) `atelie-lugar-e-ordem`
 - ⏳ **Ateliê: os dois 'Apagar' do mesmo cartão** — Quando um lugar tem 2 ou mais variantes, como ficam os botões Apagar/Trocar do topo do cartão? `atelie-dois-apagar`
 
 <!-- decisoes:fim -->

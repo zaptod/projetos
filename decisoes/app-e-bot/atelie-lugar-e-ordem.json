@@ -3,7 +3,15 @@
   "contexto": "Hoje o Ateliê fica dentro de ⚔️ Arena › aba Ateliê, e o 'Recortar folha' está abaixo de todos os cartões (umas 2 telas de rolagem). O 'Ateliê antigo (animação de lado)' continua no fim da tela.",
   "criado": "2026-10-07T11:18:35.919520",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-07T16:05:56",
+      "opcao": "proprio",
+      "origem": "app"
+    }
+  ],
   "id": "atelie-lugar-e-ordem",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Já que você vai usar o Ateliê todo dia, ele vira um objeto próprio na prateleira do app, com o Recortar folha lá em cima?",
   "projeto": "app-e-bot",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Ateliê: onde fica e o que vem primeiro",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-07T16:05:56",
+    "opcao": "proprio"
+  }
 }
