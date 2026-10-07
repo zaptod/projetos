@@ -46,6 +46,11 @@ from builds.identity import client, selectors
 pytestmark = pytest.mark.skip(
     reason="em espera: builds/digen-parede (payoff_video do Digen desligado)")
 
+
+def load_tests(loader, tests, pattern):
+    # O testar.py roda por unittest discover, que ignora o pytestmark.
+    return unittest.TestSuite()
+
 # O texto lido na tela em 29/09/2026 17:36 (ias/fichas/digen.json).
 PAREDE_REAL = (
     "Upgrade your plan to unlock this model Meme 6,000 Meme / mo Pro Meme "
