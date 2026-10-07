@@ -43,5 +43,5 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Corrente: quem desenha agora que a esteira desligou** — Código agora, arte depois (recomendado) (07/10/2026) `corrente-arte-atelie`
 - ✅ **Duelo pelo palco: trocar já os que não têm corrente?** — Sim, troco os sem corrente (recomendado) (07/10/2026) `duelo-palco-sem-corrente`
 - ✅ **Seus desenhos do Ateliê: guardar no git?** — Guardar no git (recomendado) (07/10/2026) `arte-atelie-no-git`
-- ⏳ **Desenho 'Comum' de habilidade: vale para todos os elementos?** — Quando você desenhar o projétil (ou a área) 'Comum', ele deve aparecer pintado da cor de cada elemento no lugar das artes que já existem por elemento? `comum-tingido-ordem`
+- ✅ **Desenho 'Comum' de habilidade: vale para todos os elementos?** — Sua arte por elemento ganha; o Comum troca só a provisória (recomendado) (07/10/2026) `comum-tingido-ordem`
 - ⏳ **Rosto desenhado só em algumas carinhas: o que aparece nas outras?** — Se você desenhar a boca (ou os olhos) só em algumas carinhas, o que o lutador mostra nas carinhas que faltam? `boca-de-uma-carinha`

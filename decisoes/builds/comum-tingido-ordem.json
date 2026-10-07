@@ -3,7 +3,15 @@
   "contexto": "Hoje cada elemento tem uma arte própria provisória (gratuita, CC0) — e o Fogo tem a SUA, feita na Oficina. O 'Comum' que você desenhar é pintado com a cor do elemento (roxo em Trevas, laranja em Fogo). A pergunta é quem ganha quando os dois existem.",
   "criado": "2026-10-07T10:57:01.832726",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-07T16:05:20",
+      "opcao": "seu-vence",
+      "origem": "app"
+    }
+  ],
   "id": "comum-tingido-ordem",
   "midias": [],
   "opcoes": [
@@ -31,7 +39,11 @@
   ],
   "pergunta": "Quando você desenhar o projétil (ou a área) 'Comum', ele deve aparecer pintado da cor de cada elemento no lugar das artes que já existem por elemento?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Desenho 'Comum' de habilidade: vale para todos os elementos?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-07T16:05:20",
+    "opcao": "seu-vence"
+  }
 }
