@@ -206,6 +206,15 @@ def test_variantes_recortador_e_provador_pela_tela(provador_isolado, tema):
         galeria = _esperar(page, GALERIA_OLHOS, 3)
         assert sorted(p.name for p in (raiz / "partes/lutador/olhos/comum/_").iterdir()) == ["v01", "v02", "v03"]
         assert [legenda for legenda, _ in galeria] == ["Variante 1", "Variante 2", "Variante 3"]
+        # 07/10 (decisão atelie-dois-apagar): com 2+ variantes o topo mexe só na
+        # carinha da variante 1 e diz isso; a galeria apaga a variante inteira.
+        _quieto(page)
+        topo = _cartao(page, "Olhos").locator(".modular-acoes")
+        assert topo.get_by_role("button", name="Trocar esta carinha", exact=True).count() == 1
+        assert topo.get_by_role("button", name="Apagar esta carinha", exact=True).count() == 1
+        assert topo.get_by_role("button", name=re.compile(r"^(Trocar|Apagar)$")).count() == 0
+        assert _cartao(page, "Olhos").locator(".modular-variante button").all_inner_texts() == ["Apagar variante"] * 3
+        assert _cartao(page, "Pele (o corpo)").get_by_role("button", name="Trocar", exact=True).count() == 1
         cores = [cor for _, cor in galeria]
         assert [max(range(3), key=lambda k, c=c: c[k]) for c in cores] == [0, 2, 0], cores   # vermelho, azul, amarelo
         _quieto(page)

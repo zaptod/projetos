@@ -292,10 +292,19 @@ function modularTitulo(slot) {
   return carinha ? `${peca} · ${modularCarinha(carinha)}` : peca;
 }
 
+// Com 2+ variantes, o Trocar/Apagar do topo mexe só na carinha da variante 1
+// e o Apagar da galeria leva a variante inteira: os nomes dizem qual é qual
+// (decisão do Adrian, 07/10: app-e-bot/atelie-dois-apagar).
+function modularVarias(slot) {
+  return Modular.grupo === "lutador" && (slot.variantes || []).length >= 2;
+}
+
 function modularCartao(slot) {
   const anexado = slot.situacao === "anexado";
   const situacao = anexado ? "Anexado" : slot.situacao === "herdando" ? "Herdando" : "Vazio";
-  const anexar = el("button", {class: "acao", type: "button"}, anexado ? "Trocar" : "Anexar");
+  const varias = modularVarias(slot);
+  const anexar = el("button", {class: "acao", type: "button"},
+    anexado ? (varias ? "Trocar esta carinha" : "Trocar") : "Anexar");
   // `nova` desliga aqui: um "+ Nova variante" cancelado não vira o próximo Anexar.
   anexar.addEventListener("click", () => { Modular.slot = slot; Modular.nova = false; $("modular-arquivo").click(); });
   const botoes = el("div", {class: "botoes modular-acoes"}, anexar);
@@ -304,7 +313,7 @@ function modularCartao(slot) {
     desfazer.addEventListener("click", () => modularMutar(slot, "desfazer")); botoes.append(desfazer);
   }
   if (anexado) {
-    const apagar = el("button", {class: "acao", type: "button"}, "Apagar");
+    const apagar = el("button", {class: "acao", type: "button"}, varias ? "Apagar esta carinha" : "Apagar");
     apagar.addEventListener("click", () => modularMutar(slot, "apagar")); botoes.append(apagar);
   }
   if (Modular.grupo === "lutador") {
@@ -338,7 +347,8 @@ function modularGaleria(slot) {
     if (!sem) modularCartaoImagem(img,
       `/api/sprites/modulares/${encodeURIComponent(slot.id)}/imagem?variante=${variante}&v=${Modular.versao}`)
       .catch(() => {});
-    const apagar = el("button", {class: "acao", type: "button", "aria-label": `Apagar a variante ${i + 1}`}, "Apagar");
+    const apagar = el("button", {class: "acao", type: "button", "aria-label": `Apagar a variante ${i + 1}`},
+      "Apagar variante");
     apagar.addEventListener("click", () => modularApagarVariante(slot, variante, i + 1));
     grade.append(el("figure", {class: "modular-variante", "data-variante": variante}, sem || img,
       el("figcaption", {}, `Variante ${i + 1}`), apagar));
@@ -767,7 +777,9 @@ function modularAplicar(resposta) {
 }
 
 async function modularMutar(slot, acao) {
-  if (acao === "apagar" && !confirm(`Apagar o desenho de ${modularTitulo(slot).toLowerCase()}? Dá para voltar com Desfazer.`)) return;
+  if (acao === "apagar" && !confirm(modularVarias(slot)
+    ? `Apagar só esta carinha (${modularTitulo(slot).toLowerCase()}) da variante 1? As outras variantes ficam. Dá para voltar com Desfazer.`
+    : `Apagar o desenho de ${modularTitulo(slot).toLowerCase()}? Dá para voltar com Desfazer.`)) return;
   try {
     const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/${acao}`, {method: "POST"});
     const novo = resposta.slot || {};
@@ -839,7 +851,9 @@ async function modularAnexar(arquivoRecebido = null) {
       ? "Trocar usa um arquivo só. Para mandar vários de uma vez, use “+ Nova variante”."
       : "Este lugar recebe um desenho só: escolha um arquivo.", true);
   const trocar = slot.situacao === "anexado" && !Modular.nova;
-  if (trocar && !confirm(`Já há um desenho em ${modularTitulo(slot).toLowerCase()}. Trocar pelo novo? (Desfazer volta o antigo.)`)) return;
+  if (trocar && !confirm(modularVarias(slot)
+    ? `Trocar só esta carinha (${modularTitulo(slot).toLowerCase()}) da variante 1 pelo desenho novo? As outras variantes ficam. (Desfazer volta o antigo.)`
+    : `Já há um desenho em ${modularTitulo(slot).toLowerCase()}. Trocar pelo novo? (Desfazer volta o antigo.)`)) return;
   const dados = new FormData(); dados.append("imagem", arquivo);
   dados.append("opcoes", JSON.stringify({substituir: trocar, nova: Modular.nova}));
   modularAvisar("enviando o desenho…");
