@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "pedido de permissao da tarefa pedido-00cae350",
+  "criado": "2026-10-07T18:54:45.286616",
+  "depende_de": [],
+  "historico": [],
+  "id": "permissao-ligar-ja-o-palco-nos-duelos-se",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "builds/duelo-palco-ligar-sem-corrente",
+      "id": "permitir",
+      "pede_comentario": false,
+      "rotulo": "Permitir"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Encerrar esta tarefa",
+      "id": "negar",
+      "pede_comentario": false,
+      "rotulo": "Negar"
+    }
+  ],
+  "pergunta": "Na escolha 'Sim, troco os sem corrente' ele pediu: preparo desligado, mostro o A/B e só com o ok dele os duelos sem corrente saem pelo palco. O preparo está feito e desligado (commit f9bb3d4, 59 testes verdes); falta o ok para ligar, e a chave fica fora dos caminhos desta worktree.",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Permissao: Ligar já o palco nos duelos sem corrente? Pergunta para o Ad",
+  "vigente": null
+}

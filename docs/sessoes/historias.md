@@ -46,6 +46,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **PicassoIA fora da roda de imagens** — Tirar o PicassoIA de vez (06/10/2026) · “06/10 pelo chat: 'aparentemente o picasso morreu tambem, não podemos mais contar com ele.'” `picasso-fora-da-roda`
 - ✅ **Permissao: O pedido 'apaga tudo por favor' chegou sem dizer O QUE apaga** — Negar (06/10/2026) `permissao-o-pedido-apaga-tudo-por-favor`
 - ✅ **Enviar o 2º vídeo se o TikTok falhar?** — Enviar mesmo assim (recomendado) (07/10/2026) `enviar-o-2o-video-se-o-tiktok-falhar`
+- ⏳ **Permissao: Ligar já o palco nos duelos sem corrente? Pergunta para o Ad** — Na escolha 'Sim, troco os sem corrente' ele pediu: preparo desligado, mostro o A/B e só com o ok dele os duelos sem corrente saem pelo palco. O preparo está feito e desligado (commit f9bb3d4, 59 testes verdes); falta o ok para ligar, e a chave fica fora dos caminhos desta worktree. `permissao-ligar-ja-o-palco-nos-duelos-se`
 
 **Histórias**
 - ✅ **Vídeo reprovado ou não assistido** — Fica retido; só sai se o horário fosse ficar vazio (27/09/2026) `reprovado-ou-nao-assistido`
