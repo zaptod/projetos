@@ -42,6 +42,6 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Recortador: par de olhos desenhado de frente** — Separar o par e pôr cada olho no seu lugar (recomendado) (06/10/2026) `recortador-par-de-olhos`
 - ✅ **Corrente: quem desenha agora que a esteira desligou** — Código agora, arte depois (recomendado) (07/10/2026) `corrente-arte-atelie`
 - ✅ **Duelo pelo palco: trocar já os que não têm corrente?** — Sim, troco os sem corrente (recomendado) (07/10/2026) `duelo-palco-sem-corrente`
-- ⏳ **Seus desenhos do Ateliê: guardar no git?** — A pasta com os desenhos que você anexa no Ateliê (palco/biblioteca/partes) entra no git ou fica só neste PC? `arte-atelie-no-git`
+- ✅ **Seus desenhos do Ateliê: guardar no git?** — Guardar no git (recomendado) (07/10/2026) `arte-atelie-no-git`
 - ⏳ **Desenho 'Comum' de habilidade: vale para todos os elementos?** — Quando você desenhar o projétil (ou a área) 'Comum', ele deve aparecer pintado da cor de cada elemento no lugar das artes que já existem por elemento? `comum-tingido-ordem`
 - ⏳ **Rosto desenhado só em algumas carinhas: o que aparece nas outras?** — Se você desenhar a boca (ou os olhos) só em algumas carinhas, o que o lutador mostra nas carinhas que faltam? `boca-de-uma-carinha`
