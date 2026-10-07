@@ -44,3 +44,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ⏳ **Duelo pelo palco: trocar já os que não têm corrente?** — Enquanto a corrente não fica pronta, os duelos SEM corrente (77%) já podem sair pelo palco Godot, onde aparece o que você desenha no Ateliê? `duelo-palco-sem-corrente`
 - ⏳ **Seus desenhos do Ateliê: guardar no git?** — A pasta com os desenhos que você anexa no Ateliê (palco/biblioteca/partes) entra no git ou fica só neste PC? `arte-atelie-no-git`
 - ⏳ **Desenho 'Comum' de habilidade: vale para todos os elementos?** — Quando você desenhar o projétil (ou a área) 'Comum', ele deve aparecer pintado da cor de cada elemento no lugar das artes que já existem por elemento? `comum-tingido-ordem`
+- ⏳ **Rosto desenhado só em algumas carinhas: o que aparece nas outras?** — Se você desenhar a boca (ou os olhos) só em algumas carinhas, o que o lutador mostra nas carinhas que faltam? `boca-de-uma-carinha`
