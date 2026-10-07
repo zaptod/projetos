@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-be73122d",
+      "em": "2026-10-07T16:06:17",
+      "evento": "2026-10-07T16:06:06",
+      "linha": 146,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "renomear",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Com variantes, o Apagar e o Trocar do topo mexem só na carinha da variante 1, e o Apagar da galeria apaga a variante inteira. Dá para confundir e apagar a coisa errada (o Desfazer traz de volta).",
   "criado": "2026-10-07T11:18:39.158765",
   "depende_de": [],
