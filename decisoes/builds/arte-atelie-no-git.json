@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-275c2a1b",
+      "em": "2026-10-07T16:05:05",
+      "evento": "2026-10-07T16:05:00",
+      "linha": 142,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "git",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Hoje ela está fora do git: se o disco E: der problema, os desenhos somem, e as cópias de trabalho do Codex não enxergam a pasta (renderizam sem suas peças). O repositório vai ser mostrado a outras pessoas.",
   "criado": "2026-10-07T10:07:45.102443",
   "depende_de": [],
