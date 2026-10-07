@@ -683,5 +683,188 @@ class MainEscolheORumo(unittest.TestCase):
                          self._cmd(gerador="gemini", faixas=["gemini", "chatgpt"]))
 
 
+# ------------------------------------------------- a conta da outra faixa
+class ContaDaOutraFaixa(unittest.TestCase):
+    """Defeito do conferente (06/10/2026): dentro da faixa do Gemini, o
+    roteiro (`deepseek -> chatgpt -> gemini`), o conserto, o reescritor de
+    prompt e a folha do parecer podiam cair no ChatGPT — o gerador de IMAGEM
+    da outra faixa — e segura-lo por ate 30 min, com as cenas dela falhando.
+    Na faixa, a conta da outra faixa VIVA sai da ordem de queda; e o funil
+    (`abrir_cliente`) recusa como conta ocupada o caminho que esquecer."""
+
+    def _trocar(self, alvo, nome, valor):
+        self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
+        setattr(alvo, nome, valor)
+
+    def test_fora_do_paralelo_nada_e_evitado(self):
+        from contos.llm import papeis
+        self.assertEqual(set(), papeis.evitados())
+        self.assertEqual(["deepseek", "chatgpt", "gemini"],
+                         papeis.sem_evitados(["deepseek", "chatgpt", "gemini"]))
+
+    def test_evitando_e_devolvido_e_nunca_levanta(self):
+        from contos.llm import papeis
+
+        def quebra():
+            raise RuntimeError("x")
+
+        with papeis.evitando(lambda: {"ChatGPT"}):
+            self.assertEqual({"chatgpt"}, papeis.evitados())
+            self.assertEqual(["deepseek", "gemini"],
+                             papeis.sem_evitados(["deepseek", "chatgpt", "gemini"]))
+            with papeis.evitando(quebra):
+                self.assertEqual(set(), papeis.evitados())
+            self.assertEqual({"chatgpt"}, papeis.evitados())
+        self.assertEqual(set(), papeis.evitados())
+
+    def test_o_funil_recusa_sem_pegar_trava_nem_abrir_chrome(self):
+        from contos.llm import cliente, papeis
+
+        def nao_toque(*_a, **_k):
+            raise AssertionError("pegou a trava da conta da outra faixa")
+
+        self._trocar(cliente._rb_travas, "trava", nao_toque)
+        with papeis.evitando(lambda: {"chatgpt"}):
+            with self.assertRaises(cliente.ContaOcupada):
+                with cliente.abrir_cliente("chatgpt", log=lambda _m: None):
+                    pass
+
+    def test_o_reescritor_cai_no_mecanico(self):
+        """Ele abre o cliente numa THREAD propria: a guarda e por processo."""
+        from contos.imagens.reescritor import Reescritor
+        from contos.llm import cliente, papeis
+
+        self._trocar(cliente._rb_travas, "trava",
+                     lambda *a, **k: (_ for _ in ()).throw(
+                         AssertionError("pegou a trava")))
+        linhas = []
+        with papeis.evitando(lambda: {"chatgpt"}):
+            r = Reescritor("chatgpt", log=linhas.append)
+            try:
+                self.assertIsNone(r._garantir())
+            finally:
+                r.fechar()
+        self.assertTrue(r._desistiu)
+        self.assertTrue(any("suavizacao automatica" in l for l in linhas))
+
+    def test_roteiro_sem_a_conta_da_outra(self):
+        from contos.llm import papeis
+        completo = agenda.provedores_do_roteiro({})
+        self.assertEqual(["deepseek", "chatgpt", "gemini"], completo)
+        with papeis.evitando(lambda: {"chatgpt"}):
+            self.assertEqual(["deepseek", "gemini"],
+                             agenda.provedores_do_roteiro({}))
+        with papeis.evitando(lambda: {"gemini"}):
+            self.assertEqual(["deepseek", "chatgpt"],
+                             agenda.provedores_do_roteiro({}))
+
+    def test_parecer_sem_a_folha_na_conta_da_outra(self):
+        from contos.llm import papeis
+        from contos.publicar import parecer
+        self.assertIn("chatgpt", parecer.provedores_da_analise())
+        with papeis.evitando(lambda: {"chatgpt"}):
+            self.assertEqual(["gemini"], parecer.provedores_da_analise())
+
+    def test_retomada_nao_volta_ao_preferido_da_outra(self):
+        from contos.llm import papeis
+        from contos.roteiro import gerar as G
+        vistos = []
+        self._trocar(roteiro, "carregar", lambda _id: {"provedor": "chatgpt"})
+        self._trocar(roteiro, "partes_que_faltam", lambda _r: [])
+        self._trocar(G, "escrever_serie",
+                     lambda ordem, **k: vistos.append(list(ordem)))
+        self._trocar(agenda, "_terminar", lambda *a, **k: {"feito": "historia"})
+        self._trocar(agenda, "carregar", lambda: {})
+        with papeis.evitando(lambda: {"chatgpt"}):
+            agenda._retomar_texto(None, "h1", [2], False, lambda _m: None)
+        self.assertEqual([["deepseek", "gemini"]], vistos)
+
+    def test_ninguem_livre_adia_sem_pegar(self):
+        from contos.llm import papeis
+        from contos.roteiro import gerar as G
+        self._trocar(roteiro, "carregar", lambda _id: {"provedor": "chatgpt"})
+        self._trocar(G, "escrever_serie", lambda *a, **k: self.fail("escreveu"))
+        self._trocar(agenda, "carregar", lambda: {})
+        with papeis.evitando(lambda: {"deepseek", "chatgpt", "gemini"}):
+            saida = agenda._retomar_texto(None, "h1", [2], False,
+                                          lambda _m: None)
+        self.assertEqual("sem escritor livre", saida["motivo"])
+        self.assertIsNone(agenda.mensagem(saida, 1), "adiar nao e falha")
+
+    def test_contas_das_outras_faixas_sao_as_vivas(self):
+        from builds import travas
+        prefixo = f"teste_{os.getpid()}_{id(self)}"
+        self._trocar(agenda, "trava_da_faixa", lambda g: f"{prefixo}__{g}")
+        self._trocar(fila, "carregar_config",
+                     lambda: {"geradores_imagem": ["gemini", "chatgpt"]})
+        self.assertEqual(set(), agenda.contas_das_outras_faixas("gemini"))
+        pegou, soltar = threading.Event(), threading.Event()
+
+        def outra_faixa():
+            with travas.trava(agenda.trava_da_faixa("chatgpt")):
+                pegou.set()
+                soltar.wait(10)
+
+        fio = threading.Thread(target=outra_faixa)
+        fio.start()
+        pegou.wait(10)
+        try:
+            self.assertEqual({"chatgpt"},
+                             agenda.contas_das_outras_faixas("gemini"))
+            self.assertEqual(set(), agenda.contas_das_outras_faixas("chatgpt"),
+                             "a propria conta nunca e evitada")
+        finally:
+            soltar.set()
+            fio.join(10)
+        self.assertEqual(set(), agenda.contas_das_outras_faixas("gemini"),
+                         "a outra acabou: a conta volta")
+
+    def test_a_faixa_liga_o_filtro_so_dentro_dela(self):
+        from contos.llm import papeis
+        from builds import travas
+        from builds.identity import controle
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self._trocar(agenda, "OUTPUTS", Path(tmp.name))
+        self._trocar(agenda, "planejar", lambda config, *_a, **_k: {
+            "fazer": True, "modo": "livre", "emendar": False, "config": config})
+        self._trocar(agenda, "_gerador_pronto", lambda _g: "")
+        self._trocar(controle, "pausado_para", lambda *a, **k: False)
+
+        @contextlib.contextmanager
+        def livre(nome, esperar=0.0):
+            yield True
+
+        self._trocar(travas, "trava", livre)
+        self._trocar(agenda, "contas_das_outras_faixas",
+                     lambda g: {"chatgpt"} if g == "gemini" else set())
+        vistos = []
+        self._trocar(agenda, "_emendar", lambda *a, **k: vistos.append(
+            papeis.evitados()) or {"feito": "nada", "motivo": "so consertar"})
+        agenda.rodar(config={"avisar_telegram": False}, tela=None,
+                     gerador="gemini")
+        agenda.rodar(config={"avisar_telegram": False}, tela=None)
+        self.assertEqual([{"chatgpt"}, set()], vistos)
+        self.assertEqual(set(), papeis.evitados())
+
+    def test_o_reparo_adia_quando_o_gemini_e_da_outra_faixa(self):
+        fonte = Path(reparo.__file__).read_text(encoding="utf-8")
+        trecho = fonte[fonte.index('"gemini" in papeis.evitados()'):]
+        self.assertIn("conta_ocupada = True", trecho[:400])
+
+
+class LogDaFaixaDepoisDaMeiaNoite(Supervisor):
+
+    def test_a_relancada_aponta_o_log_do_dia_dela(self):
+        self.agora = datetime(2026, 10, 7, 23, 50)
+        linhas = []
+        agenda.rodar_faixas(config=self.config, tela=linhas.append,
+                            lancar=self._lancar)
+        relancadas = [l for l in linhas if "faixa do gemini lancada" in l]
+        self.assertGreaterEqual(len(relancadas), 2)
+        self.assertIn("auto_20261007_gemini.txt", relancadas[0])
+        self.assertIn("auto_20261008_gemini.txt", relancadas[1])
+
+
 if __name__ == "__main__":
     unittest.main()

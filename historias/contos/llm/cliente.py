@@ -1528,6 +1528,17 @@ def abrir_cliente(provedor: str, *, headless: bool = False,
 
     @contextmanager
     def _abrir():
+        # A CONTA DA OUTRA FAIXA (06/10/2026): com as duas historias em
+        # paralelo, o gerador de imagem da outra faixa viva nao e pego por
+        # NENHUM caminho deste processo (roteiro, conserto, reescritor,
+        # parecer). E a guarda no funil: os caminhos que escolhem provedor
+        # ja tiram a conta da lista, e o que esquecer cai aqui como conta
+        # ocupada (quem chama passa ao proximo ou adia), sem esperar.
+        from . import papeis
+        if str(provedor).lower() in papeis.evitados():
+            raise ContaOcupada(
+                f"a conta do {provedor} e o gerador de imagem da outra faixa "
+                "(duas historias em paralelo); nao pego enquanto ela roda.")
         browser = _rb_identity_browser
         travas = _rb_travas
         nome_trava = travas.do_perfil(provedor, "geral")

@@ -662,7 +662,7 @@ def _cronometrar(resultado: dict, gasto: float) -> None:
         if resultado.get("motivo") in ("ja rodando", "pausado",
                                        "agenda desligada", "fora da janela",
                                        "sem tempo na janela", "estoque cheio",
-                                       "impedido"):
+                                       "impedido", "sem escritor livre"):
             return
         from builds import atividade
         atividade.registrar(
@@ -691,7 +691,8 @@ def mensagem(resultado: dict, segundos: float) -> str | None:
         motivo = resultado.get("motivo") or ""
         if motivo in ("ja rodando", "pausado", "agenda desligada",
                       "fora da janela", "sem tempo na janela",
-                      "so consertar", "estoque cheio", "impedido"):
+                      "so consertar", "estoque cheio", "impedido",
+                      "sem escritor livre"):
             return None
         return (f"❌ *a criacao automatica falhou*\n{motivo}\n"
                 f"{(resultado.get('erro') or '')[:300]}")
@@ -1184,6 +1185,28 @@ def _posse(historia_id: str, config: dict, log=print):
         yield minha
 
 
+def contas_das_outras_faixas(gerador: str) -> set:
+    """Os geradores de imagem das OUTRAS faixas que estao rodando agora.
+
+    E o que a faixa de `gerador` nao pega para LLM (roteiro, conserto,
+    reescritor, parecer): defeito do conferente, 06/10/2026 — o roteiro da
+    faixa do Gemini caindo no ChatGPT seguraria a conta da outra faixa por
+    ate 30 min, e as cenas dela falhariam esperando. "Rodando" e a trava da
+    faixa ocupada (`trava_da_faixa`): a outra que acabou devolve a conta.
+    Nunca levanta; na duvida, nao evita nada (como fora do paralelo).
+    """
+    try:
+        from builds import travas
+        from ..imagens import fila
+        roda = [str(g).lower() for g in
+                fila.carregar_config().get("geradores_imagem") or []]
+        proprio = str(gerador or "").lower()
+        return {g for g in roda if g != proprio
+                and travas.ocupada(trava_da_faixa(g))}
+    except Exception:                                          # noqa: BLE001
+        return set()
+
+
 def _gerador_pronto(gerador: str) -> str:
     """"" se o gerador da faixa pode gerar agora; senao, o motivo.
 
@@ -1324,7 +1347,7 @@ def rodar_faixas(*, config: dict | None = None, headless: bool = False,
                 lancadas[gerador] = lancadas.get(gerador, 0) + 1
                 log(f"[auto] faixa do {gerador} lancada (pid "
                     f"{getattr(vivos[gerador], 'pid', '?')}); log em "
-                    f"auto_{agora:%Y%m%d}_{gerador}.txt.")
+                    f"auto_{_relogio():%Y%m%d}_{gerador}.txt.")
             if not vivos:
                 break
             _dormir(vigiar_s)
@@ -1421,7 +1444,9 @@ def rodar(*, config: dict | None = None, headless: bool = False,
                 if not gerador:
                     return _emendar(config, plano, headless, print)
                 from ..imagens import worker
-                with worker.na_faixa(gerador):
+                from ..llm import papeis
+                with worker.na_faixa(gerador), papeis.evitando(
+                        lambda: contas_das_outras_faixas(gerador)):
                     return _emendar(config, plano, headless, print)
             except Exception as exc:                           # noqa: BLE001
                 # A rodada nao pode morrer calada: o unico jeito de descobrir
@@ -1497,7 +1522,7 @@ def _fechar_passo(resultado: dict, gasto: float, config: dict) -> None:
     if resultado.get("erros") or resultado.get("motivo") not in (
             None, "", "ja rodando", "pausado", "agenda desligada",
             "fora da janela", "sem tempo na janela", "so consertar",
-            "estoque cheio", "impedido"):
+            "estoque cheio", "impedido", "sem escritor livre"):
         # TODO ERRO NO MESMO LUGAR. `atividade.jsonl` e o ledger de
         # onde o bot tira os alertas e onde a apuracao automatica
         # procura o que investigar. As etapas ja registravam (imagens,
@@ -1837,6 +1862,10 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 "invadiria a hora do silencio.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
     escritores = provedores_do_roteiro(config)
+    if not escritores:
+        log("[auto] nenhuma conta do roteiro esta livre para esta faixa (as "
+            "outras sao geradores de imagem da outra faixa); nao crio agora.")
+        return {"feito": "nada", "motivo": "sem escritor livre"}
     tipo = tipo_mais_magro()
     partes = partes_da_proxima(tipo, config)
     log("[auto] criando historia nova"
@@ -2134,7 +2163,10 @@ def provedores_do_roteiro(config: dict) -> list:
     lista = papeis.provedores(papeis.ROTEIRO)
     if not (papeis.ARQUIVO.is_file() and lista):
         lista = [str(config.get("provedor") or "gemini")]
-    return lista
+    # NA FAIXA, SEM A CONTA DA OUTRA (06/10/2026): o gerador de imagem da
+    # outra faixa viva sai da ordem de queda (fica o DeepSeek e o proprio).
+    # Lista vazia = ninguem livre: quem chama adia em vez de pegar.
+    return papeis.sem_evitados(lista)
 
 
 def _retomar_texto(pipeline, historia_id: str, faltam: list,
@@ -2152,7 +2184,9 @@ def _retomar_texto(pipeline, historia_id: str, faltam: list,
         gravado = R.carregar(historia_id).get("provedor")
     except Exception:                                          # noqa: BLE001
         gravado = None
-    ordem = papeis.com_preferido(gravado, provedores_do_roteiro(config))
+    ordem = _ordem_da_retomada(gravado, config)
+    if not ordem:
+        return _sem_escritor(historia_id, log)
     try:
         G.escrever_serie(ordem, historia_id=historia_id,
                          headless=headless, log=log)
@@ -2169,6 +2203,22 @@ def _retomar_texto(pipeline, historia_id: str, faltam: list,
                 "motivo": "retomada parcial; o proximo disparo continua"}
     return _terminar(pipeline, historia_id, headless, log, criada=False,
                      guarda=guarda)
+
+
+def _ordem_da_retomada(gravado, config: dict) -> list:
+    """Quem retoma: o que comecou primeiro, depois a ordem de queda — e,
+    numa faixa, sem a conta da outra (06/10/2026): a historia comecada no
+    ChatGPT nao e retomada nele pela faixa do Gemini enquanto a outra roda."""
+    from ..llm import papeis
+    return papeis.sem_evitados(
+        papeis.com_preferido(gravado, provedores_do_roteiro(config)))
+
+
+def _sem_escritor(historia_id: str, log) -> dict:
+    log(f"[auto] {historia_id}: as contas do roteiro sao das outras faixas "
+        "agora; a retomada fica para depois.")
+    return {"feito": "nada", "motivo": "sem escritor livre",
+            "historia_id": historia_id}
 
 
 def _guarda_da_grade(config: dict, log):

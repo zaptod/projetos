@@ -840,7 +840,15 @@ def provedores_da_analise() -> list:
                 lista.append(nome)
     except Exception:                                          # noqa: BLE001
         lista = []
-    return lista or list(PROVEDORES)
+    lista = lista or list(PROVEDORES)
+    # NA FAIXA, SEM A CONTA DA OUTRA (06/10/2026): a folha no ChatGPT, dentro
+    # da faixa do Gemini, seguraria o gerador de imagem da outra faixa. Lista
+    # vazia = `pedir` levanta SemParecer e o video fica para depois.
+    try:
+        from ..llm import papeis
+        return papeis.sem_evitados(lista)
+    except Exception:                                          # noqa: BLE001
+        return lista
 
 
 def pedir(video, roteiro: dict, parte: int, *, laudo: dict | None = None,

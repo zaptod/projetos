@@ -856,7 +856,11 @@ def _plano_pelo_veto_da_ia(video, historia_id: str, parte: int, *,
         # uma das tres tentativas. Tres assim e o video saia com veto sem nunca
         # ter sido consertado. Conta ocupada adia, como o PicassoIA ocupado.
         from builds import travas
-        if travas.ocupada(travas.do_perfil("gemini", "geral")):
+        from ..llm import papeis
+        # A conta do Gemini como gerador de imagem da OUTRA faixa (duas
+        # historias em paralelo, 06/10/2026) tambem e "em uso": adia igual.
+        if ("gemini" in papeis.evitados()
+                or travas.ocupada(travas.do_perfil("gemini", "geral"))):
             reescrita_nao_rodou = "a conta do Gemini esta em uso"
             conta_ocupada = True
             novos = {}

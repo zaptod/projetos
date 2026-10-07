@@ -86,6 +86,51 @@ def com_preferido(preferido: str | None, lista) -> list:
     return ordem
 
 
+# CONTAS QUE ESTE PROCESSO NAO PODE PEGAR AGORA (06/10/2026, duas historias em
+# paralelo, uma por gerador de imagem). Dentro da faixa do Gemini, a conta do
+# ChatGPT e o gerador de IMAGEM da outra faixa: o roteiro, o conserto, o
+# reescritor de prompt e a folha do parecer que caissem nela a segurariam por
+# ate 30 min, e as cenas da outra faixa falhariam esperando a conta. Quem diz
+# quais sao e uma FUNCAO (a outra faixa pode acabar no meio da rodada, e ai a
+# conta volta a valer); fora do paralelo nao ha funcao e nada muda.
+_EVITAR = {"funcao": None}
+
+
+def evitados() -> set:
+    """As contas que este processo nao pega agora. Nunca levanta."""
+    funcao = _EVITAR.get("funcao")
+    if funcao is None:
+        return set()
+    try:
+        return {str(nome).lower() for nome in (funcao() or ())}
+    except Exception:                                          # noqa: BLE001
+        return set()
+
+
+def sem_evitados(lista) -> list:
+    """A ordem de queda sem as contas que este processo nao pega agora."""
+    fora = evitados()
+    return [nome for nome in (lista or []) if str(nome).lower() not in fora]
+
+
+class evitando:
+    """`with papeis.evitando(lambda: {"chatgpt"}):` — por PROCESSO de
+    proposito (o reescritor abre o cliente numa thread propria)."""
+
+    def __init__(self, funcao):
+        self.funcao = funcao
+        self.anterior = None
+
+    def __enter__(self):
+        self.anterior = _EVITAR.get("funcao")
+        _EVITAR["funcao"] = self.funcao
+        return self
+
+    def __exit__(self, *_erro):
+        _EVITAR["funcao"] = self.anterior
+        return False
+
+
 def ajustes(provedor: str, caminho: Path | None = None) -> dict:
     """O bloco daquele provedor no `config/llm.json` (ex.: `deepthink`)."""
     try:

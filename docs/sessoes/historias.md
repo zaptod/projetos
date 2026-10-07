@@ -242,10 +242,19 @@ vigiar_s: 30}`. **Sai desligado** (`ligado: false`): uma história por vez, como
   bíblias juntas tirariam o mesmo número), o `_reparos.json` (`reparo._registro_travado`,
   trava `historias__reparos_json`), e o **serviço do dia + parecer do estoque**, que só a
   faixa do Gemini faz (`agenda._da_casa`; Gemini parado passa os dois à outra).
-- **Continua disputado** (cada um espera/cai pela trava da conta, como já era): o roteiro
-  (`deepseek → chatgpt → gemini`, conta ocupada passa ao próximo), o reescritor de prompt
-  recusado (ChatGPT) na faixa do Gemini, a folha do parecer (ChatGPT) e o disco/CPU de dois
-  renders juntos (o E: é HDD: ver "Render que parece travado é disco").
+- **A conta da outra faixa não é pega para LLM** (defeito do conferente, 06/10): dentro da
+  faixa X, o gerador de imagem da outra faixa **viva** (trava `historias__auto__<outro>`
+  ocupada, `agenda.contas_das_outras_faixas`) sai da ordem do roteiro
+  (`provedores_do_roteiro`, e o preferido da retomada), da análise do parecer
+  (`parecer.provedores_da_analise`) e do conserto (o reparo adia como "conta do Gemini em
+  uso"). A guarda no funil é `llm.cliente.abrir_cliente`: provedor em `papeis.evitados()`
+  levanta `ContaOcupada` sem pegar trava nem abrir Chrome (pega o reescritor, que abre numa
+  thread própria e cai no mecânico). Sem ninguém livre para o roteiro: `"sem escritor
+  livre"`, adia sem aviso de falha. A outra faixa acabou: a conta volta. Fora do paralelo,
+  `papeis.evitando` não está ligado e nada muda.
+- **Continua disputado**: o DeepSeek entre as duas faixas (a que perde cai no próprio
+  gerador) e o disco/CPU de dois renders juntos (o E: é HDD: ver "Render que parece travado
+  é disco").
 - Testes: `tests/test_duas_historias_em_paralelo_regressions.py`. `main.py auto --listar`
   mostra a linha `paralelo:`.
 
