@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-d0e769d3",
+      "em": "2026-10-07T16:05:22",
+      "evento": "2026-10-07T16:05:20",
+      "linha": 143,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "seu-vence",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Hoje cada elemento tem uma arte própria provisória (gratuita, CC0) — e o Fogo tem a SUA, feita na Oficina. O 'Comum' que você desenhar é pintado com a cor do elemento (roxo em Trevas, laranja em Fogo). A pergunta é quem ganha quando os dois existem.",
   "criado": "2026-10-07T10:57:01.832726",
   "depende_de": [],
