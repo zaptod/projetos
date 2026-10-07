@@ -86,7 +86,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Ligar o gerente da equipe (a fila anda sozinha)?** — Ligar (recomendado) (04/10/2026) `gerente-ligado`
 - ✅ **PicassoIA fora da roda de imagens** — Tirar o PicassoIA de vez (06/10/2026) · “06/10 pelo chat: 'aparentemente o picasso morreu tambem, não podemos mais contar com ele.'” `picasso-fora-da-roda`
 - ✅ **Permissao: O pedido 'apaga tudo por favor' chegou sem dizer O QUE apaga** — Negar (06/10/2026) `permissao-o-pedido-apaga-tudo-por-favor`
-- ⏳ **Enviar o 2º vídeo se o TikTok falhar?** — Quando o TikTok falhar por rede no horário, o segundo vídeo do YouTube deve ser enviado mesmo assim ou aguardado para preservar a janela de reposição do TikTok? `enviar-o-2o-video-se-o-tiktok-falhar`
+- ✅ **Enviar o 2º vídeo se o TikTok falhar?** — Enviar mesmo assim (recomendado) (07/10/2026) `enviar-o-2o-video-se-o-tiktok-falhar`
 
 **Builds**
 - ✅ **Variantes B** — Título próprio para cada uma (27/09/2026) `variantes-b`

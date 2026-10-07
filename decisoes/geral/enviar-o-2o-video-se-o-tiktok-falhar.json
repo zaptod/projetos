@@ -3,7 +3,15 @@
   "contexto": "A escolha altera o que é publicado após uma falha de rede do TikTok e como a capacidade de reposição é usada. (entrega do Codex yt-alcanca; nó criado pelo vigia de trabalho do coordenador)",
   "criado": "2026-10-07T09:57:53.283672",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-07T15:02:26",
+      "opcao": "enviar",
+      "origem": "app"
+    }
+  ],
   "id": "enviar-o-2o-video-se-o-tiktok-falhar",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "Quando o TikTok falhar por rede no horário, o segundo vídeo do YouTube deve ser enviado mesmo assim ou aguardado para preservar a janela de reposição do TikTok?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Enviar o 2º vídeo se o TikTok falhar?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-07T15:02:26",
+    "opcao": "enviar"
+  }
 }
