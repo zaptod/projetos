@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-61fa5b2f",
+      "em": "2026-10-07T00:43:38",
+      "evento": "2026-10-07T00:43:35",
+      "linha": 136,
+      "nota": "lida pelo servidor; virou pedido ao orquestrador",
+      "opcao": "sobe",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Decisão youtube-caiu-depois-do-tiktok (06/10): subir a MESMA parte no YouTube. A válvula de qualidade (27/09) diz que parte retida só sai no lugar do horário vazio. Hoje (07/10 00:12) o YouTube deve 3 partes: h54 p01 e p02 (retidas; já estão no TikTok desde 05/10 23:50 e 06/10 00:49, marcadas 'a conferir' lá) e h60 p01 (aprovada). A fila tem 2 partes limpas e 53 retidas. Se a devida retida esperar a válvula, a h54 fica com buraco no YouTube enquanto houver parte limpa; se não esperar, uma retida vai ao YouTube na frente de uma limpa (fica 'a conferir' no YouTube). Serve para fechar a regra da dívida do YouTube no postar.",
   "criado": "2026-10-07T00:18:34.167351",
   "depende_de": [],
