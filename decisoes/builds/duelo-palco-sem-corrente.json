@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Você disse que, tirando a corrente, o palco estava perfeito. Só o palco mostra os sprites do Ateliê; o duelo publicado ainda é o visual antigo. Hoje só as peças do Lutador (olhos, boca, chapéu) chegam ao palco; armas, efeitos e habilidades estou ligando agora. Antes de ir ao ar, faço um A/B novo para você ver.",
+  "criado": "2026-10-07T10:07:43.143706",
+  "depende_de": [],
+  "historico": [],
+  "id": "duelo-palco-sem-corrente",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Preparo hoje desligado, te mostro o A/B e, com seu ok, os duelos sem corrente saem pelo palco; os com corrente seguem no visual antigo até ela ficar pronta",
+      "id": "trocar-sem-corrente",
+      "pede_comentario": false,
+      "rotulo": "Sim, troco os sem corrente (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Espero a corrente e troco todos os duelos de uma vez",
+      "id": "tudo-junto",
+      "pede_comentario": false,
+      "rotulo": "Troco tudo junto"
+    }
+  ],
+  "pergunta": "Enquanto a corrente não fica pronta, os duelos SEM corrente (77%) já podem sair pelo palco Godot, onde aparece o que você desenha no Ateliê?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Duelo pelo palco: trocar já os que não têm corrente?",
+  "vigente": null
+}

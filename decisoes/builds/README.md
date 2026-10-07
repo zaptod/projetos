@@ -41,3 +41,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Sprites: recortador de folha** — Tira só verde ou magenta e separa cada sprite (06/10/2026) · “06/10 pelo chat (pedido direto do Adrian)” `sprites-recortador`
 - ✅ **Recortador: par de olhos desenhado de frente** — Separar o par e pôr cada olho no seu lugar (recomendado) (06/10/2026) `recortador-par-de-olhos`
 - ⏳ **Corrente: quem desenha agora que a esteira desligou** — A arte da corrente nova (elos, couro/corda e as 6 cabeças) vem de você no Ateliê, ou a corrente desenhada por código já basta para trocar o duelo? `corrente-arte-atelie`
+- ⏳ **Duelo pelo palco: trocar já os que não têm corrente?** — Enquanto a corrente não fica pronta, os duelos SEM corrente (77%) já podem sair pelo palco Godot, onde aparece o que você desenha no Ateliê? `duelo-palco-sem-corrente`
