@@ -1,0 +1,30 @@
+{
+  "comentario": true,
+  "contexto": "Com variantes, o Apagar e o Trocar do topo mexem só na carinha da variante 1, e o Apagar da galeria apaga a variante inteira. Dá para confundir e apagar a coisa errada (o Desfazer traz de volta).",
+  "criado": "2026-10-07T11:18:39.158765",
+  "depende_de": [],
+  "historico": [],
+  "id": "atelie-dois-apagar",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Topo vira 'Trocar esta carinha' / 'Apagar esta carinha'; na galeria 'Apagar variante'",
+      "id": "renomear",
+      "pede_comentario": false,
+      "rotulo": "Renomear para ficar claro (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Com variantes, só a galeria tem botões",
+      "id": "esconder",
+      "pede_comentario": false,
+      "rotulo": "Esconder os do topo com galeria"
+    }
+  ],
+  "pergunta": "Quando um lugar tem 2 ou mais variantes, como ficam os botões Apagar/Trocar do topo do cartão?",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "Ateliê: os dois 'Apagar' do mesmo cartão",
+  "vigente": null
+}
