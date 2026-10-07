@@ -3,7 +3,15 @@
   "contexto": "Hoje o jogo procura a carinha exata, depois a família e depois a neutra. Se você desenhou só a fúria, no neutro a boca SOME; se desenhou só a neutra, o rosto para de reagir (fica sempre neutro). O app já mostra 'sem esta carinha' em cada lugar.",
   "criado": "2026-10-07T11:18:41.708697",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-07T16:05:40",
+      "opcao": "mais-parecida",
+      "origem": "app"
+    }
+  ],
   "id": "boca-de-uma-carinha",
   "midias": [],
   "opcoes": [
@@ -24,7 +32,11 @@
   ],
   "pergunta": "Se você desenhar a boca (ou os olhos) só em algumas carinhas, o que o lutador mostra nas carinhas que faltam?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Rosto desenhado só em algumas carinhas: o que aparece nas outras?",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-07T16:05:40",
+    "opcao": "mais-parecida"
+  }
 }
