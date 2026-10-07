@@ -1,0 +1,37 @@
+{
+  "comentario": true,
+  "contexto": "Hoje cada elemento tem uma arte própria provisória (gratuita, CC0) — e o Fogo tem a SUA, feita na Oficina. O 'Comum' que você desenhar é pintado com a cor do elemento (roxo em Trevas, laranja em Fogo). A pergunta é quem ganha quando os dois existem.",
+  "criado": "2026-10-07T10:57:01.832726",
+  "depende_de": [],
+  "historico": [],
+  "id": "comum-tingido-ordem",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Seu Comum pintado substitui as artes gratuitas de cada elemento, mas o Fogo que você fez (e qualquer elemento que você desenhar) continua aparecendo",
+      "id": "seu-vence",
+      "pede_comentario": false,
+      "rotulo": "Sua arte por elemento ganha; o Comum troca só a provisória (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Desenhou o Comum, todos os elementos ficam com ele pintado, inclusive o seu Fogo — tudo no mesmo estilo",
+      "id": "comum-vence",
+      "pede_comentario": false,
+      "rotulo": "O Comum ganha de tudo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "As artes gratuitas por elemento ficam; o Comum só aparece nas habilidades sem elemento (39% dos lançamentos)",
+      "id": "provisoria-fica",
+      "pede_comentario": false,
+      "rotulo": "O Comum só onde não há nada"
+    }
+  ],
+  "pergunta": "Quando você desenhar o projétil (ou a área) 'Comum', ele deve aparecer pintado da cor de cada elemento no lugar das artes que já existem por elemento?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Desenho 'Comum' de habilidade: vale para todos os elementos?",
+  "vigente": null
+}
