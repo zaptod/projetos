@@ -285,7 +285,9 @@ function vilaFoco() {
   const morador = Vila.selecionado && (Vila.retrato?.habitantes || []).find(
     (h) => h.nome === Vila.selecionado);
   if (morador) return [morador.x, morador.y];
-  return Vila.mundo.portas.casa || [200, 120];
+  // sem portas (mundo ainda incompleto), a câmera abre no ponto padrão: o
+  // TypeError daqui virava "sem conexão" na tela (07/10)
+  return (Vila.mundo.portas || {}).casa || [200, 120];
 }
 
 // entre dois retratos o habitante anda, em vez de pular de um ponto a outro
@@ -425,7 +427,7 @@ function vilaDesenhar() {
 
   // o sinal de trabalho ou de erro, em cima do prédio
   for (const [nome, info] of Object.entries(Vila.retrato.predios || {})) {
-    const porta = Vila.mundo.portas[nome];
+    const porta = (Vila.mundo.portas || {})[nome];
     if (!porta) continue;
     const sinal = info.status === "erro" ? "❗"
       : info.status === "trabalhando" ? "⚙" : "";
@@ -748,7 +750,7 @@ function vilaOndeFicaOBalao(px, py, zoom, panY, topoLivre) {
 function vilaDesenharCorreio(ctx) {
   const ocupados = [];
   for (const c of ((Vila.correio || {}).ias || [])) {
-    const porta = Vila.mundo.portas[c.ia];
+    const porta = (Vila.mundo.portas || {})[c.ia];
     const texto = vilaRespostaNova(c.ia);
     if (!porta || !texto) continue;
     const [px, py] = vilaDobrar(porta[0], porta[1]);

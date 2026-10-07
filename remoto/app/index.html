@@ -739,6 +739,7 @@
         <figcaption id="modular-previa-legenda" class="fraco">Nada anexado aqui ainda: o jogo ainda usa o desenho de hoje.</figcaption>
       </figure>
       <div class="botoes modular-previacao"><button class="acao" id="modular-ver-godot" type="button">Ver no Godot</button></div>
+      <p id="modular-godot-aviso" class="fraco" role="status"></p>
       <img id="modular-folha" class="modular-folha oculto" alt="Folha das seis carinhas montada no Godot">
       <div id="modular-expressoes-caixa" class="oculto">
         <p class="fraco">Carinha: <strong id="modular-expressao-nome">neutra</strong></p>
@@ -752,11 +753,12 @@
     </div>
     <div class="cartao" id="recortador-folha">
       <h2>✂️ Recortar folha</h2>
-      <p class="fraco">Folha da IA com fundo verde ou magenta. Cada desenho vira uma variante nova.</p>
+      <p class="fraco">Folha da IA com fundo verde ou magenta. Cada desenho vira uma variante nova. Arquivo com o nome da peça e da carinha (“olhos-furia.png”) já abre no lugar certo.</p>
       <input id="recortador-arquivo" type="file" accept="image/png,image/jpeg,image/*">
       <div class="campos atelie-campos">
+        <label>Mandar para <select id="recortador-peca"></select></label>
+        <label id="recortador-carinha-caixa">Carinha <select id="recortador-destino"></select></label>
         <label>Juntar pedaços <select id="recortador-juncao"><option value="pouco">pouco</option><option value="medio" selected>médio</option><option value="muito">muito</option><option value="pares">pares de olhos</option></select></label>
-        <label>Mandar para <select id="recortador-destino"></select></label>
       </div>
       <div id="recortador-olhos-caixa" class="oculto">
         <div class="campos atelie-campos">

@@ -170,11 +170,51 @@ function atelieTrocarModo(modo) {
 function atelieMostrar() { atelieTrocarModo(atelieModo()); }
 function atelieParar() { atelieLimparUrls(); recortadorLimparUrls(); GodotGeracao++; }
 
+// Rola até `alvo` deixando o topo dele LOGO ABAIXO da prévia presa (em pé
+// ela fica por cima do conteúdo; o scrollIntoView punha o topo da folha do
+// Godot embaixo dela). Deitado a prévia mora na outra coluna: não conta.
+// No Montar (prévia escondida) o topo fica logo abaixo do cabeçalho do app
+// (v54: o scrollIntoView punha a folha embaixo dele).
+function atelieRolarAte(alvo) {
+  const livro = alvo.closest(".livro");
+  if (!livro) return alvo.scrollIntoView({block: "start"});
+  const palco = document.querySelector("#provador .provador-palco");
+  const a = alvo.getBoundingClientRect(), p = palco ? palco.getBoundingClientRect() : {height: 0};
+  const moldura = parseFloat(getComputedStyle(livro).paddingTop) || 64;      // 64 px + safe-area
+  const cobre = !!palco && p.height > 0 && getComputedStyle(palco).position === "sticky" && p.right > a.left && p.left < a.right;
+  // Presa, a prévia vai de (moldura − 10) até (moldura − 10 + altura): o
+  // mesmo `top: -10px` do CSS. Conta a altura dela, não onde ela está agora.
+  const folga = (cobre ? moldura - 10 + p.height : moldura) + 8;
+  livro.scrollBy({top: a.top - livro.getBoundingClientRect().top - folga, behavior: "smooth"});
+}
+
 // ------------------------------------------------------------ Montar sprites
 // O servidor responde so o pedido (grupo + para quem). Cada carga leva um
 // numero: resposta de um pedido antigo (trocou de estilo no meio) e jogada
 // fora, para a tela nunca mostrar os cartoes de outro estilo.
 function modularTexto(id, texto) { $(id).textContent = texto; }
+
+// O resultado de um toque (anexar, trocar, apagar, desfazer, gabarito) aparece
+// DENTRO do cartão tocado. O #modular-aviso mora no fim da lista (~230 px
+// abaixo da tela depois de anexar, passada de 07/10), e o aviso flutuante da
+// v54 cobria a galeria recém-anexada por 5 s (conferente). A frase fica no
+// cartão até o próximo toque; o redesenho a mantém (`Modular.avisoCartao`).
+function modularAvisar(texto, ruim = false, slot = Modular.slot) {
+  modularTexto("modular-aviso", texto);
+  Modular.avisoCartao = slot ? {slot: slot.id, texto, ruim} : null;
+  for (const linha of document.querySelectorAll("#modular-slots .modular-cartao-aviso")) {
+    const meu = !!slot && linha.closest(".modular-slot").dataset.slot === slot.id;
+    linha.textContent = meu ? texto : "";
+    linha.classList.toggle("oculto", !meu);
+    linha.classList.toggle("ruim", meu && ruim);
+  }
+}
+
+function modularCartaoAviso(slot) {
+  const aviso = Modular.avisoCartao && Modular.avisoCartao.slot === slot.id ? Modular.avisoCartao : null;
+  return el("p", {class: "modular-cartao-aviso" + (aviso ? "" : " oculto") + (aviso && aviso.ruim ? " ruim" : ""),
+    role: "status"}, aviso ? aviso.texto : "");
+}
 
 // "Carinha" e feminino: "carinha neutra"; substantivos (fúria, pânico) ficam.
 const MODULAR_FEMININO = {neutro: "neutra", focado: "focada", determinado: "determinada", animado: "animada",
@@ -246,6 +286,12 @@ function modularExpressoes() {
   todas.setAttribute("aria-expanded", Modular.todas ? "true" : "false");
 }
 
+// "Olhos · neutra": o título do cartão fala igual ao botão da carinha.
+function modularTitulo(slot) {
+  const [peca, carinha] = String(slot.rotulo).split(" · ");
+  return carinha ? `${peca} · ${modularCarinha(carinha)}` : peca;
+}
+
 function modularCartao(slot) {
   const anexado = slot.situacao === "anexado";
   const situacao = anexado ? "Anexado" : slot.situacao === "herdando" ? "Herdando" : "Vazio";
@@ -272,9 +318,9 @@ function modularCartao(slot) {
   if (anexado) modularMiniatura(slot, miniatura);
   return el("div", {class: "acao modular-slot " + slot.situacao, "data-slot": slot.id},
     el("div", {class: "modular-slot-topo"}, miniatura,
-      el("div", {}, el("strong", {}, slot.rotulo),
+      el("div", {}, el("strong", {}, modularTitulo(slot)),
         el("span", {class: "modular-situacao"}, situacao + (slot.aviso ? ` · ${slot.aviso}` : "")))),
-    botoes, modularGaleria(slot));
+    botoes, modularCartaoAviso(slot), modularGaleria(slot));
 }
 
 // A galeria de variantes do cartão: cada desenho da coleção (o jogo sorteia
@@ -283,14 +329,18 @@ function modularGaleria(slot) {
   const variantes = slot.variantes || [];
   if (Modular.grupo !== "lutador" || (variantes.length < 2 && !slot.variantes_apagadas)) return null;
   const grade = el("div", {class: "modular-variantes"});
+  const semCarinha = new Set(slot.sem_carinha || []);
   variantes.forEach((variante, i) => {
     const img = el("img", {class: "modular-variante-img oculto", alt: `Variante ${i + 1}`});
-    modularCartaoImagem(img,
+    // Variante sem esta carinha: um quadrado com a frase, sem pedir imagem.
+    const sem = semCarinha.has(variante)
+      ? el("span", {class: "modular-variante-img modular-variante-sem"}, "sem esta carinha") : null;
+    if (!sem) modularCartaoImagem(img,
       `/api/sprites/modulares/${encodeURIComponent(slot.id)}/imagem?variante=${variante}&v=${Modular.versao}`)
       .catch(() => {});
     const apagar = el("button", {class: "acao", type: "button", "aria-label": `Apagar a variante ${i + 1}`}, "Apagar");
     apagar.addEventListener("click", () => modularApagarVariante(slot, variante, i + 1));
-    grade.append(el("figure", {class: "modular-variante", "data-variante": variante}, img,
+    grade.append(el("figure", {class: "modular-variante", "data-variante": variante}, sem || img,
       el("figcaption", {}, `Variante ${i + 1}`), apagar));
   });
   const caixa = el("div", {class: "modular-galeria"},
@@ -315,11 +365,11 @@ async function modularVariantePost(slot, caminho, falhou) {
     const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/variante/${caminho}`,
       {method: "POST"});
     Modular.avisoGaleria = {slot: slot.id, texto: resposta.mensagem};
-    modularTexto("modular-aviso", resposta.mensagem);
+    modularAvisar(resposta.mensagem, false, null);     // a frase já fica junto da galeria
     modularAplicar(resposta);
   } catch (erro) {
     Modular.avisoGaleria = {slot: slot.id, texto: falhou + erro.message};
-    modularTexto("modular-aviso", falhou + erro.message);
+    modularAvisar(falhou + erro.message, true, null);
     modularDesenhar();
   }
 }
@@ -378,29 +428,135 @@ function modularDesenhar() {
   if (lutador) modularPrevia();
 }
 
-// "Mandar para": uma lista por peça (optgroup), cada opção com a peça e a
-// carinha com acento ("Olhos · fúria"); peça sem carinha fica só o nome.
+// "Mandar para" em DOIS passos (conferente, 07/10: era uma lista só de 83
+// opções que abria em "Sombra"): primeiro a peça (6 no lutador), depois a
+// carinha dela (6 principais + "Outras"). A tela abre no lugar mais
+// provável: o que o nome do arquivo diz ("olhos_furia.png"), senão o último
+// usado, senão os Olhos na carinha que o painel mostra.
+const RECORTADOR_ULTIMO = "painel.recortador.destino";
+
+function recortadorPecaDe(slot) { return slot.rotulo.split(" · ")[0]; }
+
+function recortadorSlots() { return Modular.dados ? Modular.dados.slots.filter((s) => s.parte) : []; }
+
 function recortadorDestinoTexto(slot) {
-  const [peca, carinha] = slot.rotulo.split(" · ");
-  return carinha ? `${peca} · ${modularCarinha(carinha)}` : peca;
+  const carinha = slot.rotulo.split(" · ")[1];
+  return carinha ? modularCarinha(carinha) : recortadorPecaDe(slot);
+}
+
+
+// Escolhe a peça e preenche as carinhas dela; `preferido` é o id do lugar.
+function recortadorEscolher(preferido = "") {
+  const slots = recortadorSlots();
+  const pecaSel = $("recortador-peca"), seletor = $("recortador-destino");
+  const alvo = slots.find((s) => s.id === preferido);
+  const peca = alvo ? recortadorPecaDe(alvo) : pecaSel.value;
+  if ([...pecaSel.options].some((o) => o.value === peca)) pecaSel.value = peca;
+  // As carinhas na ordem dos botões do painel (neutra, fúria, animada…).
+  const ordem = (Modular.dados.expressoes || []).map((e) => e.id);
+  const posicao = (s) => { const i = ordem.indexOf(s.estado); return i < 0 ? -1 : i; };
+  const daPeca = slots.filter((s) => recortadorPecaDe(s) === pecaSel.value).sort((a, b) => posicao(a) - posicao(b));
+  const antes = alvo ? alvo.estado : (slots.find((s) => s.id === seletor.value) || {}).estado;
+  seletor.replaceChildren();
+  const principais = new Set((Modular.dados.expressoes || []).filter((e) => e.representante).map((e) => e.id));
+  const comCarinha = daPeca.filter((s) => s.estado && s.estado !== "base");
+  if (comCarinha.length > 6) {
+    const cima = el("optgroup", {label: "Principais"}), baixo = el("optgroup", {label: "Outras carinhas"});
+    for (const slot of daPeca) (principais.has(slot.estado) ? cima : baixo)
+      .append(el("option", {value: slot.id, "data-parte": slot.parte}, recortadorDestinoTexto(slot)));
+    seletor.append(cima, baixo);
+  } else {
+    for (const slot of daPeca) seletor.append(el("option", {value: slot.id, "data-parte": slot.parte}, recortadorDestinoTexto(slot)));
+  }
+  // A carinha: a do lugar pedido, senão a mesma de antes (olhos·fúria → boca·fúria),
+  // senão a que o painel mostra, senão a neutra.
+  const carinha = [antes, Modular.expressao, "neutro"].find((e) => e && daPeca.some((s) => s.estado === e));
+  const escolhido = daPeca.find((s) => s.estado === carinha) || daPeca[0];
+  if (escolhido) seletor.value = escolhido.id;
+  $("recortador-carinha-caixa").classList.toggle("oculto", daPeca.length < 2);
+  recortadorOlhosCaixa();
 }
 
 function recortadorDestinos() {
-  const seletor = $("recortador-destino");
-  if (!seletor || !Modular.dados) return;
-  const antes = seletor.value;
-  seletor.replaceChildren();
-  const grupos = new Map();
-  for (const slot of Modular.dados.slots.filter((s) => s.parte)) {
-    const peca = slot.rotulo.split(" · ")[0];
-    if (!grupos.has(peca)) grupos.set(peca, el("optgroup", {label: peca}));
-    grupos.get(peca).append(el("option", {value: slot.id, "data-parte": slot.parte}, recortadorDestinoTexto(slot)));
-  }
-  for (const grupo of grupos.values()) seletor.append(grupo);
-  if ([...seletor.options].some((opcao) => opcao.value === antes)) seletor.value = antes;
+  const pecaSel = $("recortador-peca");
+  if (!pecaSel || !Modular.dados) return;
+  const primeira = !pecaSel.options.length;
+  const antes = $("recortador-destino").value;
+  pecaSel.replaceChildren();
+  for (const peca of new Set(recortadorSlots().map(recortadorPecaDe))) pecaSel.append(el("option", {value: peca}, peca));
+  const slots = recortadorSlots();
+  const ultimo = localStorage.getItem(RECORTADOR_ULTIMO) || "";
+  const olhos = slots.find((s) => s.parte === "olhos" && s.estado === Modular.expressao) || slots.find((s) => s.parte === "olhos");
+  const preferido = [antes, ultimo, olhos && olhos.id].find((id) => id && slots.some((s) => s.id === id)) || "";
+  recortadorEscolher(preferido);
+  // A junção segue o destino: abre em "pares de olhos" com os Olhos, e trocar
+  // o grupo (Lutador → Habilidades) volta ao médio e recorta de novo (v54:
+  // ficava em pares e o "Refazer" recortava como olhos). Só quando o destino
+  // muda de lado (olhos / não olhos): um redesenho depois de mandar não mexe
+  // na junção que ele escolheu à mão.
+  if (primeira || (recortadorParte() === "olhos") !== Recortador.destinoOlhos) recortadorTrocouDestino(!primeira);
   // O modo do par de olhos abre na resposta do Adrian (Grimório), até ele mexer.
-  if (!Recortador.olhosMexeu && Modular.dados.recortador_olhos) $("recortador-olhos").value = Modular.dados.recortador_olhos;
-  recortadorOlhosCaixa();
+  if (!Recortador.olhosMexeu) recortadorOlhosPadrao();
+}
+
+function recortadorOlhosPadrao() {
+  $("recortador-olhos").value = (Modular.dados && Modular.dados.recortador_olhos) || "separar";
+}
+
+// O nome do arquivo diz o destino ("olhos-furia.png", "boca_morta.png"): a
+// peça e, se houver, a carinha. Sem acento, sem caixa e por PALAVRA inteira
+// (v54 casava pedaço: "surface" virava rosto por "face", "dorso" virava dor).
+// A primeira palavra que é peça manda ("sobrancelha_olho" é sobrancelha); a
+// carinha vale nos dois gêneros ("animada", "morta"). Nome que só diz a peça
+// mantém a carinha que está na tela ("olhos.png" em Boca · fúria → Olhos · fúria).
+const RECORTADOR_NOMES = {
+  olhos: ["olho", "olhos", "eye", "eyes"],
+  sobrancelhas: ["sobrancelha", "sobrancelhas", "sombrancelha", "sombrancelhas", "brow", "brows", "eyebrow", "eyebrows"],
+  boca: ["boca", "bocas", "mouth", "lip", "lips", "labio", "labios"],
+  detalhe_rosto: ["detalhe", "detalhes", "rosto", "bochecha", "bochechas", "blush", "lagrima", "lagrimas", "suor", "face"],
+  sombra: ["sombra", "shadow"],
+  pele: ["pele", "corpo", "body", "skin"]};
+
+function recortadorPalavras(nome) {
+  return atelieSemAcento(String(nome).replace(/\.[a-z0-9]+$/i, "")).split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+// As formas de uma carinha: o id, o nome sem acento e o outro gênero
+// ("animado" ↔ "animada").
+function recortadorFormas(expressao) {
+  const formas = new Set([expressao.id, atelieSemAcento(expressao.nome), atelieSemAcento(modularCarinha(expressao.nome))]);
+  for (const f of [...formas]) {
+    if (f.endsWith("o")) formas.add(f.slice(0, -1) + "a");
+    if (f.endsWith("a")) formas.add(f.slice(0, -1) + "o");
+  }
+  return formas;
+}
+
+function recortadorPeloNome(nome) {
+  const palavras = recortadorPalavras(nome);
+  let parte = "";
+  for (const palavra of palavras) {
+    parte = Object.keys(RECORTADOR_NOMES).find((p) => RECORTADOR_NOMES[p].includes(palavra)) || "";
+    if (parte) break;
+  }
+  if (!parte) return "";
+  const slots = recortadorSlots().filter((s) => s.parte === parte);
+  if (!slots.length) return "";
+  const carinha = (Modular.dados.expressoes || []).find((e) => {
+    const formas = recortadorFormas(e);
+    return palavras.some((p) => formas.has(p)) && slots.some((s) => s.estado === e.id);
+  });
+  const naTela = (recortadorSlots().find((s) => s.id === $("recortador-destino").value) || {}).estado;
+  const escolhido = [carinha && carinha.id, naTela, Modular.expressao, "neutro"]
+    .map((estado) => estado && slots.find((s) => s.estado === estado)).find(Boolean);
+  // Sem nenhuma dessas carinhas, a primeira na ordem dos botões (a mesma do seletor).
+  const ordem = (Modular.dados.expressoes || []).map((e) => e.id);
+  const primeira = slots.slice().sort((x, y) => ordem.indexOf(x.estado) - ordem.indexOf(y.estado))[0];
+  return (escolhido || primeira).id;
+}
+
+function atelieSemAcento(texto) {
+  return String(texto).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 
 function recortadorParte() {
@@ -412,30 +568,60 @@ function recortadorOlhosCaixa() { $("recortador-olhos-caixa").classList.toggle("
 
 // Destino Olhos junta os olhos em PARES (a IA desenha o par lado a lado);
 // saiu dos olhos, volta ao médio. Com folha na tela, recorta de novo.
-function recortadorTrocouDestino() {
+function recortadorTrocouDestino(recortar = true) {
   recortadorOlhosCaixa();
   const olhos = recortadorParte() === "olhos", juncao = $("recortador-juncao");
+  Recortador.destinoOlhos = olhos;
   const antes = juncao.value;
   if (olhos && antes !== "pares") juncao.value = "pares";
   else if (!olhos && antes === "pares") juncao.value = "medio";
-  if (juncao.value !== antes && Recortador.arquivo) recortadorEnviar();
+  if (recortar && juncao.value !== antes && Recortador.arquivo) recortadorEnviar();
+}
+
+// Folha nova: o destino pelo nome do arquivo (se ele disser), o modo do par
+// de olhos volta ao padrão (conferente, 07/10: o "girar" de uma folha ficava
+// valendo para a seguinte) e só então recorta.
+function recortadorFolhaNova() {
+  Recortador.arquivo = $("recortador-arquivo").files[0] || null;
+  if (!Recortador.arquivo) return;
+  Recortador.olhosMexeu = false;
+  recortadorOlhosPadrao();
+  const pelo = recortadorPeloNome(Recortador.arquivo.name);
+  if (pelo) recortadorEscolher(pelo);
+  recortadorTrocouDestino(false);
+  recortadorEnviar();
 }
 
 function recortadorNome(recorte, i) {
-  const tipo = recorte.tipo === "par" ? " · par de olhos" : recorte.tipo === "um" ? " · um olho só" : "";
+  const tipo = recorte.tipo === "par" ? " · par de olhos" : recorte.tipo === "um" ? " · um olho só"
+    : recorte.tipo === "sobra" ? " · pedacinho solto" : "";
   return `Recorte ${i + 1} · ${recorte.tamanho[0]}×${recorte.tamanho[1]} px${tipo}`;
 }
 
+// O pedacinho solto (brilho, faísca perto de um desenho; 07/10) vem
+// desmarcado: ele só vai se for tocado.
+function recortadorMarcadoDeInicio(recorte) { return recorte.tipo !== "sobra"; }
+
 function recortadorResumo(dados) {
-  const n = dados.recortes.length, pares = dados.recortes.filter((r) => r.tipo === "par").length;
+  const sobras = dados.recortes.filter((r) => r.tipo === "sobra").length;
+  const n = dados.recortes.length - sobras, pares = dados.recortes.filter((r) => r.tipo === "par").length;
   const soltos = dados.recortes.filter((r) => r.tipo === "um").length;
+  const extra = sobras ? ` · ${sobras === 1 ? "1 pedacinho solto (desmarcado)" : `${sobras} pedacinhos soltos (desmarcados)`}` : "";
   if (dados.juncao === "pares") {
     const partes = [];
     if (pares) partes.push(pares === 1 ? "1 par de olhos" : `${pares} pares de olhos`);
     if (soltos) partes.push(soltos === 1 ? "1 olho sozinho" : `${soltos} olhos sozinhos`);
-    return `Fundo ${dados.fundo} · ${partes.join(" e ") || "nenhum olho achado"}`;
+    return `Fundo ${dados.fundo} · ${partes.join(" e ") || "nenhum olho achado"}${extra}`;
   }
-  return `Fundo ${dados.fundo} · ${n === 1 ? "1 recorte" : `${n} recortes`}`;
+  return `Fundo ${dados.fundo} · ${n === 1 ? "1 recorte" : `${n} recortes`}${extra}`;
+}
+
+// O botão diz quantos vão ("Mandar 3 selecionados"): o pedacinho solto vem
+// desmarcado e a conta mostra isso antes do toque.
+function recortadorContar() {
+  const n = Recortador.dados ? Recortador.selecionados.size : 0;
+  $("recortador-mandar").textContent = !n ? "Mandar selecionados"
+    : n === 1 ? "Mandar 1 selecionado" : `Mandar ${n} selecionados`;
 }
 
 // Esquece a folha da tela: uma recusa não deixa a anterior pronta para mandar.
@@ -446,6 +632,7 @@ function recortadorEsquecer() {
   $("recortador-limpa").removeAttribute("src");
   $("recortador-fundo").textContent = "";
   $("recortador-folha-caixa").classList.add("oculto");
+  recortadorContar();
 }
 
 async function recortadorDesenhar(dados, pedido) {
@@ -464,6 +651,7 @@ async function recortadorDesenhar(dados, pedido) {
     marcar.addEventListener("change", () => {
       if (marcar.checked) Recortador.selecionados.add(recorte.id); else Recortador.selecionados.delete(recorte.id);
       caixa.classList.toggle("escolhido", marcar.checked);
+      recortadorContar();
     });
     const imagem = el("img", {alt: nome});
     const url = await recortadorBlob(recorte.url);
@@ -485,7 +673,8 @@ async function recortadorEnviar() {
     const resposta = await api("/api/sprites/recortar", {method: "POST", body: dados});
     if (pedido !== Recortador.pedido) return;
     Recortador.dados = resposta;
-    Recortador.selecionados = new Set(resposta.recortes.map((r) => r.id));
+    Recortador.selecionados = new Set(resposta.recortes.filter(recortadorMarcadoDeInicio).map((r) => r.id));
+    recortadorContar();
     await recortadorDesenhar(resposta, pedido);
     if (pedido !== Recortador.pedido) return;
     $("recortador-aviso").textContent = resposta.avisos.join(" · ") || "Toque nos recortes que quer mandar.";
@@ -518,7 +707,9 @@ async function recortadorMandar() {
       // nova=1: o guarda-roupa cria a proxima variante (vNN) sem trocar a arte base.
       await api(`/api/sprites/modulares/${encodeURIComponent(destino)}/anexar?nova=1`, {method: "POST", body: dados});
     }
-    const rotulo = ($("recortador-destino").selectedOptions[0]?.textContent || "").toLowerCase();
+    localStorage.setItem(RECORTADOR_ULTIMO, destino);
+    const slotDestino = Modular.dados.slots.find((s) => s.id === destino);
+    const rotulo = slotDestino ? modularTitulo(slotDestino).toLowerCase() : "a peça";
     $("recortador-aviso").textContent = (escolhidos.length === 1 ? "1 recorte virou variante nova"
       : `${escolhidos.length} recortes viraram variantes novas`) + ` de ${rotulo}. Veja na galeria do cartão, acima.`;
     // O cartão de destino fica à vista: a carinha do painel passa a ser a dele.
@@ -559,8 +750,8 @@ async function modularGabarito(slot) {
     const url = await atelieBlob(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/gabarito`);
     const a = el("a", {href: url, download: `gabarito_${slot.parte}.png`});
     document.body.append(a); a.click(); a.remove();
-    modularTexto("modular-aviso", `Gabarito de ${slot.rotulo.toLowerCase()} baixado. Desenhe por cima e anexe aqui.`);
-  } catch (erro) { modularTexto("modular-aviso", "Não consegui baixar o gabarito: " + erro.message); }
+    modularAvisar(`Gabarito de ${modularTitulo(slot).toLowerCase()} baixado. Desenhe por cima e anexe aqui.`, false, slot);
+  } catch (erro) { modularAvisar("Não consegui baixar o gabarito: " + erro.message, true, slot); }
 }
 
 // Depois de anexar, apagar ou desfazer, o servidor devolve o lugar como
@@ -576,36 +767,37 @@ function modularAplicar(resposta) {
 }
 
 async function modularMutar(slot, acao) {
-  if (acao === "apagar" && !confirm(`Apagar o desenho de ${slot.rotulo.toLowerCase()}? Dá para voltar com Desfazer.`)) return;
+  if (acao === "apagar" && !confirm(`Apagar o desenho de ${modularTitulo(slot).toLowerCase()}? Dá para voltar com Desfazer.`)) return;
   try {
     const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/${acao}`, {method: "POST"});
     const novo = resposta.slot || {};
-    modularTexto("modular-aviso", acao === "desfazer" ? "Pronto: voltou a versão anterior."
+    modularAvisar(acao === "desfazer" ? "Pronto: voltou a versão anterior."
       : novo.situacao === "herdando" ? `Desenho apagado; ${novo.aviso}. Desfazer traz de volta.`
-      : "Desenho apagado; o jogo volta ao desenho de hoje. Desfazer traz de volta.");
+      : "Desenho apagado; o jogo volta ao desenho de hoje. Desfazer traz de volta.", false, slot);
     modularAplicar(resposta);
-  } catch (erro) { modularTexto("modular-aviso", "Não deu: " + erro.message); }
+  } catch (erro) { modularAvisar("Não deu: " + erro.message, true, slot); }
 }
 
 async function modularVerGodot() {
   if (!Modular.dados || !Modular.dados.godot_previa) return;
   const alvo = Modular.alvo;
   const botao = $("modular-ver-godot"); botao.disabled = true;
-  modularTexto("modular-aviso", "montando no Godot…");
+  modularTexto("modular-godot-aviso", "montando no Godot…");
   try {
     // O estilo trocado no meio: a folha continua sendo montada (fica guardada
     // para quando ele voltar), mas o aviso é do estilo que está na tela.
     const blob = await godotEsperar(`/api/sprites/modulares/previa?godot=1&alvo=${encodeURIComponent(alvo)}`,
-      (texto) => { if (Modular.alvo === alvo) modularTexto("modular-aviso", texto); }, () => true);
+      (texto) => { if (Modular.alvo === alvo) modularTexto("modular-godot-aviso", texto); }, () => true);
     if (!blob) return;                      // fechou o Ateliê: a espera foi cancelada
     const url = modularUrl("folha:" + alvo, blob);
     Modular.folhas[alvo] = url;
     if (Modular.alvo === alvo) {
       $("modular-folha").src = url; $("modular-folha").classList.remove("oculto");
-      modularTexto("modular-aviso", "Folha montada no Godot: as seis carinhas como vão aparecer na luta.");
-      $("modular-folha").scrollIntoView({behavior: "smooth", block: "start"});
+      modularTexto("modular-godot-aviso", "Folha montada no Godot: as seis carinhas como vão aparecer na luta.");
+      await $("modular-folha").decode().catch(() => {});
+      if (Modular.alvo === alvo) atelieRolarAte($("modular-folha"));
     }
-  } catch (erro) { if (Modular.alvo === alvo) modularTexto("modular-aviso", "Não deu para ver no Godot: " + erro.message); }
+  } catch (erro) { if (Modular.alvo === alvo) modularTexto("modular-godot-aviso", "Não deu para ver no Godot: " + erro.message); }
   finally { botao.disabled = false; }
 }
 
@@ -617,16 +809,16 @@ async function modularAnexarVariantes(arquivos) {
   let feitas = 0, resposta = null;
   try {
     for (const arquivo of arquivos) {
-      modularTexto("modular-aviso", `enviando a variante ${feitas + 1} de ${arquivos.length}…`);
+      modularAvisar(`enviando a variante ${feitas + 1} de ${arquivos.length}…`, false, slot);
       const dados = new FormData(); dados.append("imagem", arquivo);
       dados.append("opcoes", JSON.stringify({nova: true}));
       resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/anexar`, {method: "POST", body: dados});
       feitas++;
     }
-    modularTexto("modular-aviso", feitas === 1 ? "Variante nova anexada." : `${feitas} variantes novas anexadas.`);
+    modularAvisar(feitas === 1 ? "Variante nova anexada." : `${feitas} variantes novas anexadas.`);
   } catch (erro) {
-    modularTexto("modular-aviso", (feitas ? `${feitas} de ${arquivos.length} anexadas; ` : "") +
-      "não deu para anexar: " + erro.message);
+    modularAvisar((feitas ? `${feitas} de ${arquivos.length} anexadas; ` : "") +
+      "não deu para anexar: " + erro.message, true);
   }
   if (resposta) modularAplicar(resposta);
 }
@@ -638,17 +830,25 @@ async function modularAnexar(arquivoRecebido = null) {
   const slot = Modular.slot;
   if (!arquivo || !slot) return;
   if (Modular.nova) return modularAnexarVariantes(lista);
+  // Vários arquivos num lugar vazio de lutador: cada um vira uma variante
+  // (o seletor é `multiple`; antes só o primeiro ia e o resto sumia calado).
+  if (lista.length > 1 && Modular.grupo === "lutador" && slot.situacao !== "anexado")
+    return modularAnexarVariantes(lista);
+  if (lista.length > 1)
+    return modularAvisar(slot.situacao === "anexado"
+      ? "Trocar usa um arquivo só. Para mandar vários de uma vez, use “+ Nova variante”."
+      : "Este lugar recebe um desenho só: escolha um arquivo.", true);
   const trocar = slot.situacao === "anexado" && !Modular.nova;
-  if (trocar && !confirm(`Já há um desenho em ${slot.rotulo.toLowerCase()}. Trocar pelo novo? (Desfazer volta o antigo.)`)) return;
+  if (trocar && !confirm(`Já há um desenho em ${modularTitulo(slot).toLowerCase()}. Trocar pelo novo? (Desfazer volta o antigo.)`)) return;
   const dados = new FormData(); dados.append("imagem", arquivo);
   dados.append("opcoes", JSON.stringify({substituir: trocar, nova: Modular.nova}));
-  modularTexto("modular-aviso", "enviando o desenho…");
+  modularAvisar("enviando o desenho…");
   try {
     const resposta = await api(`/api/sprites/modulares/${encodeURIComponent(slot.id)}/anexar`, {method: "POST", body: dados});
-    modularTexto("modular-aviso", (trocar ? "Desenho trocado." : "Desenho anexado.") +
+    modularAvisar((trocar ? "Desenho trocado." : "Desenho anexado.") +
       (resposta.avisos?.length ? " " + resposta.avisos.join(" · ") : ""));
     Modular.nova = false; modularAplicar(resposta);
-  } catch (erro) { modularTexto("modular-aviso", "Não deu para anexar: " + erro.message); }
+  } catch (erro) { modularAvisar("Não deu para anexar: " + erro.message, true); }
 }
 
 $("atelie-modo-montar").addEventListener("click", () => atelieTrocarModo("montar"));
@@ -656,8 +856,9 @@ $("atelie-modo-provador").addEventListener("click", () => atelieTrocarModo("prov
 $("atelie-sujeito").addEventListener("change", () => { Atelie.sujeito = $("atelie-sujeito").value; atelieCarregar(); });
 $("atelie-nome").addEventListener("change", () => atelieCarregar());
 $("atelie-arquivo").addEventListener("change", () => { Atelie.arquivo = $("atelie-arquivo").files[0] || null; atelieEnviar(); });
-$("recortador-arquivo").addEventListener("change", () => { Recortador.arquivo = $("recortador-arquivo").files[0] || null; recortadorEnviar(); });
+$("recortador-arquivo").addEventListener("change", () => recortadorFolhaNova());
 $("recortador-refazer").addEventListener("click", () => recortadorEnviar());
+$("recortador-peca").addEventListener("change", () => { recortadorEscolher(); recortadorTrocouDestino(); });
 $("recortador-destino").addEventListener("change", () => recortadorTrocouDestino());
 $("recortador-olhos").addEventListener("change", () => { Recortador.olhosMexeu = true; });
 $("recortador-mandar").addEventListener("click", () => recortadorMandar());
@@ -668,12 +869,12 @@ $("atelie-descartar").addEventListener("click", () => {
   $("atelie-previas").replaceChildren(); $("atelie-editor").classList.add("oculto");
 });
 $("modular-grupo").addEventListener("change", () => {
-  Modular.grupo = $("modular-grupo").value; Modular.alvo = ""; Modular.slot = null; Modular.avisoGaleria = null;
+  Modular.grupo = $("modular-grupo").value; Modular.alvo = ""; Modular.slot = null; Modular.avisoGaleria = null; Modular.avisoCartao = null;
   modularTexto("modular-aviso", "");   // o aviso era do grupo anterior
   $("modular-slots").replaceChildren(); modularCarregar();
 });
 $("modular-alvo").addEventListener("change", () => {
-  Modular.alvo = $("modular-alvo").value; Modular.slot = null; Modular.avisoGaleria = null;
+  Modular.alvo = $("modular-alvo").value; Modular.slot = null; Modular.avisoGaleria = null; Modular.avisoCartao = null;
   $("modular-slots").replaceChildren(); modularCarregar();
 });
 // Tocar na folha abre em tela cheia, com zoom do proprio navegador.

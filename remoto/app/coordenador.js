@@ -208,20 +208,45 @@ function coordMensagem(m) {
 // pergunta livre que ficou como conversa — o modelo a leu como conversa, ou
 // não conseguiu ler — vira trabalho só pelo toque dele. Dois toques: um toque
 // perdido ao rolar a conversa não contrata ninguém.
-function coordPassarBotao(id) {
-  const b = el("button", {class: "acao coord-passar", type: "button"},
-    CoordConv.passar === id ? "Tocar de novo para passar" : "↪ Passar para a equipe");
-  b.disabled = CoordConv.passando === id;
+// O segundo toque vale por 4 s. A conversa se redesenha a cada 5 s: o botão
+// do primeiro toque já não é o da tela quando o prazo acaba (conferente,
+// 07/10: o rótulo "Tocar de novo" ficava velho). O prazo mora no estado, o
+// rótulo nasce dele, e ao vencer muda o botão que ESTIVER na tela.
+const COORD_TOQUE_MS = 4000;
+
+function coordArmado(campo, id) {
+  const armado = CoordConv[campo];
+  return !!armado && armado.id === id && Date.now() < armado.ate;
+}
+
+// Um botão de dois toques que sobrevive ao redesenho: `campo` é "passar" ou
+// "armado" em CoordConv; o botão leva data-dois-toques="<campo>:<id>".
+function coordDoisToques(campo, id, classe, rotulo, rotuloArmado, fazer) {
+  const chave = `${campo}:${id}`;
+  const b = el("button", {class: `acao ${classe}`, type: "button", "data-dois-toques": chave},
+    coordArmado(campo, id) ? rotuloArmado : rotulo);
   b.addEventListener("click", () => {
-    if (CoordConv.passar !== id) {
-      CoordConv.passar = id;
-      b.textContent = "Tocar de novo para passar";
-      setTimeout(() => { if (CoordConv.passar === id) { CoordConv.passar = null; b.textContent = "↪ Passar para a equipe"; } }, 4000);
+    if (!coordArmado(campo, id)) {               // o primeiro toque só arma
+      CoordConv[campo] = {id, ate: Date.now() + COORD_TOQUE_MS};
+      b.textContent = rotuloArmado;
+      setTimeout(() => {
+        if (coordArmado(campo, id)) return;      // armado de novo depois: o prazo é outro
+        if (CoordConv[campo] && CoordConv[campo].id === id) CoordConv[campo] = null;
+        for (const atual of document.querySelectorAll("[data-dois-toques]"))
+          if (atual.dataset.doisToques === chave) atual.textContent = rotulo;
+      }, COORD_TOQUE_MS + 50);
       return;
     }
-    CoordConv.passar = null;
-    coordPassar(id);
+    CoordConv[campo] = null;
+    fazer();
   });
+  return b;
+}
+
+function coordPassarBotao(id) {
+  const b = coordDoisToques("passar", id, "coord-passar", "↪ Passar para a equipe",
+    "Tocar de novo para passar", () => coordPassar(id));
+  b.disabled = CoordConv.passando === id;
   return el("div", {class: "botoes"}, b);
 }
 
@@ -251,18 +276,8 @@ function coordProposta(p) {
   }
   card.append(el("div", {class: "fraco"}, `vale até ${quandoCurto(p.vence_em) || "—"}`));
   const botoes = el("div", {class: "botoes"});
-  const sim = el("button", {class: "acao perigo", type: "button"},
-    CoordConv.armado === p.id ? "Tocar de novo para confirmar" : "Confirmar");
-  sim.addEventListener("click", () => {
-    if (CoordConv.armado !== p.id) {           // dois toques: o primeiro so arma
-      CoordConv.armado = p.id;
-      sim.textContent = "Tocar de novo para confirmar";
-      setTimeout(() => { if (CoordConv.armado === p.id) { CoordConv.armado = null; sim.textContent = "Confirmar"; } }, 4000);
-      return;
-    }
-    CoordConv.armado = null;
-    coordDecidir(p.id, "confirmar");
-  });
+  const sim = coordDoisToques("armado", p.id, "perigo", "Confirmar", "Tocar de novo para confirmar",
+    () => coordDecidir(p.id, "confirmar"));
   const nao = el("button", {class: "acao", type: "button"}, "Recusar");
   nao.addEventListener("click", () => coordDecidir(p.id, "recusar"));
   botoes.append(sim, nao);

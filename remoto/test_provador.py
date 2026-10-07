@@ -397,3 +397,28 @@ def test_provador_responde_rapido_e_curto(provador):
     assert resposta.status == 200 and gasto < 0.3 and len(bruto) < 60_000, (gasto, len(bruto))
     texto = bruto.decode("utf-8")
     assert "palco" not in texto and "\\\\" not in texto and ":\\" not in texto     # nenhum caminho do PC
+
+
+def test_miniaturas_das_variantes_ficam_na_mesma_escala():
+    """Conferente, 07/10: a v54 recortava cada miniatura no próprio desenho e
+    ampliava, então um olho pequeno e um grande saíam do mesmo tamanho. Com
+    zona no CONTRATO 2.3, o recorte é a zona: mesma moldura, mesma escala, e o
+    olho menor continua menor. Sem zona (pele), segue recortada no desenho."""
+    from PIL import ImageDraw
+
+    def olhos(raio):
+        imagem = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+        caneta = ImageDraw.Draw(imagem)
+        for y in (420, 604):
+            caneta.ellipse((563 - raio, y - raio, 563 + raio, y + raio), fill=(20, 20, 26, 255))
+        return imagem
+
+    grande, pequeno = (Image.open(io.BytesIO(api_http._miniatura_png(olhos(r), parte="olhos"))) for r in (51, 25))
+    assert grande.size == pequeno.size and max(grande.size) == 160
+    opacos = [sum(1 for a in m.getchannel("A").getdata() if a > 128) for m in (grande, pequeno)]
+    assert opacos[1] < 0.4 * opacos[0], opacos
+    # a pele (sem zona): recortada no desenho e ampliada
+    pele = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    ImageDraw.Draw(pele).ellipse((272, 272, 752, 752), fill=(255, 255, 255, 255))
+    mini = Image.open(io.BytesIO(api_http._miniatura_png(pele, parte="pele")))
+    assert mini.size == (160, 160) and mini.getpixel((80, 80))[3] == 255 and mini.getpixel((80, 12))[3] == 255

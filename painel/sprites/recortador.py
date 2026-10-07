@@ -55,7 +55,8 @@ class Recorte:
     imagem: np.ndarray
     caixa: tuple[int, int, int, int]
     area: int
-    # So no modo pares de olhos: "par" (dois olhos) ou "um" (olho sozinho).
+    # Modo pares de olhos: "par" (dois olhos), "um" (olho sozinho) ou
+    # "sobra" (pedacinho que so passou perto de um olho).
     tipo: str = ""
     # O par na ordem do jogo: [olho de cima, olho de baixo], cada um justo.
     olhos: list | None = None
@@ -94,8 +95,10 @@ def detectar_fundo(arr: np.ndarray) -> str:
     return melhor
 
 
-def _grupos(comps, juntar: int, area_min: int):
-    """Componentes proximos viram um desenho; poeira isolada nao vira arte."""
+def _grupos(comps, juntar: int, area_min: int, satelites: bool = False):
+    """Componentes proximos viram um desenho; poeira isolada nao vira arte.
+    Com `satelites`, o pedacinho que so passou perto sai do desenho
+    (`_sem_satelites`)."""
     if not comps.n:
         return []
     caixas = comps.caixas.astype(np.int64)
@@ -123,11 +126,62 @@ def _grupos(comps, juntar: int, area_min: int):
         grupos.setdefault(raiz(i), []).append(i)
     saida = []
     for membros in grupos.values():
+        if satelites:
+            membros, soltos = _sem_satelites(caixas, comps.areas, membros)
+            # O pedacinho solto vira recorte proprio (se nao for poeira): ele
+            # escolhe se manda, e o desenho principal nao encolhe por causa dele.
+            for s in soltos:
+                if int(comps.areas[s]) >= int(area_min):
+                    saida.append((_caixa_de(caixas, [s]), [s], int(comps.areas[s]), True))
         area = int(comps.areas[membros].sum())
         if area < int(area_min):
             continue
-        saida.append((_caixa_de(caixas, membros), membros, area))
+        saida.append((_caixa_de(caixas, membros), membros, area, False))
     return _leitura(saida)
+
+
+# Um brilho, uma faisca ou um respingo desenhado PERTO de um olho (a menos de
+# 16 px, a juncao do medio) entrava no recorte dele: a caixa crescia e, no
+# encaixe (que usa a caixa), o olho encolhia (conferente, 07/10).
+# SO NOS PARES DE OLHOS. Na v54 a regra valia em todo modo menos o "muito" e
+# amputou arte de efeito: na folha real 11243.png (projetil com cauda de
+# gotas) 24 de 26 recortes perderam a cauda, e o evento_dano ficou com
+# buracos dentro da caixa (reprovacao do conferente, 07/10). Fora dos olhos o
+# recorte e o mesmo de antes, byte a byte.
+# Nos olhos, fica no desenho: todo pedaco grande (>= SATELITE_AREA da area do
+# maior), todo pedaco ligado a eles por uma CORRENTE de vizinhos a ate
+# SATELITE_VAO px (os cilios da folha realista ficam a ~6 px), e tudo o que
+# toca a caixa do que ficou (nunca um buraco dentro do desenho). So o resto
+# sai, como "sobra".
+SATELITE_AREA = 0.10
+SATELITE_VAO = JUNCAO["pouco"]
+
+
+def _vao_entre(c, g) -> int:
+    """O mesmo vao do `_grupos` (o maior dos dois eixos; 0 = encostam)."""
+    dx = max(0, int(c[0]) - int(g[2]), int(g[0]) - int(c[2]))
+    dy = max(0, int(c[1]) - int(g[3]), int(g[1]) - int(c[3]))
+    return max(dx, dy)
+
+
+def _sem_satelites(caixas: np.ndarray, areas: np.ndarray, membros: list[int]):
+    """(ficam, soltos) de um grupo de olhos; ver o comentario acima."""
+    if len(membros) < 2:
+        return membros, []
+    limite = SATELITE_AREA * max(int(areas[m]) for m in membros)
+    ficam = [m for m in membros if int(areas[m]) >= limite]
+    resto = [m for m in membros if int(areas[m]) < limite]
+    mudou = True
+    while mudou and resto:
+        mudou = False
+        caixa = _caixa_de(caixas, ficam)
+        for m in list(resto):
+            perto = any(_vao_entre(caixas[m], caixas[f]) <= SATELITE_VAO for f in ficam)
+            if perto or _vao_entre(caixas[m], caixa) == 0:
+                ficam.append(m)
+                resto.remove(m)
+                mudou = True
+    return sorted(ficam), resto
 
 
 def _leitura(itens):
@@ -216,7 +270,10 @@ def _casar_pares(grupos, caixas: np.ndarray):
     pares; o vizinho de outro par fica mais longe que o proprio par)."""
     itens = []
     soltos = []
-    for caixa, membros, area in grupos:
+    for caixa, membros, area, sobra in grupos:
+        if sobra:                                  # o pedacinho solto nunca vira olho de um par
+            itens.append((caixa, membros, area, "sobra", None, ""))
+            continue
         dividido = _dividir(caixas, membros)
         if dividido is not None:
             _, eixo, a, b = dividido
@@ -272,10 +329,12 @@ def recortar(origem, *, juntar: int = JUNCAO["medio"], area_min: int = 50,
     limpo = limpeza.alfa_minimo(limpo, 8)
     mascara = limpo[..., 3] >= 16
     comps = rotular(mascara)
-    grupos = _grupos(comps, JUNCAO["medio"] if pares else juntar, area_min)
+    juncao = JUNCAO["medio"] if pares else juntar
+    grupos = _grupos(comps, juncao, area_min, satelites=pares)
     caixas = comps.caixas.astype(np.int64) if comps.n else np.zeros((0, 4), np.int64)
     itens = (_casar_pares(grupos, caixas) if pares
-             else [(caixa, membros, area, "", None, "") for caixa, membros, area in grupos])
+             else [(caixa, membros, area, "sobra" if sobra else "", None, "")
+                   for caixa, membros, area, sobra in grupos])
     h, w = mascara.shape
     recortes = []
     rotulos = comps.rotulos

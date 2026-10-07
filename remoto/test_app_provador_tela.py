@@ -213,15 +213,16 @@ def test_variantes_recortador_e_provador_pela_tela(provador_isolado, tema):
         foto(page, "01_tres_variantes_pelo_seletor")
 
         # 2. O recortador manda 2 recortes da folha magenta como variantes novas.
+        # 07/10: a tela já abre em Olhos (peça + carinha, sem a lista de 83).
+        assert page.locator("#recortador-peca").input_value() == "Olhos"
+        assert page.locator("#recortador-destino").input_value() == OLHOS
         page.locator("#recortador-arquivo").set_input_files(str(folha))
-        page.wait_for_function("() => document.querySelectorAll('#recortador-lista .recortador-item').length === 2")
-        assert "magenta" in page.locator("#recortador-fundo").inner_text()
-        page.locator("#recortador-destino").select_option(OLHOS)
         # destino Olhos: a tela junta os desenhos em PARES sozinha (os dois
         # discos lado a lado viram um par); aqui ele volta ao médio à mão e
         # cada desenho vira um olho sozinho (o mesmo olho nas duas posições).
         page.wait_for_function("() => document.querySelectorAll('#recortador-lista .recortador-item').length === 1"
                                " && document.querySelector('#recortador-lista').innerText.includes('par de olhos')")
+        assert page.locator("#recortador-fundo").inner_text() == "Fundo magenta · 1 par de olhos"
         page.locator("#recortador-juncao").select_option("medio")
         page.locator("#recortador-refazer").click()
         page.wait_for_function("() => document.querySelectorAll('#recortador-lista .recortador-item').length === 2"

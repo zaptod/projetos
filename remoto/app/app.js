@@ -172,6 +172,11 @@ function conexao(ok, err) {
   }
   const status = err && err.status;
   if (status === 401) return;
+  // Um erro do PRÓPRIO JavaScript (TypeError, sem `status`) não é a rede: a
+  // faixa dizia "Não consegui falar com o PC. Confira o Tailscale" por um
+  // defeito da tela (07/10: vilaFoco sem portas, a faixa por cima da folha do
+  // Godot no Ateliê). Vai ao console, que as provas de tela leem.
+  if (err && !(err instanceof ErroApi)) { console.error("erro na tela:", err); return; }
   const contato = localStorage.getItem(CONTATO);
   const desde = contato ? ` desde ${quandoCurto(contato)}` : "";
   alvo.className = "off";

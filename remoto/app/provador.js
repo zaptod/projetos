@@ -204,7 +204,12 @@ function provadorLinha(peca) {
   proxima.addEventListener("click", () => provadorSeta(peca, +1));
   const mini = el("img", {class: "provador-mini", alt: `${peca.nome} ${peca.indice} de ${peca.total}`,
     "data-variante": peca.atual});
-  provadorBuscar(peca.imagens[peca.atual])
+  // Variante sem esta carinha: o quadrado diz isso, sem pedir a imagem (o
+  // pedido virava 404 no console; 07/10, bocas desenhadas só na fúria).
+  const semCarinha = peca.sem_carinha
+    ? el("span", {class: "provador-mini modular-variante-sem", role: "img",
+      "aria-label": `${peca.nome}: sem esta carinha`}, "sem esta carinha") : null;
+  if (!semCarinha) provadorBuscar(peca.imagens[peca.atual])
     .then(({blob}) => {
       if (!mini.isConnected) return;
       const url = URL.createObjectURL(blob); ProvadorMinis.push(url); mini.src = url;
@@ -232,7 +237,7 @@ function provadorLinha(peca) {
       el("strong", {}, peca.nome),
       el("span", {class: "provador-contagem"}, uma ? "só 1 desenho" : `${peca.indice} de ${peca.total}`),
       el("span", {class: "provador-selo"}, el("span", {"aria-hidden": "true"}, icone + " "), selo)),
-    el("div", {class: "provador-controles"}, uma ? el("span") : anterior, mini, uma ? el("span") : proxima),
+    el("div", {class: "provador-controles"}, uma ? el("span") : anterior, semCarinha || mini, uma ? el("span") : proxima),
     el("p", {class: "fraco provador-dono"}, peca.dono +
       (peca.sem_carinha ? " · esta variante não tem esta carinha: na luta ela some" : "")),
     acoes.childElementCount ? acoes : null);
@@ -300,11 +305,15 @@ async function provadorVerGodot() {
     $("provador-folha").src = url;
     $("provador-folha").classList.toggle("oculto", chave !== provadorCombinacao());
     provadorTexto("provador-aviso", `Folha montada no Godot: ${Provador.dados.lutador.nome} nas seis carinhas, com esta combinação.`);
-    $("provador-folha").scrollIntoView({behavior: "smooth", block: "start"});
+    // Rola só com a folha carregada: antes dela a página ainda é curta e a
+    // rolagem parava no fim antigo (medido em 07/10: a folha ficou em y 732).
+    await $("provador-folha").decode().catch(() => {});
+    if (vivo() && !$("provador-folha").classList.contains("oculto")) atelieRolarAte($("provador-folha"));
   } catch (erro) { if (vivo()) provadorTexto("provador-aviso", "Não deu para ver no Godot: " + erro.message); }
   finally { botao.disabled = false; }
 }
 
+$("provador-previa").addEventListener("click", () => { if ($("provador-previa").src) window.open($("provador-previa").src, "_blank"); });
 $("provador-busca").addEventListener("input", () => provadorListar());
 $("provador-classe").addEventListener("change", () => provadorListar());
 $("provador-trocar").addEventListener("click", () => { provadorListar(); provadorModoEscolher(true); });

@@ -60,7 +60,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from . import (acoes, biblioteca, claude_estado, comandos_app, decisoes, delegar, orquestrador,
                painel_dados, tarefas, vila_dados, vila_nova)
@@ -1272,6 +1272,38 @@ def _tingir_da_peca(arquivo: Path, nivel: str) -> str:
     return "cor_personagem" if nivel == "comum" else "nenhum"
 
 
+MINIATURA_PX = 160
+
+
+def _miniatura_png(peca: Image.Image, lado: int = MINIATURA_PX, parte: str = "") -> bytes:
+    """A miniatura do cartão, da galeria e do Provador: RECORTADA e ampliada
+    até `lado`. A peça vem no gabarito 1024 (o olho mora numa zona de 165
+    px): inteira, a miniatura de 64 px mostrava um olho de ~15 px
+    (conferente, 07/10). A margem de 6% deixa ver a borda do desenho.
+
+    Peça de lutador com zona no CONTRATO 2.3 (olhos, boca, sombra…): o recorte
+    é a ZONA (mais o que passar dela), igual para todas as variantes. Assim
+    as miniaturas lado a lado ficam na MESMA escala e um olho menor aparece
+    menor (v54 recortava cada uma no próprio desenho e escondia a diferença;
+    conferente, 07/10)."""
+    caixa = peca.getchannel("A").point(lambda v: 255 if v >= 16 else 0).getbbox()
+    zona = sprites_recortador.ZONAS.get(parte) if peca.size == (1024, 1024) else None
+    if zona and zona != (0, 0, 1024, 1024):
+        caixa = zona if not caixa else (min(caixa[0], zona[0]), min(caixa[1], zona[1]),
+                                        max(caixa[2], zona[2]), max(caixa[3], zona[3]))
+    if caixa:
+        x0, y0, x1, y1 = caixa
+        margem = max(2, round(0.06 * max(x1 - x0, y1 - y0)))
+        peca = peca.crop((max(0, x0 - margem), max(0, y0 - margem),
+                          min(peca.width, x1 + margem), min(peca.height, y1 + margem)))
+    escala = lado / max(peca.size)
+    tamanho = (max(1, round(peca.width * escala)), max(1, round(peca.height * escala)))
+    peca = peca.resize(tamanho, Image.Resampling.LANCZOS)
+    saida = io.BytesIO()
+    peca.save(saida, "PNG", optimize=True)
+    return saida.getvalue()
+
+
 def _abrir_peca(arquivo: Path, parte: str, nivel: str, cor) -> Image.Image | None:
     try:
         with Image.open(arquivo) as imagem:
@@ -2065,9 +2097,20 @@ class Manipulador(BaseHTTPRequestHandler):
         # alguma carinha valida da peca (um base.png nos olhos nao e variante).
         validos = set(manifesto_sprites.EXPRESSOES if chave[0] in manifesto_sprites.PARTES_DE_EXPRESSAO
                       else ("base",))
-        variantes = sorted(v for v, estados in indice.get("variantes", {}).get(chave, {}).items()
+        colecao = indice.get("variantes", {}).get(chave, {})
+        variantes = sorted(v for v, estados in colecao.items()
                            if VARIANTE_RE.fullmatch(v) and set(estados) & validos) if lutador else []
+        # A variante que nao tem esta carinha (nem a familia, nem a neutra): a
+        # galeria do cartao mostra "sem esta carinha" em vez de pedir uma
+        # miniatura que nao existe (07/10: bocas mandadas so a furia davam 404
+        # e figuras vazias no cartao da neutra). A mesma regra da `/imagem`.
+        estado = str(slot.get("estado") or "base")
+        sem_carinha = [v for v in variantes
+                       if not (estado == "base" and "base" in colecao.get(v, set()))
+                       and not manifesto_sprites.estado_na_variante(
+                           chave[0], estado if estado != "base" else "neutro", colecao.get(v, set()))]
         return {"id": sid, "rotulo": manifesto_sprites.rotulo_humano(slot),
+                "sem_carinha": sem_carinha,
                 "parte": slot.get("parte"), "estado": slot.get("estado"),
                 "nivel": (slot.get("alvo") or {}).get("nivel"), "papel": slot.get("papel"),
                 "situacao": situacao, "aviso": aviso,
@@ -2148,10 +2191,8 @@ class Manipulador(BaseHTTPRequestHandler):
                 peca = imagem.convert("RGBA")
         except (OSError, ValueError):
             return self._erro(404, "não consegui abrir este desenho")
-        peca.thumbnail((160, 160))
-        saida = io.BytesIO()
-        peca.save(saida, "PNG", optimize=True)
-        return self._bytes(saida.getvalue(), "image/png")
+        parte = str(slot.get("parte") or "") if slot.get("grupo") == "lutador" else ""
+        return self._bytes(_miniatura_png(peca, parte=parte), "image/png")
 
     def _sprites_modulares_previa(self, consulta: dict):
         if str((consulta.get("godot") or [""])[0]) == "1":
@@ -2362,10 +2403,7 @@ class Manipulador(BaseHTTPRequestHandler):
             peca = _abrir_peca(arquivo, parte, achada["nivel"], lutador["cor"]) if arquivo else None
             if peca is None:
                 return self._erro(404, "esta variante não tem esta carinha")
-            peca.thumbnail((160, 160))
-            saida = io.BytesIO()
-            peca.save(saida, "PNG", optimize=True)
-            return self._bytes(saida.getvalue(), "image/png")
+            return self._bytes(_miniatura_png(peca, parte=parte), "image/png")
         # "Ver no Godot" para ESTE lutador, com a combinacao da tela.
         if not GODOT_PREVIA.is_file():
             return self._erro(503, "a prévia do Godot não está instalada neste PC")
@@ -2658,10 +2696,15 @@ class Manipulador(BaseHTTPRequestHandler):
         imagens = [r.imagem for r in resultado.recortes]
         marcada = Image.fromarray(resultado.limpo, "RGBA")
         caneta = ImageDraw.Draw(marcada)
+        # O numero do recorte legivel no celular: a folha de 900-2048 px cabe
+        # em ~330 px de tela, e a fonte padrao de 10 px virava um risco
+        # (passada de uso, 07/10). ~1/28 da largura, como a lista "Recorte N".
+        fonte = ImageFont.load_default(size=max(14, marcada.width // 28))
+        traco = max(3, marcada.width // 300)
         for i, recorte in enumerate(resultado.recortes, 1):
-            caneta.rectangle(recorte.caixa, outline=(20, 20, 26, 255), width=3)
-            caneta.text((recorte.caixa[0] + 3, recorte.caixa[1] + 3), str(i),
-                        fill=(255, 255, 255, 255), stroke_width=2, stroke_fill=(20, 20, 26, 255))
+            caneta.rectangle(recorte.caixa, outline=(20, 20, 26, 255), width=traco)
+            caneta.text((recorte.caixa[0] + traco + 2, recorte.caixa[1] + traco), str(i), font=fonte,
+                        fill=(255, 255, 255, 255), stroke_width=max(2, traco), stroke_fill=(20, 20, 26, 255))
         sessao = secrets.token_urlsafe(12).replace("-", "_")
         arquivos = {"limpa": self._atelie_png(resultado.limpo),
                     "marcada": self._atelie_png(np.asarray(marcada, np.uint8))}

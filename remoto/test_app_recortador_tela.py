@@ -3,17 +3,23 @@
 (reprovação do conferente, 06/10/2026). Tudo pelo SELETOR de arquivo real
 (`expect_file_chooser`), conferido pelo DOM e pelo disco:
 
-1. subir a folha realista de 6 pares de olhos com o destino que a tela abre
-   (Sombra) -> trocar o destino para "Olhos · neutra" -> a tela junta os
-   pares sozinha (6, não 12) -> mandar -> a CAIXA de cada olho no PNG gravado
-   é a zona do jogo (CONTRATO 2.3); antes os olhos caíam na zona da sombra;
+1. subir a folha realista de 6 pares de olhos com o destino Sombra (a
+   armadilha de 06/10, escolhida de propósito) -> trocar a peça para Olhos
+   -> a tela junta os pares sozinha (6, não 12) -> mandar -> a CAIXA de cada
+   olho no PNG gravado é a zona do jogo (CONTRATO 2.3);
 2. recusar uma folha (fundo azul) não deixa a anterior pronta para mandar;
 3. girar e "já visto de cima" pelo seletor do par de olhos;
-4. textos: "há", "Mandar para" por peça e com acento, "Recorte N · LxA px ·
-   par de olhos", carinha igual no rótulo e no botão, nome do arquivo sem
-   letras espaçadas, "Ateliê antigo" com 44 px;
+4. textos: "há", "Mandar para" em peça + carinha (07/10: era uma lista de 83
+   que abria em Sombra; agora abre nos Olhos), "Recorte N · LxA px · par de
+   olhos", carinha igual no rótulo e no botão, nome do arquivo sem letras
+   espaçadas, "Ateliê antigo" com 44 px;
 5. Provador: depois de ‹ › o lutador montado continua inteiro na tela, em pé
-   e deitado; "Ver no Godot" com o PC ocupado diz que pode levar 1–2 min.
+   e deitado; a faixa presa tem <= 22% da tela e a folha do Godot rola para
+   logo abaixo dela; "Ver no Godot" com o PC ocupado diz que pode levar 1–2 min;
+6. (07/10) folha nova: o destino pelo nome do arquivo, o par de olhos de
+   volta ao padrão, o brilho a 12 px desmarcado NOS OLHOS (e inteiro fora
+   deles), "Mandar N selecionados", o último destino lembrado, a junção que
+   segue o grupo e a galeria com a peça recortada.
 Capturas 390x844 (e 844x390) em <TEMP>/tela_app/recortador/.
 """
 from __future__ import annotations
@@ -22,7 +28,7 @@ import time
 
 import numpy as np
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from painel.sprites import folha_de_olhos
 from remoto import api_http
@@ -39,6 +45,33 @@ ZONA_SOMBRA = (256, 532, 768, 748)
 
 def _salvar_folha(caminho, fundo, vao):
     Image.fromarray(folha_de_olhos.folha(fundo, vao), "RGB").save(caminho)
+    return caminho
+
+
+def _folha_com_brilho(caminho):
+    """Duas bocas numa folha magenta e um brilho (faísca de 19 px) a 12 px da
+    segunda: o médio (16 px) o juntava à boca, que encolhia no encaixe."""
+    imagem = Image.new("RGB", (640, 300), (255, 0, 255))
+    caneta = ImageDraw.Draw(imagem)
+    for x in (80, 380):
+        caneta.chord((x, 120, x + 160, 260), 0, 180, fill=(20, 20, 26))
+        caneta.chord((x + 12, 130, x + 148, 245), 0, 180, fill=(190, 40, 60))
+    cx, cy, r = 380 + 160 + 12 + 9, 200, 9
+    caneta.polygon([(cx, cy - r), (cx + 2, cy - 2), (cx + r, cy), (cx + 2, cy + 2),
+                    (cx, cy + r), (cx - 2, cy + 2), (cx - r, cy), (cx - 2, cy - 2)], fill=(255, 255, 240))
+    imagem.save(caminho)
+    return caminho
+
+
+def _olhos_com_brilho(caminho):
+    """A folha realista de olhos (magenta, vão de 40 px) com uma faísca de
+    19 px a 12 px do olho direito do primeiro par."""
+    imagem = Image.fromarray(folha_de_olhos.folha((255, 0, 255), 40), "RGB")
+    cx, cy, r = 426 + 12 + 9, 216, 9
+    ImageDraw.Draw(imagem).polygon([(cx, cy - r), (cx + 2, cy - 2), (cx + r, cy), (cx + 2, cy + 2),
+                                    (cx, cy + r), (cx - 2, cy + 2), (cx - r, cy), (cx - 2, cy - 2)],
+                                   fill=(255, 255, 240))
+    imagem.save(caminho)
     return caminho
 
 
@@ -81,6 +114,13 @@ def _itens(page, n):
                            " && [...document.querySelectorAll('#recortador-lista img')].every(i => i.complete && i.naturalWidth > 0)",
                            arg=n, timeout=60000)
     return page.locator("#recortador-lista .recortador-item span").all_inner_texts()
+
+
+def _destino(page):
+    """(peça, carinha, junção) como a tela mostra."""
+    return tuple(page.evaluate("""() => [document.querySelector('#recortador-peca').selectedOptions[0].textContent,
+        document.querySelector('#recortador-destino').selectedOptions[0].textContent,
+        document.querySelector('#recortador-juncao').value]"""))
 
 
 def _visivel_inteira(page, seletor):
@@ -140,20 +180,25 @@ def test_recortador_pelo_caminho_natural_e_provador_preso(provador_isolado, tema
         resumo = page.locator("#atelie-montar > details > summary")
         assert resumo.evaluate("e => e.getBoundingClientRect().height") >= 44
         assert page.locator("#recortador-arquivo").evaluate("e => getComputedStyle(e).letterSpacing") == "normal"
-        destinos = page.locator("#recortador-destino").evaluate(
+        # 07/10 (conferente): "Mandar para" era UMA lista de 83 opções aberta
+        # em "Sombra". Agora é a peça (6) e depois a carinha dela (6 principais
+        # + "Outras"), e a tela abre nos Olhos, na carinha do painel.
+        pecas_ = page.locator("#recortador-peca").evaluate("s => [...s.options].map(o => o.textContent)")
+        assert pecas_ == ["Sombra", "Pele (o corpo)", "Olhos", "Sobrancelhas", "Boca", "Detalhe do rosto"], pecas_
+        assert _destino(page) == ("Olhos", "neutra", "pares")
+        carinhas = page.locator("#recortador-destino").evaluate(
             "s => [...s.querySelectorAll('optgroup')].map(g => [g.label, [...g.children].map(o => o.textContent)])")
-        grupos = dict(destinos)
-        assert grupos["Sombra"] == ["Sombra"]
-        assert "Olhos · neutra" in grupos["Olhos"] and "Olhos · fúria" in grupos["Olhos"]
-        assert "Olhos · pânico" in grupos["Olhos"] and len(grupos["Olhos"]) == 24
-        for _, textos in destinos:
-            for texto in textos:
-                partes = texto.split(" · ")
-                assert len(partes) <= 2 and "base" not in partes, texto
-        assert page.locator("#recortador-destino").evaluate("s => s.selectedOptions[0].textContent") == "Sombra"
+        grupos = dict(carinhas)
+        assert grupos["Principais"] == ["neutra", "fúria", "animada", "pânico", "dor", "morta"], grupos
+        assert len(grupos["Outras carinhas"]) == 18 and "base" not in grupos["Outras carinhas"]
+        assert page.locator("#recortador-olhos-caixa").is_visible()
+        # A armadilha de 06/10 de propósito: Sombra (peça de um lugar só: sem "Carinha").
+        page.locator("#recortador-peca").select_option("Sombra")
+        assert _destino(page) == ("Sombra", "Sombra", "medio")
+        assert page.locator("#recortador-carinha-caixa").is_hidden()
         assert page.locator("#recortador-olhos-caixa").is_hidden()
 
-        # 1. Sobe com o destino que a tela abre (Sombra): 12 recortes crus.
+        # 1. Sobe com o destino Sombra: 12 recortes crus.
         _subir(page, magenta40)
         textos = _itens(page, 12)
         assert textos[0] == "Recorte 1 · 167×127 px", textos
@@ -177,7 +222,8 @@ def test_recortador_pelo_caminho_natural_e_provador_preso(provador_isolado, tema
         _subir(page, magenta40)
         _itens(page, 12)
         page.locator("#recortador-aviso").evaluate("e => { e.textContent = '-'; }")
-        page.locator("#recortador-destino").select_option(OLHOS)
+        page.locator("#recortador-peca").select_option("Olhos")
+        assert page.locator("#recortador-destino").input_value() == OLHOS
         page.wait_for_function("() => !['-', 'recortando no PC…'].includes(document.querySelector('#recortador-aviso').innerText)")
         textos = _itens(page, 6)                     # a tela juntou os pares sozinha
         assert page.locator("#recortador-juncao").input_value() == "pares"
@@ -227,7 +273,7 @@ def test_recortador_pelo_caminho_natural_e_provador_preso(provador_isolado, tema
         assert _dentro(total, ZONA_OLHOS) and total[2] - total[0] > total[3] - total[1], total
         # saiu dos olhos: volta ao médio sozinho
         page.locator("#recortador-aviso").evaluate("e => { e.textContent = '-'; }")
-        page.locator("#recortador-destino").select_option("lutador/sombra/comum/_/base")
+        page.locator("#recortador-peca").select_option("Sombra")
         page.wait_for_function("() => !['-', 'recortando no PC…'].includes(document.querySelector('#recortador-aviso').innerText)")
         _itens(page, 12)
         assert page.locator("#recortador-juncao").input_value() == "medio"
@@ -235,6 +281,53 @@ def test_recortador_pelo_caminho_natural_e_provador_preso(provador_isolado, tema
         assert not [t for t in page.locator("#tela-atelie button, #tela-atelie select, #tela-atelie summary").evaluate_all(
             "es => es.filter(e => e.offsetParent !== null).map(e => [e.innerText || e.id, Math.round(e.getBoundingClientRect().height)])"
             ".filter(([_, h]) => h < 44)")]
+
+        # 6. (07/10) A folha nova: o destino pelo NOME do arquivo, o par de
+        # olhos de volta ao padrão (o "girar" da folha anterior não vale para
+        # a seguinte) e, NOS OLHOS, o brilho a 12 px vira pedacinho desmarcado.
+        page.locator("#recortador-peca").select_option("Olhos")
+        page.locator("#recortador-olhos").select_option("girar")
+        _subir(page, _olhos_com_brilho(pecas / "olhos_furia.png"))
+        assert _destino(page) == ("Olhos", "fúria", "pares")
+        assert page.locator("#recortador-olhos").input_value() == "separar"
+        _itens(page, 7)
+        marcados = page.locator("#recortador-lista .recortador-item").evaluate_all(
+            "ls => ls.map(l => [l.querySelector('span').innerText, l.querySelector('input').checked])")
+        soltos = [m for m in marcados if m[0].endswith("pedacinho solto")]
+        assert len(soltos) == 1 and soltos[0][1] is False, marcados
+        assert sum(1 for _, m in marcados if m) == 6
+        assert page.locator("#recortador-fundo").inner_text() == (
+            "Fundo magenta · 6 pares de olhos · 1 pedacinho solto (desmarcado)")
+        assert page.locator("#recortador-mandar").inner_text() == "Mandar 6 selecionados"
+        # Fora dos olhos nada sai do desenho (a v54 amputava a cauda dos
+        # projéteis): a boca com o brilho vem inteira, como sempre.
+        _subir(page, _folha_com_brilho(pecas / "boca_furia.png"))
+        assert _destino(page) == ("Boca", "fúria", "medio")
+        textos = _itens(page, 2)
+        assert not [t for t in textos if "pedacinho" in t], textos
+        assert page.locator("#recortador-mandar").inner_text() == "Mandar 2 selecionados"
+        page.locator("#recortador-mandar").click()
+        page.wait_for_function("() => document.querySelector('#recortador-aviso').innerText"
+                               ".includes('2 recortes viraram variantes novas de boca · fúria')", timeout=60000)
+        assert page.evaluate("() => localStorage.getItem('painel.recortador.destino')") == "lutador/boca/comum/_/furia"
+        # A junção segue o destino a cada troca de grupo (v54: Lutador →
+        # Habilidades ficava em "pares de olhos" e o Refazer recortava como olhos).
+        page.locator("#recortador-peca").select_option("Olhos")
+        page.wait_for_function("() => document.querySelector('#recortador-juncao').value === 'pares'"
+                               " && document.querySelector('#recortador-fundo').innerText.includes('olho')", timeout=60000)
+        page.locator("#modular-grupo").select_option("skill")
+        page.wait_for_function("() => document.querySelector('#recortador-juncao').value === 'medio'"
+                               " && /\\d+ recortes?$/.test(document.querySelector('#recortador-fundo').innerText)", timeout=60000)
+        page.locator("#modular-grupo").select_option("lutador")
+        _quieto(page)
+        # a galeria dos Olhos mostra a peça RECORTADA (antes: o gabarito 1024 inteiro, olho de ~15 px)
+        _quieto(page)
+        page.locator("#modular-expressoes button", has_text="neutra").first.click()
+        _quieto(page)
+        tamanhos = page.locator("#modular-slots .modular-slot").filter(
+            has=page.locator("strong", has_text="Olhos · neutra")).first.locator(".modular-variante img").evaluate_all(
+            "is => is.filter(i => i.complete && i.naturalWidth).map(i => [i.naturalWidth, i.naturalHeight])")
+        assert tamanhos and all(max(t) == 160 and min(t) < 160 for t in tamanhos), tamanhos
 
         # 5. O Provador: o lutador montado continua inteiro na tela depois de ‹ ›.
         page.locator("#atelie-modo-provador").click()
@@ -262,6 +355,15 @@ def test_recortador_pelo_caminho_natural_e_provador_preso(provador_isolado, tema
             foto("06_godot_ocupado")
         page.locator("#provador-folha").wait_for(state="visible", timeout=200000)
         assert "Júlia a Abençoada" in page.locator("#provador-aviso").inner_text()
+        # 07/10 (conferente): presa em pé, a prévia ocupava ~37% da tela e
+        # cobria o topo da folha do Godot. Agora é uma faixa (<= 22%) e a folha
+        # rola para logo abaixo dela, com o topo à vista.
+        faixa = page.locator("#provador .provador-palco").evaluate("e => e.getBoundingClientRect().height")
+        assert faixa <= 0.22 * 844, faixa
+        page.wait_for_function("""() => { const i = document.querySelector('#provador-folha'), r = i.getBoundingClientRect();
+            return i.complete && r.top > 0 && r.top < innerHeight / 2
+                && document.elementFromPoint(r.left + r.width / 2, r.top + 6) === i; }""", timeout=5000)
+        foto("06b_folha_logo_abaixo_da_previa")
         ctx.close()
 
         # Deitado (844x390): a prévia fica na coluna da esquerda, presa.
@@ -289,3 +391,73 @@ def test_recortador_pelo_caminho_natural_e_provador_preso(provador_isolado, tema
         ctx.close()
         nav.close()
     assert not erros, erros
+
+
+# Os 29 nomes do conferente (07/10, reprovação da v54: "olhos-animada",
+# "boca-morta" e "boca-tonta" não eram reconhecidos, "surface" virava rosto
+# por "face", "sobrancelha_olho" virava Olhos e "olhos.png" em Boca · fúria
+# perdia a fúria). Destino esperado com a tela em Olhos · neutra e em
+# Boca · fúria; "" = o nome não diz a peça (a tela fica onde está). O
+# detalhe do rosto não tem neutra: vai à primeira na ordem dos botões (fúria).
+D = "lutador/{}/comum/_/{}".format
+NOMES_ESPERADOS = {
+    "olhos-furia.png": (D("olhos", "furia"),) * 2,
+    "olhos-fúria.png": (D("olhos", "furia"),) * 2,
+    "OLHOS_FURIA.PNG": (D("olhos", "furia"),) * 2,
+    "olhos-neutra.png": (D("olhos", "neutro"),) * 2,
+    "olhos-animada.png": (D("olhos", "animado"),) * 2,
+    "boca-morta.png": (D("boca", "morto"),) * 2,
+    "boca-tonta.png": (D("boca", "tonto"),) * 2,
+    "olhos.png": (D("olhos", "neutro"), D("olhos", "furia")),
+    "boca.png": (D("boca", "neutro"), D("boca", "furia")),
+    "sobrancelhas-raiva.png": (D("sobrancelhas", "neutro"), D("sobrancelhas", "furia")),
+    "sombrancelha_furia.png": (D("sobrancelhas", "furia"),) * 2,
+    "lagrimas.png": (D("detalhe_rosto", "furia"),) * 2,
+    "pele.png": (D("pele", "base"),) * 2,
+    "sombra.png": (D("sombra", "base"),) * 2,
+    "ChatGPT Image 7 de out. de 2026, 11_20_33.png": ("",) * 2,
+    "Gemini_Generated_Image_abc123.png": ("",) * 2,
+    "11243.png": ("",) * 2,
+    "sprites_transparentes.png": ("",) * 2,
+    "dorso.png": ("",) * 2,
+    "olhos_dor.png": (D("olhos", "dor"),) * 2,
+    "olhos_determinado.png": (D("olhos", "determinado"),) * 2,
+    "boca_aberta_euforico.png": (D("boca", "euforico"),) * 2,
+    "detalhe_rosto_bochecha.png": (D("detalhe_rosto", "furia"),) * 2,
+    "eyes_angry.png": (D("olhos", "neutro"), D("olhos", "furia")),
+    "surface.png": ("",) * 2,
+    "interface_olhos.png": (D("olhos", "neutro"), D("olhos", "furia")),
+    "facebook_boca.png": (D("boca", "neutro"), D("boca", "furia")),
+    "corpo_olhos.png": (D("pele", "base"),) * 2,                 # a primeira palavra que é peça manda
+    "sobrancelha_olho.png": (D("sobrancelhas", "neutro"), D("sobrancelhas", "furia")),
+}
+
+
+def test_o_nome_do_arquivo_escolhe_o_destino(provador_isolado):  # noqa: F811
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    from patchright.sync_api import sync_playwright
+
+    srv = provador_isolado["srv"]
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        page = nav.new_page(viewport={"width": 390, "height": 844})
+        page.goto(f"http://127.0.0.1:{srv.server_address[1]}/", wait_until="domcontentloaded")
+        page.evaluate("([t]) => { localStorage.setItem('painel.token', t);"
+                      " localStorage.setItem('painel.atelie.modo', 'montar'); }", [token])
+        page.reload(wait_until="domcontentloaded")
+        _abrir_atelie(page)
+        page.locator("#modular-slots .modular-slot").first.wait_for()
+        _quieto(page)
+        errados = []
+        for i, atual in enumerate((D("olhos", "neutro"), D("boca", "furia"))):
+            for nome, esperado in NOMES_ESPERADOS.items():
+                # isolated_context=False: as funções da página (o contexto
+                # isolado do patchright não as enxerga)
+                achado = page.evaluate("([n, a]) => { recortadorEscolher(a); return recortadorPeloNome(n); }",
+                                       [nome, atual], isolated_context=False)
+                if achado != esperado[i]:
+                    errados.append((atual, nome, achado, esperado[i]))
+        nav.close()
+    assert not errados, errados

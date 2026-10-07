@@ -646,6 +646,9 @@ nav.prateleira button.objeto span { font-size: 30px; }
   text-overflow: ellipsis; }
 .aba-objeto[aria-selected="true"] { background: #f6ecd2; color: #3b2a1a; text-shadow: none;
   box-shadow: inset 0 -3px 0 #b8661b; font-weight: 700; }
+/* O negrito da aba aberta alarga o rótulo: "Coordenador" passava 1 px dos
+   81 da aba e virava "Coordenad…" (conferente, 07/10). */
+.aba-objeto[aria-selected="true"] .aba-rotulo { letter-spacing: -.03em; }
 /* trocar de aba não repete a animação de abrir o objeto */
 .livro.sem-abrir:not(.oculto) { animation: none !important; }
 .livro.cinema.sem-abrir:not(.oculto)::before, .livro.cinema.sem-abrir:not(.oculto)::after,
@@ -715,8 +718,14 @@ details.recolhido[open] > summary { margin-bottom: 8px; }
   background: var(--fundo); color: var(--texto); resize: vertical; min-height: 64px; }
 .pedido-responder .botoes { margin-top: 6px; }
 @media (prefers-color-scheme: dark) {
-  .livro.coordenador { background: radial-gradient(ellipse at top, #344452, #1d252d); }
+  /* O cartão escuro pedia texto claro: o `.livro` fixa a tinta de pergaminho
+     (#3b2a1a) e as bolhas da Conversa saíam marrom sobre quase preto
+     (conferente, 07/10: contraste ~1,3:1). */
+  .livro.coordenador { background: radial-gradient(ellipse at top, #344452, #1d252d);
+    --texto: #e8e8ea; --fraco: #a9adb6; --linha: #3a414b; --cartao: #1e2127;
+    --ok: #5cc185; --erro: #ff6b5b; --ativo: #f0a04b; --acento: #7ea4ff; }
   .livro.coordenador .cartao { background: rgba(30, 33, 39, .96); }
+  .livro.coordenador .cartao h2 { color: #c9b48f; }
   .coord-mesa { background: #23442b; border-color: #5cc185; color: #dff5e4; }
 }
 
@@ -948,7 +957,9 @@ input[type="file"] { letter-spacing: normal; text-align: left; }
 .atelie-modos .acao { min-height: 48px; font-weight: 600; }
 .atelie-modos .acao[aria-pressed="true"] { background: var(--acento); color: #fff; border-color: transparent; }
 #provador .acao, #provador select, #provador input[type="search"] { min-height: 44px; font: inherit; }
-#provador input[type="search"] { padding: 0 10px; border-radius: 8px; }
+/* O `input` global (código de pareamento) espaça e centraliza: o "nome do
+   lutador" saía "n o m e   d o…" cortado (conferente, 07/10). */
+#provador input[type="search"] { padding: 0 10px; border-radius: 8px; letter-spacing: normal; text-align: left; }
 .provador-lista { display: grid; gap: 6px; max-height: 340px; overflow-y: auto; margin-top: 8px; }
 .provador-item { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; text-align: left; padding: 6px 12px; }
 .provador-item.escolhido { outline: 3px solid #2f8f5b; outline-offset: -3px; }
@@ -962,16 +973,22 @@ input[type="file"] { letter-spacing: normal; text-align: left; }
    prévia ficava 47 px acima do topo em pé e 270 px deitado). Em pé ele gruda
    logo abaixo do cabeçalho (o mesmo -10 px do interruptor do Claude); deitado
    ele vai para a coluna da esquerda e os controles rolam à direita. */
-.provador-palco { margin: 8px -6px 0; padding: 4px 6px 2px; text-align: center; position: sticky; top: -10px;
-  z-index: 2; background: var(--cartao); border-radius: 0 0 14px 14px; box-shadow: 0 8px 8px -8px rgba(60, 40, 20, .35); }
-.provador-palco figcaption { margin: 0; }
-.provador-previa { display: block; width: min(100%, 230px, 30vh); aspect-ratio: 1; object-fit: contain; margin: 0 auto 4px;
-  border-radius: 18px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; }
+/* 07/10 (conferente): em pé a faixa presa tinha 230 px de prévia + legenda,
+   ~37% dos 844 px, e cobria o topo da folha do Godot. Agora é uma faixa
+   baixa: a prévia (até 150 px / 18vh) à esquerda e a legenda ao lado, ~19%.
+   Tocar na prévia abre em tela cheia, como a folha. */
+.provador-palco { margin: 8px -6px 0; padding: 4px 6px 4px; text-align: left; position: sticky; top: -10px;
+  z-index: 2; background: var(--cartao); border-radius: 0 0 14px 14px; box-shadow: 0 8px 8px -8px rgba(60, 40, 20, .35);
+  display: flex; align-items: center; gap: 10px; }
+.provador-palco figcaption { margin: 0; flex: 1; min-width: 0; }
+.provador-previa { display: block; flex: none; width: min(150px, 18vh); aspect-ratio: 1; object-fit: contain; margin: 0;
+  border-radius: 16px; cursor: zoom-in;
+  background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; }
 @media (orientation: landscape) and (min-width: 560px) {
   .provador-palco-caixa:not(.oculto) { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
     gap: 12px; align-items: start; }
-  .provador-palco { margin: 8px 0 0; box-shadow: none; border-radius: 14px; }
-  .provador-previa { width: min(100%, calc(100vh - 120px)); }
+  .provador-palco { margin: 8px 0 0; box-shadow: none; border-radius: 14px; display: block; text-align: center; }
+  .provador-previa { width: min(100%, calc(100vh - 120px)); margin: 0 auto 4px; }
 }
 .provador-pecas { display: grid; gap: 8px; margin-top: 12px; }
 .provador-peca { border: 1px solid var(--linha); border-left-width: 5px; border-radius: 12px; padding: 8px 10px;
@@ -995,10 +1012,16 @@ input[type="file"] { letter-spacing: normal; text-align: left; }
 .modular-galeria p { margin: 0 0 6px; font-size: .9em; }
 .modular-variantes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .modular-variante { margin: 0; display: grid; gap: 4px; justify-items: center; font-size: .88em; }
-.modular-variante-img { width: 64px; height: 64px; object-fit: contain; border-radius: 10px;
+.modular-variante-img { width: 88px; height: 88px; object-fit: contain; border-radius: 10px;
   background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 10px 10px; }
+.modular-variante-img.modular-variante-sem, .provador-mini.modular-variante-sem { display: grid; place-items: center; text-align: center; font-size: .85em;
+  color: var(--fraco); border: 1px dashed var(--linha); background: none; padding: 4px; }
 .modular-variante .acao, .modular-desfazer-variante { min-height: 44px; width: 100%; font: inherit; }
 .modular-desfazer-variante { margin-top: 6px; }
+/* O resultado do toque, dentro do cartão tocado (07/10). */
+.modular-cartao-aviso { margin: 0; padding: 8px 10px; border-radius: 8px; font-weight: 600;
+  background: rgba(46, 160, 90, .16); }
+.modular-cartao-aviso.ruim { background: rgba(192, 57, 43, .16); color: var(--erro); }
 .modular-galeria-aviso { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; font-weight: 600;
   background: rgba(184, 145, 58, .18); }
 @media (prefers-color-scheme: dark) {

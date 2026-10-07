@@ -112,6 +112,14 @@ def tela_isolada(tmp_path, monkeypatch):
         "id": "assembleia-de-tela", "pergunta": "A tela abriu?", "situacao": "rodada_1",
         "participantes": ["gemini"], "rodada_1": {"respostas": {}}, "rodada_2": None,
     }])
+    # A casca da prova fica PARADA. O servidor da prova serve os arquivos do
+    # repositório, e a casca é o resumo do conteúdo deles: outra sessão que
+    # salvasse qualquer arquivo de remoto/app/ no meio da prova fazia a faixa
+    # "O app mudou no PC" (fixa no topo, z-index 21) cobrir a prévia presa do
+    # Provador. Era o `provador_preso[dark]` instável do conferente (06/10):
+    # medido em 07/10, 0 falhas em 33 rodadas sem mexer na casca, e falha
+    # certa (`por_cima: False`) trocando o sw.js 9 s depois do começo.
+    monkeypatch.setattr(api_http, "versao_da_casca", lambda: "casca-da-prova")
     srv = api_http.criar_servidor("127.0.0.1", 0, local=True)
     fio = threading.Thread(target=srv.serve_forever, daemon=True)
     fio.start()
@@ -550,6 +558,30 @@ def test_a_conversa_responde_como_gente_e_o_pedido_ganha_recibo(tela_isolada, mo
         assert caixa and caixa["width"] > 40 and caixa["x"] + caixa["width"] <= 390
         mensagens.screenshot(path=str(CAPTURAS / "conversa-sem-modelo-390x844.png"))
         page.locator("#toast.oculto").wait_for(state="attached")
+        # 07/10 (conferente): a conversa se redesenha a cada 5 s e o botão do
+        # 1º toque sai da tela; o prazo de 4 s vencia no botão VELHO e o novo
+        # ficava dizendo "Tocar de novo". Arma, espera um redesenho antes dos
+        # 4 s e confere o rótulo do botão que ESTÁ na tela depois do prazo.
+        import time as _tempo
+        conferido = False
+        for _ in range(4):
+            botoes.last.click()
+            armado = _tempo.monotonic()
+            assert botoes.last.inner_text() == "Tocar de novo para passar"
+            botoes.last.evaluate("b => b.setAttribute('data-velho', '1')")
+            page.wait_for_function("() => !document.querySelector('#coord-mensagens .coord-passar[data-velho]')",
+                                   timeout=7000)
+            redesenho = _tempo.monotonic() - armado
+            if redesenho < 3.6:
+                page.wait_for_timeout(int((4.5 - (_tempo.monotonic() - armado)) * 1000))
+                assert botoes.last.inner_text() == "↪ Passar para a equipe"
+                conferido = True
+                break
+            page.wait_for_timeout(1500)                    # venceu: arma de novo
+        assert conferido, "a conversa não se redesenhou antes do prazo de 4 s"
+        assert next(p for p in pedidos.para_o_app()["pedidos"]
+                    if p["id"] == guardada["id"])["situacao"] == "respondido"   # só armou: nada
+        botao = botoes.last
         botao.click()
         assert botao.inner_text() == "Tocar de novo para passar"
         assert next(p for p in pedidos.para_o_app()["pedidos"]
@@ -566,6 +598,66 @@ def test_a_conversa_responde_como_gente_e_o_pedido_ganha_recibo(tela_isolada, mo
         mensagens.screenshot(path=str(CAPTURAS / "conversa-passada-390x844.png"))
         nav.close()
     assert not erros, erros
+
+
+# Razão de contraste WCAG do texto contra o fundo de verdade: as camadas
+# semitransparentes (a bolha verde .16, o cartão .96) são compostas de cima
+# para baixo até uma opaca (o body, se nenhuma for).
+CONTRASTE = """e => { const cor = (t) => { const n = t.match(/[\\d.]+/g).map(Number); if (n.length < 4) n.push(1); return n; };
+  const lum = ([r, g, b]) => { const c = [r, g, b].map(v => { v /= 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const camadas = [];
+  for (let n = e; n; n = n.parentElement) {
+    const c = cor(getComputedStyle(n).backgroundColor);
+    if (c[3] > 0) camadas.push(c);
+    if (c[3] >= 1) break;
+  }
+  let fundo = [255, 255, 255];
+  for (const [r, g, b, a] of camadas.reverse()) fundo = [r * a + fundo[0] * (1 - a), g * a + fundo[1] * (1 - a), b * a + fundo[2] * (1 - a)];
+  const t = cor(getComputedStyle(e).color);
+  const texto = [0, 1, 2].map(i => t[i] * t[3] + fundo[i] * (1 - t[3]));
+  const a = lum(texto), b = lum(fundo);
+  return {texto: getComputedStyle(e).color, fundo: fundo.map(Math.round).join(','),
+          razao: Math.round(100 * (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) / 100}; }"""
+
+
+@pytest.mark.parametrize("tema", ["light", "dark"])
+def test_a_conversa_do_coordenador_se_le_no_claro_e_no_escuro(tela_isolada, tema):
+    """Conferente, 07/10: no escuro o texto das bolhas era rgb(59,42,26) (a
+    tinta de pergaminho do `.livro`) sobre o cartão rgba(30,33,39,.96):
+    ~1,3:1. Mede pelo DOM a razão de contraste da bolha, do texto fraco e do
+    cartão (>= 4,5:1, o mínimo para texto normal)."""
+    if not NAVEGADOR:
+        pytest.skip("so com NF_TESTE_NAVEGADOR=1")
+    from patchright.sync_api import sync_playwright
+
+    base = f"http://127.0.0.1:{tela_isolada.server_address[1]}"
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "chrome-de-teste")
+    with sync_playwright() as pw:
+        nav = pw.chromium.launch(channel="chrome", headless=True)
+        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True,
+                              service_workers="block", color_scheme=tema)
+        page = ctx.new_page()
+        page.goto(base + "/", wait_until="domcontentloaded")
+        page.evaluate("([token]) => localStorage.setItem('painel.token', token)", [token])
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function("document.body.classList.contains('pareado')")
+        page.evaluate("() => document.querySelector('#obj-agora').click()")
+        page.locator("#tela-agora [data-aba-tela='coordenador']").click()
+        page.locator("#coord-abas [data-aba='conversa']").click()
+        page.locator("#coord-conversa:not(.oculto)").wait_for()
+        # uma bolha de cada lado, montada no DOM como o coordenador.js monta
+        page.locator("#coord-mensagens").evaluate("""c => { c.innerHTML =
+          '<div class="coord-msg coordenador" id="b1">Oi, Adrian!<span class="fraco">🛰 coordenador · 10:00</span></div>' +
+          '<div class="coord-msg adrian" id="b2">por que o vídeo não saiu?<span class="fraco">você · 10:01</span></div>'; }""")
+        medidas = {nome: page.locator(seletor).evaluate(CONTRASTE) for nome, seletor in [
+            ("bolha dele", "#b1"), ("bolha sua", "#b2"), ("hora", "#b1 .fraco"),
+            ("título do cartão", "#coord-conversa .cartao h2 >> nth=0"), ("texto fraco", "#coord-conversa .cartao > .fraco >> nth=0")]}
+        page.screenshot(path=str(CAPTURAS / f"conversa-contraste-{tema}-390x844.png"))
+        nav.close()
+    for nome, medida in medidas.items():
+        assert medida["razao"] >= 4.5, (nome, medida)
 
 
 @pytest.mark.parametrize("tema", ["light", "dark"])

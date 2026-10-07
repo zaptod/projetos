@@ -110,6 +110,8 @@ def test_anexar_trocar_desfazer_apagar_pelo_seletor_de_verdade(sprites_isolados,
         ctx.set_default_timeout(15000)
         page = ctx.new_page()
         page.on("pageerror", lambda e: erros.append(str(e)))
+        falhas = []
+        page.on("requestfailed", lambda r: falhas.append((r.url.split("?")[0][-60:], r.failure)))
         page.on("console", lambda m: erros.append(m.text) if m.type == "error" else None)
         page.on("dialog", lambda d: (dialogos.append(d.message), d.accept()))
         page.goto(base + "/", wait_until="domcontentloaded")
@@ -137,6 +139,10 @@ def test_anexar_trocar_desfazer_apagar_pelo_seletor_de_verdade(sprites_isolados,
             .some(c => c.innerText.includes('Pele (o corpo)') && c.innerText.includes('Anexado'))""")
         cartao = _cartao(page, "Pele (o corpo)")
         cartao.locator("img.modular-mini").wait_for(state="visible")
+        # 07/10 (conferente): o resultado aparece DENTRO do cartão tocado; o
+        # aviso flutuante da v54 cobria a galeria por 5 s.
+        assert cartao.locator(".modular-cartao-aviso").inner_text() == "Desenho anexado."
+        assert page.locator("#toast").evaluate("t => t.classList.contains('oculto') || !t.innerText")
         assert cartao.locator("img.modular-mini").evaluate("i => i.complete && i.naturalWidth > 0")
         assert "Lutador básico: 1 de 3" in progresso.inner_text()
         assert "Rosto que reage: 1 de 14" in progresso.inner_text()
@@ -182,10 +188,10 @@ def test_anexar_trocar_desfazer_apagar_pelo_seletor_de_verdade(sprites_isolados,
         assert escolhida.count() == 1 and escolhida.inner_text() == "✓ tonta"
         assert page.locator("#modular-expressao-nome").inner_text() == "tonta"   # rótulo = botão
         assert escolhida.get_attribute("aria-pressed") == "true"
-        assert "Herdando" in _cartao(page, "Olhos · tonto").inner_text()   # cai no neutro comum
-        _anexar_pelo_seletor(page, _cartao(page, "Olhos · tonto"), "Anexar", olhos_tonto)
+        assert "Herdando" in _cartao(page, "Olhos · tonta").inner_text()   # cai no neutro comum
+        _anexar_pelo_seletor(page, _cartao(page, "Olhos · tonta"), "Anexar", olhos_tonto)
         page.wait_for_function("""() => [...document.querySelectorAll('#modular-slots .modular-slot')]
-            .some(c => c.innerText.includes('Olhos · tonto') && c.innerText.includes('Anexado'))""")
+            .some(c => c.innerText.includes('Olhos · tonta') && c.innerText.includes('Anexado'))""")
         assert not _toques_pequenos(page), _toques_pequenos(page)
         page.screenshot(path=str(pasta / f"{tema}_06_todas_as_24.png"), full_page=True)
 
@@ -205,6 +211,21 @@ def test_anexar_trocar_desfazer_apagar_pelo_seletor_de_verdade(sprites_isolados,
         page.locator("#modular-ver-godot").click()
         page.locator("#modular-folha").wait_for(state="visible", timeout=60000)
         assert page.locator("#modular-folha").evaluate("i => i.complete && i.naturalWidth > 0")
+        # 07/10 (conferente): o topo da folha ficava embaixo do cabeçalho do
+        # app; agora ela rola para logo abaixo dele, com o topo à vista.
+        folha_js = """() => { const i = document.querySelector('#modular-folha'), r = i.getBoundingClientRect();
+            const em = document.elementFromPoint(r.left + r.width / 2, r.top + 4);
+            return {topo: Math.round(r.top), altura: Math.round(r.height), tela: innerHeight,
+                    rolagem: document.querySelector('#tela-atelie').scrollTop,
+                    max: document.querySelector('#tela-atelie').scrollHeight - document.querySelector('#tela-atelie').clientHeight,
+                    em_cima: em === i ? 'folha' : (em ? em.id || em.className || em.tagName : null)}; }"""
+        try:
+            page.wait_for_function(f"() => {{ const m = ({folha_js})(); return m.topo >= 56 && m.topo < m.tela / 2"
+                                   " && m.em_cima === 'folha'; }", timeout=8000)
+        except Exception:
+            raise AssertionError((page.evaluate(folha_js), falhas, page.locator("#aviso-texto").inner_text(),
+                                  page.locator("#conexao").inner_text())) from None
+        assert "Folha montada no Godot" in page.locator("#modular-godot-aviso").inner_text()
         page.wait_for_timeout(500)
         page.screenshot(path=str(pasta / f"{tema}_07_godot.png"), full_page=True)
 

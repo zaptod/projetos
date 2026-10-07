@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -244,3 +245,88 @@ def test_recorte_de_outra_peca_vai_no_quadro_do_slot():
     assert arma.shape == (256, 1024, 4)
     sombra = recortador.encaixar(recorte, "sombra")
     assert _dentro(_caixa(sombra), recortador.ZONAS["sombra"])
+
+
+def _brilho(caneta, cx, cy, r=7):
+    """Faisca de 4 pontas (o "brilho" que a IA desenha perto do olho)."""
+    caneta.polygon([(cx, cy - r), (cx + 2, cy - 2), (cx + r, cy), (cx + 2, cy + 2),
+                    (cx, cy + r), (cx - 2, cy + 2), (cx - r, cy), (cx - 2, cy - 2)], fill=(255, 255, 240))
+
+
+@pytest.mark.parametrize("vao", [10, 14])
+def test_brilho_perto_do_olho_nao_entra_no_par_nem_encolhe_o_olho(vao):
+    """Conferente, 07/10: um brilho a menos de 16 px do olho entrava no
+    recorte (o medio junta ate 16 px) e, no encaixe pela caixa, o olho
+    encolhia. Nos PARES DE OLHOS o pedacinho que so passou perto vira recorte
+    proprio ("sobra"), nunca entra num par, e o par sai do mesmo tamanho."""
+    pares = recortador.recortar(_folha_rgb((400, 200), lambda c: (
+        _olho(c, 100, 100), _olho(c, 220, 100), _brilho(c, 260 + vao + 7, 70))), pares=True, area_min=10)
+    assert sorted(r.tipo for r in pares.recortes) == ["par", "sobra"]
+    par = next(r for r in pares.recortes if r.tipo == "par")
+    par_sem = recortador.recortar(_folha_rgb((400, 200), lambda c: (_olho(c, 100, 100), _olho(c, 220, 100))),
+                                  pares=True)
+    assert _caixa(recortador.olhos_no_gabarito(par)) == _caixa(
+        recortador.olhos_no_gabarito(par_sem.recortes[0]))
+    # um olho so com o brilho: o olho continua do mesmo tamanho
+    um = recortador.recortar(_folha_rgb((300, 200), lambda c: (_olho(c, 120, 100), _brilho(c, 160 + vao + 7, 80))),
+                             pares=True, area_min=10)
+    assert sorted(r.tipo for r in um.recortes) == ["sobra", "um"]
+
+
+def test_fora_dos_olhos_o_brilho_continua_no_desenho():
+    """A v54 separava o "pedacinho" em todo modo menos o "muito" e amputou
+    arte de efeito (reprovacao do conferente, 07/10). Fora dos pares de olhos
+    nada sai do desenho: o brilho a 12 px fica no recorte, como sempre."""
+    folha = _folha_rgb((300, 200), lambda c: (_olho(c, 120, 100), _brilho(c, 160 + 12 + 7, 80)))
+    for juntar in (recortador.JUNCAO["medio"], recortador.JUNCAO["muito"]):
+        resultado = recortador.recortar(folha, juntar=juntar, area_min=10)
+        assert [r.tipo for r in resultado.recortes] == [""]
+        assert resultado.recortes[0].caixa[2] >= 160 + 12 + 7 + 7      # o brilho esta no recorte
+
+
+def test_cilio_em_corrente_e_reflexo_dentro_continuam_no_olho():
+    """Nos pares: o reflexo dentro da caixa e os cilios a ate 8 px, em
+    corrente (um cilio puxa o outro), ficam no olho."""
+    def desenhar(c):
+        _olho(c, 120, 100)
+        c.line((100, 64, 112, 50), fill=(20, 20, 26), width=5)       # cilio a ~6 px do topo (y 70)
+        c.line((108, 44, 118, 30), fill=(20, 20, 26), width=5)       # outro, a ~5 px do primeiro
+        _brilho(c, 160 + 12 + 7, 80)
+    resultado = recortador.recortar(_folha_rgb((300, 200), desenhar), pares=True, area_min=10)
+    assert sorted(r.tipo for r in resultado.recortes) == ["sobra", "um"]
+    assert next(r for r in resultado.recortes if r.tipo == "um").caixa[1] < 30     # os dois cilios
+
+
+def _folha_real(caminho):
+    im0 = Image.open(caminho).convert("RGBA")
+    im = Image.new("RGBA", im0.size, (255, 0, 255, 255))
+    im.alpha_composite(im0)
+    return im.convert("RGB")
+
+
+EVENTO_DANO = Path(__file__).resolve().parents[1] / "palco/biblioteca/efeitos/folhas/evento_dano.png"
+FOLHAS_REAIS = [
+    # (folha, {juncao: (recortes, pixels opacos somados)}) -- medido no HEAD
+    # (c7b3ac6..de238e9) e igual byte a byte ao codigo novo em 07/10.
+    (Path(__file__).resolve().parents[1] / "painel/sprites/fixtures/folha_acida_chatgpt.png",
+     {"pouco": (49, 379260), "medio": (26, 379301), "muito": (26, 379301)}),
+    (EVENTO_DANO, {"pouco": (35, 295107), "medio": (27, 295206), "muito": (24, 295224)}),
+]
+
+
+@pytest.mark.parametrize("folha,esperado", FOLHAS_REAIS, ids=["acida_11243", "evento_dano"])
+def test_folhas_reais_de_efeito_nao_perdem_nada(folha, esperado):
+    """Reprovacao do conferente, 07/10: na v54 o projetil acido (a 11243.png
+    da raiz, copia em fixtures) dava 26 + 49 "pedacinhos" e 24 de 26 quadros
+    perdiam a cauda de gotas; o evento_dano ia de 27 a 37 com buracos. Fora
+    dos olhos o recorte e o de antes: mesmo numero, mesmos pixels, nada de
+    "sobra". O evento_dano e arte do Adrian (fora do git): so roda se estiver
+    no disco."""
+    if not folha.is_file():
+        pytest.skip(f"{folha.name} nao esta neste disco")
+    imagem = _folha_real(folha)
+    for nivel, (quantos, pixels) in esperado.items():
+        resultado = recortador.recortar(imagem, juntar=recortador.JUNCAO[nivel])
+        assert {r.tipo for r in resultado.recortes} == {""}, nivel
+        assert len(resultado.recortes) == quantos, nivel
+        assert sum(int((r.imagem[..., 3] >= 16).sum()) for r in resultado.recortes) == pixels, nivel

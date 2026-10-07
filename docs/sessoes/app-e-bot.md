@@ -70,6 +70,8 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **App: reorganizar as telas** — 4 objetos, um por pergunta (02/10/2026) `app-reorganizar`
 - ✅ **Obsidian no celular: como o PC chega lá** — Syncthing (grátis) (06/10/2026) `obsidian-no-celular`
 - ✅ **Conversa: pergunta que não está na lista** — O modelo decide (06/10/2026) `conversa-pergunta-livre`
+- ⏳ **Ateliê: onde fica e o que vem primeiro** — Já que você vai usar o Ateliê todo dia, ele vira um objeto próprio na prateleira do app, com o Recortar folha lá em cima? `atelie-lugar-e-ordem`
+- ⏳ **Ateliê: os dois 'Apagar' do mesmo cartão** — Quando um lugar tem 2 ou mais variantes, como ficam os botões Apagar/Trocar do topo do cartão? `atelie-dois-apagar`
 
 <!-- decisoes:fim -->
 
@@ -157,6 +159,9 @@ conversa (`pode_passar` na linha, do `para_o_app`), rota `POST
 nunca um segundo pedido nem um segundo trabalhador. No Telegram, "pedido:
 …" no começo pula o modelo. As respostas do Grimório (`origem: grimorio`) e
 a mensagem da Mesa (`triar=False`) não passam pela triagem. Casca `v53`.
+Desde a `v54` (07/10) o "Tocar de novo" não fica velho quando a conversa se
+redesenha (o prazo mora em `CoordConv`, e o botão que estiver na tela volta
+ao rótulo), e no escuro a Conversa se lê (ver "Ateliê redondo" no fim).
 
 Duas portas de saída para o Adrian comandar o sistema de fora do PC:
 
@@ -2526,7 +2531,8 @@ gabarito 1024×1024 e as 24 carinhas (6 principais + "Ver todas as 24").
   uma na fila (o pedido novo toma o lugar). Erro vira frase humana.
 - `GET .../<id>/gabarito` baixa `gabarito_<peça>.png`: linhas com contorno
   escuro e claro (aparecem em qualquer fundo), legenda escrita, e as zonas do
-  CONTRATO § 2.3. `GET .../<id>/imagem` é a miniatura de 160 px do cartão.
+  CONTRATO § 2.3. `GET .../<id>/imagem` é a miniatura de 160 px do cartão,
+  recortada no desenho desde 07/10 (`_miniatura_png`).
 
 **Contadores** (do CONTRATO § "Quantos o Adrian precisa"): básico = pele +
 olhos neutro + boca neutro (3); rosto que reage = pele, sombra, olhos e boca
@@ -2604,7 +2610,8 @@ vista) e o aviso diz "N recortes viraram variantes novas de <peça>".
 - **Recusar uma folha esquece a anterior** (lista, folha e seleção): o
   "Mandar" não manda mais a folha de antes.
 - **Textos.** O aviso agora tem acento ("há bastante…"). "Mandar para" é
-  agrupado por peça (`optgroup`), com o texto "Olhos · fúria" (antes era
+  agrupado por peça (`optgroup`; desde 07/10 são dois seletores, peça e
+  carinha, ver "Ateliê redondo"), com o texto "Olhos · fúria" (antes era
   "Olhos · fúria · furia" e "Sombra · base"). Cada recorte se chama
   "Recorte 3 · 357×127 px · par de olhos" ("· um olho só" quando não tem
   par), e a legenda diz "Fundo magenta · 6 pares de olhos". O nome do
@@ -2695,7 +2702,8 @@ modos no topo, **🧩 Montar peças** (o que já existia) e **👕 Provador**; o
 - **O lutador montado fica sempre à vista** (06/10, casca v52). Medido pelo
   conferente: depois de apertar ‹ ›, a prévia ficava 47 px acima do topo em
   pé e 270 px acima deitado. Agora:
-  - em pé, a prévia (230 px, até 30vh) fica `sticky` logo abaixo do
+  - em pé, a prévia (230 px, até 30vh; desde 07/10 uma faixa de 150 px /
+    18vh com a legenda ao lado, ~19% da tela) fica `sticky` logo abaixo do
     cabeçalho;
   - deitado (≥ 560 px de largura), ela vai para a coluna da esquerda,
     presa, e os controles rolam à direita (`.provador-mesa`);
@@ -2761,6 +2769,140 @@ As capturas ficam em `<TEMP>/tela_app/recortador/`.
 
 **Pendências do palco resolvidas pelo bfb6b35 (parte builds):** a folha pinta
 com a cor do personagem e o título vai em duas linhas, sem encostar na borda.
+
+### Ateliê redondo (07/10/2026, casca v54 → v55)
+
+As ressalvas do conferente sobre o merge 988fd01 e uma passada de uso como o
+Adrian (Chrome 390×844, claro e escuro, instância isolada) deram nisto:
+
+- **"Mandar para" em dois passos.** Antes era uma lista de 83 opções aberta
+  em "Sombra". Agora são dois seletores: a **peça** (`#recortador-peca`, 6 no
+  lutador) e a **carinha** dela (`#recortador-destino`, que guarda o id do
+  lugar como antes). A carinha vem com "Principais" (as 6 do painel) e
+  "Outras carinhas", na ordem dos botões, e some quando a peça tem um lugar
+  só. A tela abre:
+  1. no lugar que o **nome do arquivo** diz ("olhos-furia.png" vai para Olhos
+     · fúria; `RECORTADOR_NOMES`). Desde a v55 é por **palavra inteira**
+     (na v54 "surface" virava rosto por "face" e "dorso" virava dor), a
+     primeira palavra que é peça manda ("sobrancelha_olho" é sobrancelha), a
+     carinha vale nos dois gêneros ("olhos-animada", "boca-morta") e o nome
+     que só diz a peça mantém a carinha da tela ("olhos.png" em Boca · fúria
+     → Olhos · fúria). Os 29 nomes do conferente são a prova
+     `test_o_nome_do_arquivo_escolhe_o_destino`;
+  2. senão no **último usado** (`painel.recortador.destino`, gravado ao
+     mandar);
+  3. senão nos **Olhos**, na carinha que o painel mostra.
+
+  Com os Olhos, o "Juntar pedaços" já abre em "pares de olhos". Desde a v55
+  a junção segue o destino a cada troca, inclusive de grupo (Lutador →
+  Habilidades volta ao médio e recorta de novo); um redesenho que não muda o
+  lado do destino (olhos / não olhos) não mexe na junção escolhida à mão.
+- **Folha nova volta o par de olhos ao padrão.** O padrão é a resposta do
+  Grimório, ou "separar". Antes o "girar" de uma folha valia para a seguinte.
+- **Brilho perto do olho** (`recortador._sem_satelites`), **só nos pares de
+  olhos**. Medido: a faísca a 10–14 px do olho entrava no recorte e o olho
+  encolhia no encaixe.
+  - **Reprovação da v54 (GRAVE):** a regra valia em todo modo menos o
+    "muito" e amputou arte de efeito. Na 11243.png (projétil ácido) saíam
+    26 + 49 "pedacinhos", e 24 de 26 quadros perdiam a cauda de gotas; o
+    `evento_dano` ia de 27 a 37 recortes, com buracos dentro da caixa.
+  - **v55:** fora dos pares o recorte é o de antes, byte a byte. Medido em
+    07/10 contra o HEAD, nas 14 folhas reais do disco (raiz, `efeitos/folhas`
+    e `painel/sprites/fixtures`), em pouco/médio/muito: o mesmo número de
+    recortes e 0 pixels perdidos (`compara_recorte.py` e `amputa.py` do
+    conferente).
+  - **Nos pares fica no olho:** todo pedaço grande (≥ 10% da área do maior),
+    todo pedaço ligado a ele por uma **corrente** de vizinhos a até 8 px (o
+    cílio da folha realista fica a ~6 px) e tudo que toca a caixa do que
+    ficou (nunca um buraco dentro do desenho).
+  - **O resto vira recorte `sobra`:** aparece como "pedacinho solto", vem
+    **desmarcado** e nunca entra num par.
+
+  O botão mostra a conta ("Mandar 6 selecionados"), e os números na folha
+  marcada cresceram (~1/28 da largura; antes eram 10 px de fonte).
+- **Miniaturas recortadas** (`api_http._miniatura_png`). O cartão, a galeria
+  e o Provador mostravam o gabarito 1024 inteiro, com o olho de ~15 px.
+  Agora a peça é recortada e ampliada para 160 px; a galeria passou de 64
+  para 88 px. Desde a v55, peça com zona no CONTRATO §2.3 (olhos, boca,
+  sobrancelhas, sombra, detalhe) é recortada na ZONA (mais o que passar
+  dela). A moldura é a mesma em todas as variantes, então elas ficam na
+  mesma escala e um olho menor aparece menor. A v54 recortava cada uma no
+  próprio desenho e escondia a diferença. Sem zona (pele), o recorte segue
+  no desenho, com margem de 6%.
+- **Variante sem esta carinha** (`sem_carinha` no lugar e na peça do
+  Provador). Aparece como "sem esta carinha", sem pedir imagem: bocas
+  desenhadas só na fúria davam 404 e figuras vazias no cartão da neutra.
+- **Prévia presa do Provador em pé.** Ocupava ~37% da tela e cobria a folha.
+  Agora é uma faixa de 150 px (18vh), com a legenda ao lado: 158 px, 19% de
+  844. "Ver no Godot" rola até a folha só depois de ela carregar, e a deixa
+  logo abaixo da faixa (`atelieRolarAte`; desde a v55 o "Ver no Godot" do
+  Montar também usa a função, e a folha não fica mais embaixo do cabeçalho:
+  topo em y 72). Antes a rolagem parava no fim
+  antigo da página, com a folha em y 732. Tocar na prévia abre em tela cheia.
+- **Avisos à vista.** O `#modular-aviso` mora no fim da lista, ~230 px abaixo
+  da tela depois de anexar.
+  - O resultado de anexar, trocar, apagar, desfazer e baixar gabarito (e o
+    "enviando…") aparece **dentro do cartão tocado** (`modularAvisar` →
+    `.modular-cartao-aviso`) e fica até o próximo toque.
+  - A v54 usava o aviso flutuante, que cobria a galeria recém-anexada por
+    5 s (reprovação do conferente); ele saiu do Ateliê.
+  - O "Ver no Godot" do painel escreve logo abaixo do botão
+    (`#modular-godot-aviso`).
+- **Vários arquivos no Anexar.** Num lugar vazio de lutador, cada arquivo
+  vira uma variante. Antes só o primeiro ia e o resto sumia calado. No Trocar
+  a tela pede um arquivo só e indica o "+ Nova variante".
+- **Títulos dos cartões** no feminino, como o botão: "Olhos · neutra".
+- **A Conversa no escuro.** O `.livro` fixa a tinta de pergaminho (#3b2a1a),
+  e no cartão escuro do Coordenador o contraste era 1,18:1. Agora o
+  `.livro.coordenador` troca as variáveis no escuro.
+  `test_a_conversa_do_coordenador_se_le_no_claro_e_no_escuro` mede ≥ 4,5:1.
+- **`provador_preso[dark]` instável: a causa.** Em 33 rodadas sem mexer na
+  casca não houve nenhuma falha (6 seguidas, 8×2 em paralelo e 3 só no
+  escuro). Trocando o `sw.js` 9 s depois do começo, a falha é certa:
+  `por_cima: False`. Explicação:
+  - o servidor da prova serve o `remoto/app/` do repositório, e a casca é o
+    resumo do conteúdo;
+  - outra sessão que salvasse um arquivo da casca no meio da prova fazia a
+    faixa "O app mudou no PC" aparecer (fixa no topo, z-index 21), e ela
+    cobria a prévia presa.
+
+  O `tela_isolada` agora fixa a casca (`versao_da_casca` → "casca-da-prova").
+  Com a troca do `sw.js` no meio, a prova passa.
+
+- **"Sem conexão" falso** (v55). A faixa "Não consegui falar com o PC.
+  Confira se o Tailscale…" aparecia por cima da folha do Godot do Montar.
+  - Como foi achada: 1 falha em cada ~6 rodadas da prova sob carga. Com a
+    `conexao` instrumentada, cada falha era o mesmo `TypeError` em `vilaFoco`
+    (`Vila.mundo.portas` ausente: o mundo da prova não tem portas, e um
+    mundo incompleto no celular também não teria), não a rede.
+  - Correção: a `vila.js` aceita mundo sem portas.
+  - `conexao(false, erro)` com erro que não é `ErroApi` (um defeito do
+    próprio JavaScript) não mostra mais a faixa de rede: vai ao
+    `console.error`, que as provas de tela leem.
+- **Miudezas da v55:** o "Buscar lutador" do Provador perdeu as letras
+  espaçadas do `input` global, e a aba aberta "Coordenador" (negrito, 82 px
+  numa aba de 81) não vira mais "Coordenad…".
+
+**Provas:**
+- `tests/test_sprites_recortador.py`:
+  - brilho a 10 e 14 px nos pares e no olho sozinho;
+  - brilho que fica no desenho fora dos olhos;
+  - cílios em corrente;
+  - `test_folhas_reais_de_efeito_nao_perdem_nada`: a folha ácida (cópia da
+    11243 em `painel/sprites/fixtures`) e o `evento_dano` (arte do Adrian,
+    fora do git; só roda se estiver no disco), com o número de recortes e
+    a soma de pixels do HEAD.
+- `remoto/test_provador.py`: miniaturas na mesma escala.
+- `remoto/test_app_recortador_tela.py`:
+  - passo 6: nome do arquivo, par de volta a "separar", brilho desmarcado
+    nos olhos e inteiro na boca, último destino, junção seguindo o grupo,
+    galeria;
+  - faixa ≤ 22% e folha à vista;
+  - os 29 nomes.
+- `remoto/test_app_sprites_tela.py`: aviso dentro do cartão, sem o
+  flutuante; folha do Montar abaixo do cabeçalho.
+- `remoto/test_app_tela.py`: contraste e o "Tocar de novo" depois de um
+  redesenho.
 
 # Aba Equipe
 

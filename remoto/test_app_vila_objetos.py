@@ -151,8 +151,12 @@ def test_o_cache_da_casca_mudou_de_versao():
     # verde/magenta junto com o guarda-roupa (06/10); v51 = o Provador (jogo de
     # vestir), a galeria de variantes no cartao e "+ Nova variante" com varios arquivos;
     # v52 = recortador encaixa no DESTINO, pares de olhos, prévia do Provador presa (06/10);
-    # v53 = «Passar para a equipe» na resposta a uma pergunta livre (07/10).
-    assert "painel-casca-v53" in sw
+    # v53 = «Passar para a equipe» na resposta a uma pergunta livre (07/10);
+    # v54 = Ateliê redondo: "Mandar para" em peça + carinha, prévia presa compacta,
+    # miniaturas recortadas na peça, Conversa legível no escuro (07/10);
+    # v55 = reprovação da v54: pedacinho solto só nos olhos, junção segue o
+    # destino, nome do arquivo por palavra, aviso dentro do cartão (07/10).
+    assert "painel-casca-v55" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
