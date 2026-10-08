@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
 import contextlib
 import hashlib
 import hmac
@@ -71,6 +72,7 @@ from esteira_sprites import juiz as sprites_juiz
 from painel.sprites import importar as sprites_importar
 from painel.sprites import recortador as sprites_recortador
 from neural_fights.tools import manifesto_sprites
+from neural_fights.tools import atelie_animacoes
 
 PORTA_PADRAO = 8931
 PORTAS_PROIBIDAS = {8765}                # OAuth do YouTube
@@ -90,6 +92,7 @@ CORPO_MAX = 4096
 # um corpo grande, e so com token.
 CORPO_CORREIO_MAX = 12 * 1024 * 1024
 ATELIE_MAX = sprites_importar.MAX_BYTES
+ANIMACAO_MAX = 20 * 1024 * 1024
 ATELIE_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca" / "sprites_usuario"
 PARTES_BIBLIOTECA = Path(__file__).resolve().parents[1] / "palco" / "biblioteca"
 MANIFESTO_SPRITES = PARTES_BIBLIOTECA / "manifesto_slots.json"
@@ -1753,6 +1756,23 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({"lutas": lutas})
             if rota == "/api/atelie":
                 return self._atelie_catalogo(consulta)
+            if rota == "/api/animacoes/arvore":
+                return self._json({"grupos": atelie_animacoes.arvore()})
+            if rota == "/api/animacoes/gatilhos":
+                return self._json({"gatilhos": atelie_animacoes.gatilhos()})
+            achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)/folha", rota)
+            if achado:
+                try:
+                    arquivo = atelie_animacoes.caminho(*achado.groups()) / "folha.png"
+                except ValueError as exc:
+                    return self._erro(400, str(exc))
+                if not arquivo.is_file(): return self._erro(404, "folha nao encontrada")
+                return self._bytes(arquivo.read_bytes(), "image/png")
+            achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)", rota)
+            if achado:
+                try: dados = atelie_animacoes.ler(*achado.groups())
+                except ValueError as exc: return self._erro(400, str(exc))
+                return self._json(dados) if dados else self._erro(404, "animacao nao encontrada")
             if rota == "/api/sprites/modulares":
                 return self._sprites_modulares_catalogo(consulta)
             if rota == "/api/sprites/modulares/previa":
@@ -1994,6 +2014,8 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._responder_decisao()
         if rota == "/api/atelie/importar":
             return self._atelie_importar()
+        if rota.startswith("/api/animacoes/"):
+            return self._animacoes_post(rota)
         if rota == "/api/sprites/recortar":
             return self._recortador_importar()
         achado = re.fullmatch(r"/api/sprites/provador/(sortear|fixar|desfixar)", rota)
@@ -2067,6 +2089,45 @@ class Manipulador(BaseHTTPRequestHandler):
             self.estado.falhou(self.client_address[0])
             return self._erro(403, "codigo errado ou vencido")
         return self._json({"token": token})
+
+    def _animacoes_post(self, rota: str):
+        """Mutacoes do Atelie novo; aceita somente ids, nunca caminhos."""
+        if self._aparelho() is None:
+            return
+        corpo = self._corpo(ANIMACAO_MAX + 65536)
+        if corpo is None:
+            return
+        try:
+            if rota == "/api/animacoes/subir":
+                imagem = base64.b64decode(str(corpo.get("imagem") or ""), validate=True)
+                if len(imagem) > ANIMACAO_MAX: raise ValueError("folha grande demais")
+                if corpo.get("linhas") or corpo.get("colunas"):
+                    with Image.open(io.BytesIO(imagem)) as folha:
+                        quadros = atelie_animacoes.fatiar_grade(
+                            folha.width, folha.height, int(corpo.get("linhas") or 0),
+                            int(corpo.get("colunas") or 0), int(corpo.get("margem") or 0),
+                            int(corpo.get("espaco") or 0))
+                else:
+                    quadros = atelie_animacoes.fatiar_automatico(imagem)
+                return self._json({"quadros": quadros})
+            if rota == "/api/animacoes/salvar":
+                imagem = base64.b64decode(str(corpo.get("imagem") or ""), validate=True)
+                if len(imagem) > ANIMACAO_MAX: raise ValueError("folha grande demais")
+                dados = atelie_animacoes.salvar(corpo.get("peca"), corpo.get("estado"), corpo.get("animacao"),
+                                                 imagem, corpo.get("dados") or {})
+                return self._json(dados)
+            if rota == "/api/animacoes/desfazer":
+                return self._json(atelie_animacoes.desfazer(corpo.get("peca"), corpo.get("estado"), corpo.get("animacao")))
+            if rota == "/api/animacoes/criar":
+                return self._json(atelie_animacoes.criar_animacao(corpo.get("peca"), corpo.get("estado"), corpo.get("animacao") or {}))
+            if rota == "/api/animacoes/esconder":
+                atelie_animacoes.esconder_animacao(corpo.get("peca"), corpo.get("estado"), corpo.get("animacao"))
+                return self._json({"feito": True})
+            if rota == "/api/animacoes/ajustes":
+                return self._json(atelie_animacoes.salvar_ajustes(corpo.get("ajustes") or corpo))
+        except (ValueError, TypeError, binascii.Error) as exc:
+            return self._erro(400, str(exc))
+        return self._erro(404, "nao existe")
 
     # --------------------------------------------------- sprites modulares
     @staticmethod
