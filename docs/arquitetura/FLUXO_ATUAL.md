@@ -1,0 +1,51 @@
+# Fluxo atual — etapa a (07/10/2026, 19:41)
+
+## Peças e estado
+
+| Peça | Faz / quem escreve | Estado e quem lê |
+|---|---|---|
+| Coordenador | `Supervisor` pulsa comandos, pedidos, cérebro, vigia e gerente (`coordenador/__main__.py:78-113`, `coordenador/supervisor.py:755`). Escreve o retrato. | `%LOCALAPPDATA%\\neural-fights\\coordenador\\estado.json` (`coordenador/estado.py:12-31`); app, CLI `status` e orquestrador leem. |
+| Pedidos / Mesa | `MesaPedidos.registrar` cria pedido ou continuação explícita; `passo` contrata, acompanha, retoma e confere (`coordenador/pedidos.py:981`, `:1852`, `:1942`, `:2814`, `:3069`). | `coordenador/pedidos.json`, `pedidos.lock`; Mesa, app e bot escrevem sob trava; app lê via `para_o_app` (`coordenador/pedidos.py:352-370`, `:3235`). |
+| Conversa / triagem | Pergunta de estado entra no cérebro; conversa livre passa pelo Codex leve e pode virar pedido só por toque do Adrian (`coordenador/cerebro.py:181-204`, `coordenador/pedidos.py:981-1035`, `:1402`). | `%LOCALAPPDATA%\\neural-fights\\coordenador\\{entrada,conversa}.jsonl`, `entrada_lida.json`, `propostas.json` (`coordenador/cerebro.py:104-139`); app agrega tudo em `remoto/api_http.py:1864-1873`. |
+| Vigia de trabalho | Coleta diff, exige prova, aplica, commita, pede reinício seguro e contrata integrador quando necessário (`coordenador/vigia_trabalho.py:668`, `:925`). | `%LOCALAPPDATA%\\neural-fights\\coordenador\\vigia_trabalho.json` (memória do vigia); alimenta `estado.json`; lê fichas do despachante e Mesa. |
+| Mesa/fila/config do orquestrador | Mantém Agora/fila, comandos do app, modelos/capacidade e uso; o servidor aplica pendências (`remoto/orquestrador.py:225-291`, `:1412`, `:1853`). | `%LOCALAPPDATA%\\neural-fights\\orquestrador\\`: `estado.json`, `config.json`, `comandos*.jsonl`, `uso*.jsonl`, `vigia.json` (`remoto/orquestrador.py:1-43`). App escreve comandos; coordenador e chat podem escrever estado; app lê `para_o_app` (`:2589`). |
+| Despachante `delegar` | Cria worktree/ficha, abre Codex ou Claude, guarda eventos, coleta patch, testa e aplica (`remoto/delegar.py:947`, `:1580`, `:1657`, `:1728`, `:1821`). | `%LOCALAPPDATA%\\neural-fights\\delegados\\<id>\\{estado,eventos}.json`, `diff.patch`, logs; cria `E:\\projetos-wt\\codex-<id>` (`remoto/delegar.py:25-32`, `:198-273`). Mesa, vigia, app Equipe e CLI escrevem/leem. |
+| Grimório / leitor / eventos | `responder` grava a decisão, atualiza arquivos e anexa evento; `leitor` devolve respostas não lidas; `marcar` registra consequência (`remoto/decisoes.py:535`, `:742`, `:816`). | Git: `decisoes/<projeto>/<id>.json`, `decisoes/_eventos.jsonl`, READMEs/sessões (`remoto/decisoes.py:48-92`, `:1027`). App/CLI escrevem; Mesa lê no pulso (`coordenador/pedidos.py:2924`). |
+| Bot | Long polling chama `comandos.executar`; alerta erro e dispara apurador em fundo (`remoto/bot.py:89-105`, `:150-174`, `:208-270`). | Config/pareamento em runtime via `remoto.config`; offset só em memória. Lê diário de atividade e pedidos; Telegram vê recibos, avisos e finais. |
+| App / HTTP | Expõe estado e recebe mensagem, resposta, decisão, comandos e contratos da Equipe (`remoto/api_http.py:1858-1927`, `:2896-3041`, `:3100-3190`). | Config/pareamento do app em `%LOCALAPPDATA%\\neural-fights`; não é fonte única: lê Mesa, cérebro, orquestrador, decisões e despachante. |
+| Apurador | Bot dispara `uma_volta`: Claude diagnostica só leitura; conserto é remendo em worktree, teste/aplicação exigem comando humano (`remoto/apurador.py:242-289`, `:825-908`, `:938`). | Runtime de `builds.contas.runtime_dir()/apuracoes.json`; remendos em `outputs/_apuracoes` (`remoto/apurador.py:54-90`, `:744-752`). Bot lê e envia diagnóstico; não vira pedido/Mesa. |
+| Handoff | Gera retrato para o próximo chat, lendo git, delegados, Mesa, Grimório e serviços (`ferramentas/handoff.py:70-135`, `:138-162`). | Git: `docs/handoff/NOTA.md`, `ATUAL.md`, `historico/`; chat escreve nota/roda gerador; próximo chat lê. |
+
+## Vida de um pedido hoje
+
+1. **Mensagem livre no app.** `POST /api/coordenador/falar` chama `pedidos.registrar(..., "app")` (`remoto/api_http.py:3100-3143`). Pergunta curta vai ao cérebro; conversa livre é triada; trabalho cria `pedido-...`. No pulso, Mesa escolhe Claude por padrão e Codex para construir/limite (`coordenador/pedidos.py:1445-1465`, `:1852`), cria delegado e acompanha. O vigia testa, aplica patch na árvore principal e commita (`remoto/delegar.py:1821`, `coordenador/vigia_trabalho.py:925`); fecha em conferido/falhou/respondido e a tela mostra pedido/conversa.
+2. **Telegram.** `Bot._mensagem` -> `comandos.executar` -> `falar_ao_coordenador` -> mesma Mesa (`remoto/bot.py:89-105`, `remoto/comandos.py:350-385`). `/responder <id>` é a única continuação e volta ao mesmo pedido (`remoto/comandos.py:388-426`). Resultado chega como aviso Telegram e no app.
+3. **Resposta no Grimório.** `decisoes.responder` anexa `_eventos.jsonl` (`remoto/decisoes.py:535-608`). No pulso, `MesaPedidos.ler_grimorio` tenta `_retomar_com_resposta`; se acha o pedido esperando aquela referência, devolve a escolha ao trabalhador e marca a consequência. Se não acha, cria novo `pedido-...` (`coordenador/pedidos.py:2149`, `:2924-3018`). Opção estruturada `acao_servidor` é executada pelo servidor e gera/atualiza pedido respondido (`coordenador/pedidos.py:3019-3067`). Adrian vê o nó decidido, aviso e pedido.
+4. **Chat do Claude com `remoto.delegar criar/rodar`.** A CLI vai direto a `delegar.criar`/`no_fundo` (`remoto/delegar.py:947`, `:1580`, `:2138`): cria worktree e trabalhador sem `pedidos.json`. Executor é o `--ia`/regra do chamador. Só o vigia o coleta/aplica se estiver rodando; não há pedido único que o feche para Adrian.
+5. **Chat do Claude com agentes próprios.** Não há chamada a Mesa, `pedidos.registrar` ou `delegar` no mecanismo de agentes do chat: é estado da sessão/ferramenta do chat, fora destes arquivos. Assim não há fila, prova, aplicação, commit nem tela automática; só o que o próprio chat fizer/publicar na Mesa manualmente.
+6. **Erro detectado.** Bot lê `atividade.jsonl` e inicia `remoto --apurar` (`remoto/bot.py:150-174`); `apurador.uma_volta` diagnostica e pode propor patch, mas não cria pedido nem aplica (`remoto/apurador.py:1032`, `:825-908`). Adrian recebe diagnóstico/remendo no Telegram e decide testar/aplicar por comandos separados.
+
+## Retrabalho e duplicação
+
+- O leitor ainda tem o fallback que cria um pedido novo para cada evento sem vínculo encontrado (`coordenador/pedidos.py:2924-3018`). O vínculo só existe enquanto `_retomar_com_resposta` reconhece `grimorio_ref`; respostas históricas/sem origem viram novo trabalhador.
+- Há duas portas diretas além da Mesa: contrato **Equipe** do app cria e roda delegado em `remoto/api_http.py:2978-2990`; proposta confirmada do cérebro faz o mesmo em `coordenador/cerebro.py:565-580`. A CLI do chat é uma terceira (`remoto/delegar.py:2138`).
+- A Mesa/fila do orquestrador também contrata diretamente via gerente (`coordenador/equipe.py:55-83`), paralela à Mesa de pedidos. Seus registros são `orquestrador/estado.json`, não `pedidos.json`.
+- Fichas `rodando` não significam processo vivo: a Mesa trata PID morto como parado (`coordenador/pedidos.py:1608-1642`), mas o retrato do vigia ainda lista por situação (`coordenador/vigia_trabalho.py:668+`).
+
+**Medição local (07/10 19:41, `python -m remoto.delegar listar`):** 134 delegados: 86 `terminou`, 17 `parado`, 10 `criado`, 8 `falhou`, 8 `rodando`, 3 `negado`, 2 `aguardando_permissao`. Dos 8 rodando, 7 não têm processo vivo (`sprites-recortador`, `sprites-guarda-roupa`, `pedido-637b4d56-1`, `picasso-fora-historias`, `pedido-936b3f89`, `pedido-65acd8b9`, `pedido-7c727778-1`). Há 40 fichas de delegado `pedido-*` cujo título diz “respondeu no Grimório”; no `pedidos.json` são 30 pedidos lógicos de origem `grimorio` (os 10 extras são tentativas/duplicatas `-1`).
+
+## Arquitetura-alvo: o que já existe e o que falta
+
+Já existe: trava e recibo de pedidos; deduplicação de comando igual pendente (`remoto/orquestrador.py:1412-1460`); fila por área (`:523-646`); escolha Codex quando Claude passa teto (`coordenador/pedidos.py:1445-1465`, `coordenador/equipe.py:42-53`); prova automática + diff + aplicação bloqueada por janela/publicação (`remoto/delegar.py:1657-1855`); vigia que aplica/commita e reinicia em momento seguro (`coordenador/vigia_trabalho.py:668-925`, `coordenador/supervisor.py:430+`); teto de uso (`remoto/orquestrador.py:2258`); telas agregadas (`remoto/api_http.py:1858-1927`).
+
+Falta: uma chave de origem obrigatória em todo trabalho; impedir/criar adaptadores para as portas diretas; fila única (Mesa de pedidos + fila do orquestrador); leitor do Grimório sem fallback que cria pedido quando a origem deveria existir; um estado único que conte PID real, pedido, trabalhador, prova e commit; teto Claude aplicado também aos disparos externos/apurador; e desativar o fluxo de patch do apurador ou fazê-lo abrir pedido.
+
+## Corte incremental para etapa b
+
+1. Em `coordenador/pedidos.py`, tornar o pedido a fonte obrigatória: acrescentar `origem_ref`/`grimorio_ref` e índice durável nó-evento -> `pedido_id`; ao receber resposta do Grimório, só retomar esse pedido ou registrar “origem ausente” para Adrian, sem criar `pedido-*`.
+2. Fazer `remoto/api_http.py` (Equipe) e `coordenador/cerebro.py` (proposta `delegar_codex`) chamarem uma API de criação da Mesa, não `delegar.criar`/`no_fundo`. Preservar cargo e permitidos como campos do pedido.
+3. Em `coordenador/equipe.py`, converter item da fila do orquestrador em pedido (ou absorver a fila no `pedidos.json`) antes de contratar. Depois, retirar contratação duplicada do gerente.
+4. Em `remoto/delegar.py`, manter funções baixas, mas mudar CLI `criar/rodar` para exigir um `pedido_id`/adaptador; bloquear criação solta após migração. O chat continua podendo propor, mas não iniciar trabalho fora da porta.
+5. Em `coordenador/vigia_trabalho.py`, gravar no próprio pedido prova, patch, commit e PID real; `api_http.py` passa a renderizar essa visão única. Só então remover espelhos de estado usados apenas pela tela.
+6. Decidir em etapa c o apurador: mais seguro é ele abrir um pedido de investigação com o diagnóstico anexado, em vez de manter a via independente de remendo.
+
