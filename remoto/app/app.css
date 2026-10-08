@@ -898,64 +898,8 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .orq-carteiro-linha.trabalhando { color: var(--ativo); }
 .orq-carteiro-linha.erro { color: var(--erro); }
 
-/* Atelie: grade de passos pequena o bastante para 390 px. */
-.atelie-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.atelie-campos input, .atelie-campos select { width: 100%; box-sizing: border-box; min-height: 44px; }
-.atelie-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
-.atelie-slot { min-height: 58px; text-align: left; font: inherit; overflow: hidden; }
-.atelie-slot img { width: 34px; height: 34px; object-fit: contain; vertical-align: middle; margin-right: 4px; }
-.atelie-espelho { display: inline-block; margin: 8px 0; }
-.atelie-previas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
-.atelie-previas img { width: 100%; max-height: 120px; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
-#recortador-folha-caixa { margin: 10px 0; }
-#recortador-limpa { display: block; width: 100%; max-height: 260px; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
-.recortador-lista { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.recortador-item { min-height: 44px; display: grid; grid-template-columns: 22px 1fr; gap: 4px; padding: 6px; border: 1px solid #aaa; border-radius: 10px; cursor: pointer; }
-.recortador-item.escolhido { outline: 3px solid #2f8f5b; }
-.recortador-item img { grid-column: 2; width: 100%; height: 112px; object-fit: contain; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
-.recortador-item span { grid-column: 1 / -1; font-size: .85em; }
-#recortador-folha .acao, #recortador-folha select, #recortador-folha input[type="file"] { min-height: 44px; font: inherit; }
-/* O `input` global (o código de pareamento) espaça e centraliza as letras: no
-   seletor de arquivo o nome saía "f o l h a _ …" (conferente, 06/10). */
-input[type="file"] { letter-spacing: normal; text-align: left; }
-#recortador-olhos-caixa p { margin: 4px 0 8px; }
-/* O "Ateliê antigo" recolhido: o toque tinha 22 px de altura. */
-#atelie-montar > details > summary { min-height: 44px; box-sizing: border-box; padding: 11px 4px; cursor: pointer; }
-.modular-previa-caixa { margin: 10px 0 0; text-align: center; }
-.modular-previa { display: block; width: min(100%, 300px); aspect-ratio: 1; object-fit: contain; margin: 0 auto 6px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; border-radius: 16px; }
-#modular-hoje { background: #1b1e27; }
-.modular-folha { display: block; width: 100%; height: auto; margin: 10px 0; border-radius: 14px; background: #1b1e27; }
-.modular-progresso { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.modular-contador { padding: 6px 10px; border-radius: 999px; background: rgba(127, 127, 127, .16); font-size: .92em; }
-.modular-contador.completo { background: rgba(46, 160, 90, .22); }
-.modular-expressoes { display: flex; flex-wrap: wrap; gap: 6px; }
-.modular-expressoes .acao, .modular-todas, .modular-previacao .acao, #sprites-modulares select { min-height: 44px; font: inherit; }
-.modular-expressao { flex: 1 0 auto; min-width: 72px; padding: 0 12px; }
-.modular-expressao.escolhida { outline: 3px solid #2f8f5b; outline-offset: -3px; font-weight: 700; }
-.modular-todas { width: 100%; margin-top: 8px; }
-.modular-slots { display: grid; gap: 8px; margin-top: 10px; }
-.modular-slot { min-height: 58px; text-align: left; display: grid; gap: 7px; font: inherit; cursor: default; }
-.modular-slot.anexado { border-left: 5px solid #2f8f5b; }
-.modular-slot-topo { display: flex; align-items: center; gap: 10px; }
-.modular-slot-topo strong { display: block; }
-.modular-situacao { display: block; font-size: .9em; opacity: .8; }
-.modular-mini { width: 56px; height: 56px; flex: 0 0 56px; object-fit: contain; border-radius: 10px; background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 10px 10px; }
-.modular-acoes { display: flex; flex-wrap: wrap; gap: 7px; }
-.modular-acoes .acao { min-height: 44px; flex: 1 0 96px; font: inherit; }
-.modular-acoes .modular-gabarito { flex-basis: 100%; }
-.modular-folha { cursor: zoom-in; }
-.modular-previacao { margin-top: 10px; }
-.modular-previacao .acao { width: 100%; }
-@media (prefers-color-scheme: dark) {
-  .modular-previa { background-color: #26303a; }
-  .modular-mini { background: repeating-conic-gradient(#3a4452 0 25%, #2b333e 0 50%) 50% / 10px 10px; }
-}
-
 /* ---- Ateliê: os dois modos e o Provador, o jogo de vestir (06/10/2026) ----
    Todo toque com >= 44 px; o fundo xadrez mostra a transparência da peça. */
-.atelie-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.atelie-modos .acao { min-height: 48px; font-weight: 600; }
-.atelie-modos .acao[aria-pressed="true"] { background: var(--acento); color: #fff; border-color: transparent; }
 .livro.atelie { padding-top: calc(112px + env(safe-area-inset-top)); }
 .atelie-novo { max-width: 760px; margin: auto; }
 .atelie-novo-cabeca { display: flex; gap: 8px; align-items: center; position: relative; z-index: 1; }
@@ -990,80 +934,6 @@ input[type="file"] { letter-spacing: normal; text-align: left; }
   #anim-editor .anim-folha { grid-column: 1; grid-row: 1 / span 8; margin: 0; }
   #anim-editor > :not(.anim-folha) { grid-column: 2; }
 }
-#provador .acao, #provador select, #provador input[type="search"] { min-height: 44px; font: inherit; }
-/* O `input` global (código de pareamento) espaça e centraliza: o "nome do
-   lutador" saía "n o m e   d o…" cortado (conferente, 07/10). */
-#provador input[type="search"] { padding: 0 10px; border-radius: 8px; letter-spacing: normal; text-align: left; }
-.provador-lista { display: grid; gap: 6px; max-height: 340px; overflow-y: auto; margin-top: 8px; }
-.provador-item { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; text-align: left; padding: 6px 12px; }
-.provador-item.escolhido { outline: 3px solid #2f8f5b; outline-offset: -3px; }
-.provador-item-nome { font-weight: 600; }
-.provador-item-classe { grid-column: 1; font-size: .88em; color: var(--fraco); }
-.provador-fixadas { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: .92em; }
-.provador-quem { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0; }
-.provador-quem strong { display: block; font-size: 1.1em; }
-.provador-quem .acao { flex: none; }
-/* O lutador montado PRESO à vista (conferente, 06/10: com ‹ › lá embaixo a
-   prévia ficava 47 px acima do topo em pé e 270 px deitado). Em pé ele gruda
-   logo abaixo do cabeçalho (o mesmo -10 px do interruptor do Claude); deitado
-   ele vai para a coluna da esquerda e os controles rolam à direita. */
-/* 07/10 (conferente): em pé a faixa presa tinha 230 px de prévia + legenda,
-   ~37% dos 844 px, e cobria o topo da folha do Godot. Agora é uma faixa
-   baixa: a prévia (até 150 px / 18vh) à esquerda e a legenda ao lado, ~19%.
-   Tocar na prévia abre em tela cheia, como a folha. */
-.provador-palco { margin: 8px -6px 0; padding: 4px 6px 4px; text-align: left; position: sticky; top: -10px;
-  z-index: 2; background: var(--cartao); border-radius: 0 0 14px 14px; box-shadow: 0 8px 8px -8px rgba(60, 40, 20, .35);
-  display: flex; align-items: center; gap: 10px; }
-.provador-palco figcaption { margin: 0; flex: 1; min-width: 0; }
-.provador-previa { display: block; flex: none; width: min(150px, 18vh); aspect-ratio: 1; object-fit: contain; margin: 0;
-  border-radius: 16px; cursor: zoom-in;
-  background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 16px 16px; }
-@media (orientation: landscape) and (min-width: 560px) {
-  .provador-palco-caixa:not(.oculto) { display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 1fr);
-    gap: 12px; align-items: start; }
-  .provador-palco { margin: 8px 0 0; box-shadow: none; border-radius: 14px; display: block; text-align: center; }
-  .provador-previa { width: min(100%, calc(100vh - 120px)); margin: 0 auto 4px; }
-}
-.provador-pecas { display: grid; gap: 8px; margin-top: 12px; }
-.provador-peca { border: 1px solid var(--linha); border-left-width: 5px; border-radius: 12px; padding: 8px 10px;
-  background: var(--cartao); }
-.provador-peca.fixada { border-left-color: #2f8f5b; }
-.provador-peca.sorteio { border-left-color: #b8913a; }
-.provador-peca.experimento { border-left-color: var(--acento); border-style: dashed; border-left-style: solid; }
-.provador-peca-topo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.provador-contagem { font-weight: 700; }
-.provador-selo { flex-basis: 100%; font-size: .92em; }
-.provador-controles { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 8px; margin: 6px 0 2px; }
-#provador .provador-seta { min-height: 64px; font-size: 30px; line-height: 1; padding: 0; }
-.provador-mini { justify-self: center; width: 88px; height: 88px; object-fit: contain; border-radius: 12px;
-  background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 12px 12px; }
-.provador-dono { margin: 2px 0 0; font-size: .88em; }
-.provador-acoes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.provador-acoes .acao { flex: 1 0 96px; }
-.provador-geral { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
-/* A galeria de variantes no cartão do painel de anexo. */
-.modular-galeria { border-top: 1px solid var(--linha); padding-top: 6px; }
-.modular-galeria p { margin: 0 0 6px; font-size: .9em; }
-.modular-variantes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.modular-variante { margin: 0; display: grid; gap: 4px; justify-items: center; font-size: .88em; }
-.modular-variante-img { width: 88px; height: 88px; object-fit: contain; border-radius: 10px;
-  background: repeating-conic-gradient(#ddd 0 25%, #bbb 0 50%) 50% / 10px 10px; }
-.modular-variante-img.modular-variante-sem, .provador-mini.modular-variante-sem { display: grid; place-items: center; text-align: center; font-size: .85em;
-  color: var(--fraco); border: 1px dashed var(--linha); background: none; padding: 4px; }
-.modular-variante .acao, .modular-desfazer-variante { min-height: 44px; width: 100%; font: inherit; }
-.modular-desfazer-variante { margin-top: 6px; }
-/* O resultado do toque, dentro do cartão tocado (07/10). */
-.modular-cartao-aviso { margin: 0; padding: 8px 10px; border-radius: 8px; font-weight: 600;
-  background: rgba(46, 160, 90, .16); }
-.modular-cartao-aviso.ruim { background: rgba(192, 57, 43, .16); color: var(--erro); }
-.modular-galeria-aviso { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; font-weight: 600;
-  background: rgba(184, 145, 58, .18); }
-@media (prefers-color-scheme: dark) {
-  .provador-previa, .provador-mini, .modular-variante-img {
-    background: repeating-conic-gradient(#3a4452 0 25%, #2b333e 0 50%) 50% / 12px 12px; }
-  .provador-peca.sorteio { border-left-color: #d9b45c; }
-}
-
 /* ---- o interruptor do Claude (29/09): no topo, preso ao rolar. Compacto
    (uma faixa de ~52 px), para não cobrir a Mesa quando fica preso. */
 /* O `top` do sticky conta da borda INTERNA do padding do livro (64 px +
@@ -1268,3 +1138,4 @@ button.orq-codex-tarefa { width: 100%; text-align: left; background: transparent
 .equipe-rodando .equipe-titulo::before { content: "● "; color: #2e9d55; }
 .equipe-falhou .equipe-titulo::before, .equipe-parado .equipe-titulo::before { content: "● "; color: #c0392b; }
 .equipe-concluidos summary { cursor: pointer; padding: 8px 0; color: var(--fraco); }
+

@@ -17,8 +17,7 @@ APP = Path(__file__).resolve().parent / "app"
 HTML = (APP / "index.html").read_text(encoding="utf-8")
 JS = {n: (APP / n).read_text(encoding="utf-8")
       for n in ("app.js", "vila.js", "comandos.js", "decisoes.js", "orquestrador.js",
-                "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js", "atelie.js",
-                "provador.js")}
+                "coordenador.js", "conversa.js", "oficina.js", "biblioteca.js", "atelie_novo.js")}
 
 # os quatro objetos da prateleira (02/10/2026): o rótulo e a aba que abre
 # da primeira vez (`data-tela`)
@@ -68,10 +67,6 @@ FUNCOES = [
     # relatórios e decisões
     "abas-relatorio", "relatorio", "decisoes-abas", "decisoes-lista",
     "decisao-item", "sprites-lista",
-    # Atelie: passos importados pelo Adrian, em Ver
-    "atelie-sujeito", "atelie-nome", "atelie-slots", "atelie-editor", "atelie-arquivo",
-    "atelie-tolerancia", "atelie-modo", "atelie-colunas", "atelie-linhas", "atelie-espelho",
-    "atelie-refazer", "atelie-salvar", "atelie-descartar", "atelie-previas",
     # confirmação em dois passos e campos das fichas
     "dialogo", "dialogo-texto", "dialogo-destinos", "dialogo-sim",
     "dialogo-prazo", "dialogo-campos", "campos-corpo", "btn-campos-ok",
@@ -144,29 +139,15 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v42 = a caixinha do gerente salva na hora e o recarregar nao a desfaz (05/10);
     # v43 = a aba 🧭 Fluxo da Biblioteca, o caminho de um pedido (05/10);
     # v44 = pedido honesto v2: Responder no pedido, rótulos novos, teto da semana (05/10);
-    # v45 = a conversa responde como gente, com "pensando…" (06/10);
-    # v46 = o Ateliê anexa sprite por slot do manifesto (06/10); v47 = painel modular completo;
-    # v48 = o anexo pelo seletor funciona, 24 carinhas, prévia por estilo (06/10);
-    # v49 = guarda-roupa de variantes (vNN) + provador; v50 = recortador de folha
-    # verde/magenta junto com o guarda-roupa (06/10); v51 = o Provador (jogo de
-    # vestir), a galeria de variantes no cartao e "+ Nova variante" com varios arquivos;
-    # v52 = recortador encaixa no DESTINO, pares de olhos, prévia do Provador presa (06/10);
-    # v53 = «Passar para a equipe» na resposta a uma pergunta livre (07/10);
-    # v54 = Ateliê redondo: "Mandar para" em peça + carinha, prévia presa compacta,
-    # miniaturas recortadas na peça, Conversa legível no escuro (07/10);
-    # v55 = reprovação da v54: pedacinho solto só nos olhos, junção segue o
-    # destino, nome do arquivo por palavra, aviso dentro do cartão (07/10);
-    # v56 = com 2+ variantes o topo diz "Trocar/Apagar esta carinha" e a
-    # galeria "Apagar variante" (decisão app-e-bot/atelie-dois-apagar, 07/10).
     # v57 = Contratar da Equipe entra na Mesa de pedidos (07/10).
       # v59 = previa do lutador montado do Atelie (08/10).
-    assert "painel-casca-v59" in sw
+    assert "painel-casca-v60" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
     assert '"assembleia.js"' in sw
     assert '"atelie_novo.js"' in sw
-    assert '"provador.js"' not in sw
+    assert '"atelie_novo.js"' in sw
 
 
 def test_o_icone_novo_esta_no_manifest_na_casca_e_no_servidor():
@@ -257,3 +238,6 @@ def test_as_secoes_da_antiga_mesa_moram_nos_objetos_e_o_servidor_serve_o_js():
     from remoto import api_http
     assert api_http.ESTATICOS["/orquestrador.js"][0] == "orquestrador.js"
     assert '<script src="orquestrador.js"></script>' in HTML
+
+
+

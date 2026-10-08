@@ -1,5 +1,9 @@
 # App do celular e bot do Telegram
 
+## Atelie antigo removido (08/10/2026)
+
+Montar, Recortador, Provador, variantes e guarda-roupa sairam do app. O fluxo ativo e peca, estado, animacao e folha.
+
 ## Sprites: guarda-roupa (06/10/2026)
 
 As partes de lutador agora são coleções em `v01`, `v02` etc. O painel pode

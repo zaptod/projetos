@@ -18,7 +18,33 @@ from neural_fights.core.status_runtime import BUFF_EFFECT_RUNTIME, STATUS_RUNTIM
 from neural_fights.data import database
 from neural_fights.models.constants import CLASSES_DATA, TIPOS_ARMA
 from neural_fights.recording import timeline
-from neural_fights.tools.manifesto_sprites import EXPRESSOES, slug, texto_humano
+EXPRESSOES = (
+    "neutro", "focado", "glacial", "determinado", "furia", "berserk", "confiante", "animado",
+    "euforico", "extase", "panico", "nervoso", "desespero", "tedio", "tristeza", "morto",
+    "tonto", "dor", "esforco", "firmeza", "alerta", "confuso", "limite", "concentrado",
+)
+
+
+def slug(texto: str) -> str:
+    de, para = "áàâãäåéèêëíìîïóòôõöúùûüçñý", "aaaaaaeeeeiiiiooooouuuucny"
+    saida = ""
+    for letra in str(texto or "").strip().lower():
+        indice = de.find(letra)
+        letra = para[indice] if indice >= 0 else letra
+        if "a" <= letra <= "z" or "0" <= letra <= "9":
+            saida += letra
+        elif saida and not saida.endswith("_"):
+            saida += "_"
+    return saida.rstrip("_")
+
+
+def texto_humano(chave: str) -> str:
+    palavras = {"gravitacao": "gravitação", "critico": "crítico", "projetil": "projétil",
+                "colisao": "colisão", "obstaculo": "obstáculo", "explosao": "explosão",
+                "agarrao": "agarrão", "vulneravel": "vulnerável", "relogio": "relógio",
+                "paralisia": "paralisia", "lancado": "lançado", "magica": "mágica"}
+    texto = " ".join(palavras.get(p, p) for p in str(chave).lower().replace("_", " ").split())
+    return texto[:1].upper() + texto[1:]
 
 
 RAIZ = Path(__file__).resolve().parents[2]

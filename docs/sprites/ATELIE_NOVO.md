@@ -5,6 +5,9 @@ Cada folha fica em `palco/biblioteca/animacoes/<peca>/<estado>/<animacao>/`.
 novo, a versao anterior vai para `historico/<carimbo>/`; desfazer troca a atual
 pela mais recente desse historico.
 
+O Atelie antigo foi retirado do app: nao ha Montar, Recortador, Provador,
+variantes ou guarda-roupa. Permanecem somente as rotas `/api/animacoes/*`.
+
 `animacao.json` tem `quadros` (retangulos `x`, `y`, `w`, `h`), `fps`, `loop`,
 `ida_e_volta`, `ancora` (`x`, `y` relativos ao quadro), `escala`, `rotacao`,
 `espelho`, `gatilho` e `versao`. `duracao_por_quadro` e opcional e indexada por
