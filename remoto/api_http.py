@@ -111,9 +111,23 @@ def _pasta_previas_animacoes() -> Path:
 
 
 def _iniciar_previa_animacao(peca: str, estado: str, animacao: str) -> str:
-    """Agenda uma previa; a mesma peca reaproveita o trabalho em andamento."""
+    """Agenda uma previa; a mesma peca NA MESMA VERSAO reaproveita o trabalho.
+
+    08/10/2026: o id era so peca|estado|animacao e, depois de ajustar e
+    salvar, o "Ver no Godot" devolvia o video velho (o Adrian nos cristais).
+    Agora a versao salva (animacao.json + folha) entra no id."""
     global _PREVIA_ANIMACAO_OCUPADA
-    alvo = "|".join((peca, estado, animacao))
+    versao = ""
+    try:
+        pasta = atelie_animacoes.caminho(peca, estado, animacao)
+        for nome in ("animacao.json", "folha.png"):
+            arquivo = pasta / nome
+            if arquivo.is_file():
+                info = arquivo.stat()
+                versao += f"{nome}:{info.st_size}:{info.st_mtime_ns};"
+    except (OSError, ValueError):
+        pass
+    alvo = "|".join((peca, estado, animacao, versao))
     ident = hashlib.sha256(alvo.encode("utf-8")).hexdigest()[:16]
     with _TRAVA_PREVIAS_ANIMACOES:
         atual = _PREVIAS_ANIMACOES.get(ident)

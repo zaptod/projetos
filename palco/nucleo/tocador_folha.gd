@@ -41,8 +41,13 @@ func _preparar_catalogo() -> void:
 			if pasta != "":
 				_animacoes[chave] = {"pasta": pasta, "loop": bool(animacao.get("loop", true)),
 					"tamanho": _tamanho_do_catalogo(animacao.get("tamanho_padrao", "1"))}
-			if chave == "ocioso" and _ocioso == "":
-				_ocioso = chave
+	# A animacao de repouso e a `ocioso`; peca sem ela (ex. Cristais Flutuantes:
+	# so `orbitar`, gatilho orbe) repousa na 1a que tem folha — antes ela nunca
+	# tocava (08/10/2026).
+	if _animacoes.has("ocioso"):
+		_ocioso = "ocioso"
+	elif not _animacoes.is_empty():
+		_ocioso = str(_animacoes.keys()[0])
 	if _ocioso != "":
 		_trocar(_ocioso)
 
@@ -77,6 +82,8 @@ func carregar(pasta: String) -> bool:
 
 func tocar(novo_gatilho: String) -> void:
 	if not _animacoes.is_empty():
+		if novo_gatilho == "ocioso" and not _animacoes.has("ocioso"):
+			novo_gatilho = _ocioso       # "voltar ao repouso" na peca sem ocioso
 		# chamado a cada quadro: so troca (e recomeca) quando muda de animacao
 		if _animacoes.has(novo_gatilho) and novo_gatilho != gatilho_animacao:
 			_trocar(novo_gatilho)
