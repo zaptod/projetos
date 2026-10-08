@@ -39,3 +39,21 @@ def pytest_runtest_makereport(item, call):
         relatorio.outcome = "skipped"
         relatorio.longrepr = (caminho, linha,
                               f"Skipped: Tk nao iniciou: {erro}")
+
+
+@pytest.fixture(autouse=True)
+def atelie_vazio(tmp_path, monkeypatch):
+    """A arte de verdade do Adrian no Atelie (palco/biblioteca/animacoes) nao
+    entra nos testes do painel: as fotos de referencia da Vila sao do desenho
+    de codigo. 08/10/2026: a arvore dele quebrou `test_nada_fora_do_grok_mudou`.
+    Quem testa o Atelie aponta para a pasta dele mesmo."""
+    from neural_fights.tools import atelie_animacoes
+    from painel.flutuante import arte_pronta
+    monkeypatch.setattr(atelie_animacoes, "ANIMACOES", tmp_path / "atelie_animacoes_vazio")
+    arte_pronta._PECAS_ATELIE.clear()
+    arte_pronta._FOLHAS_ATELIE.clear()
+    arte_pronta._limpar()
+    yield
+    arte_pronta._PECAS_ATELIE.clear()
+    arte_pronta._FOLHAS_ATELIE.clear()
+    arte_pronta._limpar()

@@ -192,12 +192,58 @@ def indice() -> dict:
 
 
 def tem(nome_arquivo: str) -> bool:
-    return nome_arquivo in indice()
+    return nome_arquivo in indice() or peca_do_atelie(nome_arquivo) is not None
 
 
 # ------------------------------------------------------------- leitura
+def peca_do_atelie(nome_arquivo: str) -> Image.Image | None:
+    """O 1o quadro da arte do Atelie para este item do inventario, ou None.
+
+    08/10/2026: a Vila so lia o Atelie nos habitantes; a arvore que o Adrian
+    salvou nunca foi procurada. Toda leitura de peca passa por aqui primeiro.
+    Animacao do Atelie: a de gatilho/nome "parado" se houver, senao a 1a."""
+    item = itens().get(nome_arquivo) or {}
+    chave = catalogo_vila.chave_do_item(item) if item else None
+    if not chave:
+        return None
+    pasta_estado = atelie_animacoes.ANIMACOES / chave[0] / chave[1]
+    try:
+        animacoes = sorted(d.name for d in pasta_estado.iterdir() if (d / "folha.png").is_file())
+    except OSError:
+        return None
+    if not animacoes:
+        return None
+    nome_anim = "parado" if "parado" in animacoes else animacoes[0]
+    png = pasta_estado / nome_anim / "folha.png"
+    try:
+        marca = png.stat().st_mtime_ns
+    except OSError:
+        return None
+    guardada = _PECAS_ATELIE.get(nome_arquivo)
+    if guardada and guardada[0] == marca:
+        return guardada[1]
+    dados = atelie_animacoes.ler(chave[0], chave[1], nome_anim) or {}
+    q = (dados.get("quadros") or [None])[0]
+    try:
+        with Image.open(png) as imagem:
+            img = imagem.convert("RGBA")
+    except (OSError, ValueError):
+        return None
+    if q:
+        img = img.crop((q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"]))
+    _PECAS_ATELIE[nome_arquivo] = (marca, img)
+    return img
+
+
+_PECAS_ATELIE: dict = {}
+
+
 def peca(nome_arquivo: str) -> Image.Image | None:
-    """A imagem aprovada em RGBA (tamanho original), ou None."""
+    """A imagem aprovada em RGBA (tamanho original), ou None. A arte do
+    Atelie vence a da esteira."""
+    do_atelie = peca_do_atelie(nome_arquivo)
+    if do_atelie is not None:
+        return do_atelie
     caminho = indice().get(nome_arquivo)
     if caminho is None:
         return None

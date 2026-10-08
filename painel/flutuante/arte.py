@@ -348,6 +348,11 @@ def desenhar_chao(escala: int = 1) -> Image.Image:
 
 
 def desenhar_arvore(tom: str = "#5fb45a", escala: int = 1) -> Image.Image:
+    # a arvore do Adrian (Atelie: Vila > Cenario > Arvore) vence o desenho de
+    # codigo; antes nada procurava por ela (08/10/2026)
+    pronta = arte_pronta.ajustada("cenario/arvore.png", 36, 44, escala)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(36, 44, escala)
     p.ret(15.5, 24, 20.5, 40, 2, "#a0714a", "#83593a", 0.6)
     for cx, cy, r, t in ((12, 17, 10, 0.0), (24, 16, 10, 0.05),
