@@ -188,12 +188,12 @@ class EscoarEAvulsoTests(unittest.TestCase):
     """Os outros dois caminhos do postar que sobem parte de historia
     (`--tudo` e `--so-youtube`) passam pela mesma porta."""
 
-    def test_os_tres_caminhos_usam_a_porta(self):
+    def test_os_quatro_caminhos_usam_a_porta(self):
         fonte = POSTAR.read_text(encoding="utf-8")
         self.assertEqual(1, fonte.count("catalogo.publicar_youtube("),
                          "so a porta (_subir_parte_no_youtube) chama o "
                          "catalogo direto")
-        self.assertEqual(3, fonte.count("url = _subir_parte_no_youtube(alvo"))
+        self.assertEqual(4, fonte.count("url = _subir_parte_no_youtube(alvo"))
 
 
 if __name__ == "__main__":

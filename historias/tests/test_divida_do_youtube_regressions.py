@@ -84,6 +84,7 @@ class DividaDoYoutubeTests(unittest.TestCase):
         self.m._dormir = lambda _s: None
         self.m.esperar_a_rede = lambda **k: True
         self.m._ainda_no_horario = lambda comeco, slot, **k: True
+        self.m._cabe_antes_do_proximo = lambda passo="", agora=None: True
         self.m._tiktok_neste_horario = lambda agora=None: True
         self.m.titulo_repetido = lambda *a, **k: False
         self.m._registrar_valvula = lambda ficha: None
@@ -140,6 +141,7 @@ class DividaDoYoutubeTests(unittest.TestCase):
 
         self.no_youtube, self.no_tiktok = [], []
         self.quedas_do_youtube = 0
+        self.quedas_do_tiktok = 0
 
         def publicar_youtube(alvo, visibilidade=None, *, provas=None, **_k):
             self.no_youtube.append(alvo.id)
@@ -153,6 +155,10 @@ class DividaDoYoutubeTests(unittest.TestCase):
 
         def tiktok_posta(alvo, falha=None):
             self.no_tiktok.append(alvo.id)
+            if self.quedas_do_tiktok:
+                self.quedas_do_tiktok -= 1
+                falha["erro"] = QUEDA
+                return ""
             self.ledger.append(_linha_do_ledger(alvo, "tiktok",
                                                 "2026-10-06T00:44:00",
                                                 neste=True))
@@ -202,16 +208,36 @@ class DividaDoYoutubeTests(unittest.TestCase):
         self.ledger.append(_linha_do_ledger(P2, "tiktok",
                                             "2026-10-06T00:39:00"))
         ficha = self.m.postar_historia()
-        self.assertEqual([P2.id], self.no_youtube)
+        self.assertEqual([P2.id, P3.id], self.no_youtube)
         self.assertEqual([P3.id], self.no_tiktok)
         self.assertEqual(P2.id, ficha["alvo"])
         self.assertEqual(P3.id, ficha["tiktok_alvo"])
+        self.assertEqual(P3.id, ficha["youtube_alcance"]["alvo"])
         self.assertEqual("2026-10-06T00:39:00", ficha["youtube_devido"])
         self.assertTrue(ficha["feito"])
         # Ledger certo por destino.
-        self.assertEqual([P1.id, P2.id], self._no_youtube_do_ledger())
+        self.assertEqual([P1.id, P2.id, P3.id], self._no_youtube_do_ledger())
         self.assertIn(P3.id, [l["video_id"] for l in self.ledger
                               if l["plataforma"] == "tiktok"])
+
+    def test_tiktok_caido_nao_segura_o_alcance(self):
+        self.ledger.append(_linha_do_ledger(P2, "tiktok",
+                                            "2026-10-06T00:39:00"))
+        self.quedas_do_tiktok = 1
+        ficha = self.m.postar_historia()
+        self.assertEqual([P2.id, P3.id], self.no_youtube)
+        self.assertEqual([P3.id], self.no_tiktok)
+        self.assertEqual(P3.id, ficha["youtube_alcance"]["alvo"])
+        self.assertIn("tiktok_falha", ficha)
+
+    def test_alcance_nao_repete_parte_ja_no_youtube(self):
+        self.ledger.append(_linha_do_ledger(P2, "tiktok",
+                                            "2026-10-06T00:39:00"))
+        self.ledger.append(_linha_do_ledger(P3, "youtube",
+                                            "2026-10-06T00:40:00"))
+        ficha = self.m.postar_historia()
+        self.assertEqual([P2.id, P4.id], self.no_youtube)
+        self.assertNotEqual(P3.id, ficha["youtube_alcance"]["alvo"])
 
     def test_ver_mostra_o_que_o_youtube_levaria(self):
         self.ledger.append(_linha_do_ledger(P2, "tiktok",
@@ -278,7 +304,8 @@ class DividaDoYoutubeTests(unittest.TestCase):
         alvo, quando, _motivos = self.m._divida_do_youtube()
         self.assertEqual((P1.id, "2026-10-05T23:50:02"), (alvo.id, quando))
         ficha = self.m.postar_historia()
-        self.assertEqual(([P1.id], [P3.id]), (self.no_youtube, self.no_tiktok))
+        self.assertEqual(([P1.id, P3.id], [P3.id]),
+                         (self.no_youtube, self.no_tiktok))
         self.assertEqual(P3.id, ficha["tiktok_alvo"])
         # Horario seguinte: agora a p02 e a divida (a p01 ja esta no YouTube).
         for linha in self.ledger:
@@ -294,6 +321,21 @@ class DividaDoYoutubeTests(unittest.TestCase):
         alvo, _quando, motivos = self.m._divida_do_youtube()
         self.assertIsNone(alvo)
         self.assertIn("hoje no YouTube", motivos[0])
+
+    def test_alcance_respeita_o_teto_por_fonte(self):
+        self.ledger.append(_linha_do_ledger(P2, "tiktok",
+                                            "2026-10-06T00:39:00"))
+        chamadas = 0
+
+        def cheias(*_a, **_k):
+            nonlocal chamadas
+            chamadas += 1
+            return set() if chamadas == 1 else {"historia_00054"}
+        self.m._fontes_cheias_hoje = cheias
+        ficha = self.m.postar_historia()
+        self.assertEqual([P2.id], self.no_youtube)
+        self.assertEqual("teto por fonte no YouTube",
+                         ficha["youtube_alcance"]["pulado"])
 
     def test_sem_divida_tudo_como_antes(self):
         """Caso zero: nada so no TikTok. Mesmo alvo nos dois destinos."""

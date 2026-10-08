@@ -1379,6 +1379,51 @@ def _valvula_da_outra_parte(ficha: dict, tk_alvo) -> None:
         ficha["tiktok_retido"] = marcas["retido"]
 
 
+def _alcance_do_youtube(ficha: dict, alvo, visibilidade) -> None:
+    """Sobe a segunda parte do YouTube quando havia divida no horario."""
+    from contos.publicar import serie
+
+    if not _cabe_antes_do_proximo("a segunda subida do YouTube"):
+        ficha["youtube_alcance"] = {"pulado": "sem tempo antes do horario "
+                                              "seguinte"}
+        return
+    if serie.ja_publicado(alvo.id, "youtube"):
+        _linha(f"[postar] historias: alcance do YouTube nao repete {alvo.id}; "
+               "ja esta no ledger.")
+        return
+    if not _sem_a_conferir([alvo], "historias"):
+        return
+    try:
+        cheias = _fontes_cheias_hoje(serie.publicados(), "youtube")
+    except Exception:                                          # noqa: BLE001
+        cheias = set()
+    if alvo.fonte_id in cheias:
+        _linha(f"[postar] historias: alcance do YouTube nao fura o teto de "
+               f"{alvo.fonte_id}.")
+        ficha["youtube_alcance"] = {"pulado": "teto por fonte no YouTube"}
+        return
+
+    alcance = {"alvo": alvo.id, "titulo": alvo.titulo, "parte": alvo.parte,
+               "partes": alvo.partes, "url": ""}
+    ficha["youtube_alcance"] = alcance
+    provas: list = []
+    try:
+        url = _subir_parte_no_youtube(alvo, visibilidade, provas)
+        alcance["url"] = url
+        serie.registrar(alvo, url, "youtube", None,
+                        {"por": "postar.py", "visibilidade": visibilidade,
+                         "alcance": True, "prova": provas,
+                         "prova_ok": _prova_ok(provas),
+                         **_ids_da_parte(provas)})
+    except Exception as exc:                                   # noqa: BLE001
+        alcance["falhou"] = f"{type(exc).__name__}: {exc}"[:200]
+        if isinstance(exc, ParteMeioNoAr):
+            alcance["meio_no_ar"] = True
+            alcance["ids"] = exc.ids
+        _linha(f"[postar] historias: segunda subida do YouTube falhou "
+               f"({alcance['falhou']}); {alvo.id} continua pendente.")
+
+
 def postar_historia(*, so_ver: bool = False) -> dict:
     from contos.publicar import serie
 
@@ -1563,6 +1608,9 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     _registrar_valvula(dict(ficha, feito=bool(url) or mesmo_no_tiktok))
     if tk_saiu and tk_alvo is not alvo:
         _valvula_da_outra_parte(ficha, tk_alvo)
+    # A falha do TikTok nao segura este envio: a reposicao dele e outro funil.
+    if divida is not None and url and tk_alvo is not None and tk_alvo is not alvo:
+        _alcance_do_youtube(ficha, tk_alvo, visibilidade)
     return ficha
 
 
