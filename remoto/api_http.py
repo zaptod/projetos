@@ -1363,6 +1363,9 @@ class Manipulador(BaseHTTPRequestHandler):
             if rota == "/api/animacoes/esconder":
                 atelie_animacoes.esconder_animacao(corpo.get("peca"), corpo.get("estado"), corpo.get("animacao"))
                 return self._json({"feito": True})
+            if rota == "/api/animacoes/mostrar":
+                atelie_animacoes.mostrar_animacao(corpo.get("peca"), corpo.get("estado"), corpo.get("animacao"))
+                return self._json({"feito": True})
             if rota == "/api/animacoes/ajustes":
                 return self._json(atelie_animacoes.salvar_ajustes(corpo.get("ajustes") or corpo))
             if rota == "/api/animacoes/previa-godot":

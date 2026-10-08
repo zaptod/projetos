@@ -52,3 +52,27 @@ def test_ajustes_sobrevivem_catalogo_e_heranca(tmp_path, monkeypatch):
     assert pecas["estilo.y"]["estados"][0]["animacoes"][0]["usa_a_de"] == "tipo.x"
     arquivo.write_text(json.dumps(catalogo), encoding="utf-8")
     assert any(a["id"] == "chorar" for g in atelie.arvore() for p in g["pecas"] for e in p["estados"] for a in e["animacoes"])
+
+
+def test_folha_real_com_veu_e_ultima_linha_incompleta():
+    """08/10/2026: a folha do Adrian (6x5, 26 desenhos) tem um veu de alfa
+    baixo que sobra da remocao de fundo; o corte antigo (alfa > 0) devolvia
+    UM quadro do tamanho da folha. Celulas iguais, sem as vazias do fim."""
+    folha = Image.new("RGBA", (600, 250), (0, 0, 0, 5))          # veu quase invisivel
+    caneta = ImageDraw.Draw(folha)
+    for i in range(26):
+        lin, col = divmod(i, 6)
+        caneta.ellipse((col * 100 + 20, lin * 50 + 10, col * 100 + 80, lin * 50 + 40), fill=(90, 200, 40, 255))
+    quadros = atelie.fatiar_automatico(folha)
+    assert len(quadros) == 26
+    assert {(q["w"], q["h"]) for q in quadros} == {(100, 50)}
+    assert quadros[0] == {"x": 0, "y": 0, "w": 100, "h": 50}
+    assert quadros[-1] == {"x": 100, "y": 200, "w": 100, "h": 50}
+
+
+def test_esconder_tem_volta(tmp_path, monkeypatch):
+    monkeypatch.setattr(atelie, "AJUSTES", tmp_path / "ajustes.json")
+    atelie.esconder_animacao("peca.x", "base", "ociosa")
+    assert atelie.ajustes()["escondidas"] == ["peca.x/base/ociosa"]
+    atelie.mostrar_animacao("peca.x", "base", "ociosa")
+    assert atelie.ajustes()["escondidas"] == []

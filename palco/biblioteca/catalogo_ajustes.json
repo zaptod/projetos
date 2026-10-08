@@ -1,4 +1,13 @@
 {
-  "novas": [],
+  "novas": [
+    {
+      "peca": "classe.piromante_fogo",
+      "estado": "base",
+      "id": "sla",
+      "rotulo": "Sla",
+      "gatilho": "acerto",
+      "loop": true
+    }
+  ],
   "escondidas": []
 }

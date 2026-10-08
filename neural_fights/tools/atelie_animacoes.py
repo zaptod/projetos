@@ -137,23 +137,56 @@ def desfazer(peca: object, estado: object, animacao: object) -> dict:
     return ler(peca, estado, animacao) or {}
 
 
+ALFA_TINTA = 24      # abaixo disto e veu de remocao de fundo, nao desenho
+RUIDO = 2            # pixels soltos numa faixa que nao fazem desenho
+
+
 def fatiar_automatico(folha: bytes | Image.Image) -> list[dict]:
+    """Quadros de uma folha com transparencia, na ordem de leitura.
+
+    08/10/2026, folha real do Adrian (1942x809, 6x5 com 26 desenhos): o
+    corte antigo usava alfa > 0 e o veu quase invisivel que sobra da remocao
+    de fundo virava UM quadro do tamanho da folha. Agora: tinta = alfa acima
+    de ALFA_TINTA em mais de RUIDO pixels da faixa; se as faixas cabem numa
+    grade de celulas iguais (o jeito que as folhas sao feitas), os quadros sao
+    essas celulas (mesmo tamanho = a animacao nao treme); celula sem tinta
+    (fim da ultima linha) sai."""
     imagem = folha if isinstance(folha, Image.Image) else Image.open(io.BytesIO(folha))
     alfa = imagem.convert("RGBA").getchannel("A")
     w, h = imagem.size
-    px = alfa.load()
-    colunas = [any(px[x, y] > 0 for y in range(h)) for x in range(w)]
-    linhas = [any(px[x, y] > 0 for x in range(w)) for y in range(h)]
-    def faixas(valores):
+    tinta = alfa.point(lambda v: 255 if v > ALFA_TINTA else 0)
+    px = tinta.load()
+    por_coluna = [sum(1 for y in range(h) if px[x, y]) for x in range(w)]
+    por_linha = [sum(1 for x in range(w) if px[x, y]) for y in range(h)]
+
+    def faixas(contagens):
         inicio, saida = None, []
-        for i, valor in enumerate([*valores, False]):
-            if valor and inicio is None: inicio = i
-            if not valor and inicio is not None:
+        for i, valor in enumerate([*contagens, 0]):
+            if valor > RUIDO and inicio is None: inicio = i
+            if valor <= RUIDO and inicio is not None:
                 saida.append((inicio, i)); inicio = None
         return saida
-    xs, ys = faixas(colunas), faixas(linhas)
-    return [{"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
-            for y0, y1 in ys for x0, x1 in xs]
+
+    xs, ys = faixas(por_coluna), faixas(por_linha)
+    if not xs or not ys:
+        return []
+
+    def celulas(bandas, total):
+        n = len(bandas); passo = total / n
+        cabem = all(int(i * passo) <= a and b <= int((i + 1) * passo) + 1 for i, (a, b) in enumerate(bandas))
+        if cabem:
+            return [(int(i * passo), int(passo)) for i in range(n)]     # todas do mesmo tamanho
+        lado = max(b - a for a, b in bandas)              # faixas irregulares: caixa igual centrada
+        return [(max(0, min(total - lado, (a + b) // 2 - lado // 2)), lado) for a, b in bandas]
+
+    quadros = []
+    for y0, ah in celulas(ys, h):
+        for x0, lw in celulas(xs, w):
+            recorte = tinta.crop((x0, y0, x0 + lw, y0 + ah))
+            if recorte.getbbox() is None:
+                continue
+            quadros.append({"x": x0, "y": y0, "w": lw, "h": ah})
+    return quadros
 
 
 def fatiar_grade(largura: int, altura: int, linhas: int, colunas: int, margem: int = 0, espaco: int = 0) -> list[dict]:
@@ -192,6 +225,12 @@ def esconder_animacao(peca: object, estado: object, animacao: object) -> None:
     dados = ajustes(); dados["escondidas"] = sorted(set(dados["escondidas"]) | {chave}); salvar_ajustes(dados)
 
 
+def mostrar_animacao(peca: object, estado: object, animacao: object) -> None:
+    """Desfaz o esconder (08/10: escondida nao tinha volta pela tela)."""
+    chave = "/".join((_id(peca, "peca"), _id(estado, "estado"), _id(animacao, "animacao")))
+    dados = ajustes(); dados["escondidas"] = sorted(set(dados["escondidas"]) - {chave}); salvar_ajustes(dados)
+
+
 def gatilhos() -> list[dict]:
     catalogo = _json(CATALOGO, {})
     valores = {a.get("gatilho", "") for p in catalogo.get("pecas", []) for e in p.get("estados", []) for a in e.get("animacoes", [])}
@@ -209,6 +248,8 @@ def arvore() -> list[dict]:
         estado.setdefault("animacoes", []).append({k: v for k, v in nova.items() if k not in ("peca", "estado")})
     for p in pecas.values():
         for e in p.get("estados", []):
+            e["escondidas"] = [{"id": a["id"], "rotulo": a.get("rotulo") or a["id"]} for a in e.get("animacoes", [])
+                               if "/".join((p["id"], e["id"], a["id"])) in ocultas]
             e["animacoes"] = [a for a in e.get("animacoes", []) if "/".join((p["id"], e["id"], a["id"])) not in ocultas]
             for a in e["animacoes"]:
                 if (caminho(p["id"], e["id"], a["id"]) / "folha.png").is_file(): a["tem_arte"] = True

@@ -141,7 +141,8 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v44 = pedido honesto v2: Responder no pedido, rótulos novos, teto da semana (05/10);
     # v57 = Contratar da Equipe entra na Mesa de pedidos (07/10).
       # v59 = previa do lutador montado do Atelie (08/10).
-    assert "painel-casca-v61" in sw
+    # v62 = Ateliê: Escolher folha abre a galeria (sem capture) e escondida tem volta (08/10).
+    assert "painel-casca-v62" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

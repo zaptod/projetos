@@ -159,5 +159,10 @@ func _draw() -> void:
 		if corpo_px > 0.0:
 			fator = corpo_px * tamanho_rel / maxf(origem.size.x, origem.size.y)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(fator, fator))
-		draw_texture_rect_region(textura, Rect2(-ancora, origem.size), origem)
+		# contrato (docs/sprites/ATELIE_NOVO.md): ancora RELATIVA ao quadro (0..1);
+		# valor acima de 1 e de folha antiga, em pixels
+		var ponto := ancora
+		if absf(ancora.x) <= 1.0 and absf(ancora.y) <= 1.0:
+			ponto = Vector2(ancora.x * origem.size.x, ancora.y * origem.size.y)
+		draw_texture_rect_region(textura, Rect2(-ponto, origem.size), origem)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
