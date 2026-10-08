@@ -142,6 +142,8 @@ FUNDOS_CHAVE = {"magenta": (255, 0, 255), "verde": (0, 255, 0)}
 CHAVE_PERTO = 110    # distancia RGB: fundo (o magenta das IAs varia ~(233..252, 3..36, 235..252))
 CHAVE_BORDA = 170    # ate aqui a orla do desenho fica semitransparente (sem franja)
 CHAVE_PURA = 40      # buraco fechado desta cor dentro do desenho tambem e fundo
+FUNDO_LISO_PERTO = 6    # fundo liso de outra cor: folga apertada (o contorno escuro fica)
+FUNDO_LISO_BORDA = 14
 
 
 def limpar_fundo(folha: bytes) -> tuple[bytes, str | None]:
@@ -162,24 +164,75 @@ def limpar_fundo(folha: bytes) -> tuple[bytes, str | None]:
     borda = np.concatenate((rgb[:3].reshape(-1, 3), rgb[-3:].reshape(-1, 3),
                             rgb[:, :3].reshape(-1, 3), rgb[:, -3:].reshape(-1, 3)))
     nome, cor, fracao = None, None, 0.0
+    perto_lim, borda_lim, pura_lim = CHAVE_PERTO, CHAVE_BORDA, CHAVE_PURA
     for candidato, chave in FUNDOS_CHAVE.items():
         perto = (np.sqrt(((borda - chave) ** 2).sum(axis=1)) <= CHAVE_PERTO).mean()
         if perto > fracao:
             nome, cor, fracao = candidato, chave, float(perto)
     if fracao < 0.6:
-        return folha, None
-    dist = np.sqrt(((rgb - np.array(cor)) ** 2).sum(axis=2))
-    mascara = Image.fromarray(np.where(dist <= CHAVE_PERTO, 255, 0).astype(np.uint8))
+        # Fundo liso de OUTRA cor (08/10: a Arena veio em cinza-escuro 37,40,43):
+        # a cor mediana da borda, com folga apertada para nao comer o contorno
+        # escuro do desenho (o contorno do Neural e #14141A).
+        # Ate 3 cores dominantes da borda (fundo preto + linhas de grade cinza).
+        # faixa larga: a borda de uma folha em grade pode ser so a linha da grade,
+        # e o fundo de verdade (o preto da Arena) comeca logo depois dela
+        borda = np.concatenate((rgb[:14].reshape(-1, 3), rgb[-14:].reshape(-1, 3),
+                                rgb[:, :14].reshape(-1, 3), rgb[:, -14:].reshape(-1, 3)))
+        bins = (borda // 16).astype(np.int64)
+        codigos = bins[:, 0] * 256 + bins[:, 1] * 16 + bins[:, 2]
+        valores, contagens = np.unique(codigos, return_counts=True)
+        ordem = np.argsort(-contagens)
+        cores, coberto = [], 0
+        for k in ordem[:6]:              # fundo, grade e as faixas de transicao entre eles
+            cores.append(borda[codigos == valores[k]].mean(axis=0))
+            coberto += contagens[k]
+            if coberto >= 0.98 * len(borda):
+                break
+        if coberto < 0.85 * len(borda):
+            return folha, None
+        nome = "liso"
+        dist = np.min([np.sqrt(((rgb - c) ** 2).sum(axis=2)) for c in cores], axis=0)
+        perto_lim, borda_lim, pura_lim = FUNDO_LISO_PERTO, FUNDO_LISO_BORDA, -1
+    else:
+        dist = np.sqrt(((rgb - np.array(cor)) ** 2).sum(axis=2))
+    # .copy(): a imagem que sai do numpy e somente-leitura e o floodfill do
+    # Pillow 12 pintava uma copia e jogava fora (o balde nao fazia nada)
+    mascara = Image.fromarray(np.where(dist <= perto_lim, 255, 0).astype(np.uint8)).copy()
     h, w = dist.shape
     pixels = mascara.load()
     for x, y in [(x, 0) for x in range(w)] + [(x, h - 1) for x in range(w)] + \
                 [(0, y) for y in range(h)] + [(w - 1, y) for y in range(h)]:
         if pixels[x, y] == 255:
             ImageDraw.floodfill(mascara, (x, y), 128)
-    fundo = (np.array(mascara) == 128) | (dist <= CHAVE_PURA)
+    # Area GRANDE da cor do fundo e fundo mesmo sem tocar a borda (a Arena: o
+    # preto de cada celula fica isolado da grade por uma faixa de transicao);
+    # area pequena (pupila, brilho) e desenho. 08/10/2026.
+    minimo = 0.004 * w * h
+    for y in range(0, h, 16):
+        for x in range(0, w, 16):
+            if pixels[x, y] != 255:
+                continue
+            ImageDraw.floodfill(mascara, (x, y), 77)
+            vetor = np.array(mascara)
+            area = int((vetor == 77).sum())
+            ImageDraw.floodfill(mascara, (x, y), 128 if area >= minimo else 50)
+            pixels = mascara.load()
+    fundo = (np.array(mascara) == 128) | (dist <= pura_lim)
+    if nome == "liso":
+        # Linhas de GRADE (a Arena: cinza entre os quadros, picadas pela faixa de
+        # transicao): linha/coluna inteira que e quase so fundo + cor de fundo sai.
+        perto_da_cor = dist <= 3 * FUNDO_LISO_BORDA
+        for y in np.where((fundo | perto_da_cor).mean(axis=1) > 0.97)[0]:
+            fundo[y] |= perto_da_cor[y]
+        for x in np.where((fundo | perto_da_cor).mean(axis=0) > 0.97)[0]:
+            fundo[:, x] |= perto_da_cor[:, x]
     alfa = arr[:, :, 3].astype(np.float32)
-    orla = ~fundo & (dist < CHAVE_BORDA)
-    alfa[orla] *= np.clip((dist[orla] - CHAVE_PERTO) / (CHAVE_BORDA - CHAVE_PERTO), 0, 1)
+    # orla = so o que ENCOSTA no fundo (antes: todo pixel escuro, e as pupilas e o
+    # contorno preto da Arena sumiam, 08/10)
+    from PIL import ImageFilter
+    vizinho = np.array(Image.fromarray((fundo * 255).astype(np.uint8)).filter(ImageFilter.MaxFilter(5))) > 0
+    orla = ~fundo & vizinho & (dist < borda_lim)
+    alfa[orla] *= np.clip((dist[orla] - perto_lim) / (borda_lim - perto_lim), 0, 1)
     alfa[fundo] = 0
     saida = arr.copy()
     saida[:, :, 3] = alfa.astype(np.uint8)

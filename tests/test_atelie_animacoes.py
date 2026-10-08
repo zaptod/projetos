@@ -108,3 +108,24 @@ def test_fundo_magenta_liso_sai_e_a_bochecha_fica():
     assert imagem.getpixel((37, 55))[3] == 255                 # a bochecha nao vira fundo
     assert len(atelie.fatiar_automatico(limpa)) == 2
     assert atelie.limpar_fundo(limpa) == (limpa, None)          # ja transparente: volta igual
+
+
+def test_fundo_preto_com_grade_sai_e_a_pupila_fica():
+    """08/10/2026: a Arena veio com fundo preto e linhas de grade cinza; o
+    preto de cada celula nao toca a borda e a pupila preta e desenho."""
+    folha = Image.new("RGB", (240, 120), (0, 0, 0))
+    caneta = ImageDraw.Draw(folha)
+    for x in (0, 119, 120, 239):
+        caneta.line((x, 0, x, 119), fill=(37, 40, 43), width=2)
+    caneta.line((0, 0, 239, 0), fill=(37, 40, 43), width=2)
+    caneta.line((0, 119, 239, 119), fill=(37, 40, 43), width=2)
+    for col in range(2):
+        caneta.ellipse((col * 120 + 20, 20, col * 120 + 100, 100), fill=(230, 70, 60), outline=(20, 20, 26), width=3)
+        caneta.ellipse((col * 120 + 55, 45, col * 120 + 65, 55), fill=(0, 0, 0))            # pupila
+    bruto = io.BytesIO(); folha.save(bruto, "PNG")
+    limpa, fundo = atelie.limpar_fundo(bruto.getvalue())
+    assert fundo == "liso"
+    imagem = Image.open(io.BytesIO(limpa))
+    assert imagem.getpixel((10, 60))[3] == 0                  # preto do fundo
+    assert imagem.getpixel((60, 50))[3] == 255                # pupila
+    assert len(atelie.fatiar_automatico(limpa)) == 2

@@ -446,33 +446,76 @@ def animacao_do_habitante(nome: str, pose: str) -> str | None:
     return None
 
 
+# Direcao que o Adrian nao desenhou usa a que existe: a direita espelhada vira a
+# esquerda (e vice-versa); frente e costas usam a que houver. 08/10/2026: ele
+# desenhou so "andar > direita" do Bot e da Arena e, virados para os outros
+# lados, eles voltavam ao desenho antigo ("a animacao nao entrou na Vila").
+OUTRAS_DIRECOES = {
+    "esquerda": (("direita", True), ("frente", False), ("costas", False)),
+    "direita": (("esquerda", True), ("frente", False), ("costas", False)),
+    "frente": (("direita", False), ("esquerda", False), ("costas", False)),
+    "costas": (("frente", False), ("direita", False), ("esquerda", False)),
+}
+_FOLHAS_ATELIE: dict = {}
+
+
+def _folha_do_atelie(peca: str, estado: str, direcao: str, espelhar: bool, ciclo: str) -> Folha | None:
+    png = atelie_animacoes.caminho(peca, estado, direcao) / "folha.png"
+    meta = atelie_animacoes.caminho(peca, estado, direcao) / "animacao.json"
+    try:
+        marca = (png.stat().st_mtime_ns, meta.stat().st_mtime_ns)
+    except OSError:
+        return None
+    chave = (peca, estado, direcao, espelhar, ciclo)
+    guardada = _FOLHAS_ATELIE.get(chave)
+    if guardada and guardada[0] == marca:
+        return guardada[1]
+    dados = atelie_animacoes.ler(peca, estado, direcao)
+    quadros = (dados or {}).get("quadros") or []
+    if not quadros:
+        return None
+    try:
+        with Image.open(png) as imagem:
+            img = imagem.convert("RGBA")
+    except (OSError, ValueError):
+        return None
+    largura, altura = max(q["w"] for q in quadros), max(q["h"] for q in quadros)
+    folha_atelie = Image.new("RGBA", (largura * len(quadros), altura))
+    fundo_do_desenho = 0
+    for i, q in enumerate(quadros):
+        recorte = img.crop((q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"]))
+        if espelhar:
+            recorte = recorte.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        caixa = recorte.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox()
+        if caixa:
+            fundo_do_desenho = max(fundo_do_desenho, caixa[3])
+        folha_atelie.alpha_composite(recorte, (i * largura, 0))
+    # o pe e onde o desenho acaba (a ancora do Atelie e do Godot e outra coisa:
+    # com ela no meio o Bot saia cortado ao meio na Vila, 08/10)
+    pe = (fundo_do_desenho / altura) if fundo_do_desenho else 1.0
+    ciclos = {ciclo: {"quadros": list(range(len(quadros))), "fps": dados.get("fps", 1),
+                      "loop": dados.get("loop", True)}}
+    f = Folha(f"atelie:{peca}/{estado}/{direcao}" + (":espelho" if espelhar else ""), folha_atelie,
+              len(quadros), 1, ciclos, [ciclo], pe)
+    _FOLHAS_ATELIE[chave] = (marca, f)
+    return f
+
+
 def habitante(nome: str, pose: str, direcao: str) -> tuple[Folha, str] | None:
     """(folha, ciclo) do habitante nessa pose e direcao, se houver arte."""
+    # a vida fala "dir"/"esq"; o Atelie grava "direita"/"esquerda" (08/10: sem
+    # esta traducao a folha do Atelie nunca era achada na Vila de verdade)
+    direcao_atelie = DIRECAO_PARA_CICLO.get(direcao, direcao)
     for animacao in (POSE_PARA_ANIMACAO.get(pose, "parado"),) + RESERVA_DE_ANIMACAO:
         arquivo = arquivo_do_habitante(nome, animacao)
         item = itens().get(arquivo) or {}
         chave = catalogo_vila.chave_do_item(item)
         if not chave:
             continue
-        dados = atelie_animacoes.ler(chave[0], chave[1], direcao)
-        png = atelie_animacoes.caminho(chave[0], chave[1], direcao) / "folha.png"
-        if not (dados and png.is_file()):
-            continue
-        try:
-            with Image.open(png) as imagem:
-                img = imagem.convert("RGBA")
-            quadros = dados.get("quadros") or []
-            if not quadros:
-                continue
-            largura, altura = max(q["w"] for q in quadros), max(q["h"] for q in quadros)
-            folha_atelie = Image.new("RGBA", (largura * len(quadros), altura))
-            for i, q in enumerate(quadros):
-                folha_atelie.alpha_composite(img.crop((q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"])), (i * largura, 0))
-            ciclos = {direcao: {"quadros": list(range(len(quadros))), "fps": dados.get("fps", 1), "loop": dados.get("loop", True)}}
-            f = Folha(f"atelie:{chave[0]}/{chave[1]}/{direcao}", folha_atelie, len(quadros), 1, ciclos, [direcao], float((dados.get("ancora") or {}).get("y", 1)))
-            return f, direcao
-        except (OSError, ValueError):
-            pass
+        for fonte, espelhar in ((direcao_atelie, False),) + OUTRAS_DIRECOES.get(direcao_atelie, ()):
+            f = _folha_do_atelie(chave[0], chave[1], fonte, espelhar, direcao_atelie)
+            if f is not None:
+                return f, direcao_atelie
     animacao = animacao_do_habitante(nome, pose)
     if animacao is None:
         return None
