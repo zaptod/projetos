@@ -306,6 +306,7 @@ ESTATICOS = {
     "/oficina.js": ("oficina.js", "text/javascript; charset=utf-8"),
     "/equipe.js": ("equipe.js", "text/javascript; charset=utf-8"),
     "/biblioteca.js": ("biblioteca.js", "text/javascript; charset=utf-8"),
+    "/atelie_novo.js": ("atelie_novo.js", "text/javascript; charset=utf-8"),
     "/atelie.js": ("atelie.js", "text/javascript; charset=utf-8"),
     "/provador.js": ("provador.js", "text/javascript; charset=utf-8"),
     # o desenho de hoje da bolinha (folha do Godot sem pecas), para a previa vazia
@@ -1760,6 +1761,8 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({"grupos": atelie_animacoes.arvore()})
             if rota == "/api/animacoes/gatilhos":
                 return self._json({"gatilhos": atelie_animacoes.gatilhos()})
+            if rota == "/api/animacoes/previa-godot":
+                return self._erro(501, "previa no Godot ainda nao disponivel")
             achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)/folha", rota)
             if achado:
                 try:

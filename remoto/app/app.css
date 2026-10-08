@@ -956,6 +956,39 @@ input[type="file"] { letter-spacing: normal; text-align: left; }
 .atelie-modos { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .atelie-modos .acao { min-height: 48px; font-weight: 600; }
 .atelie-modos .acao[aria-pressed="true"] { background: var(--acento); color: #fff; border-color: transparent; }
+.livro.atelie { padding-top: calc(112px + env(safe-area-inset-top)); }
+.atelie-novo { max-width: 760px; margin: auto; }
+.atelie-novo-cabeca { display: flex; gap: 8px; align-items: center; position: relative; z-index: 1; }
+.atelie-novo h2 { margin: 8px 0; }
+.anim-lista { display: grid; gap: 8px; }
+.anim-grupo { display: grid; gap: 7px; }
+.anim-cartao { display: grid; text-align: left; gap: 3px; min-height: 68px; }
+.anim-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.anim-campos input { width: 100%; min-height: 44px; box-sizing: border-box; }
+.anim-enviar input { display: none; }
+.anim-folha { overflow: hidden; margin: 10px 0; }
+#anim-canvas { width: 100%; height: auto; border: 1px solid var(--borda); touch-action: none; }
+.anim-fundo-claro { background: radial-gradient(circle, #b9aa98 0 13px, transparent 14px), #eee; }.anim-fundo-escuro { background: radial-gradient(circle, #a99a88 0 13px, transparent 14px), #222; }.anim-fundo-xadrez { background: radial-gradient(circle, #8e7b67 0 13px, transparent 14px), repeating-conic-gradient(#ddd 0 25%, #aaa 0 50%) 50% / 16px 16px; }
+.anim-chips { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px; }
+.anim-chip { flex: 0 0 auto; min-height: 44px; }.anim-chip[aria-pressed="true"], .anim-quadro .selecionado { background: var(--acento); color: #fff; }
+.anim-busca { display: block; margin: 6px 0; }.anim-busca input { width: 100%; min-height: 44px; box-sizing: border-box; }
+.anim-cartao { grid-template-columns: 1fr auto; align-items: center; }.anim-cartao-abrir { display: grid; text-align: left; gap: 3px; min-height: 68px; }
+.anim-miniatura { background: repeating-conic-gradient(#ddd 0 25%, #aaa 0 50%) 50% / 12px 12px; border-radius: 4px; }.anim-sem-arte { min-width: 72px; font-size: .82em; text-align: center; }
+.anim-corte { display: flex; gap: 12px; min-height: 44px; align-items: center; }.anim-lista-quadros { display: flex; flex-wrap: wrap; gap: 4px; }.anim-quadro { display: flex; }.anim-quadro .acao { min-width: 32px; min-height: 44px; padding: 4px; }
+.anim-montado { margin-top: 8px; padding: 10px; border: 1px dashed var(--borda); border-radius: 6px; }
+@media (max-width: 400px) { .atelie-novo-cabeca { flex-wrap: wrap; }.atelie-novo-cabeca h2 { font-size: 1.25em; }.anim-campos { grid-template-columns: 1fr 1fr; } }
+@media (prefers-color-scheme: dark) {
+  .livro.atelie { --fundo: #14161a; --cartao: #1e2127; --texto: #e8e8ea; --fraco: #b4b8c2; --linha: #3a404c; --acento: #7ea4ff; background: radial-gradient(ellipse at center, #252b35, #11151b); }
+  .livro.atelie .cartao, .livro.atelie input, .livro.atelie select { background-color: var(--cartao); color: var(--texto); border-color: var(--linha); }
+  .livro.atelie .fraco { color: var(--fraco); }
+  .anim-miniatura { background: repeating-conic-gradient(#3a4452 0 25%, #2b333e 0 50%) 50% / 12px 12px; }
+}
+@media (min-width: 700px) and (max-height: 500px) {
+  .atelie-novo { max-width: none; } .anim-lista { grid-template-columns: repeat(3, 1fr); }
+  #anim-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; align-items: start; }
+  #anim-editor .anim-folha { grid-column: 1; grid-row: 1 / span 8; margin: 0; }
+  #anim-editor > :not(.anim-folha) { grid-column: 2; }
+}
 #provador .acao, #provador select, #provador input[type="search"] { min-height: 44px; font: inherit; }
 /* O `input` global (código de pareamento) espaça e centraliza: o "nome do
    lutador" saía "n o m e   d o…" cortado (conferente, 07/10). */

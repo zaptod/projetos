@@ -131,6 +131,7 @@ async function api(caminho, opcoes = {}) {
     resp = await fetch(caminho, {
       ...opcoes,
       headers: {...(opcoes.headers || {}),
+                ...(typeof opcoes.body === "string" && opcoes.body.trim().startsWith("{") ? {"Content-Type": "application/json"} : {}),
                 ...(token ? {Authorization: `Bearer ${token}`} : {})},
     });
   } catch (err) {
@@ -912,7 +913,7 @@ const MODULOS = [["vila.js", "vilaMostrar"], ["comandos.js", "comandosMostrar"],
                  ["orquestrador.js", "orquestradorMostrar"], ["coordenador.js", "coordenadorMostrar"],
                  ["conversa.js", "conversaAbrir"],
                  ["oficina.js", "oficinaMostrar"], ["equipe.js", "equipeMostrar"], ["biblioteca.js", "bibliotecaMostrar"],
-                 ["atelie.js", "atelieMostrar"], ["provador.js", "provadorMostrar"]];
+                 ["atelie_novo.js", "atelieMostrar"]];
 
 function modulosQueFaltam() {
   return MODULOS.filter(([, funcao]) => typeof window[funcao] !== "function")

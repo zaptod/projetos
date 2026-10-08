@@ -672,7 +672,21 @@
       <div id="biblioteca-texto" class="biblioteca-texto"></div>
     </div>
   </section>
-  <section id="tela-atelie" class="oculto livro atelie" aria-label="Ateliê de sprites">
+  <section id="tela-atelie" class="oculto livro atelie" aria-label="Ateliê de animações">
+    <div id="atelie-novo" class="atelie-novo">
+      <div class="atelie-novo-cabeca"><button class="acao" id="anim-voltar" type="button">‹ Voltar</button><div><h2>Ateliê</h2><p id="anim-progresso" class="fraco" role="status">0 de 0 com arte</p></div><button class="acao" id="anim-faltam" type="button">O que falta</button></div>
+      <p id="anim-caminho" class="fraco">Grupo › peça › estado › animação</p><div id="anim-grupos" class="anim-chips" role="tablist"></div><label id="anim-busca-caixa" class="anim-busca">Buscar peça <input id="anim-busca" type="search" placeholder="nome da peça"></label><div id="anim-lista" class="anim-lista" aria-live="polite"></div>
+      <section id="anim-editor" class="cartao oculto"><h2 id="anim-titulo">Animação</h2><p id="anim-heranca" class="fraco"></p>
+        <label class="acao anim-enviar">Escolher folha<input id="anim-arquivo" type="file" accept="image/png" capture="environment"></label><div class="anim-corte" role="group" aria-label="Modo de corte"><label><input type="radio" name="anim-corte" id="anim-auto" checked> Automático</label><label><input type="radio" name="anim-corte" id="anim-grade"> Grade</label></div>
+        <div class="campos anim-campos"><label>Linhas <input id="anim-linhas" type="number" min="1" value="1"></label><label>Colunas <input id="anim-colunas" type="number" min="1" value="1"></label><label>Margem <input id="anim-margem" type="number" min="0" value="0"></label><label>Espaço <input id="anim-espaco" type="number" min="0" value="0"></label></div>
+        <div class="anim-folha"><canvas id="anim-folha-canvas" width="320" height="180" aria-label="Folha com quadros numerados"></canvas><canvas id="anim-canvas" width="320" height="180" aria-label="Prévia da animação; arraste para ajustar a âncora"></canvas><p id="anim-quadros" class="fraco"></p><div id="anim-lista-quadros" class="anim-lista-quadros"></div></div>
+        <div class="campos anim-campos"><label>FPS <input id="anim-fps" type="range" min="1" max="60" value="12"><input id="anim-fps-numero" type="number" min="1" max="60" value="12"></label><label>Escala <input id="anim-escala" type="number" min="0.1" step="0.1" value="1"></label><label>Girar <input id="anim-rotacao" type="number" value="0"></label><label>Segurar este quadro <input id="anim-segurar" type="number" min="0" step="0.1" value="0"></label></div>
+        <div class="botoes"><label class="acao"><input id="anim-loop" type="checkbox" checked> Repetir</label><label class="acao"><input id="anim-ida-volta" type="checkbox"> Ida e volta</label><label class="acao"><input id="anim-espelho" type="checkbox"> Espelhar</label></div>
+        <div class="botoes"><button class="acao" id="anim-claro" type="button">Fundo claro</button><button class="acao" id="anim-escuro" type="button">Fundo escuro</button><button class="acao" id="anim-xadrez" type="button">Xadrez</button></div>
+        <div class="botoes"><button class="acao" id="anim-godot" type="button">Ver no Godot</button><button class="acao primario" id="anim-salvar" type="button">Salvar</button><button class="acao" id="anim-substituir" type="button">Substituir</button><button class="acao" id="anim-desfazer" type="button">Desfazer</button><button class="acao" id="anim-esconder" type="button">Esconder</button><button class="acao" id="anim-fechar" type="button">Fechar</button></div><div class="anim-montado">No lutador montado: <span class="fraco">em breve</span></div><p id="anim-aviso" class="fraco"></p>
+      </section><section id="anim-criar" class="cartao oculto"><h2>Nova animação</h2><label>Nome <input id="anim-novo-nome" maxlength="40"></label><label>Quando toca <select id="anim-novo-gatilho"></select></label><button class="acao primario" id="anim-criar-botao" type="button">Criar animação</button></section>
+    </div>
+    <div id="atelie-antigo" class="oculto">
     <div class="abas atelie-modos" role="group" aria-label="Ateliê">
       <button class="acao" id="atelie-modo-montar" type="button" aria-pressed="true">🧩 Montar peças</button>
       <button class="acao" id="atelie-modo-provador" type="button" aria-pressed="false">👕 Provador</button>
@@ -802,6 +816,7 @@
     </div>
     </details>
     </div>
+    </div>
   </section>
   <section id="tela-relatorios" class="oculto livro pergaminho" aria-label="Pergaminhos">
     <div class="abas" id="abas-relatorio"></div>
@@ -907,7 +922,6 @@
 <script src="oficina.js"></script>
 <script src="equipe.js"></script>
 <script src="biblioteca.js"></script>
-<script src="atelie.js"></script>
-<script src="provador.js"></script>
+<script src="atelie_novo.js"></script>
 </body>
 </html>
