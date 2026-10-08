@@ -4,6 +4,7 @@ import json
 from PIL import Image, ImageDraw
 
 from neural_fights.tools import atelie_animacoes as atelie
+from painel.flutuante import arte_pronta
 
 
 def folha():
@@ -76,3 +77,16 @@ def test_esconder_tem_volta(tmp_path, monkeypatch):
     assert atelie.ajustes()["escondidas"] == ["peca.x/base/ociosa"]
     atelie.mostrar_animacao("peca.x", "base", "ociosa")
     assert atelie.ajustes()["escondidas"] == []
+
+
+def test_vila_prefere_folha_do_atelie_e_conferir_percebe(tmp_path, monkeypatch):
+    monkeypatch.setattr(atelie, "ANIMACOES", tmp_path / "animacoes")
+    arte_pronta.usar(tmp_path / "arte", arte_pronta.INVENTARIO_PADRAO)
+    bruto = folha(); dados = contrato(atelie.fatiar_automatico(bruto))
+    atelie.salvar("vila.habitantes.grok", "andar", "esquerda", bruto, dados)
+    antes = arte_pronta.conferir()
+    f, ciclo = arte_pronta.habitante("grok", "passo1", "esquerda")
+    assert ciclo == "esquerda" and f.nome.startswith("atelie:")
+    (atelie.caminho("vila.habitantes.grok", "andar", "esquerda") / "folha.png").touch()
+    assert arte_pronta.conferir() != antes
+    arte_pronta.usar()

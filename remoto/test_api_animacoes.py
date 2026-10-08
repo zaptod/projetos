@@ -57,6 +57,15 @@ def test_montagem_expoe_camadas_e_marcador_sem_arte(tmp_path, monkeypatch):
     assert camada["categoria_marcador"] == "lutadores"
 
 
+def test_previa_vila_tem_chao_e_referencias_no_tamanho_do_mundo(tmp_path, monkeypatch):
+    monkeypatch.setattr(atelie, "ANIMACOES", tmp_path / "animacoes")
+    atelie.salvar("vila.habitantes.grok", "andar", "esquerda", png(),
+                  {"fps": 12, "ancora": {"x": .5, "y": 1},
+                   "quadros": [{"x": 0, "y": 0, "w": 8, "h": 8}]})
+    with Image.open(io.BytesIO(api_http._previa_vila_png("vila.habitantes.grok", "andar", "esquerda"))) as imagem:
+        assert imagem.size == (360, 160)
+
+
 def test_previa_godot_roda_uma_vez_e_entrega_video(tmp_path, monkeypatch):
     catalogo = {"pecas": [{"id": "classe.mago", "grupo": "lutador", "estados": [{"id": "parado", "animacoes": [{"id": "respirar", "gatilho": "ocioso"}]}]}]}
     monkeypatch.setattr(api_http, "ARQUIVO", tmp_path / "app.json")

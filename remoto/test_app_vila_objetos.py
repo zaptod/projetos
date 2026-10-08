@@ -142,7 +142,7 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v57 = Contratar da Equipe entra na Mesa de pedidos (07/10).
       # v59 = previa do lutador montado do Atelie (08/10).
     # v62 = Ateliê: Escolher folha abre a galeria (sem capture) e escondida tem volta (08/10).
-    assert "painel-casca-v62" in sw
+    assert "painel-casca-v64" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
@@ -239,5 +239,3 @@ def test_as_secoes_da_antiga_mesa_moram_nos_objetos_e_o_servidor_serve_o_js():
     from remoto import api_http
     assert api_http.ESTATICOS["/orquestrador.js"][0] == "orquestrador.js"
     assert '<script src="orquestrador.js"></script>' in HTML
-
-

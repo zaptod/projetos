@@ -147,6 +147,36 @@ def _trabalhar_previas_animacoes() -> None:
         except Exception:  # noqa: BLE001 - o app recebe uma frase simples
             with _TRAVA_PREVIAS_ANIMACOES:
                 tarefa.update({"situacao": "falhou", "erro": "Nao consegui renderizar no Godot. Tente de novo."})
+
+
+def _previa_vila_png(peca: str, estado: str, animacao: str) -> bytes:
+    """Previa leve, no chao da Vila e no tamanho do mundo, sem abrir Tk."""
+    from painel.flutuante import arte, arte_pronta
+    from neural_fights.tools import catalogo_vila
+    dados = atelie_animacoes.ler(peca, estado, animacao)
+    arquivo = atelie_animacoes.caminho(peca, estado, animacao) / "folha.png"
+    if not dados or not arquivo.is_file():
+        raise ValueError("animacao nao encontrada")
+    quadro = (dados.get("quadros") or [{}])[0]
+    with Image.open(arquivo) as folha:
+        desenho = folha.convert("RGBA").crop((quadro["x"], quadro["y"], quadro["x"] + quadro["w"], quadro["y"] + quadro["h"]))
+    item = catalogo_vila.item_da_chave(peca, estado) or {}
+    nome = str(item.get("nome_arquivo") or "").split(" (")[0]
+    mundo = arte_pronta.tamanho_no_mundo(nome) or (72, 64)
+    escala, largura, altura = 2, 360, 160
+    img = Image.new("RGBA", (largura, altura), "#a4d77e")
+    chao = arte_pronta.ladrilhar("cenario/chao_grama.png", largura, altura, escala)
+    if chao is not None:
+        img.alpha_composite(chao)
+    alvo = desenho.resize((max(1, mundo[0] * escala), max(1, mundo[1] * escala)), Image.LANCZOS)
+    pe = altura - 18
+    img.alpha_composite(alvo, (42, pe - alvo.height))
+    predio = arte.desenhar_predio("casa", escala=escala)
+    pessoa = arte.desenhar_personagem("chatgpt", escala=escala)
+    img.alpha_composite(predio, (190, pe - predio.height))
+    img.alpha_composite(pessoa, (325 - pessoa.width, pe - pessoa.height))
+    bruto = io.BytesIO(); img.save(bruto, "PNG")
+    return bruto.getvalue()
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -1043,6 +1073,10 @@ class Manipulador(BaseHTTPRequestHandler):
                     return self._erro(400, str(exc))
                 if not arquivo.is_file(): return self._erro(404, "folha nao encontrada")
                 return self._bytes(arquivo.read_bytes(), "image/png")
+            achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)/previa-vila", rota)
+            if achado:
+                try: return self._bytes(_previa_vila_png(*achado.groups()), "image/png")
+                except (ValueError, KeyError): return self._erro(404, "animacao nao encontrada")
             achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)", rota)
             if achado:
                 try: dados = atelie_animacoes.ler(*achado.groups())

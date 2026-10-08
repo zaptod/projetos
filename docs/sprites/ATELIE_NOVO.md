@@ -1,6 +1,13 @@
 # Atelie novo: contrato de animacao
 
 Cada folha fica em `palco/biblioteca/animacoes/<peca>/<estado>/<animacao>/`.
+
+## Vila
+
+O grupo **Vila** e gerado de `docs/vila/inventario_vila.json`, sem alterar o
+catalogo do jogo. As folhas de habitantes usam a pose como gatilho e uma
+animacao por direcao. A Vila prefere a folha salva pelo Atelie e cai na arte
+aprovada antiga, depois no desenho por codigo.
 `folha.png` e guardada sem reencodar, exatamente como foi enviada. Ao salvar de
 novo, a versao anterior vai para `historico/<carimbo>/`; desfazer troca a atual
 pela mais recente desse historico.

@@ -36,10 +36,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+from neural_fights.tools import atelie_animacoes, catalogo_vila
 
 RAIZ = Path(__file__).resolve().parents[2]
 PASTA_PADRAO = Path(__file__).with_name("arte_vila")
 INVENTARIO_PADRAO = RAIZ / "docs" / "vila" / "inventario_vila.json"
+ANIMACOES_ATELIE = RAIZ / "palco" / "biblioteca" / "animacoes"
 
 # Textura sem "no mundo WxH" no inventario: o lado do ladrilho em pixels do
 # mundo. Medido na arte de 02/10: com 128 os tufos da grama ficam com ~6 px
@@ -122,6 +124,14 @@ def _arquivos() -> list[Path]:
                   if p.is_file() and p.suffix.lower() in (".png", ".json"))
 
 
+def _arquivos_atelie() -> list[Path]:
+    raiz = atelie_animacoes.ANIMACOES
+    if not raiz.is_dir():
+        return []
+    return sorted(p for p in raiz.glob("vila.*/*/*/*")
+                  if p.is_file() and p.name in ("folha.png", "animacao.json"))
+
+
 def _calcular_assinatura() -> str:
     raiz = pasta()
     h = hashlib.sha1(str(raiz).encode("utf-8"))
@@ -132,6 +142,12 @@ def _calcular_assinatura() -> str:
             continue
         h.update(f"{p.relative_to(raiz).as_posix()}|{st.st_size}|"
                  f"{st.st_mtime_ns};".encode("utf-8"))
+    for p in _arquivos_atelie():
+        try:
+            st = p.stat()
+        except OSError:
+            continue
+        h.update(f"atelie/{p.relative_to(atelie_animacoes.ANIMACOES).as_posix()}|{st.st_size}|{st.st_mtime_ns};".encode("utf-8"))
     return h.hexdigest()[:12]
 
 
@@ -432,10 +448,36 @@ def animacao_do_habitante(nome: str, pose: str) -> str | None:
 
 def habitante(nome: str, pose: str, direcao: str) -> tuple[Folha, str] | None:
     """(folha, ciclo) do habitante nessa pose e direcao, se houver arte."""
+    for animacao in (POSE_PARA_ANIMACAO.get(pose, "parado"),) + RESERVA_DE_ANIMACAO:
+        arquivo = arquivo_do_habitante(nome, animacao)
+        item = itens().get(arquivo) or {}
+        chave = catalogo_vila.chave_do_item(item)
+        if not chave:
+            continue
+        dados = atelie_animacoes.ler(chave[0], chave[1], direcao)
+        png = atelie_animacoes.caminho(chave[0], chave[1], direcao) / "folha.png"
+        if not (dados and png.is_file()):
+            continue
+        try:
+            with Image.open(png) as imagem:
+                img = imagem.convert("RGBA")
+            quadros = dados.get("quadros") or []
+            if not quadros:
+                continue
+            largura, altura = max(q["w"] for q in quadros), max(q["h"] for q in quadros)
+            folha_atelie = Image.new("RGBA", (largura * len(quadros), altura))
+            for i, q in enumerate(quadros):
+                folha_atelie.alpha_composite(img.crop((q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"])), (i * largura, 0))
+            ciclos = {direcao: {"quadros": list(range(len(quadros))), "fps": dados.get("fps", 1), "loop": dados.get("loop", True)}}
+            f = Folha(f"atelie:{chave[0]}/{chave[1]}/{direcao}", folha_atelie, len(quadros), 1, ciclos, [direcao], float((dados.get("ancora") or {}).get("y", 1)))
+            return f, direcao
+        except (OSError, ValueError):
+            pass
     animacao = animacao_do_habitante(nome, pose)
     if animacao is None:
         return None
-    f = folha(arquivo_do_habitante(nome, animacao))
+    arquivo = arquivo_do_habitante(nome, animacao)
+    f = folha(arquivo)
     if f is None:
         return None
     return f, f.ciclo(direcao)

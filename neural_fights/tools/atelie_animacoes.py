@@ -13,6 +13,7 @@ from pathlib import Path
 from PIL import Image
 
 from neural_fights.tools import catalogo_animacoes
+from neural_fights.tools import catalogo_vila
 
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -233,13 +234,13 @@ def mostrar_animacao(peca: object, estado: object, animacao: object) -> None:
 
 def gatilhos() -> list[dict]:
     catalogo = _json(CATALOGO, {})
-    valores = {a.get("gatilho", "") for p in catalogo.get("pecas", []) for e in p.get("estados", []) for a in e.get("animacoes", [])}
+    valores = {a.get("gatilho", "") for p in [*catalogo.get("pecas", []), *catalogo_vila.catalogo()] for e in p.get("estados", []) for a in e.get("animacoes", [])}
     return [{"id": v, "rotulo": catalogo_animacoes._rotulo(v)} for v in sorted(valores) if v]
 
 
 def arvore() -> list[dict]:
     catalogo = _json(CATALOGO, {}); dados = ajustes(); ocultas = set(dados["escondidas"])
-    pecas = {p.get("id"): json.loads(json.dumps(p)) for p in catalogo.get("pecas", []) if p.get("id")}
+    pecas = {p.get("id"): json.loads(json.dumps(p)) for p in [*catalogo.get("pecas", []), *catalogo_vila.catalogo()] if p.get("id")}
     for nova in dados["novas"]:
         p = pecas.get(nova.get("peca"));
         if not p: continue
