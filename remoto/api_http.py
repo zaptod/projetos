@@ -1389,6 +1389,8 @@ class Manipulador(BaseHTTPRequestHandler):
             if rota == "/api/animacoes/subir":
                 imagem = base64.b64decode(str(corpo.get("imagem") or ""), validate=True)
                 if len(imagem) > ANIMACAO_MAX: raise ValueError("folha grande demais")
+                # folha com fundo magenta/verde liso volta limpa (08/10: o Bot)
+                imagem, fundo = atelie_animacoes.limpar_fundo(imagem)
                 if corpo.get("linhas") or corpo.get("colunas"):
                     with Image.open(io.BytesIO(imagem)) as folha:
                         quadros = atelie_animacoes.fatiar_grade(
@@ -1397,10 +1399,14 @@ class Manipulador(BaseHTTPRequestHandler):
                             int(corpo.get("espaco") or 0))
                 else:
                     quadros = atelie_animacoes.fatiar_automatico(imagem)
-                return self._json({"quadros": quadros})
+                resposta = {"quadros": quadros, "fundo": fundo}
+                if fundo:
+                    resposta["folha"] = base64.b64encode(imagem).decode("ascii")
+                return self._json(resposta)
             if rota == "/api/animacoes/salvar":
                 imagem = base64.b64decode(str(corpo.get("imagem") or ""), validate=True)
                 if len(imagem) > ANIMACAO_MAX: raise ValueError("folha grande demais")
+                imagem, _ = atelie_animacoes.limpar_fundo(imagem)    # a casca velha manda a original
                 dados = atelie_animacoes.salvar(corpo.get("peca"), corpo.get("estado"), corpo.get("animacao"),
                                                  imagem, corpo.get("dados") or {})
                 return self._json(dados)

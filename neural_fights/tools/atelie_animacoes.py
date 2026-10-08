@@ -138,6 +138,57 @@ def desfazer(peca: object, estado: object, animacao: object) -> dict:
     return ler(peca, estado, animacao) or {}
 
 
+FUNDOS_CHAVE = {"magenta": (255, 0, 255), "verde": (0, 255, 0)}
+CHAVE_PERTO = 110    # distancia RGB: fundo (o magenta das IAs varia ~(233..252, 3..36, 235..252))
+CHAVE_BORDA = 170    # ate aqui a orla do desenho fica semitransparente (sem franja)
+CHAVE_PURA = 40      # buraco fechado desta cor dentro do desenho tambem e fundo
+
+
+def limpar_fundo(folha: bytes) -> tuple[bytes, str | None]:
+    """Folha com fundo magenta/verde liso (sem transparencia) -> PNG transparente.
+
+    08/10/2026: o Adrian subiu o Bot andando com fundo magenta (RGB, sem alfa)
+    e o fundo entrou na animacao. O fundo sai por CONEXAO COM A BORDA (como o
+    recortador antigo): o rosa da bochecha nao e apagado. Folha que ja tem
+    transparencia volta igual. Devolve (png, "magenta"|"verde"|None)."""
+    import numpy as np
+    from PIL import ImageDraw
+
+    imagem = Image.open(io.BytesIO(folha)).convert("RGBA")
+    arr = np.array(imagem)
+    if (arr[:, :, 3] < 16).mean() > 0.01:
+        return folha, None
+    rgb = arr[:, :, :3].astype(np.int32)
+    borda = np.concatenate((rgb[:3].reshape(-1, 3), rgb[-3:].reshape(-1, 3),
+                            rgb[:, :3].reshape(-1, 3), rgb[:, -3:].reshape(-1, 3)))
+    nome, cor, fracao = None, None, 0.0
+    for candidato, chave in FUNDOS_CHAVE.items():
+        perto = (np.sqrt(((borda - chave) ** 2).sum(axis=1)) <= CHAVE_PERTO).mean()
+        if perto > fracao:
+            nome, cor, fracao = candidato, chave, float(perto)
+    if fracao < 0.6:
+        return folha, None
+    dist = np.sqrt(((rgb - np.array(cor)) ** 2).sum(axis=2))
+    mascara = Image.fromarray(np.where(dist <= CHAVE_PERTO, 255, 0).astype(np.uint8))
+    h, w = dist.shape
+    pixels = mascara.load()
+    for x, y in [(x, 0) for x in range(w)] + [(x, h - 1) for x in range(w)] + \
+                [(0, y) for y in range(h)] + [(w - 1, y) for y in range(h)]:
+        if pixels[x, y] == 255:
+            ImageDraw.floodfill(mascara, (x, y), 128)
+    fundo = (np.array(mascara) == 128) | (dist <= CHAVE_PURA)
+    alfa = arr[:, :, 3].astype(np.float32)
+    orla = ~fundo & (dist < CHAVE_BORDA)
+    alfa[orla] *= np.clip((dist[orla] - CHAVE_PERTO) / (CHAVE_BORDA - CHAVE_PERTO), 0, 1)
+    alfa[fundo] = 0
+    saida = arr.copy()
+    saida[:, :, 3] = alfa.astype(np.uint8)
+    saida[fundo, :3] = 0
+    bruto = io.BytesIO()
+    Image.fromarray(saida).save(bruto, "PNG")
+    return bruto.getvalue(), nome
+
+
 ALFA_TINTA = 24      # abaixo disto e veu de remocao de fundo, nao desenho
 RUIDO = 2            # pixels soltos numa faixa que nao fazem desenho
 

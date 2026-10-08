@@ -90,3 +90,21 @@ def test_vila_prefere_folha_do_atelie_e_conferir_percebe(tmp_path, monkeypatch):
     (atelie.caminho("vila.habitantes.grok", "andar", "esquerda") / "folha.png").touch()
     assert arte_pronta.conferir() != antes
     arte_pronta.usar()
+
+
+def test_fundo_magenta_liso_sai_e_a_bochecha_fica():
+    """08/10/2026: o Bot andando veio RGB com fundo magenta e o fundo entrou na
+    animacao. Sai por conexao com a borda; o rosa de dentro do desenho fica."""
+    folha = Image.new("RGB", (200, 100), (245, 10, 245))
+    caneta = ImageDraw.Draw(folha)
+    for col in range(2):
+        caneta.ellipse((col * 100 + 10, 10, col * 100 + 90, 90), fill=(40, 150, 220), outline=(10, 10, 20), width=3)
+        caneta.ellipse((col * 100 + 30, 50, col * 100 + 45, 60), fill=(255, 150, 170))     # bochecha
+    bruto = io.BytesIO(); folha.save(bruto, "PNG")
+    limpa, fundo = atelie.limpar_fundo(bruto.getvalue())
+    assert fundo == "magenta"
+    imagem = Image.open(io.BytesIO(limpa))
+    assert imagem.getpixel((2, 2))[3] == 0
+    assert imagem.getpixel((37, 55))[3] == 255                 # a bochecha nao vira fundo
+    assert len(atelie.fatiar_automatico(limpa)) == 2
+    assert atelie.limpar_fundo(limpa) == (limpa, None)          # ja transparente: volta igual
