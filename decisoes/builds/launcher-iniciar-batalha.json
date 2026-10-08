@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "pedido-440b4327",
+      "em": "2026-10-08T09:08:14",
+      "evento": "2026-10-08T09:08:09",
+      "linha": 148,
+      "nota": "lida pelo servidor; voltou ao pedido de origem",
+      "opcao": "tirar-pygame",
+      "origem": "leitor",
+      "tipo": "tarefa"
+    }
+  ],
   "contexto": "Estou deixando o launcher compatível com o Ateliê novo: prévias com a sua arte, quadro do que falta desenhar e catálogo em dia. Só este botão depende de você. A foto mostra a Arena hoje.",
   "criado": "2026-10-08T08:56:03.984274",
   "depende_de": [],
