@@ -135,6 +135,13 @@ async function vilaCarregarRetrato(comMundo) {
     vilaImagem("atlas", `/vilanova-atlas.png?escala=${dados.mundo.retrato.escala}`
       + `&v=${encodeURIComponent(dados.mundo.versao)}`);
   }
+  // arte nova salva no Atelie: o retrato traz a versao e o mundo (atlas e
+  // folhas) e baixado de novo, sem fechar a Vila (08/10/2026)
+  if (!comMundo && Vila.mundo && dados.retrato && dados.retrato.versao
+      && dados.retrato.versao !== Vila.mundo.versao && !Vila.baixandoMundo) {
+    Vila.baixandoMundo = true;
+    vilaCarregarRetrato(true).catch(() => {}).finally(() => { Vila.baixandoMundo = false; });
+  }
   Vila.anterior = Vila.retrato;
   Vila.retrato = dados.retrato;
   Vila.trocaEm = performance.now();

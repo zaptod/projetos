@@ -17,6 +17,22 @@ _CATEGORIAS = {"habitantes": "Habitantes", "predios": "Prédios",
                 "interface": "Interface"}
 
 
+
+# Quando cada animacao da Vila toca (a vida -> pose -> animacao, em
+# `painel/flutuante/vida.py` e `arte_pronta.POSE_PARA_ANIMACAO`). Pose sem
+# folha cai em "parado" e depois em "andar"; direcao sem folha usa a que
+# existe (a direita espelhada vira a esquerda). 08/10/2026: o cartao dizia so
+# "quando toca: pose" e o Adrian nao sabia o que dispara cada uma.
+QUANDO_TOCA = {
+    "parado": "parado olhando a vila (e reserva de toda pose sem desenho)",
+    "andar": "andando pela vila (e reserva se nao houver Parado)",
+    "trabalhar": "trabalhando: tarefa da IA rodando, ou regando",
+    "conversar": "conversando, acenando, olhando os patos ou consolando",
+    "triste": "triste: a tarefa dela deu erro",
+    "comemorar": "comemorando: deu certo",
+    "sentado": "sentado no banco, descansando",
+}
+
 def _id(valor: object) -> str:
     return _ID.sub("_", str(valor).lower()).strip("_.-")
 
@@ -76,10 +92,11 @@ def catalogo(inventario: Path | None = None) -> list[dict]:
             estado = {"id": base, "rotulo": rotulo(base), "animacoes": []}
             peca["estados"].append(estado)
         ciclos = (item.get("animacao") or {}).get("ciclos") or []
+        quando = QUANDO_TOCA.get(base, "na Vila")
         animacoes = [{"id": _id(c.get("nome")), "rotulo": rotulo(c.get("nome")),
-                      "gatilho": "pose", "loop": bool(c.get("loop", True))}
+                      "gatilho": quando, "loop": bool(c.get("loop", True))}
                      for c in ciclos if isinstance(c, dict) and c.get("nome")]
         if not animacoes:
-            animacoes = [{"id": "parado", "rotulo": "Parado", "gatilho": "pose", "loop": True}]
+            animacoes = [{"id": "parado", "rotulo": "Parado", "gatilho": quando, "loop": True}]
         estado["animacoes"] = animacoes
     return sorted(pecas.values(), key=lambda p: p["id"])

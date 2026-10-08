@@ -526,6 +526,78 @@ def habitante(nome: str, pose: str, direcao: str) -> tuple[Folha, str] | None:
     return f, f.ciclo(direcao)
 
 
+# ------------------------------------------- o Atelie para o celular
+# 08/10/2026: o celular recebia so o quadro 0 da arte do Atelie (o atlas) e a
+# lista de folhas tocaveis (`para_o_app`) so conhecia a esteira. Agora cada
+# habitante com arte do Atelie vira UMA folha com uma linha por direcao
+# (frente/esquerda/direita/costas, com o espelho/reserva de `habitante`), salva
+# numa pasta de saida e servida pela mesma rota so de leitura.
+DIRECOES_DA_FOLHA = ("frente", "esquerda", "direita", "costas")
+ALTURA_APP_ATELIE = 128
+PASTA_APP_ATELIE = Path(__file__).resolve().parents[2] / "palco" / "_saida" / "arte_vila_atelie"
+_NOME_SEGURO = re.compile(r"^[a-z0-9_]+$")
+
+
+def animacao_atelie(nome: str, pose: str) -> str | None:
+    """A animacao (da pose ou a reserva) que tem arte do Atelie, ou None."""
+    for animacao in (POSE_PARA_ANIMACAO.get(pose, "parado"),) + RESERVA_DE_ANIMACAO:
+        chave = catalogo_vila.chave_do_item(itens().get(arquivo_do_habitante(nome, animacao)) or {})
+        if chave and any((atelie_animacoes.caminho(chave[0], chave[1], d) / "folha.png").is_file()
+                         for d in DIRECOES_DA_FOLHA):
+            return animacao
+    return None
+
+
+def _folha_app_atelie(nome: str, animacao: str) -> tuple[Path, dict] | None:
+    chave = catalogo_vila.chave_do_item(itens().get(arquivo_do_habitante(nome, animacao)) or {})
+    if not chave:
+        return None
+    linhas = []
+    for direcao in DIRECOES_DA_FOLHA:
+        f = None
+        for fonte, espelhar in ((direcao, False),) + OUTRAS_DIRECOES.get(direcao, ()):
+            f = _folha_do_atelie(chave[0], chave[1], fonte, espelhar, direcao)
+            if f is not None:
+                break
+        if f is None:
+            return None
+        linhas.append((direcao, f))
+    cw = max(int(f.celula[0]) for _, f in linhas)
+    ch = max(int(f.celula[1]) for _, f in linhas)
+    # o celular desenha o habitante com ~32 px de mundo x a escala dele: 128 px
+    # de celula basta (a folha cheia do Bot tinha 5008 px de largura)
+    fator = min(1.0, ALTURA_APP_ATELIE / ch)
+    cw, ch = max(1, round(cw * fator)), max(1, round(ch * fator))
+    colunas = max(f.colunas for _, f in linhas)
+    marca = "|".join(f"{f.nome}:{f.colunas}:{f.imagem.width}" for _, f in linhas) + f"|{ALTURA_APP_ATELIE}"
+    destino = PASTA_APP_ATELIE / f"{nome}__{animacao}.png"
+    info_arquivo = destino.with_suffix(".json")
+    ciclos = {}
+    for r, (direcao, f) in enumerate(linhas):
+        dado = f.ciclos.get(direcao) or {}
+        ciclos[direcao] = {"quadros": [r * colunas + i for i in range(f.colunas)],
+                           "fps": dado.get("fps", 8), "loop": dado.get("loop", True)}
+    info = {"marca": marca, "grade": [colunas, len(linhas)], "tamanho": [cw * colunas, ch * len(linhas)],
+            "ciclos": ciclos, "pe": round(linhas[0][1].pe, 4)}
+    try:
+        antigo = json.loads(info_arquivo.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        antigo = {}
+    if antigo.get("marca") != marca or not destino.is_file():
+        folha_app = Image.new("RGBA", (cw * colunas, ch * len(linhas)), (0, 0, 0, 0))
+        for r, (_, f) in enumerate(linhas):
+            for i in range(f.colunas):
+                quadro = f.recorte(i)
+                if fator < 1.0:
+                    quadro = quadro.resize((max(1, round(quadro.width * fator)),
+                                            max(1, round(quadro.height * fator))), Image.LANCZOS)
+                folha_app.alpha_composite(quadro, (i * cw + (cw - quadro.width) // 2, r * ch + (ch - quadro.height)))
+        PASTA_APP_ATELIE.mkdir(parents=True, exist_ok=True)
+        folha_app.save(destino)
+        info_arquivo.write_text(json.dumps(info), encoding="utf-8")
+    return destino, info
+
+
 # ------------------------------------------------------------- o app
 ROTA = "/arte-vila/"
 
@@ -548,6 +620,20 @@ def para_o_app() -> dict:
             "tamanho": [f.imagem.width, f.imagem.height],
             "ciclos": f.ciclos, "pe": round(f.pe, 4),
             "mundo": list(mundo)}
+    for nome_arquivo, item in sorted(itens().items()):
+        partes = nome_arquivo.split("/")
+        if len(partes) != 3 or partes[0] != "habitantes":
+            continue
+        nome, animacao = partes[1], partes[2].rsplit(".", 1)[0]
+        feita = _folha_app_atelie(nome, animacao)
+        if feita is None:
+            continue
+        _, info = feita
+        mundo = tamanho_no_mundo(nome_arquivo) or (26, 32)
+        saida["habitantes"].setdefault(nome, {})[animacao] = {
+            "url": f"{ROTA}atelie/{nome}/{animacao}.png?v={assinatura()}",
+            "grade": info["grade"], "tamanho": info["tamanho"], "ciclos": info["ciclos"],
+            "pe": info["pe"], "mundo": list(mundo)}
     return saida
 
 
@@ -557,7 +643,17 @@ def arquivo_publico(rota: str) -> Path | None:
     no indice (nada de `..`, de barra invertida ou de arquivo fora dele)."""
     if not rota.startswith(ROTA):
         return None
-    return indice().get(rota[len(ROTA):])
+    resto = rota[len(ROTA):]
+    if resto.startswith("atelie/"):
+        partes = resto[len("atelie/"):].split("/")
+        if len(partes) != 2 or not partes[1].endswith(".png"):
+            return None
+        nome, animacao = partes[0], partes[1][:-4]
+        if not (_NOME_SEGURO.match(nome) and _NOME_SEGURO.match(animacao)):
+            return None
+        feita = _folha_app_atelie(nome, animacao)
+        return feita[0] if feita else None
+    return indice().get(resto)
 
 
 __all__ = ["Folha", "POSE_PARA_ANIMACAO", "ROTA", "ajustada",

@@ -8,5 +8,5 @@ def test_catalogo_da_vila_cobre_inventario_e_direcoes():
     grok = next(p for p in pecas if p["id"] == "vila.habitantes.grok")
     andar = next(e for e in grok["estados"] if e["id"] == "andar")
     assert [a["id"] for a in andar["animacoes"]] == ["frente", "esquerda", "direita", "costas"]
-    assert all(a["gatilho"] == "pose" for a in andar["animacoes"])
+    assert all(a["gatilho"] == catalogo_vila.QUANDO_TOCA["andar"] for a in andar["animacoes"])
     assert grok["categoria_vila"] == "Habitantes" and grok["rotulo"] == "Grok"

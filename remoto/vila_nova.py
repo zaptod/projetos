@@ -394,7 +394,9 @@ class Motor:
                 # a folha da esteira (se aprovada): o celular toca o ciclo
                 # da direcao no fps do .json, defasado pela `fase`
                 escolha = prontas.habitante(nome, pose, direcao)
-                folha = ({"animacao": prontas.animacao_do_habitante(nome, pose),
+                # a do Atelie primeiro (08/10: o celular so tinha o quadro 0 dela)
+                folha = ({"animacao": prontas.animacao_atelie(nome, pose)
+                                      or prontas.animacao_do_habitante(nome, pose),
                           "ciclo": escolha[1], "fase": round(h.fase, 2)}
                          if escolha else None)
                 habitantes.append({
@@ -422,6 +424,9 @@ class Motor:
                                              for t in (info.get("trabalhos") or [])]}
                         for nome, info in predios.items()},
             "erro_de_leitura": erro,
+            # o celular compara com a do mundo e baixa a arte de novo quando o
+            # Adrian salva no Atelie (antes so baixava ao abrir a Vila)
+            "versao": versao(),
         }
 
 
