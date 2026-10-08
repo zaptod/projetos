@@ -376,6 +376,20 @@ class Folha:
         """Qual quadro do ciclo toca no instante `t` (segundos)."""
         info = self.ciclos.get(ciclo) or {}
         n = len(info.get("quadros") or []) or 1
+        duracoes = info.get("duracoes") or []
+        if len(duracoes) == n:
+            total = sum(duracoes)
+            if total:
+                instante = max(0.0, t)
+                if info.get("loop", True):
+                    instante %= total
+                else:
+                    instante = min(instante, total - 0.000001)
+                for i, duracao in enumerate(duracoes):
+                    if instante < duracao:
+                        return i
+                    instante -= duracao
+                return n - 1
         passo = int(max(0.0, t) * float(info.get("fps") or 1))
         return passo % n if info.get("loop", True) else min(passo, n - 1)
 
@@ -539,8 +553,14 @@ def _folha_do_atelie(peca: str, estado: str, direcao: str, espelhar: bool, ciclo
     # o pe e onde o desenho acaba (a ancora do Atelie e do Godot e outra coisa:
     # com ela no meio o Bot saia cortado ao meio na Vila, 08/10)
     pe = (fundo_do_desenho / altura) if fundo_do_desenho else 1.0
-    ciclos = {ciclo: {"quadros": list(range(len(quadros))), "fps": dados.get("fps", 1),
-                      "loop": dados.get("loop", True)}}
+    ordem = list(range(len(quadros)))
+    if dados.get("ida_e_volta") and len(ordem) > 1:
+        ordem += ordem[-2:0:-1]
+    duracoes = dados.get("duracao_por_quadro") or {}
+    ciclos = {ciclo: {"quadros": ordem, "fps": dados.get("fps", 1),
+                      "loop": dados.get("loop", True),
+                      "duracoes": [float(duracoes.get(str(i), 1 / dados.get("fps", 1)))
+                                   for i in ordem]}}
     f = Folha(f"atelie:{peca}/{estado}/{direcao}" + (":espelho" if espelhar else ""), folha_atelie,
               len(quadros), 1, ciclos, [ciclo], pe)
     _FOLHAS_ATELIE[chave] = (marca, f)
@@ -570,6 +590,25 @@ def habitante(nome: str, pose: str, direcao: str) -> tuple[Folha, str] | None:
     if f is None:
         return None
     return f, f.ciclo(direcao)
+
+
+def folha_do_cenario(nome_arquivo: str) -> Folha | None:
+    """Folha do Atelie para uma peca do cenario, se ela tiver movimento."""
+    item = itens().get(nome_arquivo) or {}
+    chave = catalogo_vila.chave_do_item(item)
+    if not chave:
+        return None
+    raiz = atelie_animacoes.ANIMACOES / chave[0] / chave[1]
+    try:
+        animacoes = sorted(p.name for p in raiz.iterdir()
+                           if (p / "folha.png").is_file())
+    except OSError:
+        return None
+    if not animacoes:
+        return None
+    animacao = "parado" if "parado" in animacoes else animacoes[0]
+    folha = _folha_do_atelie(chave[0], chave[1], animacao, False, animacao)
+    return folha if folha and folha.colunas > 1 else None
 
 
 # ------------------------------------------- o Atelie para o celular
@@ -644,6 +683,36 @@ def _folha_app_atelie(nome: str, animacao: str) -> tuple[Path, dict] | None:
     return destino, info
 
 
+def _folha_app_cenario(nome_arquivo: str) -> tuple[Path, dict] | None:
+    folha = folha_do_cenario(nome_arquivo)
+    if folha is None:
+        return None
+    item = itens().get(nome_arquivo) or {}
+    ident = str(item.get("id") or "")
+    if not _NOME_SEGURO.match(ident):
+        return None
+    ciclo = folha.ordem[0]
+    # reduzida para o celular (a arvore do Adrian tinha 5008 px de largura)
+    fator = min(1.0, ALTURA_APP_ATELIE / max(1, folha.imagem.height))
+    imagem_app = folha.imagem if fator >= 1.0 else folha.imagem.resize(
+        (max(1, round(folha.imagem.width * fator)), max(1, round(folha.imagem.height * fator))), Image.LANCZOS)
+    info = {"grade": [folha.colunas, 1],
+            "tamanho": [imagem_app.width, imagem_app.height],
+            "ciclos": {ciclo: folha.ciclos[ciclo]}, "pe": round(folha.pe, 4)}
+    destino = PASTA_APP_ATELIE / f"cenario__{ident}.png"
+    marca = f"{folha.nome}:{folha.imagem.size}:{folha.ciclos}:{ALTURA_APP_ATELIE}"
+    metadado = destino.with_suffix(".json")
+    try:
+        antigo = json.loads(metadado.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        antigo = {}
+    if antigo.get("marca") != marca or not destino.is_file():
+        PASTA_APP_ATELIE.mkdir(parents=True, exist_ok=True)
+        imagem_app.save(destino)
+        metadado.write_text(json.dumps({"marca": marca, **info}), encoding="utf-8")
+    return destino, info
+
+
 # ------------------------------------------------------------- o app
 ROTA = "/arte-vila/"
 
@@ -651,7 +720,7 @@ ROTA = "/arte-vila/"
 def para_o_app() -> dict:
     """O que o celular precisa para tocar as folhas dos habitantes: a URL
     (rota so de leitura), a grade, os ciclos e onde fica o pe."""
-    saida: dict = {"habitantes": {}, "versao": assinatura()}
+    saida: dict = {"habitantes": {}, "props": {}, "versao": assinatura()}
     for nome_arquivo in sorted(indice()):
         partes = nome_arquivo.split("/")
         if len(partes) != 3 or partes[0] != "habitantes":
@@ -680,6 +749,14 @@ def para_o_app() -> dict:
             "url": f"{ROTA}atelie/{nome}/{animacao}.png?v={assinatura()}",
             "grade": info["grade"], "tamanho": info["tamanho"], "ciclos": info["ciclos"],
             "pe": info["pe"], "mundo": list(mundo)}
+    for nome_arquivo in sorted(itens()):
+        feita = _folha_app_cenario(nome_arquivo)
+        if feita is None:
+            continue
+        _, info = feita
+        saida["props"][nome_arquivo] = {
+            "url": f"{ROTA}atelie/cenario/{itens()[nome_arquivo]['id']}.png?v={assinatura()}",
+            **info, "mundo": list(tamanho_no_mundo(nome_arquivo) or (1, 1))}
     return saida
 
 
@@ -692,6 +769,15 @@ def arquivo_publico(rota: str) -> Path | None:
     resto = rota[len(ROTA):]
     if resto.startswith("atelie/"):
         partes = resto[len("atelie/"):].split("/")
+        # /arte-vila/atelie/cenario/<id>.png (08/10: a rota pedia 3 partes e a
+        # url tem 2 -> 404 no celular e a arvore nao animava)
+        if len(partes) == 2 and partes[0] == "cenario" and partes[1].endswith(".png"):
+            ident = partes[1][:-4]
+            if not _NOME_SEGURO.match(ident):
+                return None
+            nome = next((n for n, i in itens().items() if i.get("id") == ident), "")
+            feita = _folha_app_cenario(nome)
+            return feita[0] if feita else None
         if len(partes) != 2 or not partes[1].endswith(".png"):
             return None
         nome, animacao = partes[0], partes[1][:-4]

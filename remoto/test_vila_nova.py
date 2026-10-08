@@ -16,6 +16,7 @@ from __future__ import annotations
 import threading
 import time
 import types
+import io
 
 import pytest
 
@@ -23,6 +24,41 @@ from remoto import vila_nova
 
 
 # --------------------------------------------------------------- a arte
+def test_cenario_animado_do_atelie_sai_do_fundo_e_vira_props(tmp_path, monkeypatch):
+    """Quatro cores provam que a arvore vai inteira para a camada viva."""
+    from PIL import Image
+    from neural_fights.tools import atelie_animacoes
+    from painel.flutuante import arte, arte_pronta
+
+    monkeypatch.setattr(atelie_animacoes, "ANIMACOES", tmp_path / "animacoes")
+    arte_pronta.usar(tmp_path / "arte", arte_pronta.INVENTARIO_PADRAO)
+    folha = Image.new("RGBA", (64, 16))
+    cores = [(240, 30, 30, 255), (30, 240, 30, 255),
+             (30, 30, 240, 255), (240, 240, 30, 255)]
+    for i, cor in enumerate(cores):
+        folha.paste(cor, (i * 16, 0, (i + 1) * 16, 16))
+    bruto = io.BytesIO(); folha.save(bruto, "PNG")
+    atelie_animacoes.salvar("vila.cenario.arvore", "arvore", "parado",
+                            bruto.getvalue(), {"quadros": [
+                                {"x": i * 16, "y": 0, "w": 16, "h": 16}
+                                for i in range(4)], "fps": 5, "loop": True,
+                                "ancora": {"x": .5, "y": 1}})
+    try:
+        arte_pronta.conferir()
+        fundo = arte.compor_mundo(False)
+        assert fundo.getpixel((240, 12))[:3] != cores[0][:3]
+        props = arte.props_animados()
+        assert len(props) == len(arte.ARVORES)
+        assert all(p["folha"].colunas == 4 for p in props)
+        mundo = vila_nova.mundo()
+        assert len(mundo["props_animados"]) == len(arte.ARVORES)
+        info = mundo["props_animados"][0]["folha"]
+        assert info["url"].startswith("/arte-vila/atelie/cenario/")
+        assert info["grade"] == [4, 1]
+    finally:
+        arte_pronta.usar(None)
+
+
 def test_atlas_cobre_toda_combinacao_que_o_retrato_pede():
     folha = vila_nova.atlas()
     assert folha["png"][:4] == b"\x89PNG"

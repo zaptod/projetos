@@ -320,6 +320,18 @@ function vilaRetanguloDoLote(nome) {
 // (`arte_pronta.Folha.indice`), e a folha é baixada uma vez.
 function vilaQuadroDaFolha(ciclo, t) {
   const n = (ciclo.quadros || []).length || 1;
+  const duracoes = ciclo.duracoes || [];
+  if (duracoes.length === n) {
+    const total = duracoes.reduce((a, b) => a + b, 0);
+    let instante = Math.max(0, t);
+    if (total) {
+      instante = ciclo.loop === false ? Math.min(instante, total - .000001) : instante % total;
+      for (let i = 0; i < n; i += 1) {
+        if (instante < duracoes[i]) return (ciclo.quadros || [0])[i];
+        instante -= duracoes[i];
+      }
+    }
+  }
   const passo = Math.floor(Math.max(0, t) * (ciclo.fps || 1));
   const i = ciclo.loop === false ? Math.min(passo, n - 1) : passo % n;
   return (ciclo.quadros || [0])[i];
@@ -349,6 +361,18 @@ function vilaQuadroDoHabitante(h, agora) {
   return {url: info.url, sx: (q % cols) * cw, sy: Math.floor(q / cols) * ch,
           sw: cw, sh: ch, larg: cw * alt / ch, alt,
           topo: -1 - info.pe * alt};       // em relação ao pé
+}
+
+function vilaQuadroDoProp(prop, agora) {
+  const info = prop.folha;
+  const ciclo = info && info.ciclos[Object.keys(info.ciclos || {})[0]];
+  if (!ciclo) return null;
+  const q = vilaQuadroDaFolha(ciclo, agora + (prop.fase || 0));
+  const [cols] = info.grade;
+  const cw = info.tamanho[0] / cols, ch = info.tamanho[1];
+  return {url: info.url, sx: (q % cols) * cw, sy: 0, sw: cw, sh: ch,
+          larg: prop.largura, alt: prop.altura,
+          topo: -info.pe * prop.altura};
 }
 
 // Cada fileira mostra um pedaço do mundo. Quem anda perto da dobra aparece
@@ -398,6 +422,28 @@ function vilaSpriteDaFolha(ctx, folha, q, x, y) {
   }
 }
 
+function vilaDesenharProps(ctx) {
+  const agora = performance.now() / 1000;
+  const props = [...(Vila.mundo?.props_animados || [])]
+    .sort((a, b) => a.ordem - b.ordem);
+  for (const prop of props) {
+    const q = vilaQuadroDoProp(prop, agora);
+    const folha = q && vilaFolha(q.url);
+    if (!folha) continue;
+    for (const f of vilaFileiras()) {
+      const rx = prop.x - f.x0;
+      if (rx + q.larg < 0 || rx > vilaGeo().largura) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, f.y - q.alt, vilaGeo().largura, vilaGeo().fileira + q.alt);
+      ctx.clip();
+      ctx.drawImage(folha, q.sx, q.sy, q.sw, q.sh,
+                    rx, f.y + prop.y + q.topo, q.larg, q.alt);
+      ctx.restore();
+    }
+  }
+}
+
 function vilaDesenhar() {
   const canvas = vilaCanvas();
   const g = vilaGeo();
@@ -420,6 +466,7 @@ function vilaDesenhar() {
   ctx.translate(-Vila.panX, -Vila.panY);
   ctx.scale(Vila.zoom, Vila.zoom);
   if (Vila.fundo) ctx.drawImage(Vila.fundo, 0, 0, g.largura, g.altura);
+  vilaDesenharProps(ctx);
 
   if (Vila.selecionado && Vila.mundo.lotes[Vila.selecionado]) {
     const l = vilaRetanguloDoLote(Vila.selecionado);

@@ -46,6 +46,7 @@ class CenaFofa:
         self._configs: dict = {}
         self._info_aberto = True
         self._quadro_ambiente = 0
+        self._props_animados: list[dict] = []
         self.origens = {n: "fofa" for n in arte.LOTES}
         self.vida = self._cache.get("vida") or Vida(list(dados.PREDIOS))
         self._cache["vida"] = self.vida
@@ -92,10 +93,10 @@ class CenaFofa:
         vista = arte_pronta.conferir()
         if self._cache.get("arte_vista", vista) != vista:
             for chave in [c for c in self._cache
-                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p")]:
+                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p", "prop")]:
                 del self._cache[chave]
             for chave in [c for c in self._fotos
-                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p")]:
+                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p", "prop")]:
                 del self._fotos[chave]
             self._imagem_atual.clear()
             self._atualizar_noite(forcar=True)
@@ -135,6 +136,10 @@ class CenaFofa:
     def _montar(self) -> None:
         c = self.canvas
         self._fundo = c.create_image(0, 0, anchor="nw")
+        self._props_animados = arte.props_animados()
+        self._itens_props = {p["nome"]: c.create_image(p["x"], p["y"], anchor="nw")
+                             for p in sorted(self._props_animados,
+                                             key=lambda p: p["ordem"])}
         self._decoracoes = [c.create_image(x, y, anchor="s", state="hidden")
                             for nome, (x, y) in
                             arte.LUGAR_DAS_DECORACOES.items()]
@@ -351,10 +356,23 @@ class CenaFofa:
                 c.itemconfigure(itens["balao_fundo"], state="hidden")
         self._animar_ambiente(agora, dt)
 
+    def _animar_props(self, agora: float) -> None:
+        for i, prop in enumerate(self._props_animados):
+            folha = prop["folha"]
+            ciclo = folha.ordem[0]
+            quadro = folha.indice(ciclo, agora + i * .37)
+            chave = ("prop", prop["nome"], quadro, self._noite)
+            def fabricar(f=folha, c=ciclo, q=quadro, p=prop):
+                imagem = f.sprite(c, q, p["largura"], p["altura"], sombra=False)
+                return arte._escurecer_imagem(imagem, .45) if self._noite else imagem
+            self._trocar_imagem(self._itens_props[prop["nome"]],
+                                self._generica(chave, fabricar))
+
     def _animar_ambiente(self, agora: float, dt: float) -> None:
         # O cenario anda a ~7 quadros por segundo: patos e fonte nao precisam
         # de mais, e cada redesenho do Tk custa CPU.
         self._quadro_ambiente = (self._quadro_ambiente + 1) % 3
+        self._animar_props(agora)
         if self._quadro_ambiente:
             self._animar_particulas(agora, dt)
             return

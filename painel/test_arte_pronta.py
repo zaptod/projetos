@@ -330,7 +330,9 @@ def _funcao_do_vila_js(nome: str) -> str:
 class CelularEscolheOMesmoQuadro(unittest.TestCase):
     def test_vila_js_e_arte_pronta_dao_o_mesmo_quadro(self):
         ciclos = [{"quadros": [8, 9, 10, 11], "fps": 4, "loop": True},
-                  {"quadros": [0, 1, 2], "fps": 8, "loop": False}]
+                  {"quadros": [0, 1, 2], "fps": 8, "loop": False},
+                  {"quadros": [0, 1, 2, 1], "fps": 8, "loop": True,
+                   "duracoes": [.1, .2, .1, .2]}]
         tempos = [0, .1, .25, .3, .74, 1.0, 2.6, 7.9]
         codigo = (_funcao_do_vila_js("vilaQuadroDaFolha") + "\nconst c = "
                   + json.dumps(ciclos) + "; const t = " + json.dumps(tempos)

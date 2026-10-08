@@ -246,6 +246,14 @@ def mundo() -> dict:
     arte = _arte()
     dados = _dados()
     folha = atlas()
+    props = []
+    for i, prop in enumerate(arte.props_animados()):
+        info = _arte_pronta().para_o_app()["props"].get(prop["arquivo"])
+        if info:
+            props.append({"nome": prop["nome"], "x": prop["x"], "y": prop["y"],
+                          "largura": prop["largura"], "altura": prop["altura"],
+                          "ordem": prop["ordem"], "fase": round(i * .37, 2),
+                          "folha": info})
     return {
         "tamanho": [arte.LARGURA, arte.ALTURA],
         "tile": arte.TILE if hasattr(arte, "TILE") else 16,
@@ -265,6 +273,7 @@ def mundo() -> dict:
         "paisagem": {**paisagem.geometria(), "escala": ESCALA_CELULAR},
         # as folhas da esteira que o celular toca sozinho (rota /arte-vila/)
         "arte": _arte_pronta().para_o_app(),
+        "props_animados": props,
         "versao": versao(),
     }
 

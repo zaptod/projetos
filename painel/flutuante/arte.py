@@ -84,6 +84,34 @@ ARVORES = [(15, 1, "#6cc06a"), (24, 1, "#56a86a"), (33, 1, "#5fb45a"),
            (42, 1, "#6cc06a"), (42, 9, "#56a86a"), (42, 11, "#5fb45a")]
 
 
+def props_animados() -> list[dict]:
+    """Props do mundo cuja folha do Atelie tem mais de um quadro.
+
+    As coordenadas sao as do desenho antigo, inclusive a ordem pelo pe. A
+    peca de um quadro continua no fundo, que e bem mais barato de mostrar.
+    """
+    candidatos = []
+    for i, (tx, ty, _tom) in enumerate(ARVORES):
+        candidatos.append((f"arvore-{i}", "cenario/arvore.png", tx * TILE - 2,
+                           ty * TILE - 6, 36, 44, ty * TILE + 44, "arvore"))
+    candidatos += [
+        ("banco", "cenario/banco.png", BANCO[0] - 13, BANCO[1] - 8,
+         26, 16, BANCO[1] + 8, "enfeite"),
+        ("fonte", "cenario/fonte.png", FONTE[0] - 20, FONTE[1] - 16,
+         40, 30, FONTE[1] + 14, "enfeite"),
+        ("canteiro", "cenario/canteiro.png", CANTEIRO[0] - 17,
+         CANTEIRO[1] - 9, 34, 18, CANTEIRO[1] + 9, "enfeite"),
+    ]
+    saida = []
+    for nome, arquivo, x, y, largura, altura, ordem, tipo in candidatos:
+        folha = arte_pronta.folha_do_cenario(arquivo)
+        if folha:
+            saida.append({"nome": nome, "arquivo": arquivo, "x": x, "y": y,
+                          "largura": largura, "altura": altura, "ordem": ordem,
+                          "tipo": tipo, "folha": folha})
+    return saida
+
+
 def rgb(cor: str) -> tuple:
     cor = cor.lstrip("#")
     return tuple(int(cor[i:i + 2], 16) for i in (0, 2, 4))
@@ -976,16 +1004,22 @@ def compor_mundo(noite: bool = False, escala: int = 1) -> Image.Image:
     mundo = desenhar_chao(e)
     if noite:
         mundo = noturno(mundo)
+    animados = {p["nome"] for p in props_animados()}
     fixos = []
     for tx, ty, tom in ARVORES:
-        fixos.append((ty * TILE + 44, desenhar_arvore(tom, e),
-                      (tx * TILE - 2, ty * TILE - 6), "arvore"))
-    fixos.append((BANCO[1] + 8, desenhar_banco(e),
-                  (BANCO[0] - 13, BANCO[1] - 8), "enfeite"))
-    fixos.append((FONTE[1] + 14, desenhar_fonte(0, e),
-                  (FONTE[0] - 20, FONTE[1] - 16), "enfeite"))
-    fixos.append((CANTEIRO[1] + 9, desenhar_canteiro(e),
-                  (CANTEIRO[0] - 17, CANTEIRO[1] - 9), "enfeite"))
+        i = ARVORES.index((tx, ty, tom))
+        if f"arvore-{i}" not in animados:
+            fixos.append((ty * TILE + 44, desenhar_arvore(tom, e),
+                          (tx * TILE - 2, ty * TILE - 6), "arvore"))
+    if "banco" not in animados:
+        fixos.append((BANCO[1] + 8, desenhar_banco(e),
+                      (BANCO[0] - 13, BANCO[1] - 8), "enfeite"))
+    if "fonte" not in animados:
+        fixos.append((FONTE[1] + 14, desenhar_fonte(0, e),
+                      (FONTE[0] - 20, FONTE[1] - 16), "enfeite"))
+    if "canteiro" not in animados:
+        fixos.append((CANTEIRO[1] + 9, desenhar_canteiro(e),
+                      (CANTEIRO[0] - 17, CANTEIRO[1] - 9), "enfeite"))
     for nome, (lx, ly) in list(LOTES.items()) + [("casa", CASA)]:
         fixos.append(((ly + 3) * TILE, desenhar_predio(nome, noite, e),
                       (lx * TILE - 4, ly * TILE - 16), "predio"))

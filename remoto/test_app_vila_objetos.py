@@ -144,7 +144,8 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v62 = Ateliê: Escolher folha abre a galeria (sem capture) e escondida tem volta (08/10).
     # v65 = Ateliê: folha com fundo magenta/verde liso volta limpa (08/10, o Bot).
     # v66 = Vila do celular toca a animacao inteira do Atelie e baixa a arte nova sozinha (08/10).
-    assert "painel-casca-v66" in sw
+    # v67 = props animados do Atelie (08/10).
+    assert "painel-casca-v67" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
