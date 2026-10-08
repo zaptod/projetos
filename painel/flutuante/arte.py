@@ -328,7 +328,7 @@ def desenhar_chao(escala: int = 1) -> Image.Image:
                 p.circulo(x, y, raio, cor)
 
     if grama is not None:                # a textura ja tem as florzinhas
-        return p.final()
+        return _lago_do_atelie(p.final(), escala)
     # flores (LOTES_TARDIOS: ver o comentario la em cima)
     antigos = [n for n in list(LOTES) + ["casa"] if n not in LOTES_TARDIOS]
     for _ in range(120):
@@ -344,7 +344,19 @@ def desenhar_chao(escala: int = 1) -> Image.Image:
             a = k * 2 * math.pi / 5
             p.circulo(x + math.cos(a) * 1.5, y + math.sin(a) * 1.5, 1.1, cor)
         p.circulo(x, y, 0.8, "#ffb43c")
-    return p.final()
+    return _lago_do_atelie(p.final(), escala)
+
+
+def _lago_do_atelie(img: Image.Image, escala: int) -> Image.Image:
+    """Sobrepoe as pecas do lago ao desenho de reserva, se foram salvas."""
+    e = max(1, int(escala))
+    lago = arte_pronta.ajustada("cenario/lago.png", 68, 46, e)
+    if lago is not None:
+        img.alpha_composite(lago, ((LAGO[0] - 34) * e, (LAGO[1] - 23) * e))
+    brilho = arte_pronta.ajustada("cenario/lago_brilho.png", 52, 34, e)
+    if brilho is not None:
+        img.alpha_composite(brilho, ((LAGO[0] - 26) * e, (LAGO[1] - 17) * e))
+    return img
 
 
 def desenhar_arvore(tom: str = "#5fb45a", escala: int = 1) -> Image.Image:
@@ -367,6 +379,9 @@ def desenhar_arvore(tom: str = "#5fb45a", escala: int = 1) -> Image.Image:
 
 
 def desenhar_banco(escala: int = 1) -> Image.Image:
+    pronta = arte_pronta.ajustada("cenario/banco.png", 26, 16, escala)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(26, 16, escala)
     p.ret(2, 3, 24, 7, 1.5, "#c9905d", "#9c6a41", 0.6)
     p.ret(2, 8, 24, 11, 1.5, "#d9a06a", "#9c6a41", 0.6)
@@ -376,6 +391,9 @@ def desenhar_banco(escala: int = 1) -> Image.Image:
 
 
 def desenhar_fonte(quadro: int = 0, escala: int = 1) -> Image.Image:
+    pronta = arte_pronta.ajustada("cenario/fonte.png", 40, 30, escala)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(40, 30, escala)
     p.elipse(2, 12, 38, 28, "#c9c2d6", "#9a91ad", 0.8)
     p.elipse(5, 14, 35, 25, "#7fcdf0")
@@ -390,6 +408,9 @@ def desenhar_fonte(quadro: int = 0, escala: int = 1) -> Image.Image:
 
 
 def desenhar_canteiro(escala: int = 1) -> Image.Image:
+    pronta = arte_pronta.ajustada("cenario/canteiro.png", 34, 18, escala)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(34, 18, escala)
     p.ret(1, 7, 33, 17, 4, "#a8744c", "#865634", 0.7)
     p.ret(3, 8, 31, 12, 3, "#7a5235")
@@ -766,6 +787,9 @@ def _acessorio(p: Pincel, tipo: str, cor, y0: float) -> None:
 
 # ============================================================ bichinhos
 def desenhar_pato(quadro: int = 0, escala: int = 1) -> Image.Image:
+    pronta = arte_pronta.ajustada("bichos/pato.png", 14, 11, escala)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(14, 11, escala)
     p.elipse(1, 4, 12, 10, "#ffffff", "#c8d3dd", .5)
     p.circulo(10, 3.8 + (quadro % 2) * .3, 2.6, "#ffffff", "#c8d3dd", .5)
@@ -776,6 +800,9 @@ def desenhar_pato(quadro: int = 0, escala: int = 1) -> Image.Image:
 
 
 def desenhar_gato(quadro: int = 0) -> Image.Image:
+    pronta = arte_pronta.ajustada("bichos/gato.png", 22, 14)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(22, 14)
     passo = 1 if quadro % 2 else -1
     for x in (5, 8, 14, 17):
@@ -792,6 +819,9 @@ def desenhar_gato(quadro: int = 0) -> Image.Image:
 
 
 def desenhar_passaro(quadro: int = 0) -> Image.Image:
+    pronta = arte_pronta.ajustada("bichos/passaro.png", 14, 10)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(14, 10)
     p.elipse(3, 4, 11, 9, "#6fb7ff", "#3f86d0", .5)
     p.circulo(10.5, 4.6, 2.2, "#6fb7ff")
@@ -805,6 +835,9 @@ def desenhar_passaro(quadro: int = 0) -> Image.Image:
 
 
 def desenhar_vagalume() -> Image.Image:
+    pronta = arte_pronta.ajustada("bichos/vagalume.png", 10, 10)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(10, 10)
     p.circulo(5, 5, 4, (255, 240, 140))
     p.desfocar(1.5)
@@ -822,6 +855,14 @@ LUGAR_DAS_DECORACOES = {
 
 
 def desenhar_decoracao(nome: str) -> Image.Image:
+    tamanhos = {"bandeirolas": (110, 16), "lanterna": (12, 28),
+                "balao": (14, 26), "gnomo": (12, 18),
+                "estatua": (16, 22), "arco": (40, 16)}
+    tamanho = tamanhos.get(nome)
+    if tamanho:
+        pronta = arte_pronta.ajustada("enfeites/" + nome + ".png", *tamanho)
+        if pronta is not None:
+            return pronta.copy()
     if nome == "bandeirolas":
         p = Pincel(110, 16)
         p.arco(2, -12, 108, 10, 20, 160, "#8a6a4a", .6)
@@ -876,6 +917,10 @@ def desenhar_decoracao(nome: str) -> Image.Image:
 @lru_cache(maxsize=64)
 def emote(simbolo: str, tamanho: int = 22) -> Image.Image:
     """Um balaozinho branco com um emoji colorido dentro."""
+    pronta = arte_pronta.ajustada("interface/balao_emote.png", tamanho,
+                                  tamanho + 4)
+    if pronta is not None:
+        return pronta.copy()
     p = Pincel(tamanho, tamanho + 4)
     p.circulo(tamanho / 2, tamanho / 2, tamanho / 2 - .8, "#ffffff",
               "#d8cfc4", .8)
@@ -899,6 +944,16 @@ def emote(simbolo: str, tamanho: int = 22) -> Image.Image:
         d.text((tamanho / 2, tamanho / 2), simbolo[:1], fill=(80, 60, 50),
                anchor="mm")
     return img
+
+
+def desenhar_confete() -> Image.Image:
+    """Um pedaco de confete; a cena o movimenta depois de uma publicacao."""
+    pronta = arte_pronta.ajustada("interface/confete.png", 3, 2)
+    if pronta is not None:
+        return pronta.copy()
+    p = Pincel(3, 2)
+    p.ret(0, 0, 3, 2, 0, "#ffd56b")
+    return p.final()
 
 
 # ==================================================================== mundo

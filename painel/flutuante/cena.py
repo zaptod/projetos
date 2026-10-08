@@ -284,13 +284,12 @@ class CenaFofa:
         for _ in range(36):
             angulo = self._rnd.uniform(-math.pi * .9, -math.pi * .1)
             vel = self._rnd.uniform(60, 140)
-            item = self.canvas.create_rectangle(
-                x0, y0, x0 + 3, y0 + 2, width=0,
-                fill=self._rnd.choice(cores))
+            foto = self._generica("confete", arte.desenhar_confete)
+            item = self.canvas.create_image(x0, y0, anchor="nw", image=foto)
             self._particulas.append({
                 "item": item, "x": x0, "y": y0,
                 "vx": math.cos(angulo) * vel, "vy": math.sin(angulo) * vel,
-                "fim": agora + self._rnd.uniform(1.6, 2.6)})
+                "fim": agora + self._rnd.uniform(1.6, 2.6), "imagem": True})
 
     # ------------------------------------------------------------ animar
     def passo(self) -> None:
@@ -400,7 +399,10 @@ class CenaFofa:
             p["vy"] += 160 * dt
             p["x"] += p["vx"] * dt
             p["y"] += p["vy"] * dt
-            c.coords(p["item"], p["x"], p["y"], p["x"] + 3, p["y"] + 2)
+            if p.get("imagem"):
+                c.coords(p["item"], p["x"], p["y"])
+            else:
+                c.coords(p["item"], p["x"], p["y"], p["x"] + 3, p["y"] + 2)
             vivas.append(p)
         self._particulas = vivas
 

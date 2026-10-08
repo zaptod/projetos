@@ -22,6 +22,7 @@ var _terminou := false
 ## a `escala` do animacao.json multiplica por cima. Sem corpo informado: 1:1.
 var corpo_px := 0.0
 var tamanho_rel := 1.0
+var segue_animacao := ""
 
 
 func _ready() -> void:
@@ -40,7 +41,8 @@ func _preparar_catalogo() -> void:
 			var pasta := str(animacao.get("pasta", ""))
 			if pasta != "":
 				_animacoes[chave] = {"pasta": pasta, "loop": bool(animacao.get("loop", true)),
-					"tamanho": _tamanho_do_catalogo(animacao.get("tamanho_padrao", "1"))}
+					"tamanho": _tamanho_do_catalogo(animacao.get("tamanho_padrao", "1")),
+					"segue": str(animacao.get("segue", "lutador")), "camada": int(animacao.get("camada", 0))}
 	# A animacao de repouso e a `ocioso`; peca sem ela (ex. Cristais Flutuantes:
 	# so `orbitar`, gatilho orbe) repousa na 1a que tem folha — antes ela nunca
 	# tocava (08/10/2026).
@@ -135,6 +137,8 @@ func _trocar(novo_gatilho: String) -> void:
 	gatilho_animacao = novo_gatilho
 	loop = bool(dado.get("loop", loop))
 	tamanho_rel = float(dado.get("tamanho", 1.0))
+	segue_animacao = str(dado.get("segue", "lutador"))
+	z_index = int(dado.get("camada", 0))
 	_terminou = false
 
 

@@ -68,7 +68,10 @@ var nomes_ate := -1
 var rastro := {}
 var orbital_px := {}      # slot -> alcance real da hitbox do Orbital, em px
 var obj_nos := {}
+var atelie_efeitos := {}
 var vfx: Array = []
+## folha de efeito em loop (ou que nunca acaba) some depois disto
+const VFX_FOLHA_MAX_S := 3.0
 # As pecas ficam SEM tipo de proposito: os metodos (configurar, atualizar,
 # evento) sao do script de cada peca, e peca sem script tambem vale.
 var arena_no = null
@@ -360,6 +363,7 @@ func _desenhar_quadro(f: int) -> void:
 			no.scale = Vector2.ONE * float(cab[slot].get("raio_corpo", 0.85)) * PX / maxf(1.0, float(no.get("raio_ref") if no.get("raio_ref") != null else 100.0))
 		_arma(slot, s, p, corte, ctx)
 	_objetos(p, i, ctx)
+	_atelie_efeitos(i, p, amostras, ctx)
 	for ev in eventos_por_quadro.get(f, []):
 		_evento(ev, amostras, ctx)
 	_envelhecer_vfx(ctx)
@@ -527,7 +531,14 @@ func _objetos(p: float, i: int, ctx: Dictionary) -> void:
 		var a := tl.amostra_trilha(t, p)
 		if a.has("x"):
 			no.position = Vector2(float(a["x"]), float(a["y"])) * PX
-		if no.has_method("atualizar"):
+		if no.has_method("gatilho"):
+			no.gatilho(str(t.get("tipo", "")))
+		if no.has_method("ajustar_corpo"):
+			var dono := str(t.get("dono", ""))
+			no.ajustar_corpo(2.0 * float(cab.get(dono, {}).get("raio_corpo", 0.85)) * PX)
+		if no.has_method("avancar"):
+			no.avancar(float(ctx.get("dt_mundo", 0.0)))
+		elif no.has_method("atualizar"):
 			no.atualizar(a, ctx)
 		else:
 			no.rotation = deg_to_rad(float(a.get("ang", 0.0)))
@@ -538,6 +549,67 @@ func _objetos(p: float, i: int, ctx: Dictionary) -> void:
 		if not vivos.has(id):
 			obj_nos[id].queue_free()
 			obj_nos.erase(id)
+
+
+## Status e buffs sao trilhas, nao eventos isolados. Cada folha fica presa ao
+## lutador enquanto a trilha esta viva e desaparece junto com ela.
+func _atelie_efeitos(i: int, p: float, amostras: Dictionary, ctx: Dictionary) -> void:
+	var vivos := {}
+	for efeito in tl.vivas("efeitos", i):
+		var tipo := str(efeito.get("tipo", ""))
+		if tipo not in ["status", "buff"]:
+			continue
+		var nome := str(efeito.get("status", efeito.get("nome", "")))
+		var slot := str(efeito.get("alvo", ""))
+		if nome == "" or not amostras.has(slot):
+			continue
+		var chave := "%s:%s" % [tipo, str(efeito.get("id", ""))]
+		vivos[chave] = true
+		var no = atelie_efeitos.get(chave)
+		if no == null:
+			var cena := bib.efeito_lutador(tipo, nome)
+			if cena == null:
+				continue
+			no = _instanciar(cena, camada_efeitos)
+			atelie_efeitos[chave] = no
+		var s: Dictionary = amostras[slot]
+		no.position = Vector2(float(s["x"]), float(s["y"]) - float(s.get("z", 0.0))) * PX
+		if no.has_method("gatilho"):
+			no.gatilho(tipo)
+		if no.has_method("ajustar_corpo"):
+			no.ajustar_corpo(2.0 * float(cab[slot].get("raio_corpo", 0.85)) * PX)
+		if no.has_method("avancar"):
+			no.avancar(float(ctx.get("dt_mundo", 0.0)))
+	# Flags tambem sao estados ativos do personagem (nao viram trilha de
+	# efeito). A tabela da propria timeline define qual bit cada nome ocupa.
+	var flags: Array = tl.dados.get("tabelas", {}).get("flags", [])
+	for slot in amostras:
+		var ativos := int(amostras[slot].get("flags", 0))
+		for bit in flags.size():
+			if (ativos & (1 << bit)) == 0:
+				continue
+			var nome_flag := str(flags[bit])
+			var chave_flag := "estado_lutador:%s:%s" % [slot, nome_flag]
+			vivos[chave_flag] = true
+			var no_flag = atelie_efeitos.get(chave_flag)
+			if no_flag == null:
+				var cena_flag := bib.estado_lutador(nome_flag)
+				if cena_flag == null:
+					continue
+				no_flag = _instanciar(cena_flag, camada_efeitos)
+				atelie_efeitos[chave_flag] = no_flag
+			var amostra: Dictionary = amostras[slot]
+			no_flag.position = Vector2(float(amostra["x"]), float(amostra["y"]) - float(amostra.get("z", 0.0))) * PX
+			if no_flag.has_method("gatilho"):
+				no_flag.gatilho(nome_flag)
+			if no_flag.has_method("ajustar_corpo"):
+				no_flag.ajustar_corpo(2.0 * float(cab[slot].get("raio_corpo", 0.85)) * PX)
+			if no_flag.has_method("avancar"):
+				no_flag.avancar(float(ctx.get("dt_mundo", 0.0)))
+	for chave in atelie_efeitos.keys():
+		if not vivos.has(chave):
+			atelie_efeitos[chave].queue_free()
+			atelie_efeitos.erase(chave)
 
 
 func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
@@ -555,7 +627,9 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 	for slot in arm:
 		if arm[slot].has_method("gatilho"):
 			arm[slot].gatilho(gatilho)
-	if not EVENTOS_COM_VFX.has(tipo):
+	var nome_skill := str(ev.get("nome", ""))
+	var tipo_skill := str(ev.get("tipo_skill", ""))
+	if not EVENTOS_COM_VFX.has(tipo) and not bib.tem_folha_evento(tipo, str(ev.get("elemento", "")), nome_skill, tipo_skill):
 		return
 	var pos := Vector2.ZERO
 	if tipo == "acerto" and typeof(ev.get("ponto")) == TYPE_ARRAY:
@@ -596,8 +670,19 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 			var arma: Dictionary = cab.get(str(ev.get("autor", "")), {}).get("arma", {})
 			var tipo_arma := UtilPalco.slug(str(arma.get("tipo", "")))
 			variante = "projetil_arma" if tipo_arma in ["arremesso", "arco"] else str(arma.get("arquetipo_animacao", ""))
-	var no = _instanciar(bib.evento(tipo, str(ev.get("tier", "")), str(ev.get("elemento", "")), variante), camada)
+	var no = _instanciar(bib.evento(tipo, str(ev.get("tier", "")), str(ev.get("elemento", "")), variante,
+		nome_skill, tipo_skill), camada)
 	no.position = pos
+	if no.has_method("gatilho"):
+		no.gatilho(gatilho)
+		if no.get("segue_animacao") == "mao do lutador":
+			var dono := str(ev.get("slot", ""))
+			if amostras.has(dono):
+				var s: Dictionary = amostras[dono]
+				no.position = Vector2(float(s["arma_gx"]), float(s["arma_gy"]) - float(s.get("z", 0.0))) * PX
+		if no.has_method("ajustar_corpo"):
+			var raio := float(cab.get(str(ev.get("slot", "")), {}).get("raio_corpo", 0.85))
+			no.ajustar_corpo(2.0 * raio * PX)
 	if no.has_method("configurar"):
 		no.configurar(ev, ctx)
 	vfx.append(no)
@@ -621,7 +706,16 @@ func _envelhecer_vfx(ctx: Dictionary) -> void:
 	for v in vfx:
 		if not is_instance_valid(v) or v.is_queued_for_deletion():
 			continue
-		if v.has_method("atualizar"):
+		if v.has_method("avancar"):
+			# folha do Atelie (08/10/2026): toca os quadros e some quando a
+			# animacao sem loop acaba (antes ficava parada no 1o quadro)
+			v.avancar(float(ctx["dt_mundo"]))
+			var vida := float(v.get_meta("idade", 0.0)) + float(ctx["dt_mundo"])
+			v.set_meta("idade", vida)
+			if (not bool(v.get("loop")) and bool(v.get("_terminou"))) or vida > VFX_FOLHA_MAX_S:
+				v.queue_free()
+				continue
+		elif v.has_method("atualizar"):
 			v.atualizar({}, ctx)
 		else:
 			# efeito sem script: toca a animacao "Anim" pela idade e some no fim

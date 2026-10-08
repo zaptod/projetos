@@ -147,6 +147,9 @@ def desenhar_campo_extra(noite: bool, escala: int) -> Image.Image:
 
 def desenhar_placa(escala: int = 1) -> Image.Image:
     """Placa de madeira com a seta de volta para a vila."""
+    pronta = arte_pronta.ajustada("cenario/placa.png", 22, 26, escala)
+    if pronta is not None:
+        return pronta.copy()
     p = arte.Pincel(22, 26, escala)
     p.ret(10, 8, 12.5, 25, 1, "#8a5a3c", "#6b4226", .5)
     p.poli([(4, 4), (20, 4), (20, 13), (4, 13), (1, 8.5)], "#c9905d",
@@ -214,6 +217,24 @@ def desenhar_ceu(noite: bool, escala: int, largura: int = LARGURA,
         camada = arte.noturno(morros.final())
         camada.putalpha(morros.final().getchannel("A"))
         ceu.alpha_composite(camada)
+    # As pecas do Atelie sao sobrepostas no mesmo ceu que vai ao retrato e
+    # a paisagem. Sem folha, o ceu procedural acima continua identico.
+    e = max(1, int(escala))
+    if noite:
+        pronta = arte_pronta.ajustada("cenario/lua.png", 18, 18, e)
+        if pronta is not None:
+            ceu.alpha_composite(pronta, (int((lua[0] - 9) * e),
+                                         int((lua[1] - 9) * e)))
+    else:
+        pronta = arte_pronta.ajustada("cenario/nuvem.png", 50, 24, e)
+        if pronta is not None:
+            cx, cy, _tam = nuvens[0]
+            ceu.alpha_composite(pronta, (int((cx - 25) * e),
+                                         int((cy - 12) * e)))
+    pronta = arte_pronta.ajustada("cenario/morro.png", 170, 34, e)
+    if pronta is not None:
+        ceu.alpha_composite(pronta, (int((largura / 2 - 85) * e),
+                                     int((CEU - 34) * e)))
     return ceu
 
 
@@ -263,6 +284,11 @@ def desenhar_sebe(noite: bool, escala: int) -> Image.Image:
     img = Image.new("RGBA", sombra_img.size, (0, 0, 0, 0))
     img.alpha_composite(sombra_img)
     img.alpha_composite(p.final())
+    pronta = arte_pronta.ajustada("cenario/moita.png", 44, 24, escala)
+    if pronta is not None:
+        for x in range(0, LARGURA, 44):
+            img.alpha_composite(pronta, (x * escala,
+                                         int((meio - 12) * escala)))
     if noite:
         img = arte._escurecer_imagem(img, .45)
     return img

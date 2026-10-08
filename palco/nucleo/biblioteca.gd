@@ -96,7 +96,9 @@ func _carregar_catalogo() -> void:
 	var dados = JSON.parse_string(FileAccess.get_file_as_string(arquivo))
 	if typeof(dados) != TYPE_DICTIONARY:
 		return
-	var ajustes = JSON.parse_string(FileAccess.get_file_as_string(raiz + "catalogo_ajustes.json"))
+	var ajustes = null
+	if FileAccess.file_exists(raiz + "catalogo_ajustes.json"):
+		ajustes = JSON.parse_string(FileAccess.get_file_as_string(raiz + "catalogo_ajustes.json"))
 	var escondidas: Array = ajustes.get("escondidas", []) if typeof(ajustes) == TYPE_DICTIONARY else []
 	for peca in dados.get("pecas", []):
 		if typeof(peca) == TYPE_DICTIONARY and not str(peca.get("id", "")) in escondidas:
@@ -116,6 +118,24 @@ func resolver_peca(ids: Array) -> Dictionary:
 			if primeira.is_empty():
 				primeira = peca
 	return primeira.duplicate(true)
+
+
+## Cena do catalogo apenas quando a cadeia encontrou uma folha do Atelie.
+## `null` deixa o chamador conservar o marcador/efeito que ja existia.
+func cena_catalogada(ids: Array) -> PackedScene:
+	var peca := resolver_peca(ids)
+	return _cena_catalogo(peca) if not peca.is_empty() and _tem_folha_catalogo(peca) else null
+
+
+func tem_folha_catalogada(ids: Array) -> bool:
+	var peca := resolver_peca(ids)
+	return not peca.is_empty() and _tem_folha_catalogo(peca)
+
+
+func tem_folha_evento(tipo: String, elemento := "", skill := "", tipo_skill := "") -> bool:
+	return tem_folha_catalogada(["skill." + UtilPalco.slug(skill), "skill.tipo." + UtilPalco.slug(tipo_skill),
+		"evento." + UtilPalco.slug(tipo), "efeito." + UtilPalco.slug(tipo),
+		"elemento." + UtilPalco.slug(elemento), "efeito.generico"])
 
 
 func _pasta_catalogo(peca: Dictionary, estado: String, animacao: String) -> String:
@@ -416,6 +436,11 @@ static func candidatos_objeto_png(tipo: String, elemento: String, nome: String, 
 
 
 func objeto(tipo: String, elemento: String, nome: String, forma := "") -> PackedScene:
+	var catalogada := cena_catalogada([
+		"skill." + UtilPalco.slug(nome), "efeito." + UtilPalco.slug(tipo),
+		"elemento." + UtilPalco.slug(elemento), "efeito.generico"])
+	if catalogada != null:
+		return catalogada
 	var png := candidatos_objeto_png(tipo, elemento, nome, forma)
 	return _cena("efeitos", "%s/%s/%s" % [tipo, elemento, nome], [
 		png[0],
@@ -459,10 +484,13 @@ static func candidatos_evento_com_png(tipo: String, tier := "", elemento := "", 
 	]
 
 
-func evento(tipo: String, tier := "", elemento := "", variante := "") -> PackedScene:
-	var catalogada := resolver_peca(["evento." + UtilPalco.slug(tipo), "efeito." + UtilPalco.slug(tipo), "elemento." + UtilPalco.slug(elemento), "efeito.generico"])
-	if not catalogada.is_empty() and _tem_folha_catalogo(catalogada):
-		return _cena_catalogo(catalogada)
+func evento(tipo: String, tier := "", elemento := "", variante := "", skill := "", tipo_skill := "") -> PackedScene:
+	var catalogada := cena_catalogada([
+		"skill." + UtilPalco.slug(skill), "skill.tipo." + UtilPalco.slug(tipo_skill),
+		"evento." + UtilPalco.slug(tipo), "efeito." + UtilPalco.slug(tipo),
+		"elemento." + UtilPalco.slug(elemento), "efeito.generico"])
+	if catalogada != null:
+		return catalogada
 	var nome := UtilPalco.slug(tipo)
 	var tamanho := float(TAMANHO_EVENTO.get("%s_%s" % [nome, UtilPalco.slug(tier)], TAMANHO_EVENTO.get(nome, 1.6)))
 	return _cena("efeitos", "evento/%s/%s/%s/%s" % [tipo, tier, elemento, variante],
@@ -500,6 +528,19 @@ func tem_peca_lutador(categoria: String, nome: String) -> bool:
 
 func peca_lutador(categoria: String, nome: String) -> PackedScene:
 	return _cena("lutadores", "peca/%s/%s" % [categoria, nome], _candidatos_camada(categoria, nome), {"modo": "camada"})
+
+
+## Camadas persistentes gravadas em `trilhas.efeitos` (status e buff).
+## Sem folha retorna null, pois elas nunca tiveram marcador proprio no palco.
+func efeito_lutador(tipo: String, nome: String) -> PackedScene:
+	var prefixo := "estado." if tipo == "status" else "buff." if tipo == "buff" else ""
+	if prefixo == "":
+		return null
+	return cena_catalogada([prefixo + UtilPalco.slug(nome)])
+
+
+func estado_lutador(nome: String) -> PackedScene:
+	return cena_catalogada(["estado_lutador." + UtilPalco.slug(nome)])
 
 
 func arena(nome: String, tema: String) -> PackedScene:

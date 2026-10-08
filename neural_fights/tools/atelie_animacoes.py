@@ -14,6 +14,7 @@ from PIL import Image
 
 from neural_fights.tools import catalogo_animacoes
 from neural_fights.tools import catalogo_vila
+from neural_fights.tools import consumo_atelie
 
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -352,6 +353,10 @@ def arvore() -> list[dict]:
         if estado is None: estado = {"id": nova["estado"], "rotulo": nova["estado"], "animacoes": []}; p.setdefault("estados", []).append(estado)
         estado.setdefault("animacoes", []).append({k: v for k, v in nova.items() if k not in ("peca", "estado")})
     for p in pecas.values():
+        p["aparece_em"] = consumo_atelie.aparece_em(p["id"], p.get("grupo", ""))
+        p["consumidores"] = consumo_atelie.consumidores(p["id"], p.get("grupo", ""))
+        p["motivo_sem_consumidor"] = consumo_atelie.motivo_sem_consumidor(
+            p["id"], p.get("grupo", "")) if not p["consumidores"] else ""
         for e in p.get("estados", []):
             e["escondidas"] = [{"id": a["id"], "rotulo": a.get("rotulo") or a["id"]} for a in e.get("animacoes", [])
                                if "/".join((p["id"], e["id"], a["id"])) in ocultas]
