@@ -899,7 +899,28 @@ def _tarefas_da_mesa() -> tuple[dict, str]:
     """({id: situacao da tarefa}, erro). A Mesa ilegivel NAO vira "nenhuma"."""
     try:
         from . import orquestrador
-        return orquestrador.situacao_das_tarefas(), ""
+        tarefas = orquestrador.situacao_das_tarefas()
+        # b3: `fila adicionar` agora devolve o id do pedido, nao o id antigo
+        # da fila. Consequencias do Grimorio seguem esse id ate ele virar um
+        # agente da Mesa; depois, `situacao_das_tarefas` ja o conhece pelo
+        # `da_fila` e tem precedencia.
+        from coordenador import pedidos
+        for pedido in pedidos.para_o_app()["pedidos"]:
+            ident = pedido.get("id")
+            if not ident or ident in tarefas:
+                continue
+            situacao = pedido.get("situacao")
+            if pedido.get("origem") == "fila" and situacao in pedidos.VIVOS:
+                estado = "fila"
+            elif situacao in pedidos.VIVOS:
+                estado = "andamento"
+            else:
+                estado = "concluida"
+            tarefas[ident] = {"situacao": estado, "titulo": pedido.get("titulo") or "",
+                              "parte": pedido.get("fila_parte") or pedido.get("cargo") or "",
+                              "commits": list(pedido.get("commits") or []),
+                              "desde": pedido.get("criado_em"), "fim": pedido.get("fim")}
+        return tarefas, ""
     except Exception as exc:                                  # noqa: BLE001
         return {}, f"a Mesa não pôde ser lida: {exc}"[:200]
 

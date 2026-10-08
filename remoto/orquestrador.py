@@ -230,7 +230,7 @@ def _estado_vazio() -> dict:
 def ler_estado() -> dict:
     estado = _ler_json(arquivo("estado.json"), None)
     if estado is None:
-        return _estado_vazio()
+        estado = _estado_vazio()
     if not isinstance(estado, dict):
         raise Recusa("estado.json está ilegível")
     for chave in ("agora", "fila", "concluidos_hoje"):
@@ -239,6 +239,20 @@ def ler_estado() -> dict:
     hoje = datetime.now().date().isoformat()
     estado["concluidos_hoje"] = [c for c in estado["concluidos_hoje"]
                                  if str(c.get("fim", ""))[:10] == hoje]
+    legado = list(estado.get("fila") or [])
+    if legado:
+        from coordenador import pedidos
+        pedidos.MESA.migrar_fila(legado)
+        estado["fila"] = []
+        estado["fila_migrada_em"] = _agora_iso()
+        _gravar_json(arquivo("estado.json"), estado)
+    from coordenador import estado as estado_coordenador
+    if legado or (estado_coordenador.pasta() / "pedidos.json").is_file():
+        try:
+            from coordenador import pedidos
+            estado["fila"] = pedidos.MESA.fila()
+        except Exception:                                    # noqa: BLE001
+            estado["fila"] = legado
     return estado
 
 
@@ -479,6 +493,10 @@ def agente_inicio(parte: str, titulo: str, *, da_fila: str = "", relato: str = "
         if item_da_fila is not None:
             estado["fila"] = [f for f in estado["fila"] if f.get("id") != da_fila]
             _numerar(estado["fila"])
+            # Compatibilidade da sessao manual: tirar tambem o pedido que a
+            # antiga CLI acabou de assumir; o despacho residente segue Mesa.
+            from coordenador import pedidos
+            pedidos.MESA.fila_remover(da_fila)
         _movimento(estado, f"disparou [{agente['parte']}] {agente['titulo']}"
                    + (" (forçado)" if forcar else ""))
         _gravar_estado(estado)
@@ -523,19 +541,9 @@ def agente_fim(agente_id: str, *, situacao: str = "concluido", commits=(),
 def fila_adicionar(parte: str, item: str, posicao: int | None = None) -> dict:
     if not str(parte or "").strip() or not str(item or "").strip():
         raise Recusa("diga a parte e o item")
-    with _trava():
-        estado = ler_estado()
-        novo = {"id": _novo_id(), "parte": _curto(parte, 40), "item": _curto(item, 200),
-                "desde": _agora_iso()}
-        fila = estado["fila"]
-        if posicao is None or posicao > len(fila):
-            fila.append(novo)
-        else:
-            fila.insert(max(0, int(posicao) - 1), novo)
-        _numerar(fila)
-        _movimento(estado, f"pôs na fila [{novo['parte']}] {novo['item']}")
-        _gravar_estado(estado)
-    return novo
+    ler_estado()                         # nunca mascara estado.json ilegivel
+    from coordenador import pedidos
+    return pedidos.MESA.fila_adicionar(_curto(parte, 40), _curto(item, 200), posicao)
 
 
 def _numerar(fila: list) -> None:
@@ -557,11 +565,13 @@ def _mover(fila: list, item_id: str, direcao: str) -> None:
 
 
 def fila_mover(item_id: str, direcao: str) -> list:
-    with _trava():
-        estado = ler_estado()
-        _mover(estado["fila"], item_id, direcao)
-        _gravar_estado(estado)
-    return estado["fila"]
+    from coordenador import pedidos
+    try:
+        return pedidos.MESA.fila_mover(item_id, direcao)
+    except KeyError as exc:
+        raise Recusa(f"a fila não tem o item {item_id}") from exc
+    except ValueError as exc:
+        raise Recusa(str(exc)) from exc
 
 
 def fila_versao(fila: list) -> str:
@@ -609,14 +619,13 @@ def _ordenar(fila: list, ordem: list[str]) -> str:
 def fila_ordenar(ordem: list[str]) -> list:
     """A CLI: `fila ordenar <id> <id> ...`, estrita como o app."""
     ordem = validar_comando("priorizar", {"ordem": list(ordem)})["ordem"]
-    with _trava():
-        estado = ler_estado()
-        _conferir_ordem(estado["fila"], ordem, None)
-        nota = _ordenar(estado["fila"], ordem)
-        if nota != "já estava assim":
-            _movimento(estado, "reordenou a fila")
-            _gravar_estado(estado)
-    return estado["fila"]
+    fila = ler_estado()["fila"]
+    _conferir_ordem(fila, ordem, None)
+    from coordenador import pedidos
+    try:
+        return pedidos.MESA.fila_ordenar(ordem)
+    except ValueError as exc:
+        raise Recusa(str(exc)) from exc
 
 
 def _conferir_ordem(fila: list, ordem: list[str], esperava: str | None) -> None:
@@ -634,14 +643,12 @@ def _conferir_ordem(fila: list, ordem: list[str], esperava: str | None) -> None:
 
 
 def fila_remover(item_id: str) -> None:
-    with _trava():
-        estado = ler_estado()
-        antes = len(estado["fila"])
-        estado["fila"] = [f for f in estado["fila"] if f.get("id") != item_id]
-        if len(estado["fila"]) == antes:
-            raise Recusa(f"a fila não tem o item {item_id}")
-        _numerar(estado["fila"])
-        _gravar_estado(estado)
+    from coordenador import pedidos
+    try:
+        pedidos.MESA.fila_remover(item_id)
+        return
+    except KeyError as exc:
+        raise Recusa(f"a fila não tem o item {item_id}") from exc
 
 
 # ------------------------------------------------------------ decisoes e modo
@@ -1610,28 +1617,33 @@ def _aplicar(nome: str, valor, fonte: str, cid: str, *, aparelho: str = "",
     elif nome == "retomar_fila":
         _mudar_config("fila_pausada", False, fonte, cid)
     elif nome == "priorizar":
-        estado = ler_estado()
+        from coordenador import pedidos
         if "ordem" in valor:
-            nota = _ordenar(estado["fila"], valor["ordem"])
-            _gravar_estado(estado)
-            return nota
-        _mover(estado["fila"], valor["item"], valor["direcao"])
-        _gravar_estado(estado)
+            antes = [f.get("id") for f in ler_estado()["fila"]]
+            vistos = [ident for ident in valor["ordem"] if ident in antes]
+            final = vistos + [ident for ident in antes if ident not in vistos]
+            pedidos.MESA.fila_ordenar(final)
+            notas = []
+            if len(vistos) != len(valor["ordem"]):
+                notas.append(f"{len(valor['ordem']) - len(vistos)} item(ns) da ordem já tinha(m) saído da fila")
+            if len(final) != len(vistos):
+                notas.append(f"{len(final) - len(vistos)} item(ns) entrou(aram) depois e ficou(aram) no fim")
+            if antes == final:
+                notas.append("já estava assim")
+            return " · ".join(notas)
+        pedidos.MESA.fila_mover(valor["item"], valor["direcao"])
+        return ""
     elif nome == "tirar_da_fila":
-        estado = ler_estado()
-        antes = len(estado["fila"])
-        estado["fila"] = [f for f in estado["fila"] if f.get("id") != valor]
-        if len(estado["fila"]) == antes:
-            raise Recusa(f"a fila não tem o item {valor}; recuse com o motivo")
-        _numerar(estado["fila"])
-        _gravar_estado(estado)
+        from coordenador import pedidos
+        try:
+            pedidos.MESA.fila_remover(valor)
+        except KeyError as exc:
+            raise Recusa(f"a fila não tem o item {valor}; recuse com o motivo") from exc
+        return ""
     elif nome == "adicionar_a_fila":
-        estado = ler_estado()
-        estado["fila"].append({"id": _novo_id(), "parte": valor["parte"],
-                               "item": valor["item"], "desde": _agora_iso(),
-                               "pedido": "Adrian"})
-        _numerar(estado["fila"])
-        _gravar_estado(estado)
+        from coordenador import pedidos
+        pedidos.MESA.fila_adicionar(valor["parte"], valor["item"], pedido_por="Adrian")
+        return ""
     elif nome == "parar_agente":
         estado = ler_estado()
         agente = next((a for a in estado["agora"] if a.get("id") == valor), None)

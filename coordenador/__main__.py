@@ -115,6 +115,12 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="acao", required=True)
     sub.add_parser("rodar")
     sub.add_parser("status")
+    pedir = sub.add_parser("pedir", help="registra trabalho para o passo da Mesa despachar")
+    pedir.add_argument("texto")
+    pedir.add_argument("--permitido", action="append", default=[])
+    pedir.add_argument("--ia", choices=("codex", "claude"), default="codex")
+    pedir.add_argument("--titulo", default="")
+    pedir.add_argument("--tarefa", help="arquivo com o complemento da tarefa")
     reiniciar = sub.add_parser("reiniciar")
     reiniciar.add_argument("servico", choices=("app", "bot", "carteiro", "vila"))
     sub.add_parser("instalar-tarefa")
@@ -131,6 +137,25 @@ def main(argv=None):
                                help="passa a regra do DESFECHO num pedido 'entregue' antigo")
     reavaliar.add_argument("id", nargs="+")
     args = parser.parse_args(argv)
+    if args.acao == "pedir":
+        from . import pedidos
+        texto = args.texto
+        if args.tarefa:
+            try:
+                complemento = Path(args.tarefa).read_text(encoding="utf-8")
+            except OSError as exc:
+                print(f"recusado: não li a tarefa: {exc}", file=sys.stderr)
+                return 3
+            texto += "\n\n" + complemento
+        try:
+            pedido = pedidos.contratar(texto, "chat", cargo="orquestrador",
+                                       permitidos=args.permitido or None, ia=args.ia,
+                                       titulo=args.titulo or None)
+        except ValueError as exc:
+            print(f"recusado: {exc}", file=sys.stderr)
+            return 3
+        print(pedido["id"])
+        return 0
     if args.acao == "rodar":
         return montar().rodar()
     if args.acao in ("reabrir-pedido", "reavaliar-pedido"):

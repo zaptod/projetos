@@ -31,22 +31,23 @@ Adrian ──► ORQUESTRADOR (chat principal)
 | Codex | `remoto.delegar` | tarefa grande e bem especificada | diff na worktree (o vigia aplica) |
 
 ## O fluxo de uma tarefa
-1. **Entender.** Se for uma decisão do Adrian, ela vira nó no Grimório.
-2. **Delegar:**
+1. **Registrar.** Todo trabalho novo vira pedido (`python -m coordenador pedir "..."`); nunca `delegar criar` solto. Só o passo da Mesa despacha.
+2. **Entender.** Se for uma decisão do Adrian, ela vira nó no Grimório.
+3. **Delegar:**
    - à parte dona (agente), ou ao Codex se for grande;
    - em paralelo quando não mexem nos mesmos arquivos;
    - o `remoto/app/**` vai em sequência.
-3. **Acompanhar:**
+4. **Acompanhar:**
    - vigia armado (espera em segundo plano) em todo trabalho longo;
    - entrega "olho" vai ao **integrador** na hora;
    - não deixe nada parado (chegou a ficar 4 h).
-4. **Conferir:** o **conferente** olha tela, caminho real e imagens.
-5. **Fechar:**
+5. **Conferir:** o **conferente** olha tela, caminho real e imagens.
+6. **Fechar:**
    - commit por caminho;
    - reiniciar o serviço fora da janela de postagem;
    - Mesa `agente-fim`;
    - `delegar limpar`.
-6. **Responder:** poucas linhas, dizendo o que foi conferido.
+7. **Responder:** poucas linhas, dizendo o que foi conferido.
 
 ## Permissoes do trabalhador
 

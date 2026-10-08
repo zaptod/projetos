@@ -170,13 +170,8 @@ class GerenteEquipe:
             # Mesmo desligado, a fila de perguntas nao depende do gerente.
             self._permissoes_pendentes(False)
             return {"ligado": False, **self.estado}
-        estado_mesa = self.mesa.ler_estado()
         ativos = [t for t in self.despachante.listar() if t.get("situacao") == "rodando"]
-        limite = max(1, int(self.despachante.ler_config().get("delegados_paralelo", 1)))
-        if len(ativos) < limite and not self._fila_pausada():
-            for item in estado_mesa.get("fila") or []:
-                self._contratar(item)
-                break
-        self._conferir_aplicadas()
+        # b3: fila e conferencia ja sao pedidos. O gerente so cuida de
+        # permissoes; contratar e trabalho exclusivo do passo da Mesa.
         self._permissoes_pendentes(True)
         return {"ligado": True, "ativos": len(ativos), **self.estado}

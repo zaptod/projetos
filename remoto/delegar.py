@@ -44,7 +44,7 @@ move o que sobrar para `_lixo_codex` e diz o comando de administrador.
 
 CLI:
 
-    python -m remoto.delegar criar --id X --tarefa arq.md --permitido "remoto/**" [--permitido ...]
+    python -m remoto.delegar criar --id X --tarefa arq.md --pedido PEDIDO --permitido "remoto/**" [--permitido ...]
                                    [--modelo M] [--esforco E]
     python -m remoto.delegar rodar --id X [--fundo] [--forcar]
     python -m remoto.delegar corrigir --id X --texto arq.md [--fundo] [--forcar]
@@ -2143,6 +2143,8 @@ def main(argv=None) -> int:
     c = sub.add_parser("criar")
     c.add_argument("--id", required=True)
     c.add_argument("--tarefa", required=True)
+    c.add_argument("--pedido")
+    c.add_argument("--fora-da-porta", metavar="MOTIVO")
     c.add_argument("--permitido", action="append", default=[])
     c.add_argument("--modelo")
     c.add_argument("--ia", choices=IAS, default="codex")
@@ -2174,6 +2176,15 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     try:
         if args.acao == "criar":
+            if not args.pedido and not args.fora_da_porta:
+                raise Recusa('registre o pedido: python -m coordenador pedir "..." (ou use --pedido)')
+            if args.pedido:
+                from coordenador import pedidos
+                if not pedidos.MESA.existe(args.pedido):
+                    raise Recusa(f"pedido inexistente: {args.pedido}")
+            if args.fora_da_porta:
+                from coordenador import pedidos
+                pedidos.MESA.registrar_fora_da_porta("CLI delegar criar", args.fora_da_porta)
             _imprimir(criar(args.id, Path(args.tarefa), args.permitido, modelo=args.modelo,
                             esforco=args.esforco, titulo=args.titulo, ia=args.ia,
                             cargo=args.cargo, repo_tarefa=args.repo))

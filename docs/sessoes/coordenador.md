@@ -1,5 +1,14 @@
 # Coordenador residente
 
+## Porta única de trabalho (07/10/2026)
+
+Todo trabalho é um pedido em `coordenador/pedidos.py`. A fila da Mesa é só a
+visão dos pedidos de origem `fila`; itens antigos migram uma vez. O gerente não
+contrata da fila: só `MesaPedidos.passo` despacha. No chat, registre com
+`python -m coordenador pedir "texto" [--permitido CAMINHO] [--ia codex|claude]`;
+`delegar criar` exige `--pedido ID`. A exceção manual `--fora-da-porta MOTIVO`
+fica anotada no diário do pedido.
+
 O coordenador e o processo local que mantem app, bot, carteiro e Vila flutuante vivos sem depender de uma janela do VS Code. Ele adota processos ja existentes pela linha de comando, registra o estado em `%LOCALAPPDATA%\neural-fights\coordenador\estado.json` e so reinicia codigo velho fora das janelas de postagem e de uma publicacao real.
 
 Para instalar a tarefa (uma vez, em um prompt do usuario):

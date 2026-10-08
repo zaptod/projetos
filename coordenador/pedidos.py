@@ -994,7 +994,7 @@ class MesaPedidos:
         texto = str(texto or "").strip()
         if not texto:
             raise ValueError("pedido vazio")
-        if origem not in ("equipe", "cerebro", "apurador"):
+        if origem not in ("equipe", "cerebro", "apurador", "fila", "chat"):
             raise ValueError("origem desconhecida")
         cargo = str(cargo or "orquestrador").strip().lower()
         ia = str(ia or "codex").strip().lower()
@@ -1011,7 +1011,7 @@ class MesaPedidos:
                 mesmo_texto = re.sub(r"\s+", " ", str(aberto.get("texto") or "")).casefold() == normalizado
                 mesmo_alvo = bool(alvo and alvo == aberto.get("alvo"))
                 mesmos_permitidos = permitidos == list(aberto.get("permitidos") or [])
-                if mesmo_texto or mesmo_alvo or mesmos_permitidos:
+                if mesmo_texto or mesmo_alvo or (not alvo and mesmos_permitidos):
                     recibo = f"Ja esta no pedido {aberto['id']}"
                     return dict(aberto, recibo=recibo, duplicado=True, continuacao=False)
             ident = "pedido-" + uuid.uuid4().hex[:8]
@@ -1029,6 +1029,123 @@ class MesaPedidos:
             _linha(dados, pedido, pedido["recibo"], tipo="recibo")
             _gravar(dados)
         return dict(pedido, continuacao=False)
+
+    # ------------------------------------------------------ fila da Mesa
+    def fila(self):
+        """A antiga fila do orquestrador e so uma visao destes pedidos.
+
+        Nao ha um segundo estado para contratar: os itens que entraram pela
+        porta ``fila`` continuam pedidos normais, apenas guardam a prioridade
+        que a tela de Mesa usa para ordena-los.
+        """
+        with _TRAVA:
+            dados = _ler()
+            pedidos = [p for p in dados["pedidos"]
+                       if p.get("origem") == "fila" and p.get("situacao") in VIVOS]
+            pedidos.sort(key=lambda p: (int(p.get("prioridade") or 10**9),
+                                        str(p.get("criado_em") or "")))
+            saida = []
+            mudou = False
+            for n, pedido in enumerate(pedidos, 1):
+                if pedido.get("prioridade") != n:
+                    pedido["prioridade"] = n
+                    mudou = True
+                saida.append({"id": pedido["id"],
+                              "parte": pedido.get("fila_parte") or pedido.get("cargo") or "geral",
+                              "item": pedido.get("titulo") or pedido.get("texto") or "",
+                              "desde": pedido.get("criado_em"), "prioridade": n,
+                              "pedido": pedido.get("fila_pedido") or pedido["id"]})
+            if mudou:
+                _gravar(dados)
+            return saida
+
+    def fila_adicionar(self, parte, item, posicao=None, *, alvo="", pedido_por=""):
+        alvo = alvo or "fila:" + uuid.uuid4().hex
+        pedido = self.contratar(item, "fila", cargo="orquestrador", titulo=item,
+                                alvo=alvo)
+        with _TRAVA:
+            dados = _ler()
+            atual = next((p for p in dados["pedidos"] if p.get("id") == pedido["id"]), None)
+            if atual is None:
+                raise KeyError(pedido["id"])
+            abertos = [p for p in dados["pedidos"]
+                       if p.get("origem") == "fila" and p.get("situacao") in VIVOS]
+            abertos.sort(key=lambda p: int(p.get("prioridade") or 10**9))
+            abertos = [p for p in abertos if p is not atual]
+            destino = len(abertos) if posicao is None else max(0, min(int(posicao) - 1, len(abertos)))
+            abertos.insert(destino, atual)
+            atual["fila_parte"] = str(parte or "geral")[:40]
+            if pedido_por:
+                atual["fila_pedido"] = str(pedido_por)[:80]
+            for n, aberto in enumerate(abertos, 1):
+                aberto["prioridade"] = n
+            _gravar(dados)
+        return next(f for f in self.fila() if f["id"] == pedido["id"])
+
+    def fila_ordenar(self, ordem):
+        with _TRAVA:
+            dados = _ler()
+            abertos = [p for p in dados["pedidos"]
+                       if p.get("origem") == "fila" and p.get("situacao") in VIVOS]
+            por_id = {p["id"]: p for p in abertos}
+            if set(ordem) != set(por_id) or len(ordem) != len(por_id):
+                desconhecido = next((i for i in ordem if i not in por_id), None)
+                raise ValueError("a fila nao tem o item " + str(desconhecido or "faltando"))
+            for n, ident in enumerate(ordem, 1):
+                por_id[ident]["prioridade"] = n
+            _gravar(dados)
+        return self.fila()
+
+    def fila_mover(self, ident, direcao):
+        fila = self.fila()
+        indice = next((n for n, p in enumerate(fila) if p["id"] == ident), None)
+        if indice is None:
+            raise KeyError(ident)
+        if direcao not in ("subir", "descer", "topo"):
+            raise ValueError("direcao desconhecida")
+        item = fila.pop(indice)
+        fila.insert({"subir": max(0, indice - 1), "descer": min(len(fila), indice),
+                     "topo": 0}[direcao], item)
+        return self.fila_ordenar([p["id"] for p in fila])
+
+    def fila_remover(self, ident):
+        with _TRAVA:
+            dados = _ler()
+            pedido = next((p for p in dados["pedidos"] if p.get("id") == ident
+                           and p.get("origem") == "fila" and p.get("situacao") in VIVOS), None)
+            if pedido is None:
+                raise KeyError(ident)
+            pedido.update(situacao="cancelado", motivo="tirado da fila", atualizado_em=_iso())
+            _linha(dados, pedido, "tirado da fila", tipo="final")
+            _gravar(dados)
+
+    def migrar_fila(self, itens):
+        """Importa a fila antiga uma vez; o alvo estavel torna repeticao segura."""
+        for item in itens or []:
+            ident = str(item.get("id") or "")
+            parte, texto = str(item.get("parte") or "geral"), str(item.get("item") or "")
+            if texto:
+                self.fila_adicionar(parte, texto, item.get("prioridade"), alvo="fila:" + ident)
+
+    def existe(self, ident):
+        with _TRAVA:
+            return any(p.get("id") == ident for p in _ler()["pedidos"])
+
+    def registrar_fora_da_porta(self, quem, motivo):
+        """Rastro explicito para a excecao manual da porta unica."""
+        with _TRAVA:
+            dados = _ler()
+            dados["fora_da_porta"] = list(dados.get("fora_da_porta") or []) + [{
+                "em": _iso(), "quem": str(quem)[:120], "motivo": str(motivo)[:500]}]
+            dados["fora_da_porta"] = dados["fora_da_porta"][-40:]
+            _gravar(dados)
+        try:
+            from random_builds.builds import atividade
+            atividade.registrar("coordenador", "log",
+                                f"fora da porta: {quem}: {motivo}", "geral",
+                                etapa="fora_da_porta")
+        except Exception:                                    # noqa: BLE001
+            pass
 
     def registrar(self, texto, origem="app", *, novo=False, responde_a=None, triar=None):
         """Guarda o pedido (ou a continuacao) e volta na hora: quem contrata,
@@ -3174,7 +3291,7 @@ class MesaPedidos:
         fila (`_lento`) para depois de solta-la."""
         for pedido in dados["pedidos"]:
             situacao = pedido.get("situacao")
-            if situacao in FINAIS:
+            if situacao in FINAIS or situacao == "cancelado":
                 continue
             try:
                 if situacao == "contratando":

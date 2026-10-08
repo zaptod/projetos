@@ -62,17 +62,16 @@ class MesaComFila:
         return {"fila_pausada": self.pausada}
 
 
-def test_fila_pausada_pelo_app_nao_contrata_ninguem():
-    # 04/10: o "Pausar a fila" do app e aplicado pelo servidor na hora; o
-    # gerente obedece (antes so a sessao do VS Code obedecia)
-    for pausada, esperado in ((True, []), (False, ["f1"])):
+def test_gerente_nao_contrata_a_fila_da_mesa():
+    # b3: fila e pedido; so MesaPedidos.passo pode contratar.
+    for pausada in (True, False):
         d = Despachante(True)
         d.tarefa = {"id": "outra", "situacao": "terminou"}
         gerente = GerenteEquipe(mesa=MesaComFila(pausada), despachante=d)
         contratados = []
         gerente._contratar = lambda item: contratados.append(item["id"])
         gerente.passo()
-        assert contratados == esperado
+        assert contratados == []
 
 
 class DespachanteDeConferencia(Despachante):
