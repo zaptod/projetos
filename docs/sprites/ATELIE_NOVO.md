@@ -36,6 +36,12 @@ e desenhada em `posicao - ancora`, como `TocadorFolha` (`Rect2(-ancora, tamanho)
 Sem folha, o canvas desenha o marcador neutro. Os parametros `peca`, `estado` e
 `animacao` trocam a camada em edicao sem salvar a alteracao.
 
+A previa sozinha mostra a referencia semitransparente do alvo: mao para armas,
+corpo para lutadores e chao para efeitos fixos. A cruz e a ancora que cai nesse
+alvo; os botoes oferecem centro e embaixo no meio. Pecas Orbitais mostram sua
+orbita. Os quadros aparecem na ordem em que tocam, podem voltar a `Ordem da
+folha` (leitura) e avisam quando uma animacao salva foi reordenada manualmente.
+
 ## Previa no Godot
 
 `POST /api/animacoes/previa-godot` recebe peca, estado e animacao ja salvos e
@@ -44,3 +50,6 @@ devolve um id. `GET /api/animacoes/previa-godot/<id>` informa `rodando`,
 por vez e fica em `runtime/atelie_previas` por no maximo um dia. A previa usa
 uma seed estavel e escolhe fichas cuja classe, arma ou skill corresponde a peca;
 quando nao ha como reconhecer um efeito, usa qualquer ficha do banco.
+Quando nenhuma ficha usa um estilo/tipo de arma ou classe, a previa cria uma
+ficha temporaria com a arma/classe correspondente apenas para aquela simulacao;
+o banco e as lutas de producao nao sao alterados.

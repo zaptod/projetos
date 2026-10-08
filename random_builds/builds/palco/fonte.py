@@ -20,7 +20,8 @@ from .config import ErroPalco
 def timeline_da_luta(*, p1: str, p2: str, seed: int, cenario: str,
                      camera_largura_min_m: float | None = None,
                      camera_espera_zoom_in: float | None = None,
-                     tentativas: int = 3, corrente_v2: bool | None = None) -> tuple[dict, int]:
+                     tentativas: int = 3, corrente_v2: bool | None = None,
+                     roster_provider=None) -> tuple[dict, int]:
     """(documento da timeline, seed usada). A seed pode andar em empate.
 
     `corrente_v2`: a chave da corrente nova desta luta. Luta GRAVADA passa o
@@ -36,7 +37,7 @@ def timeline_da_luta(*, p1: str, p2: str, seed: int, cenario: str,
         saida = gravar_timeline(p1=p1, p2=p2, seed=semente, cenario=cenario, resolucao=(1080, 1920),
                                 camera_modo="DIRETOR", camera_largura_min_m=camera_largura_min_m,
                                 camera_espera_zoom_in=camera_espera_zoom_in, desenhar=False,
-                                corrente_v2=corrente_v2)
+                                corrente_v2=corrente_v2, roster_provider=roster_provider)
         documento = saida["timeline"]
         if not (saida.get("resultado") or {}).get("empate"):
             break

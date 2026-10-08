@@ -30,15 +30,18 @@ def test_atelie_novo_tem_fluxo_de_animacao_e_nao_carrega_o_legado():
                   "anim-auto", "anim-grade", "anim-folha-canvas", "anim-lista-quadros", "anim-fps",
                   "anim-fps-numero", "anim-segurar", "anim-canvas", "anim-claro", "anim-escuro",
                   "anim-xadrez", "anim-salvar", "anim-substituir", "anim-desfazer", "anim-esconder",
-                  "anim-fechar", "anim-novo-nome", "anim-novo-gatilho"):
+                  "anim-fechar", "anim-novo-nome", "anim-novo-gatilho", "anim-ancora-texto",
+                  "anim-ancora-central", "anim-ancora-embaixo", "anim-ordem-folha", "anim-ordem-aviso"):
         assert 'id="' + campo + '"' in html
+    assert "anim-ordem-aviso" in html
     for rota in ("/api/animacoes/arvore", "/api/animacoes/gatilhos", "/api/animacoes/subir",
                  "/api/animacoes/salvar", "/api/animacoes/desfazer", "/api/animacoes/criar",
                  "/api/animacoes/esconder", "/api/animacoes/previa-godot"):
         assert rota in codigo
     for comportamento in ("animOrdenarFaltam", "animMiniatura", "animRefatiar", "animMover",
                            "duracao_por_quadro", "animTocar", "pointerdown", "animAtivarCartoes",
-                           "Content-Type", "estado_personagem", "animPost"):
+                           "Content-Type", "estado_personagem", "animPost", "animReferencia",
+                           "A âncora (+) fica", "gira em volta do lutador", "◀ antes", "depois ▶"):
         assert comportamento in codigo
     for comportamento in ("animVerNoGodot", "Renderizando no Godot", "setTimeout", "playsinline"):
         assert comportamento in codigo

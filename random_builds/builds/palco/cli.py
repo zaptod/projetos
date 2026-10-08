@@ -129,14 +129,15 @@ def _salvar_timeline(doc: dict, destino: Path) -> Path:
 
 def render_da_seed(*, p1, p2, seed, arena, pasta: Path | None = None, sem_corte: bool = False,
                    estilo: dict | None = None, hud: bool = False, quadros: int | None = None,
-                   corrente_v2: bool | None = None) -> dict:
+                   corrente_v2: bool | None = None, roster_provider=None) -> dict:
     cfg = config.carregar()
     p1, p2, seed, cenario = escolher_luta(p1=p1, p2=p2, seed=seed, arena=arena)
     duelo_cfg = cfg.get("duelo") or {}
     print(f"[palco] {p1} x {p2} | seed {seed} | {cenario} | simulando (sem desenhar)...", flush=True)
     doc, usada = fonte.timeline_da_luta(p1=p1, p2=p2, seed=seed, cenario=cenario, corrente_v2=corrente_v2,
                                         camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
-                                        camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
+                                        camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"),
+                                        roster_provider=roster_provider)
     corte = None if sem_corte else fonte.corte_de_tedio(doc, _gameplay_duelo())
     if corte is not None:
         doc["remapeamento"] = {"relogio": "gravacao", "trechos": corte}

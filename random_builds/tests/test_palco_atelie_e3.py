@@ -59,3 +59,16 @@ def test_previa_escolhe_fichas_da_classe_arma_e_skill():
     assert _tem_peca(ficha, "arma.estilo.espada_longa", armas)
     assert _tem_peca(ficha, "arma.tipo.reta", armas)
     assert _tem_peca(ficha, "skill.chama arcana", armas)
+
+
+def test_previa_registra_troca_de_arma_quando_ninguem_usa_o_estilo(monkeypatch):
+    from random_builds.builds.palco import previa_animacao
+    fichas = {"A": {"nome_arma": "Reta", "classe": "Mago"}, "B": {"nome_arma": "Reta", "classe": "Guerreiro"}}
+    armas = [{"nome": "Reta", "tipo": "Reta", "estilo": "Comum"},
+             {"nome": "Cristais", "tipo": "Orbital", "estilo": "Cristais Flutuantes"}]
+    monkeypatch.setattr("random_builds.builds.tournament.runner.fichas_do_banco", lambda: fichas)
+    monkeypatch.setattr("neural_fights.data.database.carregar_database", lambda: (armas, []))
+    primeiro, _segundo, trocas = previa_animacao.escolher_lutadores_da_peca(
+        "arma.estilo.cristais_flutuantes", 1, com_trocas=True)
+    assert trocas[primeiro]["arma"]["nome"] == "Cristais"
+    assert fichas[primeiro]["nome_arma"] == "Reta"
