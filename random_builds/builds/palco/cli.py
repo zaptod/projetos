@@ -11,10 +11,7 @@ Nada aqui publica nem entra no catalogo: tudo sai em outputs/_palco/.
     python main.py palco sintetica --destino T.json --duracao 2
     python main.py palco ab --duelo duelo_00016     # o duelo publicado x o palco
     python main.py palco ab --duelo duelo_00031 --edicao   # 16G: B = palco + a MESMA edicao do duelo
-    python main.py palco vitrine                    # video de revisao das pecas (16E)
     python main.py palco corrente-ab --seed N --p1 A --p2 B   # corrente antiga x nova, lado a lado
-    python main.py palco pecas-do-rosto             # refaz as pecas do rosto do SVG do Kenney
-    python main.py palco efeitos-cc0                # refaz texturas e cenas de tipo x elemento
     python main.py duelo --seed N --palco [--ab]    # um duelo novo so no palco
 """
 from __future__ import annotations
@@ -22,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import ab, config, fonte, godot, render, sintetica, vitrine
+from . import ab, config, fonte, godot, render, sintetica
 from .config import ErroPalco
 
 
@@ -48,7 +45,7 @@ def construir_parser():
     ren.add_argument("--quadros", type=int, default=None, help="so os N primeiros quadros (previa)")
     ren.add_argument("--manter-avi", action="store_true", help="nao apaga o AVI intermediario")
     ren.add_argument("--corrente-v2", action="store_true",
-                     help="com --seed: liga a corrente nova SO nesta luta (vitrine; nada publica)")
+                     help="com --seed: liga a corrente nova SO nesta luta (nada publica)")
     val = psub.add_parser("validar", help="valida uma timeline no Godot, sem janela")
     val.add_argument("--timeline", required=True)
     psub.add_parser("testes", help="roda os testes do nucleo do palco no Godot, sem janela")
@@ -66,9 +63,6 @@ def construir_parser():
     pab.add_argument("--edicao", action="store_true",
                      help="16G: o B e o palco com a MESMA edicao do duelo (HUD, identidade, callouts, "
                           "veredito, som, musica); o A e o final do duelo, intocado. Saida: _palco/g16_<duelo>")
-    pvi = psub.add_parser("vitrine", help="video de revisao: as pecas da biblioteca animadas (16E)")
-    pvi.add_argument("--mp4", default=None, help="mp4 de saida (padrao: outputs/_palco/vitrine/vitrine.mp4)")
-    pvi.add_argument("--so", default=None, help="so as paginas cujo titulo contem isto (ex. rostos)")
     pca = psub.add_parser("corrente-ab", help="a MESMA seed com a corrente antiga e a nova, lado a lado (nada publica)")
     pca.add_argument("--seed", type=int, required=True)
     pca.add_argument("--p1", required=True)
@@ -76,10 +70,6 @@ def construir_parser():
     pca.add_argument("--arena", default=None)
     pca.add_argument("--quadros", type=int, default=None, help="so os N primeiros quadros de cada lado")
     pca.add_argument("--pasta", default=None, help="pasta de saida (padrao: outputs/_palco/corrente_ab_<seed>)")
-    pro = psub.add_parser("pecas-do-rosto", help="recorta as pecas do rosto do SVG do Kenney (CC0) a 12x")
-    pro.add_argument("--folha", default=None, help="png com as pecas lado a lado, para conferir")
-    pef = psub.add_parser("efeitos-cc0", help="texturas CC0 e cenas de efeito por tipo x elemento")
-    pef.add_argument("--so-cenas", action="store_true", help="so reescreve as cenas (nao traz texturas)")
     return pal
 
 
@@ -332,20 +322,6 @@ def executar(args) -> int:
             destino.write_text(json.dumps(sintetica.timeline_sintetica(args.duracao), separators=(",", ":")),
                                encoding="utf-8")
             print(destino)
-            return 0
-        if comando == "pecas-do-rosto":
-            from . import rosto_pecas
-            for nome, medida in rosto_pecas.gerar(folha=args.folha).items():
-                print(f"{nome:18s} {tuple(medida['px'])}")
-            return 0
-        if comando == "efeitos-cc0":
-            from . import efeitos_cc0
-            print(f"{efeitos_cc0.gerar(so_cenas=args.so_cenas)} cenas")
-            return 0
-        if comando == "vitrine":
-            resumo = vitrine.gerar(Path(args.mp4) if args.mp4 else None, so=args.so)
-            print(json.dumps({k: resumo.get(k) for k in ("saida", "quadros", "duracao", "paginas", "reservas", "tempo")},
-                             ensure_ascii=False, indent=1))
             return 0
         if comando == "corrente-ab":
             resumo = corrente_ab(p1=args.p1, p2=args.p2, seed=args.seed, arena=args.arena, quadros=args.quadros,
