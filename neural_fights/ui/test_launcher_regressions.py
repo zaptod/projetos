@@ -35,25 +35,27 @@ class CanvasGravador:
         self.chamadas.append(("line", args, kwargs))
 
 
-def test_preview_dupla_desenha_duas_laminas():
+def test_preview_sem_arte_usa_marcadores_neutros():
     canvas = CanvasGravador()
     personagem = SimpleNamespace(cor_r=200, cor_g=50, cor_b=50, tamanho=1.7)
     arma = SimpleNamespace(tipo="Dupla", r=80, g=160, b=255, comp_lamina=70)
 
     desenhar_lutador(canvas, personagem, arma)
 
-    laminas = [chamada for chamada in canvas.chamadas if chamada[2].get("tags") == "lamina"]
-    assert len(laminas) == 4  # contorno e cor para cada uma das duas laminas
+    assert any(chamada[0] == "oval" and chamada[2].get("tags") == "arte"
+               for chamada in canvas.chamadas)
+    assert any(chamada[0] == "line" and chamada[2].get("tags") == "arte"
+               for chamada in canvas.chamadas)
 
 
-def test_preview_ocupa_60_por_cento_sem_artefato_tracejado():
+def test_preview_sem_arte_nao_desenha_rosto_nem_tracejado():
     canvas = CanvasGravador()
     personagem = SimpleNamespace(cor_r=200, cor_g=50, cor_b=50, tamanho=1.7)
 
     desenhar_lutador(canvas, personagem)
 
-    corpo = next(chamada for chamada in canvas.chamadas if chamada[2].get("tags") == "corpo")
-    assert corpo[1] == (40, 36, 160, 156)
+    corpo = next(chamada for chamada in canvas.chamadas if chamada[2].get("tags") == "arte")
+    assert corpo[2]["fill"] == "#8b8d96"
     assert not any(chamada[2].get("dash") for chamada in canvas.chamadas)
 
 

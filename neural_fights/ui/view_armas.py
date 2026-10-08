@@ -29,6 +29,8 @@ from neural_fights.ui.theme import (
     CORES_RARIDADE,
     COR_BORDA,
 )
+from neural_fights.ui import arte_atelie
+from neural_fights.tools import catalogo_animacoes
 
 
 GEOMETRY_EDITOR_CONFIG = {
@@ -266,6 +268,16 @@ class TelaArmas(tk.Frame):
             height=300
         )
         self.canvas_preview.pack(fill="both", expand=True, padx=10, pady=5)
+        # Ao selecionar no Arsenal o canvas pode ainda estar com 1 px; redesenha
+        # quando o gerenciador de layout lhe der o tamanho definitivo.
+        self.canvas_preview.bind("<Configure>", lambda _evento: self.atualizar_preview())
+
+        self.frame_arte = tk.LabelFrame(self.frame_centro, text="ARTE", bg=COR_BG,
+                                        fg=COR_TEXTO, font=("Arial", 10, "bold"))
+        self.frame_arte.pack(fill="x", padx=10, pady=4)
+        self.lbl_arte = tk.Label(self.frame_arte, justify="left", anchor="w", bg=COR_BG,
+                                  fg=COR_TEXTO_DIM, font=("Arial", 8), wraplength=360)
+        self.lbl_arte.pack(fill="x", padx=6, pady=4)
         
         # Info da validação de tamanho
         self.frame_validacao = tk.Frame(self.frame_centro, bg=COR_BG)
@@ -1023,6 +1035,22 @@ class TelaArmas(tk.Frame):
         
         if w < 50:
             return
+        cx, cy = w // 2, h // 2
+        arma = type("PreviewArma", (), self.dados_arma)()
+        arte = arte_atelie.carregar_quadros(arte_atelie.peca_arma(arma), corpo=90)
+        self.canvas_preview.create_oval(cx - 35, cy - 35, cx + 35, cy + 35,
+                                        fill=arte_atelie.COR_MARCADOR, outline="#565861")
+        alcance = min(w // 2 - 12, max(35, int(self.dados_arma["geometria"].get("comp_lamina", 70))))
+        self.canvas_preview.create_line(cx + 20, cy, cx + 20 + alcance, cy, fill="#a9acc6", width=1)
+        def quadro(indice=0):
+            arte_atelie.desenhar(self.canvas_preview, arte, cx + 50, cy, indice=indice)
+        quadro()
+        arte_atelie.animar(self.canvas_preview, arte, cx + 50, cy, ao_desenhar=quadro)
+        ident = arte_atelie.peca_arma(arma)
+        self.lbl_arte.config(text="Desenhe no Ateliê do app: Armas › %s › %s\n%s" % (
+            self.dados_arma["tipo"], self.dados_arma.get("estilo") or "(sem estilo)",
+            "\n".join(arte_atelie.linhas_arte(ident))))
+        return
         
         # Desenha personagem fantasma para referência
         raio_char = 30
@@ -1042,7 +1070,7 @@ class TelaArmas(tk.Frame):
         
         # Renderiza baseado no tipo
         if tipo == "Reta":
-            self.desenhar_arma_reta(cx, cy, raio_char, geo, cor_hex, cor_raridade)
+            self._legado_arma_reta(cx, cy, raio_char, geo, cor_hex, cor_raridade)
         elif tipo == "Dupla":
             self.desenhar_arma_dupla(cx, cy, raio_char, geo, cor_hex, cor_raridade)
         elif tipo == "Corrente":
@@ -1069,7 +1097,7 @@ class TelaArmas(tk.Frame):
             font=("Arial", 10, "bold"), fill=cor_raridade, anchor="e"
         )
 
-    def desenhar_arma_reta(self, cx, cy, raio, geo, cor, cor_rar):
+    def _legado_arma_reta(self, cx, cy, raio, geo, cor, cor_rar):
         """Desenha arma do tipo Reta"""
         cabo = geo.get("comp_cabo", 20)
         lamina = geo.get("comp_lamina", 50)
@@ -1407,6 +1435,10 @@ class TelaArmas(tk.Frame):
                 lista_nova = [*self.controller.lista_armas, nova]
                 salvar_lista_armas(lista_nova)
                 self.controller.lista_armas.append(nova)
+            try:
+                catalogo_animacoes.gravar()
+            except Exception as erro:
+                messagebox.showwarning("Catálogo de arte", f"Arma salva, mas o catálogo não foi regenerado:\n{erro}")
             self.atualizar_lista()
             self.nova_arma()
             

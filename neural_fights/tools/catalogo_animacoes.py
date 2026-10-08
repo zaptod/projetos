@@ -506,8 +506,11 @@ def gerar_documentacao(catalogo: dict) -> str:
     return "\n".join(linhas)
 
 
-def gravar(caminho: str | Path = PADRAO, *, documento: str | Path | None = DOCUMENTO) -> dict:
-    catalogo = gerar_catalogo()
+def gravar(caminho: str | Path = PADRAO, *, documento: str | Path | None = DOCUMENTO,
+           arquivo_armas: str | Path | None = None,
+           arquivo_personagens: str | Path | None = None) -> dict:
+    """Grava o catalogo sem tocar nos ajustes do Atelie."""
+    catalogo = gerar_catalogo(arquivo_armas=arquivo_armas, arquivo_personagens=arquivo_personagens)
     problemas = validar_catalogo(catalogo)
     if problemas:
         raise ValueError("\n".join(problemas))

@@ -151,7 +151,7 @@ def criar_titulo(canvas, texto, largura=None):
     canvas.create_text(centro, 38, text=texto, font=fonte, fill="#ff6682")
 
 
-def desenhar_lutador(canvas, personagem, arma=None, cor_borda=COR_BORDA,
+def _legado_desenhar_lutador(canvas, personagem, arma=None, cor_borda=COR_BORDA,
                      centro=None, escala=1.0):
     """Preview do lutador na mesma linguagem visual do palco Godot."""
     canvas.delete("all")
@@ -205,13 +205,13 @@ def _renderizar_preview_lutador(personagem, arma, corpo, raio):
     desenho = ImageDraw.Draw(imagem)
     desenho.ellipse((meio - raio * .58, meio - raio * .70, meio - raio * .27,
                      meio - raio * .39), fill=(255, 255, 255, 175))
-    _pintar_rosto(desenho, personagem, meio, raio)
+    _legado_rosto(desenho, personagem, meio, raio)
     if arma is not None:
-        _pintar_arma(desenho, arma, meio, meio, raio)
+        _legado_arma(desenho, arma, meio, meio, raio)
     return imagem.resize((tamanho // fator, tamanho // fator), Image.Resampling.LANCZOS)
 
 
-def _pintar_rosto(desenho, personagem, meio, raio):
+def _legado_rosto(desenho, personagem, meio, raio):
     """Olhos e expressoes neutras do rosto do palco, voltados para a arma."""
     classe = str(getattr(personagem, "classe", ""))
     expressao = next((nome for chave, nome in {
@@ -252,7 +252,7 @@ def _pintar_rosto(desenho, personagem, meio, raio):
                      fill=COR_BORDA, width=espessura)
 
 
-def _pintar_arma(desenho, arma, meio, meio_y, raio):
+def _legado_arma(desenho, arma, meio, meio_y, raio):
     """Pinta a silhueta dos oito tipos de arma da peca padrao do palco."""
     ar, ag, ab = (int(getattr(arma, chave, 180)) for chave in ("r", "g", "b"))
     cor = (ar, ag, ab, 255)
@@ -382,6 +382,32 @@ def _desenhar_lutador_teste(canvas, personagem, arma, cor_borda, cx, cy, raio, c
         lamina(-1, raio * .32)
     else:
         lamina()
+
+
+def desenhar_lutador(canvas, personagem, arma=None, cor_borda=COR_BORDA,
+                     centro=None, escala=1.0):
+    """Mostra somente arte do Atelie ou os marcadores neutros do palco."""
+    from neural_fights.ui import arte_atelie
+    if personagem is None:
+        canvas.delete("all")
+        return
+    largura = max(canvas.winfo_width(), int(canvas.cget("width") or 200))
+    altura = max(canvas.winfo_height(), int(canvas.cget("height") or 200))
+    cx, cy = centro or (largura // 2, altura // 2 - 4)
+    corpo = max(50, int(min(largura, altura) * .55 * escala))
+    arte_corpo = arte_atelie.carregar_quadros(arte_atelie.peca_lutador(personagem), corpo=corpo)
+    arte_arma = arte_atelie.carregar_quadros(arte_atelie.peca_arma(arma), corpo=corpo) if arma else None
+    canvas.delete("all")
+
+    def quadro(indice=0):
+        # a arma fica na mao (lado direito), sem rosto ou silhueta sintetica.
+        canvas.delete("arte")
+        arte_atelie.desenhar(canvas, arte_corpo, cx, cy, indice=indice, limpar=False)
+        if arte_arma:
+            arte_atelie.desenhar(canvas, arte_arma, cx + corpo // 3, cy, indice=indice, limpar=False)
+    quadro(0)
+    if hasattr(canvas, "after"):
+        arte_atelie.animar(canvas, arte_corpo, cx, cy, ao_desenhar=quadro)
 
 # ============================================================================
 # CATEGORIAS DE CLASSES

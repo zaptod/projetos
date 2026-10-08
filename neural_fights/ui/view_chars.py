@@ -16,6 +16,8 @@ from neural_fights.ui.theme import (
     COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_DANGER, CORES_CLASSE, CATEGORIAS_CLASSE,
     COR_BORDA, desenhar_lutador,
 )
+from neural_fights.ui import arte_atelie
+from neural_fights.tools import catalogo_animacoes
 
 
 class TelaPersonagens(tk.Frame):
@@ -226,6 +228,13 @@ class TelaPersonagens(tk.Frame):
             width=300, height=300
         )
         self.canvas_preview.pack(pady=10)
+
+        self.frame_arte = tk.LabelFrame(self.frame_centro, text="ARTE", bg=COR_BG_SECUNDARIO,
+                                        fg=COR_TEXTO, font=("Arial", 10, "bold"))
+        self.frame_arte.pack(fill="x", padx=10, pady=4)
+        self.lbl_arte = tk.Label(self.frame_arte, justify="left", anchor="w", bg=COR_BG_SECUNDARIO,
+                                  fg=COR_TEXTO_DIM, font=("Arial", 8), wraplength=280)
+        self.lbl_arte.pack(fill="x", padx=6, pady=4)
         
         # Resumo dos stats
         self.frame_stats = tk.Frame(self.frame_centro, bg=COR_BG_SECUNDARIO)
@@ -1204,6 +1213,9 @@ class TelaPersonagens(tk.Frame):
             150, 277,
             text=classe_nome, font=("Arial", 10), fill=cor_aura_hex
         )
+        ident = arte_atelie.peca_lutador(personagem)
+        self.lbl_arte.config(text="Desenhe no Ateliê do app: Lutador › %s\n%s" % (
+            classe_nome, "\n".join(arte_atelie.linhas_arte(ident))))
 
     # =========================================================================
     # CRUD DE PERSONAGENS
@@ -1272,6 +1284,10 @@ class TelaPersonagens(tk.Frame):
                 msg = f"Campeão '{nome}' atualizado!"
             
             salvar_lista_chars(self.controller.lista_personagens)
+            try:
+                catalogo_animacoes.gravar()
+            except Exception as erro:
+                messagebox.showwarning("Catálogo de arte", f"Personagem salvo, mas o catálogo não foi regenerado:\n{erro}")
             self.atualizar_dados()
             self.novo_personagem()
             messagebox.showinfo("Sucesso", msg)

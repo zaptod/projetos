@@ -9,6 +9,7 @@ from neural_fights.data import database
 from neural_fights.models.constants import CLASSES_DATA, TIPOS_ARMA
 from neural_fights.recording import timeline
 from neural_fights.tools import catalogo_animacoes
+from neural_fights.tools import atelie_animacoes
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "corpus_engine"
@@ -134,3 +135,18 @@ def test_determinismo_ids_e_verificacao_de_saida(tmp_path):
     assert catalogo_animacoes.main(["--saida", str(saida), "--verificar"]) == 1
     saida.write_bytes(catalogo_animacoes.bytes_catalogo(catalogo_animacoes.gerar_catalogo()))
     assert catalogo_animacoes.main(["--saida", str(saida), "--verificar"]) == 0
+
+
+def test_gravar_catalogo_preserva_ajustes_do_atelie(tmp_path, monkeypatch):
+    armas, personagens, _dados_armas, _dados_personagens = _copia_dados(tmp_path)
+    ajustes = tmp_path / "catalogo_ajustes.json"
+    ajustes.write_text(json.dumps({"novas": [{"peca": "lutador.corpo", "id": "extra"}],
+                                    "escondidas": ["lutador.corpo/parado/parado"]}), encoding="utf-8")
+    monkeypatch.setattr(atelie_animacoes, "AJUSTES", ajustes)
+
+    saida = tmp_path / "catalogo.json"
+    catalogo_animacoes.gravar(saida, documento=None, arquivo_armas=armas,
+                              arquivo_personagens=personagens)
+
+    assert json.loads(ajustes.read_text(encoding="utf-8"))["novas"][0]["id"] == "extra"
+    assert saida.is_file()
