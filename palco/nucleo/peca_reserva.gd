@@ -1,7 +1,6 @@
 extends Node2D
 ## A reserva EMBUTIDA: entra quando nem o `_padrao` da categoria existe. Um
-## marcador magenta, feio de proposito: aparece no video e no relatorio, e
-## nada some da tela calado.
+## marcador neutro: a ausencia de arte nunca inventa um visual do jogo.
 
 # @export: so o que e exportado sobrevive ao PackedScene.pack().
 @export var categoria := ""
@@ -10,10 +9,8 @@ extends Node2D
 
 
 func _draw() -> void:
-	var cor := Color(1.0, 0.0, 1.0, 0.85)
+	var cor := Color(0.55, 0.55, 0.55, 0.9)
 	if categoria == "armas":
-		draw_line(Vector2.ZERO, Vector2(comprimento_ref, 0), cor, 10.0, true)
-	else:
-		draw_circle(Vector2.ZERO, raio_ref * 0.5, cor, false, 8.0, true)
-		draw_line(Vector2(-raio_ref * 0.35, -raio_ref * 0.35), Vector2(raio_ref * 0.35, raio_ref * 0.35), cor, 8.0, true)
-		draw_line(Vector2(-raio_ref * 0.35, raio_ref * 0.35), Vector2(raio_ref * 0.35, -raio_ref * 0.35), cor, 8.0, true)
+		draw_rect(Rect2(0, -comprimento_ref * 0.08, comprimento_ref, comprimento_ref * 0.16), cor, true)
+	elif categoria != "efeitos":
+		draw_circle(Vector2.ZERO, raio_ref * 0.5, cor, true, -1.0, true)

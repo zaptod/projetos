@@ -45,7 +45,7 @@ pode_renderizar = pytest.mark.skipif(
 @pytest.fixture
 def pasta_e(tmp_path):
     """Pasta de trabalho no E: quando houver (o C: esta quase cheio)."""
-    base = Path("E:/projetos/palco/_saida/_testes") if Path("E:/").exists() else tmp_path
+    base = tmp_path
     pasta = base / f"t{os.getpid()}_{time.time_ns()}"
     pasta.mkdir(parents=True, exist_ok=True)
     yield pasta
@@ -100,21 +100,8 @@ def test_hitstop_em_python_conta_como_o_plano_do_godot():
 PALCO = Path(__file__).resolve().parents[2] / "palco"
 
 
-def test_rosto_monta_as_24_expressoes_do_jogo():
-    """As 24 do jogo (character_flair.EXPRESSOES), nem uma a mais nem a menos,
-    cada uma com o seu caso no rosto do palco (so o neutro cai no padrao)."""
-    import re
-    jogo = (Path(__file__).resolve().parents[2] / "neural_fights" / "effects" / "character_flair.py").read_text(
-        encoding="utf-8")
-    bloco = jogo[jogo.index("EXPRESSOES = {"):]
-    bloco = bloco[:bloco.index("}")]
-    do_jogo = re.findall(r'"(\w+)":\s*_expr_', bloco)
-    rosto = (PALCO / "biblioteca" / "lutadores" / "rosto.gd").read_text(encoding="utf-8")
-    lista = re.search(r"const EXPRESSOES := \[(.*?)\]", rosto, re.S).group(1)
-    no_palco = re.findall(r'"(\w+)"', lista)
-    assert len(do_jogo) == 24 and no_palco == do_jogo
-    casos = set(re.findall(r'^\t\t"(\w+)":', rosto, re.M))
-    assert casos == set(do_jogo) - {"neutro"}
+def test_rosto_kenney_nao_faz_parte_do_palco_e3():
+    assert not (PALCO / "biblioteca" / "lutadores" / "rosto.gd").exists()
 
 
 def test_pecas_do_rosto_sao_mascaras_brancas_com_licenca():

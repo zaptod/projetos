@@ -112,24 +112,6 @@ def test_peca_sem_miolo_usa_a_ancora():
     assert quadro.getbbox() == (462, 462, 562, 562)
 
 
-def test_regra_do_rosto_e_a_mesma_do_palco():
-    """FAMILIA, EXPRESSOES e NIVEIS em Python sao copia do partes_lutador.gd."""
-    import re
-    from neural_fights.tools import manifesto_sprites as m
-    gd = (manifesto_sprites.RAIZ / "palco" / "nucleo" / "partes_lutador.gd").read_text(encoding="utf-8")
-    familia = dict(re.findall(r'"(\w+)": "(\w+)"', gd.split("const FAMILIA := {")[1].split("}")[0]))
-    assert familia == m.FAMILIA
-    expressoes = re.findall(r'"(\w+)"', gd.split("const EXPRESSOES := [")[1].split("]")[0])
-    assert tuple(expressoes) == m.EXPRESSOES
-    niveis_gd = gd.split("const NIVEIS := {")[1].split("}")[0]
-    for parte, niveis in m.NIVEIS.items():
-        assert re.search(rf'"{parte}": \[{", ".join(chr(34) + n + chr(34) for n in niveis)}\]', niveis_gd), parte
-    existe = {("olhos", "classe", "berserker_furia", "neutro"), ("olhos", "comum", "_", "dor")}
-    achado = m.resolver_parte("olhos", "berserker_furia", "tonto", lambda *k: k in existe)
-    # A classe e dona dos olhos: cai no neutro DELA, nunca no 'dor' comum.
-    assert achado == {"nivel": "classe", "alvo": "berserker_furia", "estado": "neutro"}
-
-
 def test_variantes_sorteadas_sao_estaveis_e_carinha_nao_mistura_variantes():
     from neural_fights.tools import manifesto_sprites as m
     colecao = {"v01": {"neutro", "furia"}, "v02": {"neutro"}}

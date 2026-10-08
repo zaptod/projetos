@@ -19,6 +19,7 @@ const RC_DELTA := 3
 const RC_SEM_DESENHO := 4
 const EXEMPLO := "res://exemplos/exemplo.timeline.json"
 const ESTILO := "res://biblioteca/estilo.tres"
+const GATILHOS_ANIMACAO := preload("res://nucleo/gatilhos_animacao.gd")
 const PX := UtilPalco.PX_POR_M
 # Eventos que viram efeito na tela (a lista mora em Timeline). Os outros
 # (tell, plano, virada, combo, texto...) sao da edicao/HUD; as pecas recebem
@@ -222,21 +223,6 @@ func _montar_cena(arena: Dictionary) -> void:
 		if no.has_method("configurar"):
 			no.configurar(c, ctx)
 		lut[slot] = no
-		var linha := Line2D.new()
-		linha.antialiased = true
-		linha.joint_mode = Line2D.LINE_JOINT_ROUND
-		linha.begin_cap_mode = Line2D.LINE_CAP_ROUND
-		var grad := Gradient.new()
-		grad.set_color(0, Color(1, 1, 1, 0.0))
-		grad.set_color(1, Color(1, 1, 1, 0.75))
-		linha.gradient = grad
-		var curva := Curve.new()
-		curva.add_point(Vector2(0, 0.1))
-		curva.add_point(Vector2(1, 1))
-		linha.width_curve = curva
-		linha.width = float(c.get("raio_corpo", 0.85)) * PX * 0.28
-		camada_armas.add_child(linha)
-		rastro[slot] = linha
 		var arma = c.get("arma")
 		if typeof(arma) == TYPE_DICTIONARY:
 			var dados_arma: Dictionary = arma.duplicate()
@@ -260,8 +246,6 @@ func _montar_cena(arena: Dictionary) -> void:
 				if anim_segunda != null:
 					anim_segunda.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 				arm_sec[slot] = segunda
-			var cor_rastro := UtilPalco.cor(arma.get("cor", 0xFFFFFF))
-			grad.set_color(1, Color(cor_rastro.lightened(0.5), 0.7))
 		if estilo.mostrar_nomes:
 			var lb := Label.new()
 			lb.text = str(c.get("rotulo", c.get("nome", slot)))
@@ -361,6 +345,8 @@ func _desenhar_quadro(f: int) -> void:
 		no.position = Vector2(float(s["x"]), float(s["y"])) * PX
 		if no.has_method("atualizar"):
 			no.atualizar(s, ctx)
+		if no.has_method("avancar"):
+			no.avancar(dt_mundo)
 		else:
 			no.scale = Vector2.ONE * float(cab[slot].get("raio_corpo", 0.85)) * PX / maxf(1.0, float(no.get("raio_ref") if no.get("raio_ref") != null else 100.0))
 		_arma(slot, s, p, corte, ctx)
@@ -433,26 +419,10 @@ func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) 
 	UtilPalco.esticar_arma(no, L)
 	if no.has_method("atualizar"):
 		no.atualizar(s, ctx)
+	if no.has_method("avancar"):
+		no.avancar(float(ctx.get("dt_mundo", 0.0)))
 		_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))
 	_arma_segunda(slot, s, z, ctx, grip, ponta)
-	var linha: Line2D = rastro[slot]
-	var fase := int(s.get("golpe_fase", 0))
-	if no.get("rastro_proprio") == true:
-		# a peca desenha o rastro dela (a corrente nova: o da BOLA)
-		linha.clear_points()
-	elif estilo.rastro_arma and fase >= 2 and fase <= 4 and not morto:
-		if not corte and linha.get_point_count() > 0:
-			# o passo do meio (60 Hz) deixa o arco do rastro liso
-			var meio := tl.lutador(slot, maxf(0.0, p - 1.0))
-			var zm := float(meio.get("z", 0.0))
-			linha.add_point(Vector2(float(meio["arma_px"]), float(meio["arma_py"]) - zm) * PX)
-		linha.add_point(ponta)
-		while linha.get_point_count() > estilo.rastro_passos:
-			linha.remove_point(0)
-	elif linha.get_point_count() > 0:
-		linha.remove_point(0)
-		if linha.get_point_count() > 0:
-			linha.remove_point(0)
 
 
 ## A segunda lamina da Dupla e a imagem central da primeira no corpo: a
@@ -565,6 +535,10 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 		var slot = ev.get(chave)
 		if lut.has(slot) and lut[slot].has_method("evento"):
 			lut[slot].evento(tipo, ev, ctx)
+	var gatilho := GATILHOS_ANIMACAO.da_timeline(ev)
+	for slot in arm:
+		if arm[slot].has_method("gatilho"):
+			arm[slot].gatilho(gatilho)
 	if not EVENTOS_COM_VFX.has(tipo):
 		return
 	var pos := Vector2.ZERO

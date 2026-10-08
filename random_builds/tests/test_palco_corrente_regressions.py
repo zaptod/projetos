@@ -222,7 +222,7 @@ def test_palco_resimula_a_luta_gravada_com_o_carimbo():
 # ------------------------------------------------------------ paridade com o Godot
 @pytest.fixture
 def pasta_e(tmp_path):
-    base = Path("E:/projetos/palco/_saida/_testes") if Path("E:/").exists() else tmp_path
+    base = tmp_path
     pasta = base / f"corrente{os.getpid()}_{time.time_ns()}"
     pasta.mkdir(parents=True, exist_ok=True)
     yield pasta

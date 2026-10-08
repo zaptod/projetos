@@ -38,6 +38,7 @@ const EXTENSOES := [".tscn", ".scn"]
 const EXT_SOM := [".wav", ".ogg", ".mp3"]
 const RESERVA := "res://nucleo/peca_reserva.gd"
 const PECA_PNG := "res://nucleo/peca_png.gd"
+const TOCADOR_FOLHA := "res://nucleo/tocador_folha.gd"
 const PREFIXO_PNG := "png:"
 ## candidato de cena que so vale se NAO for arte provisoria (CC0)
 const PREFIXO_ARTE := "arte:"
@@ -295,6 +296,10 @@ static func _sem_parenteses(texto: String) -> String:
 
 
 func arma(tipo: String, estilo: String) -> PackedScene:
+	var pasta := pasta_animacao("arma.estilo." + UtilPalco.slug(estilo), "base", "ocioso",
+		["arma.tipo." + UtilPalco.slug(tipo)])
+	if pasta != "":
+		return _cena_folha(pasta)
 	# A Corrente nao entra pelo PNG da arma inteira: a peca dela e a corrente
 	# de Verlet (armas/tipos/corrente), e a arte dela sao elos e cabecas (F4).
 	var com_png := UtilPalco.slug(tipo) != "corrente"
@@ -308,6 +313,10 @@ func arma(tipo: String, estilo: String) -> PackedScene:
 
 
 func lutador(nome: String, classe: String) -> PackedScene:
+	var pasta := pasta_animacao("lutador.nome." + UtilPalco.slug(nome), "base", "ocioso",
+		["lutador.classe." + UtilPalco.slug(classe)])
+	if pasta != "":
+		return _cena_folha(pasta)
 	return _cena("lutadores", "%s/%s" % [nome, classe], [
 		"nomes/" + UtilPalco.slug(nome) if nome != "" else "",
 		"classes/" + UtilPalco.slug(classe) if classe != "" else "",
@@ -442,3 +451,24 @@ func som(id_som: String) -> String:
 		if ResourceLoader.exists(caminho):
 			return caminho
 	return ""
+
+
+## Pasta de uma animacao do Atelie. A primeira peca com folha vence (heranca
+## vem do catalogo, do mais especifico ao generico); nunca depende de .import.
+func pasta_animacao(peca: String, estado: String, animacao: String, heranca: Array = []) -> String:
+	for id in [peca] + heranca:
+		var pasta := raiz + "animacoes/" + str(id) + "/" + estado + "/" + animacao
+		if FileAccess.file_exists(pasta.path_join("folha.png")) and FileAccess.file_exists(pasta.path_join("animacao.json")):
+			return pasta
+	return ""
+
+
+func _cena_folha(pasta: String) -> PackedScene:
+	var no := Node2D.new()
+	no.name = "TocadorFolha"
+	no.set_script(load(TOCADOR_FOLHA))
+	no.call("carregar", ProjectSettings.globalize_path(pasta))
+	var cena := PackedScene.new()
+	cena.pack(no)
+	no.free()
+	return cena
