@@ -119,6 +119,8 @@ def main(argv=None):
     pedir = sub.add_parser("pedir", help="registra trabalho para o passo da Mesa despachar")
     pedir.add_argument("texto")
     pedir.add_argument("--permitido", action="append", default=[])
+    pedir.add_argument("--cargo", default=None,
+                       help="padrao: executor com --ia codex, orquestrador nos outros")
     pedir.add_argument("--ia", choices=("codex", "claude"), default="codex")
     pedir.add_argument("--titulo", default="")
     pedir.add_argument("--tarefa", help="arquivo com o complemento da tarefa")
@@ -149,7 +151,10 @@ def main(argv=None):
                 return 3
             texto += "\n\n" + complemento
         try:
-            pedido = pedidos.contratar(texto, "chat", cargo="orquestrador",
+            # 08/10/2026: o Codex com o cargo orquestrador tentava contratar
+            # trabalhador e conferente de dentro do sandbox e voltava "bloqueado"
+            cargo = args.cargo or ("executor" if args.ia == "codex" else "orquestrador")
+            pedido = pedidos.contratar(texto, "chat", cargo=cargo,
                                        permitidos=args.permitido or None, ia=args.ia,
                                        titulo=args.titulo or None)
         except ValueError as exc:

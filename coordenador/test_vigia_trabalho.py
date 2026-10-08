@@ -549,7 +549,7 @@ def test_entrega_travada_contrata_o_integrador(mundo):
     assert any("integrador integrar-trava já está resolvendo" in a for a in mundo.avisos)
     mundo.vigia.passo()                          # nao contrata de novo
     assert len(criados) == 1
-    assert criados[0][1]["ia"] == "claude"       # abaixo do teto (a Mesa nao mede)
+    assert criados[0][1]["ia"] == "codex"        # 08/10/2026: integrador e sempre Codex
 
 
 @pytest.mark.parametrize("uso", [

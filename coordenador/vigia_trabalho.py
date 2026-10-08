@@ -608,10 +608,13 @@ class VigiaTrabalho:
         self._novidade(mem, "olho", texto)
 
     def _ia_do_integrador(self) -> str:
-        """Claude so com ele liberado E abaixo do teto da Mesa (sessao ou semana).
+        """Codex sempre. 07/10/2026: o Adrian pediu uso minimo do Claude; em
+        08/10 uma limpeza que morreu no meio contratou 7 integradores Claude.
 
+        Antes: Claude so com ele liberado E abaixo do teto da Mesa.
         05/10/2026: integrar-pedido-66e4ba54 foi contratado como Claude com a
         semana no limite e morreu em "falhou" (rate_limit_event "rejected")."""
+        return "codex"
         try:
             if self.proibido():
                 return "codex"
