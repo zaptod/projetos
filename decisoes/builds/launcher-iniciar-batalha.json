@@ -1,0 +1,45 @@
+{
+  "comentario": true,
+  "contexto": "Estou deixando o launcher compatível com o Ateliê novo: prévias com a sua arte, quadro do que falta desenhar e catálogo em dia. Só este botão depende de você. A foto mostra a Arena hoje.",
+  "criado": "2026-10-08T08:56:03.984274",
+  "depende_de": [],
+  "historico": [],
+  "id": "launcher-iniciar-batalha",
+  "midias": [
+    {
+      "caminho": "%LOCALAPPDATA%\\neural-fights\\decisoes_midia\\launcher-iniciar-batalha\\3_TelaLuta.png",
+      "rotulo": "A Arena hoje"
+    }
+  ],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "'Ver no palco' fica grande no meio; o pygame vira 'Prévia rápida (visual antigo)', menor, para testar regras sem esperar o Godot",
+      "id": "godot-principal",
+      "pede_comentario": false,
+      "rotulo": "O Godot vira o botão principal (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Os três botões continuam iguais",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Deixar como está"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Só Godot. A luta demora uns segundos para abrir, mas é o visual de verdade",
+      "id": "tirar-pygame",
+      "pede_comentario": false,
+      "rotulo": "Tirar o pygame do launcher"
+    }
+  ],
+  "origem": {
+    "pedido": "pedido-440b4327"
+  },
+  "pergunta": "Na Arena do launcher, o botão 'Iniciar batalha' abre a luta no pygame, com o visual antigo (carinhas e armas desenhadas por código). É o mesmo visual dos duelos publicados hoje. O 'Ver no palco (Godot)' ao lado já mostra a sua arte do Ateliê (ou bolinhas cinza onde não tem). O que faço com o 'Iniciar batalha'?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Launcher: o 'Iniciar batalha' com o visual antigo",
+  "vigente": null
+}

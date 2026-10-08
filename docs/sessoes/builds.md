@@ -130,6 +130,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Seus desenhos do Ateliê: guardar no git?** — Guardar no git (recomendado) (07/10/2026) `arte-atelie-no-git`
 - ✅ **Desenho 'Comum' de habilidade: vale para todos os elementos?** — Sua arte por elemento ganha; o Comum troca só a provisória (recomendado) (07/10/2026) `comum-tingido-ordem`
 - ✅ **Rosto desenhado só em algumas carinhas: o que aparece nas outras?** — Usa a sua mais parecida (recomendado) (07/10/2026) `boca-de-uma-carinha`
+- ⏳ **Launcher: o 'Iniciar batalha' com o visual antigo** — Na Arena do launcher, o botão 'Iniciar batalha' abre a luta no pygame, com o visual antigo (carinhas e armas desenhadas por código). É o mesmo visual dos duelos publicados hoje. O 'Ver no palco (Godot)' ao lado já mostra a sua arte do Ateliê (ou bolinhas cinza onde não tem). O que faço com o 'Iniciar batalha'? `launcher-iniciar-batalha`
 
 <!-- decisoes:fim -->
 
