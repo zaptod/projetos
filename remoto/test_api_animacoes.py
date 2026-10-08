@@ -43,3 +43,14 @@ def test_rotas_animacoes_autenticacao_limite_e_caminho(tmp_path, monkeypatch):
         assert pedir(srv, "POST", "/api/animacoes/subir", corpo, token)[0].status == 413
     finally:
         srv.shutdown(); srv.server_close()
+
+
+def test_montagem_expoe_camadas_e_marcador_sem_arte(tmp_path, monkeypatch):
+    monkeypatch.setattr(atelie, "CATALOGO", tmp_path / "catalogo.json")
+    monkeypatch.setattr(atelie, "ANIMACOES", tmp_path / "animacoes")
+    (tmp_path / "catalogo.json").write_text(json.dumps({"pecas": [{"id": "corpo", "grupo": "lutador", "estados": [{"id": "parado", "animacoes": [{"id": "respirar", "gatilho": "ocioso", "camada": 20, "tamanho_padrao": "1,0 do corpo"}]}]}]}), encoding="utf-8")
+    dados = atelie.montagem()
+    camada = dados["camadas"][0]
+    assert dados["largura"] == 320 and camada["marcador"]
+    assert camada["posicao"] == {"x": 160, "y": 100} and camada["camada"] == 20
+    assert camada["categoria_marcador"] == "lutadores"

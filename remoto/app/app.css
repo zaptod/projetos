@@ -968,6 +968,7 @@ input[type="file"] { letter-spacing: normal; text-align: left; }
 .anim-enviar input { display: none; }
 .anim-folha { overflow: hidden; margin: 10px 0; }
 #anim-canvas { width: 100%; height: auto; border: 1px solid var(--borda); touch-action: none; }
+#anim-montado-canvas { display: block; width: 100%; height: auto; margin-top: 6px; border: 1px solid var(--borda); background: #303038; }
 .anim-fundo-claro { background: radial-gradient(circle, #b9aa98 0 13px, transparent 14px), #eee; }.anim-fundo-escuro { background: radial-gradient(circle, #a99a88 0 13px, transparent 14px), #222; }.anim-fundo-xadrez { background: radial-gradient(circle, #8e7b67 0 13px, transparent 14px), repeating-conic-gradient(#ddd 0 25%, #aaa 0 50%) 50% / 16px 16px; }
 .anim-chips { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px; }
 .anim-chip { flex: 0 0 auto; min-height: 44px; }.anim-chip[aria-pressed="true"], .anim-quadro .selecionado { background: var(--acento); color: #fff; }

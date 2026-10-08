@@ -219,3 +219,48 @@ def arvore() -> list[dict]:
     grupos = {}
     for p in pecas.values(): grupos.setdefault(p.get("grupo", "outros"), []).append(p)
     return [{"grupo": g, "pecas": sorted(v, key=lambda p: p["id"])} for g, v in sorted(grupos.items())]
+
+
+# A previsualizacao do app e deliberadamente calculada aqui, e nao em JS: o
+# ponto de uma folha e a ancora do Godot (`Rect2(-ancora, tamanho)`).  `posicao`
+# e o ponto da ancora no palco 320x180; `escala` transforma o maior lado do
+# quadro no tamanho indicado pelo catalogo (em corpos de 80 px).
+def montagem(editar: dict | None = None) -> dict:
+    """Camadas ociosas de um lutador de exemplo, no mesmo contrato do Godot."""
+    catalogo = _json(CATALOGO, {}).get("pecas", [])
+    por_id = {p.get("id"): p for p in catalogo if isinstance(p, dict)}
+    escolhidas = []
+    # Uma base e uma peca de cada familia visual; a editada sempre a substitui.
+    grupos = ("lutador", "arma", "skill", "efeito", "estado_personagem", "buff")
+    for grupo in grupos:
+        peca = next((p for p in catalogo if p.get("grupo") == grupo), None)
+        if peca: escolhidas.append(peca)
+    if editar and por_id.get(editar.get("peca")):
+        peca = por_id[editar["peca"]]
+        escolhidas = [p for p in escolhidas if p.get("grupo") != peca.get("grupo")] + [peca]
+    camadas = []
+    for peca in escolhidas:
+        estado = next((e for e in peca.get("estados", []) if any(a.get("gatilho") == "ocioso" for a in e.get("animacoes", []))), None)
+        estado = estado or (peca.get("estados") or [{}])[0]
+        animacao = next((a for a in estado.get("animacoes", []) if a.get("gatilho") == "ocioso"), None)
+        animacao = animacao or (estado.get("animacoes") or [{}])[0]
+        if editar and peca.get("id") == editar.get("peca"):
+            estado = {"id": editar.get("estado", estado.get("id"))}
+            animacao = {**animacao, **editar}
+        fonte = peca.get("id")
+        for candidato in [fonte] + list(peca.get("heranca", [])):
+            if (caminho(candidato, estado.get("id"), animacao.get("id")) / "folha.png").is_file():
+                fonte = candidato; break
+        else: fonte = None
+        segue = animacao.get("segue", "lutador")
+        posicao = {"mao do lutador": {"x": 205, "y": 112}, "mao": {"x": 205, "y": 112},
+                    "lutador": {"x": 160, "y": 100}, "corrente": {"x": 225, "y": 115}}.get(segue, {"x": 160, "y": 100})
+        try: tamanho = float(str(animacao.get("tamanho_padrao", "1")).replace(",", ".").split()[0])
+        except ValueError: tamanho = 1.0
+        camadas.append({"peca": peca.get("id"), "estado": estado.get("id"), "animacao": animacao.get("id"),
+                        "fonte": fonte, "camada": int(animacao.get("camada", 20)), "segue": segue,
+                        "posicao": posicao, "tamanho": tamanho * 80, "marcador": fonte is None,
+                        "categoria_marcador": {"lutador": "lutadores", "arma": "armas"}.get(peca.get("grupo"), "efeitos"),
+                        "folha_url": f"/api/animacoes/{fonte}/{estado.get('id')}/{animacao.get('id')}/folha" if fonte else None,
+                        "animacao_url": f"/api/animacoes/{fonte}/{estado.get('id')}/{animacao.get('id')}" if fonte else None})
+    return {"largura": 320, "altura": 180, "camadas": sorted(camadas, key=lambda c: c["camada"])}

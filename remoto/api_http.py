@@ -1761,6 +1761,9 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({"grupos": atelie_animacoes.arvore()})
             if rota == "/api/animacoes/gatilhos":
                 return self._json({"gatilhos": atelie_animacoes.gatilhos()})
+            if rota == "/api/animacoes/montagem":
+                editar = {k: (consulta.get(k) or [""])[0] for k in ("peca", "estado", "animacao")}
+                return self._json(atelie_animacoes.montagem(editar if editar["peca"] else None))
             if rota == "/api/animacoes/previa-godot":
                 return self._erro(501, "previa no Godot ainda nao disponivel")
             achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)/folha", rota)

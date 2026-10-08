@@ -16,3 +16,12 @@ ajustes. A arvore informa quando uma animacao nao tem arte e de qual heranca a
 folha sera usada. A API autenticada usa `/api/animacoes`: `arvore`, `gatilhos`,
 leitura/folha por peca-estado-animacao, e POST para subir, salvar, desfazer,
 criar, esconder e salvar ajustes.
+
+## Lutador montado
+
+`GET /api/animacoes/montagem` devolve a composicao 320x180 usada pela previa.
+Cada camada informa folha, contrato, camada, alvo e posicao da ancora. A conta
+fica em `atelie_animacoes.montagem`: a ancora relativa vira pixels do quadro e
+e desenhada em `posicao - ancora`, como `TocadorFolha` (`Rect2(-ancora, tamanho)`).
+Sem folha, o canvas desenha o marcador neutro. Os parametros `peca`, `estado` e
+`animacao` trocam a camada em edicao sem salvar a alteracao.
