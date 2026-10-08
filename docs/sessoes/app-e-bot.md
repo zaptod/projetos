@@ -2915,3 +2915,7 @@ No topo da aba ficam os cartões de permissao pendentes, com quem pediu, motivo,
 alvo e os botoes Permitir, Negar e Permitir sempre para o cargo. A mesma aba
 edita `delegados/permissoes.json` e mostra o repositorio preenchido pelo cargo
 ao contratar. As mutacoes tambem exigem pareamento e `--acoes`.
+
+Desde 07/10, **Contratar** cria um pedido na Mesa e mostra o recibo dele; nao
+abre delegado nem worktree diretamente. A Mesa preserva cargo, IA e caminhos
+permitidos e devolve o pedido aberto quando o contrato ja esta na fila.

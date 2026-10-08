@@ -2980,15 +2980,13 @@ class Manipulador(BaseHTTPRequestHandler):
                     return self._erro(400, "tarefa invalida")
                 if cargo not in delegar.cargos() or ia not in delegar.IAS:
                     return self._erro(400, "cargo ou ia desconhecido")
-                ident = "app-" + secrets.token_hex(4)
-                pedido = delegar.pasta_da(ident) / "pedido.md"
-                pedido.parent.mkdir(parents=True, exist_ok=True)
-                pedido.write_text(tarefa, encoding="utf-8")
-                estado = delegar.criar(ident, pedido, ["remoto/**", "coordenador/**", "docs/**"],
-                                       ia=ia, cargo=cargo, titulo=tarefa.splitlines()[0],
-                                       repo_tarefa=repo_tarefa)
-                delegar.no_fundo(["rodar", "--id", ident], ident)
-                return self._json({"feito": True, "trabalhador": _limpo(estado)})
+                from coordenador import pedidos
+                item = pedidos.contratar(
+                    tarefa, "equipe", cargo=cargo,
+                    permitidos=["remoto/**", "coordenador/**", "docs/**"], ia=ia,
+                    titulo=tarefa.splitlines()[0], alvo=repo_tarefa)
+                return self._json({"feito": True, "pedido": item["id"],
+                                   "recibo": item["recibo"], "duplicado": item.get("duplicado", False)})
             if acao_equipe == "parar":
                 return self._json({"feito": True, "resultado": delegar.parar(ident)})
             if acao_equipe == "renovar":

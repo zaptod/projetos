@@ -879,6 +879,10 @@ class VigiaTrabalho:
         if not ok:
             mem["esperando"][did] = motivo
             return
+        from .pedidos import na_janela_das_postagens
+        if na_janela_das_postagens(agora):
+            mem["esperando"][did] = "janela da postagem: aplicar e reiniciar depois"
+            return
         if not self._aplica_sozinho():
             mem["esperando"][did] = ("pronta para aplicar (validador e testes ok); o aplicar "
                                      "sozinho está desligado no config.json do coordenador")

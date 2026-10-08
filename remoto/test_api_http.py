@@ -640,6 +640,24 @@ def test_permissao_da_equipe_exige_pareamento_e_acoes(servidor, monkeypatch):
     assert retomadas == [(["retomar", "--id", "perm-1"], "perm-1")]
 
 
+def test_equipe_contratar_abre_pedido_sem_delegado(servidor, monkeypatch):
+    from coordenador import pedidos
+    chamadas = []
+    monkeypatch.setattr(api_http.delegar, "cargos", lambda: ["orquestrador"])
+    monkeypatch.setattr(api_http.delegar, "criar", lambda *a, **k: pytest.fail("delegado direto"))
+    monkeypatch.setattr(api_http.delegar, "no_fundo", lambda *a, **k: pytest.fail("delegado direto"))
+    monkeypatch.setattr(pedidos, "contratar", lambda *a, **k: chamadas.append((a, k)) or {
+        "id": "pedido-12345678", "recibo": "Entendi", "duplicado": False})
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    resp, bruto = _pedir(servidor, "POST", "/api/equipe/contratar", {
+        "cargo": "orquestrador", "ia": "codex", "tarefa": "Conserte a tela"}, token)
+    assert resp.status == 200
+    assert json.loads(bruto) == {"feito": True, "pedido": "pedido-12345678",
+                                 "recibo": "Entendi", "duplicado": False}
+    assert chamadas[0][0] == ("Conserte a tela", "equipe")
+
+
 # ------------------------------------------------------------------ rede
 @pytest.mark.parametrize("ip,local,esperado", [
     ("100.95.104.33", False, True),

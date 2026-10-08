@@ -983,6 +983,53 @@ class MesaPedidos:
         self._avisar_real = funcao or (lambda _texto: None)
 
     # ------------------------------------------------------------ entrada
+    def contratar(self, texto, origem, *, cargo=None, permitidos=None, ia=None, titulo=None,
+                 alvo=None):
+        """Abre um pedido de trabalho vindo de outra porta, sem despachar aqui.
+
+        A Mesa e a unica que contrata: app, cerebro e apurador apenas deixam o
+        pedido na fila.  `alvo` e uma chave estavel para erros que receberam
+        diagnosticos com texto diferente.
+        """
+        texto = str(texto or "").strip()
+        if not texto:
+            raise ValueError("pedido vazio")
+        if origem not in ("equipe", "cerebro", "apurador"):
+            raise ValueError("origem desconhecida")
+        cargo = str(cargo or "orquestrador").strip().lower()
+        ia = str(ia or "codex").strip().lower()
+        permitidos = [str(p).strip() for p in (permitidos or PERMITIDOS) if str(p).strip()]
+        if not permitidos:
+            raise ValueError("permissoes vazias")
+        normalizado = re.sub(r"\s+", " ", texto).casefold()
+        alvo = str(alvo or "").strip()
+        with _TRAVA:
+            dados = _ler()
+            for aberto in dados["pedidos"]:
+                if aberto.get("situacao") not in VIVOS:
+                    continue
+                mesmo_texto = re.sub(r"\s+", " ", str(aberto.get("texto") or "")).casefold() == normalizado
+                mesmo_alvo = bool(alvo and alvo == aberto.get("alvo"))
+                mesmos_permitidos = permitidos == list(aberto.get("permitidos") or [])
+                if mesmo_texto or mesmo_alvo or mesmos_permitidos:
+                    recibo = f"Ja esta no pedido {aberto['id']}"
+                    return dict(aberto, recibo=recibo, duplicado=True, continuacao=False)
+            ident = "pedido-" + uuid.uuid4().hex[:8]
+            agora = _iso()
+            pedido = {"id": ident, "texto": texto, "origem": origem, "situacao": "recebido",
+                      "motivo": "", "trabalhador": None, "conferente": None, "ia": None,
+                      "ia_forcada": ia, "cargo": cargo, "permitidos": permitidos, "alvo": alvo,
+                      "titulo": str(titulo or texto.splitlines()[0])[:160], "contratos": 0,
+                      "criado_em": agora, "atualizado_em": agora, "ultimo_evento_em": agora,
+                      "mensagens": 1, "do_adrian": [texto[:2000]]}
+            dados["pedidos"].append(pedido)
+            dados["pedidos"] = dados["pedidos"][-100:]
+            _linha(dados, pedido, texto, de=origem, origem=origem, tipo="pedido")
+            pedido["recibo"] = self._recibo(dados, pedido)
+            _linha(dados, pedido, pedido["recibo"], tipo="recibo")
+            _gravar(dados)
+        return dict(pedido, continuacao=False)
+
     def registrar(self, texto, origem="app", *, novo=False, responde_a=None, triar=None):
         """Guarda o pedido (ou a continuacao) e volta na hora: quem contrata,
         corrige e retoma e o `passo`, no pulso do coordenador.
@@ -1859,6 +1906,8 @@ class MesaPedidos:
             return
         pedido["tentou_em"] = _iso(self.relogio())
         ia = pedido.get("ia_forcada") or "claude"
+        cargo = pedido.get("cargo") or "orquestrador"
+        permitidos = pedido.get("permitidos") or PERMITIDOS
         motivo = self._motivo_claude() if ia == "claude" else ""
         if motivo:
             if not _construir(texto_do_adrian(pedido)):
@@ -1869,19 +1918,20 @@ class MesaPedidos:
         ident = pedido["id"] if n == 0 else f"{pedido['id']}-{n}"
         corpo = None
         if self._estado_do(ident) is None:
-            corpo = ("# PEDIDO do Adrian (" + ("Telegram" if pedido.get("origem") == "telegram"
-                                                 else "app") + ")\n\n"
+            de = {"telegram": "Telegram", "equipe": "Equipe do app",
+                  "cerebro": "Cerebro", "apurador": "Apurador"}.get(pedido.get("origem"), "app")
+            corpo = ("# PEDIDO (" + de + ")\n\n"
                      + self._corpo_do_pedido(pedido) + "\n\n"
                      + "Se criar um nó no Grimório para este pedido, passe `--pedido "
                      + pedido["id"] + "` no comando `decisoes adicionar`.\n\n" + _COMO_RESPONDER)
             if ia == "codex":
                 # o Codex nao recebe o prompt do cargo: vai junto com a tarefa
                 try:
-                    corpo = self.despachante.prompt_do_cargo("orquestrador") + "\n\n" + corpo
+                    corpo = self.despachante.prompt_do_cargo(cargo) + "\n\n" + corpo
                 except Exception:
                     pass
             _marcar_entregue(pedido)
-        titulo = pedido["texto"].splitlines()[0][:160]
+        titulo = str(pedido.get("titulo") or pedido["texto"].splitlines()[0])[:160]
         offset = self._tamanho_do_fundo(ident)
         despachante = self.despachante
 
@@ -1891,7 +1941,7 @@ class MesaPedidos:
                 caminho.parent.mkdir(parents=True, exist_ok=True)
                 caminho.write_text(corpo, encoding="utf-8")
                 try:
-                    despachante.criar(ident, caminho, PERMITIDOS, ia=ia, cargo="orquestrador",
+                    despachante.criar(ident, caminho, permitidos, ia=ia, cargo=cargo,
                                       titulo=titulo)
                 except Exception as exc:                      # noqa: BLE001
                     return ("criar", exc)
@@ -3344,6 +3394,11 @@ def atender_conversa():
 
 def registrar(texto, origem="app", *, novo=False, responde_a=None, triar=None):
     return MESA.registrar(texto, origem, novo=novo, responde_a=responde_a, triar=triar)
+
+
+def contratar(texto, origem, *, cargo=None, permitidos=None, ia=None, titulo=None, alvo=None):
+    return MESA.contratar(texto, origem, cargo=cargo, permitidos=permitidos, ia=ia,
+                          titulo=titulo, alvo=alvo)
 
 
 def passar_para_equipe(ident, origem="app"):

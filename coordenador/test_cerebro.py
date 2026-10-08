@@ -108,6 +108,20 @@ def test_proposta_confirmada_executa_e_vencida_nao(feitos):
     assert not de_novo["feito"] and len(executadas) == 1
 
 
+def test_proposta_delegar_confirmada_abre_pedido_sem_delegado(monkeypatch):
+    from coordenador import pedidos
+    chamadas = []
+    monkeypatch.setattr(pedidos, "contratar", lambda *a, **k: chamadas.append((a, k)) or {
+        "id": "pedido-12345678", "recibo": "Ja esta no pedido pedido-12345678"})
+    acao_delegar = {"tipo": "delegar_codex", "valor": {"id": "conserto-x",
+                     "titulo": "Consertar X", "tarefa": "Conserte X",
+                     "permitidos": ["remoto/**"]}}
+    assert "pedido-12345678" in cerebro._executar_proposta(acao_delegar)
+    assert chamadas == [(("Conserte X", "cerebro"), {"cargo": "orquestrador",
+                         "permitidos": ["remoto/**"], "ia": "codex",
+                         "titulo": "Consertar X", "alvo": "conserto-x"})]
+
+
 def test_recusar_so_marca(feitos):
     pensar(Codex({"resposta": "x", "acoes": [acao("pc_acao", "suspender")]}), feitos)
     p = cerebro.propostas_pendentes()[0]

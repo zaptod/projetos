@@ -767,29 +767,31 @@ class ApuracaoTests(BaseTemp):
         self.assertEqual(set(apurador.EXTENSOES),
                          {".py", ".json", ".md", ".txt"})
 
-    def test_conserto_espera_a_rodada_da_agenda_acabar(self):
+    def test_pedido_espera_a_rodada_da_agenda_acabar(self):
         """14/09/2026: rodada longa importa modulo no meio do caminho, e codigo
-        editado por baixo dela a derruba. Com a trava da agenda ocupada, so
-        diagnostico."""
+        editado por baixo dela a derruba. O pedido espera a trava liberar."""
         from builds import travas
         from remoto import apurador
-        from remoto import config as cfg_remoto
         chamadas = []
+        ocupada = [True]
         for alvo, nome, valor in (
                 (apurador, "pendentes",
                  lambda *a, **k: [{"ts": "x", "fabrica": "picasso"}]),
                 (apurador, "apurar", lambda *a, **k: "diagnostico"),
                 (apurador, "marcar", lambda *a, **k: None),
-                (apurador, "consertar",
-                 lambda *a, **k: chamadas.append(1) or {"mexeu": True}),
+                (apurador, "abrir_pedido",
+                 lambda *a, **k: chamadas.append(1) or {"id": "pedido-x", "recibo": "ok"}),
                 (travas, "ocupada",
-                 lambda nome: nome == apurador.TRAVA_DA_AGENDA),
-                (cfg_remoto, "carregar", lambda *a, **k: {"consertar": True})):
+                 lambda nome: ocupada[0] and nome == apurador.TRAVA_DA_AGENDA)):
             self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
             setattr(alvo, nome, valor)
         saida = apurador.uma_volta(log=lambda *_a: None)
         self.assertEqual([], chamadas)
-        self.assertFalse(saida["conserto"]["mexeu"])
+        self.assertIn("pedido adiado", saida["motivo"])
+        ocupada[0] = False
+        saida = apurador.uma_volta(log=lambda *_a: None)
+        self.assertEqual([1], chamadas)
+        self.assertEqual("pedido-x", saida["pedido"])
         self.assertEqual("historias__auto", apurador.TRAVA_DA_AGENDA)
 
     def test_erro_apurado_nao_volta(self):
@@ -1206,7 +1208,6 @@ class ProtecoesDoConsertoTests(BaseTemp):
 
     def test_estado_ilegivel_nunca_e_sobrescrito_na_volta_real(self):
         # Item 4, pela `uma_volta` de verdade: o `marcar` grava o estado.
-        from remoto import config as cfg_remoto
         estado = self.pasta / "apuracoes.json"
         estado.write_text("{quebrado", encoding="utf-8")
         chamadas = []
@@ -1215,16 +1216,14 @@ class ProtecoesDoConsertoTests(BaseTemp):
                 (self.ap, "pendentes",
                  lambda *a, **k: [{"ts": "x", "fabrica": "picasso"}]),
                 (self.ap, "apurar", lambda *a, **k: "diagnostico"),
-                (self.ap, "erros_que_valem", lambda erros, **k: erros),
-                (self.ap, "consertar",
-                 lambda *a, **k: chamadas.append(1) or {"mexeu": True}),
-                (self.ap, "_alarmar", alarmes.append),
-                (cfg_remoto, "carregar", lambda *a, **k: {"consertar": True})):
+                (self.ap, "abrir_pedido",
+                 lambda *a, **k: chamadas.append(1) or {"id": "pedido-x", "recibo": "ok"}),
+                (self.ap, "_alarmar", alarmes.append)):
             self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
             setattr(alvo, nome, valor)
         saida = self.ap.uma_volta(log=lambda *_a: None)
-        self.assertEqual([], chamadas)
-        self.assertIn("teto", saida["conserto"]["motivo"])
+        self.assertEqual([1], chamadas)
+        self.assertEqual("pedido-x", saida["pedido"])
         (guardado,) = self.pasta.glob("apuracoes.json.corrompido-*")
         self.assertEqual("{quebrado", guardado.read_text(encoding="utf-8"))
         self.assertEqual(self.ap.TETO_CONSERTOS_DIA, self.ap.tentativas_hoje())
@@ -1452,7 +1451,7 @@ class ConsertoFalhaFechadoTests(BaseTemp):
         Path(config.ARQUIVO).write_text("{nao e json", encoding="utf-8")
         self.assertIs(False, config.carregar().get("consertar"))
 
-    def test_so_true_liga(self):
+    def test_config_do_remendo_nao_muda_o_pedido(self):
         from remoto import apurador
         chamadas = []
         for alvo, nome, valor in (
@@ -1460,9 +1459,8 @@ class ConsertoFalhaFechadoTests(BaseTemp):
                  lambda *a, **k: [{"ts": "x", "fabrica": "picasso"}]),
                 (apurador, "apurar", lambda *a, **k: "diagnostico"),
                 (apurador, "marcar", lambda *a, **k: None),
-                (apurador, "erros_que_valem", lambda erros, **k: erros),
-                (apurador, "motivo_para_nao_consertar",
-                 lambda *a, **k: chamadas.append(1) or "parei")):
+                (apurador, "abrir_pedido",
+                 lambda *a, **k: chamadas.append(1) or {"id": "pedido-x", "recibo": "ok"})):
             self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
             setattr(alvo, nome, valor)
         for valor in ("true", 1, "sim", None):
@@ -1470,11 +1468,11 @@ class ConsertoFalhaFechadoTests(BaseTemp):
                 '{"consertar": %s}' % __import__("json").dumps(valor),
                 encoding="utf-8")
             apurador.uma_volta(log=lambda *_a: None)
-        self.assertEqual([], chamadas, "so `true` de JSON liga o conserto")
+        self.assertEqual([1, 1, 1, 1], chamadas)
         Path(config.ARQUIVO).write_text('{"consertar": true}',
                                         encoding="utf-8")
         apurador.uma_volta(log=lambda *_a: None)
-        self.assertEqual([1], chamadas)
+        self.assertEqual([1, 1, 1, 1, 1], chamadas)
 
 
 class VencimentoTests(BaseTemp):

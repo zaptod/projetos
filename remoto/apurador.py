@@ -1029,6 +1029,40 @@ def limpar_orfaos(log=print) -> int:
     return removidas
 
 
+def abrir_pedido(erros: list[dict], diagnostico: str) -> dict:
+    """Entrega o diagnostico a Mesa; ela deduplica e despacha no proximo passo."""
+    from coordenador import pedidos
+    alvo = "|".join(f"{_quando(e)}|{e.get('fabrica')}|{e.get('detalhe')}" for e in erros)
+    tarefa = ("# Investigar erro apurado\n\n"
+              "Diagnostico do apurador:\n\n" + diagnostico + "\n\n"
+              "Erros que originaram a investigacao:\n" + "\n".join(
+                  f"- [{e.get('fabrica')}] {e.get('detalhe')}" for e in erros[:8]))
+    return pedidos.contratar(tarefa, "apurador", cargo="orquestrador",
+                              permitidos=["remoto/**", "coordenador/**", "docs/**"],
+                              ia="codex", titulo="Investigar erro do apurador", alvo=alvo)
+
+
+def _investigacao_pendente():
+    pendentes = _ler_estado().get("investigacoes_pendentes") or []
+    return pendentes[0] if isinstance(pendentes, list) and pendentes else None
+
+
+def _guardar_investigacao(erros: list[dict], diagnostico: str) -> None:
+    estado = _ler_estado()
+    pendentes = estado.setdefault("investigacoes_pendentes", [])
+    chave = "|".join(f"{_quando(e)}|{e.get('fabrica')}|{e.get('detalhe')}" for e in erros)
+    if not any(item.get("chave") == chave for item in pendentes if isinstance(item, dict)):
+        pendentes.append({"chave": chave, "erros": erros, "diagnostico": diagnostico})
+    _gravar_estado(estado)
+
+
+def _tirar_investigacao(chave: str) -> None:
+    estado = _ler_estado()
+    estado["investigacoes_pendentes"] = [item for item in estado.get(
+        "investigacoes_pendentes") or [] if item.get("chave") != chave]
+    _gravar_estado(estado)
+
+
 def uma_volta(*, log=print) -> dict:
     """Pega os erros novos, apura e devolve o que houve. Nunca levanta."""
     from builds import travas
@@ -1037,6 +1071,15 @@ def uma_volta(*, log=print) -> dict:
         if not minha:
             log("[apurador] ja tem uma apuracao rodando.")
             return {"feito": False, "motivo": "ja rodando"}
+        pendente = _investigacao_pendente()
+        if pendente:
+            if travas.ocupada(TRAVA_DA_AGENDA):
+                return {"feito": False, "motivo": "rodada da agenda em andamento: pedido adiado"}
+            pedido = abrir_pedido(pendente["erros"], pendente["diagnostico"])
+            _tirar_investigacao(pendente["chave"])
+            return {"feito": True, "erros": len(pendente["erros"]),
+                    "diagnostico": pendente["diagnostico"], "pedido": pedido["id"],
+                    "recibo": pedido["recibo"]}
         erros = pendentes()
         if not erros:
             return {"feito": False, "motivo": "nenhum erro novo"}
@@ -1061,24 +1104,13 @@ def uma_volta(*, log=print) -> dict:
         if not texto:
             return {"feito": False, "motivo": "sem diagnostico",
                     "erros": len(erros)}
-        saida = {"feito": True, "erros": len(erros), "diagnostico": texto}
-        # O conserto vem DEPOIS do diagnostico e em cima dele: mexer no codigo
-        # sem antes entender o que quebrou e como consertar no escuro.
-        from . import config
-        # FALHA FECHADO: so `true` explicito liga. Arquivo ilegivel, chave
-        # ausente ou qualquer outro valor = desligado.
-        if config.carregar().get("consertar") is True:
-            # As guardas vem ANTES do conserto, da mais barata para a mais
-            # cara. A primeira e a de 14/09/2026, 13:45: uma rodada da agenda
-            # morreu com AttributeError por codigo que mudou no meio dela.
-            valem = erros_que_valem(erros) if not travas.ocupada(
-                TRAVA_DA_AGENDA) else erros
-            motivo = motivo_para_nao_consertar(valem)
-            if motivo:
-                log(f"[apurador] so diagnostico: {motivo}.")
-                saida["conserto"] = {"mexeu": False, "motivo": motivo}
-            else:
-                saida["conserto"] = consertar(valem, texto, log=log)
+        if travas.ocupada(TRAVA_DA_AGENDA):
+            _guardar_investigacao(erros, texto)
+            return {"feito": False, "motivo": "rodada da agenda em andamento: pedido adiado",
+                    "erros": len(erros), "diagnostico": texto}
+        pedido = abrir_pedido(erros, texto)
+        saida = {"feito": True, "erros": len(erros), "diagnostico": texto,
+                 "pedido": pedido["id"], "recibo": pedido["recibo"]}
         return saida
 
 

@@ -571,14 +571,11 @@ def _executar_proposta(acao: dict) -> str:
         item = orquestrador.fila_adicionar(valor["parte"], valor["item"])
         return f"na fila: {item.get('id', '?')}"
     if tipo == "delegar_codex":
-        # `python -m remoto.delegar criar` + `rodar --fundo`, pelas funcoes
-        from remoto import delegar
-        arquivo = _arquivo("propostas") / f"{valor['id']}.md"
-        arquivo.parent.mkdir(parents=True, exist_ok=True)
-        arquivo.write_text(valor["tarefa"], encoding="utf-8")
-        delegar.criar(valor["id"], arquivo, valor["permitidos"], titulo=valor["titulo"])
-        pid = delegar.no_fundo(["rodar", "--id", valor["id"]], valor["id"])
-        return f"delegado {valor['id']} criado e rodando (pid {pid})"
+        from . import pedidos
+        pedido = pedidos.contratar(valor["tarefa"], "cerebro", cargo="orquestrador",
+                                   permitidos=valor["permitidos"], ia="codex",
+                                   titulo=valor["titulo"], alvo=valor["id"])
+        return f"{pedido['recibo']}"
     raise ValueError(f"proposta de tipo desconhecido: {tipo}")
 
 

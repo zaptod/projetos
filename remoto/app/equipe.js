@@ -135,7 +135,7 @@ $("equipe-contratar").addEventListener("click", async () => {
     const r = await api("/api/equipe/contratar", {method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({cargo: $("equipe-cargo").value, ia: $("equipe-ia").value,
                             tarefa: $("equipe-tarefa").value, repo: $("equipe-repo").value})});
-    $("equipe-tarefa").value = ""; avisar(`Contratado: ${r.trabalhador.id}`); equipeCarregar();
+    $("equipe-tarefa").value = ""; avisar(r.recibo || `Pedido: ${r.pedido}`); equipeCarregar();
   } catch (err) { avisar(err.message, true); }
 });
 

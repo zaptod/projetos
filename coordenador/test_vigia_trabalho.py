@@ -243,6 +243,19 @@ def test_janela_da_grade_espera_e_depois_aplica(mundo):
     assert d.feitas("aplicar") and t["esperando"] == {}
 
 
+def test_janela_da_postagem_nao_aplica_nem_reinicia(mundo):
+    d = mundo.delegar
+    d.novo("postagem", mundo.depois)
+    d.testes["postagem"] = [verde()]
+    mundo.relogio.agora = datetime(2026, 10, 7, 20, 44)
+    t = mundo.vigia.passo()
+    assert not d.feitas("aplicar") and mundo.reinicios == []
+    assert "janela da postagem" in t["esperando"]["postagem"]
+    mundo.relogio.agora = datetime(2026, 10, 7, 20, 56)
+    mundo.vigia.passo()
+    assert d.feitas("aplicar") and sorted(mundo.reinicios) == ["app", "bot"]
+
+
 def test_aplicar_recusado_pela_janela_do_despachante_espera(mundo):
     d = mundo.delegar
     d.novo("x25", mundo.depois)

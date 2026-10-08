@@ -158,7 +158,8 @@ def test_o_cache_da_casca_mudou_de_versao():
     # destino, nome do arquivo por palavra, aviso dentro do cartão (07/10);
     # v56 = com 2+ variantes o topo diz "Trocar/Apagar esta carinha" e a
     # galeria "Apagar variante" (decisão app-e-bot/atelie-dois-apagar, 07/10).
-    assert "painel-casca-v56" in sw
+    # v57 = Contratar da Equipe entra na Mesa de pedidos (07/10).
+    assert "painel-casca-v57" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

@@ -111,6 +111,7 @@ A v1 lia frases ("nao foi possivel") e palavras soltas, e caiu em 24 sondas do c
   - **Sem a linha e ja aplicado:** a unica cobranca vai ao MESMO trabalhador (`so_desfecho`, com a resposta dele e "NAO mude arquivo nenhum"); Codex sem thread (so teria o `rodar`) vai direto a esperando voce.
   - Lição de teste: `NF_DELEGADOS_PASTA` isola config e fichas, mas NAO o repositorio: `delegar.criar` real faz worktree de verdade (a sonda h2r2 deixou duas, removidas).
 - **Estado real em 05/10:** o no `geral/gerente-ligado` tem a decisao vigente "ligar" (04/10, ja lida), mas o config esta com `gerente_ligado=false`; a v2 nao reaplica decisao antiga. O gerente liga quando o Adrian responder o no de novo ou aprovar uma permissao.
+- **Uma porta so (07/10):** `MesaPedidos.contratar` recebe contratos da Equipe, propostas confirmadas do cerebro e diagnosticos do apurador. Ela grava cargo, IA e caminhos permitidos no pedido, devolve o pedido aberto existente para texto/alvo/caminhos repetidos e so o `passo` contrata o delegado. O apurador nao gera mais remendo proprio: abre a investigacao com o diagnostico anexado. O vigia tambem espera fora da janela da postagem antes de aplicar ou pedir reinicio.
 # Assembleia
 
 No pulso, o supervisor chama o avanço da Assembleia em thread de fundo no

@@ -171,6 +171,20 @@ def test_pedido_cria_orquestrador_com_o_texto(mesa):
     assert _pedido(mesa)["situacao"] == "trabalhando"
 
 
+def test_contratar_guarda_contrato_e_deduplica_pedido_aberto(mesa):
+    primeiro = mesa.contratar("investigue a tela", "equipe", cargo="conferente",
+                              permitidos=["remoto/app/**"], ia="codex", titulo="Tela")
+    repetido = mesa.contratar("outro texto", "equipe", cargo="conferente",
+                              permitidos=["remoto/app/**"], ia="codex", titulo="Tela")
+    assert repetido["id"] == primeiro["id"] and repetido["duplicado"]
+    assert repetido["recibo"] == f"Ja esta no pedido {primeiro['id']}"
+    pedido = _pedido(mesa, primeiro["id"])
+    assert pedido["cargo"] == "conferente" and pedido["permitidos"] == ["remoto/app/**"]
+    mesa.passo()
+    _, contrato, _ = mesa.despachante.criados[0]
+    assert contrato["cargo"] == "conferente" and contrato["ia"] == "codex"
+
+
 def test_continuacao_so_pelo_id_e_texto_solto_abre_outro(mesa):
     """05/10 (conferente 3): texto solto nunca gruda; a continuacao e pelo id."""
     primeiro = mesa.registrar("corrija a tela do app")
