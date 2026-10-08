@@ -164,33 +164,58 @@ def _trabalhar_previas_animacoes() -> None:
 
 
 def _previa_vila_png(peca: str, estado: str, animacao: str) -> bytes:
-    """Previa leve, no chao da Vila e no tamanho do mundo, sem abrir Tk."""
+    """Previa ANIMADA (GIF), no chao da Vila e no tamanho do mundo, sem abrir Tk.
+
+    08/10/2026: era um PNG so com o 1o quadro e o Adrian viu "so um frame".
+    Agora toca todos os quadros na ordem, no fps, com ida-e-volta e o quadro
+    segurado; o pe vai onde o desenho acaba (como na Vila)."""
     from painel.flutuante import arte, arte_pronta
     from neural_fights.tools import catalogo_vila
     dados = atelie_animacoes.ler(peca, estado, animacao)
     arquivo = atelie_animacoes.caminho(peca, estado, animacao) / "folha.png"
     if not dados or not arquivo.is_file():
         raise ValueError("animacao nao encontrada")
-    quadro = (dados.get("quadros") or [{}])[0]
+    quadros = [q for q in (dados.get("quadros") or []) if isinstance(q, dict)] or [{}]
     with Image.open(arquivo) as folha:
-        desenho = folha.convert("RGBA").crop((quadro["x"], quadro["y"], quadro["x"] + quadro["w"], quadro["y"] + quadro["h"]))
+        inteira = folha.convert("RGBA")
+    desenhos = [inteira.crop((q["x"], q["y"], q["x"] + q["w"], q["y"] + q["h"])) for q in quadros]
     item = catalogo_vila.item_da_chave(peca, estado) or {}
     nome = str(item.get("nome_arquivo") or "").split(" (")[0]
     mundo = arte_pronta.tamanho_no_mundo(nome) or (72, 64)
     escala, largura, altura = 2, 360, 160
-    img = Image.new("RGBA", (largura, altura), "#a4d77e")
+    fundo = Image.new("RGBA", (largura, altura), "#a4d77e")
     chao = arte_pronta.ladrilhar("cenario/chao_grama.png", largura, altura, escala)
     if chao is not None:
-        img.alpha_composite(chao)
-    alvo = desenho.resize((max(1, mundo[0] * escala), max(1, mundo[1] * escala)), Image.LANCZOS)
+        fundo.alpha_composite(chao)
     pe = altura - 18
-    img.alpha_composite(alvo, (42, pe - alvo.height))
     predio = arte.desenhar_predio("casa", escala=escala)
     pessoa = arte.desenhar_personagem("chatgpt", escala=escala)
-    img.alpha_composite(predio, (190, pe - predio.height))
-    img.alpha_composite(pessoa, (325 - pessoa.width, pe - pessoa.height))
-    bruto = io.BytesIO(); img.save(bruto, "PNG")
+    fundo.alpha_composite(predio, (190, pe - predio.height))
+    fundo.alpha_composite(pessoa, (325 - pessoa.width, pe - pessoa.height))
+    lado = max(max(d.width for d in desenhos), max(d.height for d in desenhos))
+    fator = max(mundo) * escala / max(1, lado)
+    baixo = 0
+    for d in desenhos:
+        caixa = d.getchannel("A").point(lambda v: 255 if v > 24 else 0).getbbox()
+        baixo = max(baixo, caixa[3] if caixa else d.height)
+    ordem = list(range(len(desenhos)))
+    if dados.get("ida_e_volta") and len(ordem) > 2:
+        ordem += ordem[-2:0:-1]
+    fps = max(0.5, float(dados.get("fps") or 8))
+    segurar = dados.get("duracao_por_quadro") or {}
+    telas, tempos = [], []
+    for i in ordem:
+        d = desenhos[i]
+        alvo = d.resize((max(1, round(d.width * fator)), max(1, round(d.height * fator))), Image.LANCZOS)
+        tela = fundo.copy()
+        tela.alpha_composite(alvo, (42, round(pe - baixo * fator)))
+        telas.append(tela.convert("RGB"))
+        tempos.append(int(1000 * float(segurar.get(str(i), 1.0 / fps))))
+    bruto = io.BytesIO()
+    telas[0].save(bruto, "GIF", save_all=True, append_images=telas[1:], duration=tempos, loop=0)
     return bruto.getvalue()
+
+
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -1089,7 +1114,7 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._bytes(arquivo.read_bytes(), "image/png")
             achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)/previa-vila", rota)
             if achado:
-                try: return self._bytes(_previa_vila_png(*achado.groups()), "image/png")
+                try: return self._bytes(_previa_vila_png(*achado.groups()), "image/gif")
                 except (ValueError, KeyError): return self._erro(404, "animacao nao encontrada")
             achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)", rota)
             if achado:
