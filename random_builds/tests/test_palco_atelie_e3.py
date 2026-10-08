@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -15,9 +16,25 @@ def test_tocador_do_atelie_le_folha_sem_import_e_tem_regras_de_tempo():
 
 def test_gatilhos_da_timeline_ficam_centralizados():
     codigo = (RAIZ / "palco/nucleo/gatilhos_animacao.gd").read_text(encoding="utf-8")
-    assert '"acerto": "acerto_recebido"' in codigo
-    assert '"ko": "ko"' in codigo
+    assert "const GATILHOS" in codigo
+    assert "reconhece" in codigo
     assert "golpe_fase" in codigo
+
+
+def test_todo_gatilho_do_catalogo_esta_na_tabela_unica():
+    catalogo = json.loads((RAIZ / "palco/biblioteca/catalogo_animacoes.json").read_text(encoding="utf-8"))
+    codigo = (RAIZ / "palco/nucleo/gatilhos_animacao.gd").read_text(encoding="utf-8")
+    gatilhos = {a["gatilho"] for p in catalogo["pecas"] for e in p["estados"] for a in e["animacoes"]}
+    for gatilho in gatilhos:
+        assert f'"{gatilho}"' in codigo
+
+
+def test_resolvedor_do_catalogo_usa_ids_e_heranca_da_peca():
+    codigo = (RAIZ / "palco/nucleo/biblioteca.gd").read_text(encoding="utf-8")
+    assert "func resolver_peca" in codigo
+    assert "peca.get(\"heranca\"" in codigo
+    assert '"arma.estilo." + UtilPalco.slug(estilo)' in codigo
+    assert '"arma.tipo." + UtilPalco.slug(tipo)' in codigo
 
 
 def test_marcadores_neutros_nao_reintroduzem_arte_propria():

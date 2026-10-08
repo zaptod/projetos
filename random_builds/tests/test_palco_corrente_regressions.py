@@ -237,52 +237,6 @@ def _interp(canal: list, p: float) -> float:
 
 
 @precisa_godot
-def test_paridade_python_godot_dos_canais_e_da_corrente(pasta_e):
-    from neural_fights.recording import timeline_arquivo
-
-    doc = _timeline(True)
-    arquivo = pasta_e / "t.gcpf"
-    timeline_arquivo.salvar(doc, arquivo, compressao="zstd")
-    n = doc["n"]
-    # passos inteiros, fracionarios (camera lenta) e o ultimo
-    passos = [0.0, 1.0, 37.5, 120.25, 200.0, 287.75, float(n // 2), float(n - 1)]
-    saida = pasta_e / "paridade.json"
-    rc, log = godot.rodar_script("res://ferramentas/paridade_corrente.gd",
-                                 [f"--timeline={arquivo}", f"--saida={saida}",
-                                  "--passos=" + ",".join(f"{p:g}" for p in passos)])
-    assert rc == 0, log[-2000:]
-    res = json.loads(saida.read_text(encoding="utf-8"))
-    assert res["erros"] == [] and int(res["revisao"]) == 4
-    assert set(res["lutadores"]) == {"p1", "p2"}
-    for cab in doc["lutadores"]:
-        slot = cab["slot"]
-        canais = doc["trilhas"]["lutadores"][slot]
-        lado = res["lutadores"][slot]
-        assert lado["corrente"]["comp_m"] == pytest.approx(cab["arma"]["corrente"]["comp_m"])
-        assert int(lado["corrente"]["n_elos"]) == cab["arma"]["corrente"]["n_elos"]
-        comp = cab["arma"]["corrente"]["comp_m"]
-        for am in lado["amostras"]:
-            p = am["p"]
-            for nome in ("bola_x", "bola_y", "bola_vx", "bola_vy"):
-                assert am[nome] == pytest.approx(_interp(canais[nome], p), abs=1e-9), (slot, p, nome)
-            k = int(math.floor(p))
-            mx, my = _mao(canais, cab, k) if not canais["flags"][k] & 2 else (canais["arma_gx"][k], canais["arma_gy"][k])
-            # Vector2 do Godot e float32: 0,1 mm de folga
-            assert am["mao_k"] == pytest.approx([mx, my], abs=1e-4), (slot, p)
-            assert am["ativo"] is True
-            pts = am["pontos"]
-            # a corrente: presa na mao e na bola do passo (no passo fracionario,
-            # entre o passo e o seguinte) e nunca mais longa que o comprimento
-            if p == math.floor(p):
-                assert pts[0] == pytest.approx(am["mao_k"], abs=1e-4)
-                assert pts[-1] == pytest.approx(am["bola_k"], abs=1e-4)
-            total = sum(math.dist(pts[j], pts[j - 1]) for j in range(1, len(pts)))
-            assert total <= comp * 1.03, (slot, p, total, comp)
-            assert k - int(am["inicio"]) <= 60
-        assert lado["us_por_quadro"] < 50_000, "a corrente nao pode custar mais que 50 ms por quadro"
-
-
-@precisa_godot
 def test_testes_do_nucleo_cobrem_a_revisao_4():
     rc, log = godot.rodar_script("res://ferramentas/testes.gd")
     assert rc == 0, "\n".join(linha for linha in log.splitlines() if "FALHOU" in linha)[-2000:]

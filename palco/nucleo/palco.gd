@@ -345,6 +345,13 @@ func _desenhar_quadro(f: int) -> void:
 		no.position = Vector2(float(s["x"]), float(s["y"])) * PX
 		if no.has_method("atualizar"):
 			no.atualizar(s, ctx)
+		# Canais da amostra tambem sao gatilhos do catalogo (expressao e fase
+		# do golpe). O tocador ignora os que a peca nao declarou.
+		if no.has_method("gatilho"):
+			if str(s.get("expr", "")) != "":
+				no.gatilho("expr")
+			elif int(s.get("golpe_fase", 0)) > 0:
+				no.gatilho("golpe_fase")
 		if no.has_method("avancar"):
 			no.avancar(dt_mundo)
 		else:
@@ -419,6 +426,8 @@ func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) 
 	UtilPalco.esticar_arma(no, L)
 	if no.has_method("atualizar"):
 		no.atualizar(s, ctx)
+	if no.has_method("gatilho"):
+		no.gatilho("golpe_fase" if int(s.get("golpe_fase", 0)) > 0 else "ocioso")
 	if no.has_method("avancar"):
 		no.avancar(float(ctx.get("dt_mundo", 0.0)))
 		_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))
@@ -536,6 +545,9 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 		if lut.has(slot) and lut[slot].has_method("evento"):
 			lut[slot].evento(tipo, ev, ctx)
 	var gatilho := GATILHOS_ANIMACAO.da_timeline(ev)
+	for slot in lut:
+		if lut[slot].has_method("gatilho"):
+			lut[slot].gatilho(gatilho)
 	for slot in arm:
 		if arm[slot].has_method("gatilho"):
 			arm[slot].gatilho(gatilho)

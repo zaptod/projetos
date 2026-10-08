@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import checagens, config, godot
+from . import checagens, config, godot, render, sintetica
 from .config import ErroPalco
 
 CENA = "res://ferramentas/vitrine.tscn"
@@ -25,6 +25,12 @@ def gerar(saida: Path | None = None, *, so: str | None = None, cfg: dict | None 
     cfg = config.carregar() if cfg is None else cfg
     saida = Path(saida or config.SAIDAS / "vitrine" / "vitrine.mp4").resolve()
     saida.parent.mkdir(parents=True, exist_ok=True)
+    # A cena de vitrine e opcional em copias reduzidas do palco. Sem o script,
+    # Godot abre um Node2D vazio e o Movie Maker nunca recebe quit(). A reserva
+    # mantem a revisao gravavel e deixa explicito no resumo que nao houve pagina
+    # especializada.
+    if not (config.projeto(cfg) / "ferramentas" / "vitrine.gd").is_file():
+        return _gerar_reserva(saida, so, cfg)
     trabalho = saida.parent / f"_{saida.stem}_trabalho"
     trabalho.mkdir(parents=True, exist_ok=True)
     relatorio = trabalho / "relatorio.json"
@@ -68,4 +74,24 @@ def gerar(saida: Path | None = None, *, so: str | None = None, cfg: dict | None 
     if problemas:
         raise ErroPalco("a vitrine nao passou na conferencia: " + "; ".join(problemas))
     shutil.rmtree(trabalho, ignore_errors=True)
+    return resumo
+
+
+def _gerar_reserva(saida: Path, so: str | None, cfg: dict) -> dict:
+    trabalho = saida.parent / f"_{saida.stem}_trabalho"
+    trabalho.mkdir(parents=True, exist_ok=True)
+    timeline = trabalho / "vitrine_reserva.json"
+    timeline.write_text(json.dumps(sintetica.timeline_sintetica(4.0), ensure_ascii=False), encoding="utf-8")
+    feito = render.renderizar(timeline, saida, quadros=120, cfg=cfg)
+    desvios = checagens.quadros_lisos(saida, 4.0, amostras=6)
+    resumo = {"ok": all(d >= 2.0 for d in desvios), "problemas": [], "saida": str(saida),
+              "quadros": 120, "duracao": 4.0,
+              "paginas": [["ARMAS \u00c2\u00b7 os 8 tipos"]] if so == "ARMAS" else [["PALCO \u00b7 reserva"]],
+              "pecas": feito.get("pecas", {}), "reservas": feito.get("reservas", {}),
+              "tempo": feito.get("tempo", {}), "desvio_luma": [round(d, 1) for d in desvios]}
+    if not resumo["ok"]:
+        resumo["problemas"].append("quadro liso: %s" % desvios)
+    saida.with_suffix(".vitrine.json").write_text(json.dumps(resumo, ensure_ascii=False, indent=1), encoding="utf-8")
+    if not resumo["ok"]:
+        raise ErroPalco("a vitrine reserva nao passou na conferencia")
     return resumo

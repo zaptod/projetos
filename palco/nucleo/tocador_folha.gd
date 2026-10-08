@@ -2,6 +2,7 @@ class_name TocadorFolha
 extends Node2D
 ## Le a folha do Atelie sem ResourceLoader/import e desenha apenas o quadro atual.
 
+@export var catalogo_peca: Dictionary = {}
 var textura: ImageTexture
 var quadros: Array = []
 var fps := 12.0
@@ -13,6 +14,31 @@ var indice := 0
 var sentido := 1
 var decorrido := 0.0
 var gatilho_animacao := ""
+var _animacoes := {}
+var _ocioso := ""
+var _terminou := false
+
+
+func _ready() -> void:
+	if not catalogo_peca.is_empty():
+		_preparar_catalogo()
+
+
+## A configuracao e exportada antes de empacotar a cena. Assim, ao contrario
+## do antigo `carregar` antes de `pack()`, ela continua no no instanciado.
+func _preparar_catalogo() -> void:
+	for estado in catalogo_peca.get("estados", []):
+		for animacao in estado.get("animacoes", []):
+			var chave := str(animacao.get("gatilho", ""))
+			if chave == "":
+				continue
+			var pasta := str(animacao.get("pasta", ""))
+			if pasta != "":
+				_animacoes[chave] = {"pasta": pasta, "loop": bool(animacao.get("loop", true))}
+			if chave == "ocioso" and _ocioso == "":
+				_ocioso = chave
+	if _ocioso != "":
+		_trocar(_ocioso)
 
 
 func carregar(pasta: String) -> bool:
@@ -44,6 +70,15 @@ func carregar(pasta: String) -> bool:
 
 
 func tocar(novo_gatilho: String) -> void:
+	if not _animacoes.is_empty():
+		# chamado a cada quadro: so troca (e recomeca) quando muda de animacao
+		if _animacoes.has(novo_gatilho) and novo_gatilho != gatilho_animacao:
+			_trocar(novo_gatilho)
+			indice = 0
+			sentido = 1
+			decorrido = 0.0
+			queue_redraw()
+		return
 	if gatilho_animacao != "" and novo_gatilho != gatilho_animacao:
 		return
 	indice = 0
@@ -71,8 +106,22 @@ func avancar(delta: float) -> void:
 				proximo = 0
 			else:
 				proximo = indice
-			indice = proximo
-			queue_redraw()
+				_terminou = true
+		indice = proximo
+		queue_redraw()
+		if _terminou:
+			break
+	if _terminou and not loop and _ocioso != "" and gatilho_animacao != _ocioso:
+		_trocar(_ocioso)
+
+
+func _trocar(novo_gatilho: String) -> void:
+	var dado: Dictionary = _animacoes.get(novo_gatilho, {})
+	if dado.is_empty() or not carregar(ProjectSettings.globalize_path(str(dado.get("pasta", "")))):
+		return
+	gatilho_animacao = novo_gatilho
+	loop = bool(dado.get("loop", loop))
+	_terminou = false
 
 
 func _duracao_atual() -> float:

@@ -5,11 +5,13 @@ import hashlib
 import subprocess
 from pathlib import Path
 
+from . import config
+
 
 def prova(raiz: Path) -> None:
     saida = raiz / "palco" / "_saida" / "prova_e3"
     saida.mkdir(parents=True, exist_ok=True)
-    exe = Path("E:/ferramentas/godot/Godot_v4.7.2-stable_win64_console.exe")
+    exe = config.godot()
     cmd = [str(exe), "--headless", "--path", str(raiz / "palco"), "--script", "res://testes/tocador_folha.gd"]
     subprocess.run(cmd, check=True)
     # O render real usa o mesmo entrypoint de producao; os hashes sao dos PNGs

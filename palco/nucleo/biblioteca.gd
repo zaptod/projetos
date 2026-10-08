@@ -79,6 +79,76 @@ var _texturas := {}       # caminho do PNG -> ImageTexture, ou null (nao abriu: 
 var pngs_ilegiveis := {}  # caminho -> true (o relatorio diz)
 var _provisoria := {}     # caminho da cena -> e arte provisoria (CC0)?
 var ordem_do_comum := ORDEM_DO_COMUM   # os testes trocam
+var _catalogo := {}                    # id -> peca, lido uma vez por raiz
+var _catalogo_de := ""
+
+
+## O catalogo e a autoridade dos ids do Atelie. `catalogo_ajustes` pode
+## esconder/criar itens; por enquanto so preservamos os itens visiveis.
+func _carregar_catalogo() -> void:
+	if _catalogo_de == raiz:
+		return
+	_catalogo_de = raiz
+	_catalogo.clear()
+	var arquivo := raiz + "catalogo_animacoes.json"
+	if not FileAccess.file_exists(arquivo):
+		return
+	var dados = JSON.parse_string(FileAccess.get_file_as_string(arquivo))
+	if typeof(dados) != TYPE_DICTIONARY:
+		return
+	var ajustes = JSON.parse_string(FileAccess.get_file_as_string(raiz + "catalogo_ajustes.json"))
+	var escondidas: Array = ajustes.get("escondidas", []) if typeof(ajustes) == TYPE_DICTIONARY else []
+	for peca in dados.get("pecas", []):
+		if typeof(peca) == TYPE_DICTIONARY and not str(peca.get("id", "")) in escondidas:
+			_catalogo[str(peca["id"])] = peca
+
+
+## A primeira peca da lista que JA tem folha do Adrian vence; sem nenhuma,
+## a primeira que existe no catalogo (o chamador cai no marcador neutro).
+func resolver_peca(ids: Array) -> Dictionary:
+	_carregar_catalogo()
+	var primeira := {}
+	for id in ids:
+		if _catalogo.has(str(id)):
+			var peca: Dictionary = _catalogo[str(id)]
+			if _tem_folha_catalogo(peca):
+				return peca.duplicate(true)
+			if primeira.is_empty():
+				primeira = peca
+	return primeira.duplicate(true)
+
+
+func _pasta_catalogo(peca: Dictionary, estado: String, animacao: String) -> String:
+	_carregar_catalogo()
+	var cadeia: Array = [str(peca.get("id", ""))] + Array(peca.get("heranca", []))
+	for id in cadeia:
+		var pasta := raiz + "animacoes/" + str(id) + "/" + estado + "/" + animacao
+		if FileAccess.file_exists(pasta.path_join("folha.png")) and FileAccess.file_exists(pasta.path_join("animacao.json")):
+			return pasta
+	return ""
+
+
+func _cena_catalogo(peca: Dictionary) -> PackedScene:
+	var no := Node2D.new()
+	no.name = "TocadorFolha"
+	no.set_script(load(TOCADOR_FOLHA))
+	var configuracao := peca.duplicate(true)
+	for estado in configuracao.get("estados", []):
+		for animacao in estado.get("animacoes", []):
+			animacao["pasta"] = _pasta_catalogo(peca, str(estado.get("id", "")), str(animacao.get("id", "")))
+	no.set("catalogo_peca", configuracao)
+	var cena := PackedScene.new()
+	cena.pack(no)
+	no.free()
+	return cena
+
+
+func _tem_folha_catalogo(peca: Dictionary) -> bool:
+	for estado in peca.get("estados", []):
+		for animacao in estado.get("animacoes", []):
+			if _pasta_catalogo(peca, str(estado.get("id", "")), str(animacao.get("id", ""))) != "":
+				return true
+	return false
 
 
 ## Le o manifesto da biblioteca uma vez (por raiz): id do slot -> caminho do
@@ -296,10 +366,9 @@ static func _sem_parenteses(texto: String) -> String:
 
 
 func arma(tipo: String, estilo: String) -> PackedScene:
-	var pasta := pasta_animacao("arma.estilo." + UtilPalco.slug(estilo), "base", "ocioso",
-		["arma.tipo." + UtilPalco.slug(tipo)])
-	if pasta != "":
-		return _cena_folha(pasta)
+	var catalogada := resolver_peca(["arma.estilo." + UtilPalco.slug(estilo), "arma.tipo." + UtilPalco.slug(tipo), "arma.generica"])
+	if not catalogada.is_empty() and _tem_folha_catalogo(catalogada):
+		return _cena_catalogo(catalogada)
 	# A Corrente nao entra pelo PNG da arma inteira: a peca dela e a corrente
 	# de Verlet (armas/tipos/corrente), e a arte dela sao elos e cabecas (F4).
 	var com_png := UtilPalco.slug(tipo) != "corrente"
@@ -313,10 +382,9 @@ func arma(tipo: String, estilo: String) -> PackedScene:
 
 
 func lutador(nome: String, classe: String) -> PackedScene:
-	var pasta := pasta_animacao("lutador.nome." + UtilPalco.slug(nome), "base", "ocioso",
-		["lutador.classe." + UtilPalco.slug(classe)])
-	if pasta != "":
-		return _cena_folha(pasta)
+	var catalogada := resolver_peca(["lutador.nome." + UtilPalco.slug(nome), "classe." + UtilPalco.slug(classe), "lutador.corpo", "lutador.generico"])
+	if not catalogada.is_empty() and _tem_folha_catalogo(catalogada):
+		return _cena_catalogo(catalogada)
 	return _cena("lutadores", "%s/%s" % [nome, classe], [
 		"nomes/" + UtilPalco.slug(nome) if nome != "" else "",
 		"classes/" + UtilPalco.slug(classe) if classe != "" else "",
@@ -392,6 +460,9 @@ static func candidatos_evento_com_png(tipo: String, tier := "", elemento := "", 
 
 
 func evento(tipo: String, tier := "", elemento := "", variante := "") -> PackedScene:
+	var catalogada := resolver_peca(["evento." + UtilPalco.slug(tipo), "efeito." + UtilPalco.slug(tipo), "elemento." + UtilPalco.slug(elemento), "efeito.generico"])
+	if not catalogada.is_empty() and _tem_folha_catalogo(catalogada):
+		return _cena_catalogo(catalogada)
 	var nome := UtilPalco.slug(tipo)
 	var tamanho := float(TAMANHO_EVENTO.get("%s_%s" % [nome, UtilPalco.slug(tier)], TAMANHO_EVENTO.get(nome, 1.6)))
 	return _cena("efeitos", "evento/%s/%s/%s/%s" % [tipo, tier, elemento, variante],
@@ -467,7 +538,9 @@ func _cena_folha(pasta: String) -> PackedScene:
 	var no := Node2D.new()
 	no.name = "TocadorFolha"
 	no.set_script(load(TOCADOR_FOLHA))
-	no.call("carregar", ProjectSettings.globalize_path(pasta))
+	# Compatibilidade com chamadas antigas: o caminho tambem precisa sobreviver
+	# ao pack, logo vai como configuracao exportada e e carregado no _ready.
+	no.set("catalogo_peca", {"estados": [{"id": "base", "animacoes": [{"id": "ociosa", "gatilho": "ocioso", "loop": true, "pasta": pasta}]}]})
 	var cena := PackedScene.new()
 	cena.pack(no)
 	no.free()
