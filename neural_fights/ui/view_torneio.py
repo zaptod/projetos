@@ -135,12 +135,16 @@ class TournamentWindow(ctk.CTkToplevel):
         self.fighter2_label.pack(pady=5)
         
         # Botão Iniciar Luta
-        self.btn_fight = ctk.CTkButton(right_frame, text="▶️ INICIAR LUTA (Pygame)", 
+        self.btn_fight = ctk.CTkButton(right_frame, text="SIMULAR LUTA",
                                        font=("Arial", 14, "bold"), height=50,
                                        fg_color=COR_ACCENT, hover_color="#d73455",
                                        command=self.launch_fight)
-        self.btn_fight.pack(pady=15, padx=20, fill="x")
-        
+        self.btn_fight.pack(pady=(15, 5), padx=20, fill="x")
+        self.btn_palco = ctk.CTkButton(right_frame, text="VER NO GODOT",
+                                       font=("Arial", 12, "bold"), height=38,
+                                       command=self.open_in_godot)
+        self.btn_palco.pack(pady=(0, 10), padx=20, fill="x")
+
         # Registrar Vencedor
         ctk.CTkLabel(right_frame, text="📝 Registrar Vencedor:", font=("Arial", 12)).pack(pady=(20, 5))
         
@@ -254,64 +258,55 @@ class TournamentWindow(ctk.CTkToplevel):
         self.status_label.configure(text=f"Luta selecionada: {match.fighter1_name} vs {match.fighter2_name}")
     
     def launch_fight(self):
-        """Lança a simulação visual no Pygame"""
+        """Simula a luta sem abrir uma janela do pygame."""
         if not self.current_match:
-            # Pega a próxima luta pendente
             self.current_match = self.tournament.get_current_match()
-        
-        if not self.current_match:
-            messagebox.showinfo("Info", "Nenhuma luta pendente!")
+        if not self.current_match or self.current_match.completed:
+            messagebox.showinfo("Info", "Selecione uma luta pendente!")
             return
-        
-        if self.current_match.completed:
-            messagebox.showinfo("Info", "Esta luta já foi concluída!")
-            return
-        
-        launched_match = self.current_match
-        try:
-            config_path = self.runner.setup_match_config(
-                launched_match.fighter1_name,
-                launched_match.fighter2_name,
-            )
-        except Exception as exc:
-            messagebox.showerror("Erro", f"Falha ao preparar luta:\n{exc}")
-            return
-
+        match = self.current_match
         self.btn_fight.configure(state="disabled")
-        self.status_label.configure(text="Preparando simulador...")
-        
-        # Atualiza labels
-        self.select_match(self.current_match)
-        
-        # Lança em thread separada
-        def launch():
-            try:
-                self.runner.launch_simulation(config_path)
-            except Exception as exc:
-                self.after(
-                    0,
-                    lambda error=exc: self._on_launch_failure(error),
-                )
-            else:
-                self.after(
-                    0,
-                    lambda match=launched_match: self._on_launch_success(match),
-                )
-        
-        thread = threading.Thread(target=launch, daemon=True)
-        thread.start()
+        self.status_label.configure(text="Simulando luta...")
 
-    def _on_launch_failure(self, error):
-        self.btn_fight.configure(state="normal")
-        self.status_label.configure(text="Falha ao iniciar luta")
-        messagebox.showerror("Erro", f"Simulação não iniciou:\n{error}")
+        def executar():
+            resultado = self.runner.run_single_match(match)
+            self.after(0, lambda: self._on_simulation_finished(match, resultado))
+        threading.Thread(target=executar, daemon=True).start()
 
-    def _on_launch_success(self, match):
+    def _on_simulation_finished(self, match, resultado):
         self.btn_fight.configure(state="normal")
-        self.status_label.configure(
-            text=f"🎮 Luta iniciada: {match.fighter1_name} vs {match.fighter2_name}"
+        if not resultado["success"]:
+            self.status_label.configure(text="Falha ao simular luta")
+            messagebox.showerror("Erro", resultado["error"])
+            return
+        self.tournament.record_match_result(
+            winner_name=resultado["winner"], duration=resultado["duration"],
+            ko_type=resultado["ko_type"],
         )
-    
+        self.status_label.configure(text=f"Vencedor: {resultado['winner']} ({resultado['ko_type']})")
+        self.current_match = match
+        self.refresh_bracket()
+
+    def open_in_godot(self):
+        """Abre no Godot a luta atualmente selecionada."""
+        if not self.current_match:
+            messagebox.showinfo("Info", "Selecione uma luta primeiro!")
+            return
+        from neural_fights.ui.view_luta import exportar_palco_selecao
+        match = self.current_match
+        self.btn_palco.configure(state="disabled")
+        self.status_label.configure(text="Abrindo luta no Godot...")
+
+        def abrir():
+            try:
+                exportar_palco_selecao(match.fighter1_name, match.fighter2_name, "Arena", "janela")
+            except Exception as error:
+                self.after(0, lambda: messagebox.showerror("Godot", str(error)))
+            finally:
+                self.after(0, lambda: self.btn_palco.configure(state="normal"))
+        threading.Thread(target=abrir, daemon=True).start()
+
+
     def register_winner(self, fighter_num):
         """Registra o vencedor da luta atual"""
         if not self.current_match:

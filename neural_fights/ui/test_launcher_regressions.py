@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from neural_fights.ui import view_luta
-from neural_fights.ui.theme import _renderizar_preview_lutador, desenhar_lutador
+from neural_fights.ui.theme import desenhar_lutador
 
 
 class CanvasGravador:
@@ -59,19 +59,6 @@ def test_preview_sem_arte_nao_desenha_rosto_nem_tracejado():
     assert not any(chamada[2].get("dash") for chamada in canvas.chamadas)
 
 
-def test_preview_rasteriza_os_oito_tipos_de_arma_em_quatro_vezes():
-    personagem = SimpleNamespace(classe="Piromante (Fogo)", tamanho=1.8)
-    imagens = []
-    for tipo in ("Reta", "Dupla", "Corrente", "Arco", "Arremesso", "Orbital", "Mágica", "Transformável"):
-        arma = SimpleNamespace(tipo=tipo, r=80, g=160, b=255, comp_lamina=70)
-        imagem = _renderizar_preview_lutador(personagem, arma, "#ff6600", 42)
-        imagens.append(imagem.tobytes())
-        assert imagem.size == (336, 336)
-        assert imagem.getbbox() is not None
-
-    assert len(set(imagens)) == 8
-
-
 def test_exportar_palco_selecao_chama_manual_e_render(monkeypatch, tmp_path):
     chamadas = []
     palco = ModuleType("random_builds.builds.palco")
@@ -98,6 +85,15 @@ def test_exportar_palco_selecao_chama_manual_e_render(monkeypatch, tmp_path):
     assert "--seed" in argumentos and int(argumentos[argumentos.index("--seed") + 1]) > 0
     assert any(item[0] == "render" for item in chamadas)
     assert any(item[0] == "arquivo" for item in chamadas)
+
+
+def test_arena_do_launcher_nao_oferece_simulador_pygame():
+    import inspect
+
+    fonte = inspect.getsource(view_luta)
+
+    assert "INICIAR " + "BATALHA" not in fonte
+    assert "simulacao." + "S" + "imulador" not in fonte
 
 
 def test_sistema_app_constroi_telas_e_navega_sem_janela(monkeypatch, tmp_path):
@@ -152,7 +148,7 @@ def test_textos_e_acoes_cabem_na_area_util(monkeypatch, tmp_path, largura, altur
                     assert widget.winfo_reqwidth() <= pai.winfo_width(), widget.cget("text")
         luta = app.frames["TelaLuta"]
         personagens = app.frames["TelaPersonagens"]
-        for acao in (luta.btn_iniciar, luta.btn_palco, luta.btn_mp4,
+        for acao in (luta.btn_palco, luta.btn_mp4,
                      personagens.btn_anterior, personagens.btn_proximo):
             assert acao.winfo_rooty() + acao.winfo_height() <= app.winfo_rooty() + app.winfo_height()
     finally:

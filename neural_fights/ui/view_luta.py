@@ -6,16 +6,11 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 
-from neural_fights.data.database import carregar_match_config, salvar_match_config
-from neural_fights.simulation import simulacao
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT,
     COR_TEXTO, COR_TEXTO_DIM, COR_SUCCESS, COR_P1, COR_P2, COR_BORDA,
     desenhar_lutador,
 )
-
-
-BEST_OF_VALIDOS = (1, 3, 5)
 
 
 def exportar_palco_selecao(p1_nome, p2_nome, cenario, modo):
@@ -41,20 +36,6 @@ def exportar_palco_selecao(p1_nome, p2_nome, cenario, modo):
         return saida
     godot.abrir_previa(destino)
     return destino
-
-
-def carregar_best_of_inicial():
-    """Retorna um valor persistido valido sem alterar a configuracao."""
-    try:
-        valor = carregar_match_config().get("best_of", 1)
-    except (OSError, TypeError, ValueError):
-        return "1"
-
-    if type(valor) is int and valor in BEST_OF_VALIDOS:
-        return str(valor)
-    if isinstance(valor, str) and valor in {"1", "3", "5"}:
-        return valor
-    return "1"
 
 
 class TelaLuta(tk.Frame):
@@ -97,17 +78,8 @@ class TelaLuta(tk.Frame):
         acoes = tk.Frame(footer, bg=COR_BG)
         acoes.pack(fill="x", pady=(0, 3))
         
-        self.btn_iniciar = tk.Button(
-            acoes, text="⚔️  INICIAR BATALHA  ⚔️",
-            font=("Arial", 16, "bold"), 
-            bg=COR_TEXTO_DIM, fg=COR_TEXTO,
-            bd=0, padx=16, pady=10,
-            state="disabled",
-            command=self.iniciar_luta
-        )
-        self.btn_iniciar.pack(side="left", padx=6, expand=True, fill="x")
         self.btn_palco = tk.Button(
-            acoes, text="▶ VER NO PALCO (GODOT)", command=lambda: self._iniciar_palco("janela"),
+            acoes, text="▶ VER LUTA (GODOT)", command=lambda: self._iniciar_palco("janela"),
             font=("Arial", 16, "bold"), bg=COR_ACCENT, fg=COR_TEXTO,
             bd=0, padx=16, pady=10,
         )
@@ -190,26 +162,6 @@ class TelaLuta(tk.Frame):
         
         tk.Label(frame_cfg, text="⚙️ CONFIGURAÇÃO", font=("Arial", 10, "bold"), 
                  bg=COR_BG_SECUNDARIO, fg=COR_ACCENT).pack(pady=(0, 10))
-        
-        tk.Label(frame_cfg, text="Melhor de:", font=("Arial", 9),
-                 bg=COR_BG_SECUNDARIO, fg=COR_TEXTO).pack()
-        self.var_best_of = tk.StringVar(value=carregar_best_of_inicial())
-        ttk.Combobox(frame_cfg, textvariable=self.var_best_of,
-                     values=["1", "3", "5"], state="readonly", width=8).pack(pady=5)
-        
-        # === MODO RETRATO (9:16) ===
-        tk.Label(frame_cfg, text="", bg=COR_BG_SECUNDARIO).pack(pady=2)  # Espaçador
-        self.var_portrait = tk.BooleanVar(value=False)
-        self.chk_portrait = tk.Checkbutton(
-            frame_cfg, text="📱 Modo Retrato (9:16)",
-            variable=self.var_portrait,
-            font=("Arial", 9), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO,
-            selectcolor=COR_BG, activebackground=COR_BG_SECUNDARIO,
-            activeforeground=COR_ACCENT
-        )
-        self.chk_portrait.pack()
-        tk.Label(frame_cfg, text="Ideal para TikTok/Reels",
-                 font=("Arial", 7), bg=COR_BG_SECUNDARIO, fg=COR_TEXTO_DIM).pack()
         
         # === SELETOR DE MAPA ===
         tk.Label(frame_cfg, text="", bg=COR_BG_SECUNDARIO).pack(pady=5)  # Espaçador
@@ -365,16 +317,10 @@ class TelaLuta(tk.Frame):
         lbl_stats.config(text=stats)
 
     def _atualizar_botao(self):
-        """Atualiza estado do botão"""
-        if self.personagem_p1 and self.personagem_p2:
-            self.btn_iniciar.config(state="normal", bg=COR_ACCENT)
-            estado = "disabled" if self._palco_em_andamento else "normal"
-            self.btn_palco.config(state=estado)
-            self.btn_mp4.config(state=estado)
-        else:
-            self.btn_iniciar.config(state="disabled", bg=COR_TEXTO_DIM)
-            self.btn_palco.config(state="disabled")
-            self.btn_mp4.config(state="disabled")
+        """Atualiza estado dos botoes do Godot."""
+        estado = "normal" if self.personagem_p1 and self.personagem_p2 and not self._palco_em_andamento else "disabled"
+        self.btn_palco.config(state=estado)
+        self.btn_mp4.config(state=estado)
 
     def _abrir_seletor_mapa(self):
         """Abre a janela de seleção de mapa"""
@@ -390,36 +336,6 @@ class TelaLuta(tk.Frame):
         # Atualiza info
         info_text = f"{mapa_info['tamanho']} • {mapa_info['formato']}\n{mapa_info['obstaculos']} obstáculos"
         self.lbl_mapa_info.config(text=info_text)
-
-    def iniciar_luta(self):
-        """Inicia a simulação"""
-        if not self.personagem_p1 or not self.personagem_p2:
-            messagebox.showwarning("Atenção", "Selecione dois campeões!")
-            return
-        
-        match_data = {
-            "p1_nome": self.personagem_p1.nome,
-            "p2_nome": self.personagem_p2.nome,
-            "cenario": self.var_cenario.get(),
-            "best_of": int(self.var_best_of.get()),
-            "portrait_mode": self.var_portrait.get(),
-        }
-        
-        try:
-            salvar_match_config(match_data)
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha ao salvar: {e}")
-            return
-        
-        self.controller.withdraw()
-        
-        try:
-            sim = simulacao.Simulador(match_config=match_data)
-            sim.run()
-        except Exception as e:
-            messagebox.showerror("Erro", f"Simulação falhou:\n{e}")
-        finally:
-            self.controller.deiconify()
 
     def _iniciar_palco(self, modo):
         """Roda exportacao/render fora da thread do Tk para nao congelar a arena."""
