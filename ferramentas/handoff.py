@@ -68,6 +68,11 @@ def _git() -> list[str]:
 
 
 def _delegados() -> list[str]:
+    """O retrato de trabalho vem da Mesa, sem reconstituir estado paralelo."""
+    resumo = _rodar(PY + ["-m", "coordenador", "status", "--curto"])
+    return ["## Pedidos e trabalhadores"] + ["- " + linha
+                                             for linha in resumo.splitlines()[:20]]
+
     linhas = ["## Trabalhadores do servidor (delegados)"]
     pasta = LOCAL / "delegados"
     aplicados = {x.get("id") for x in (_json(LOCAL / "coordenador" / "estado.json")

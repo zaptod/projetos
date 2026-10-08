@@ -23,8 +23,12 @@ Ela inicia no logon como `NeuralFights_coordenador`. Para conferir ou controlar 
 
 ```powershell
 python -m coordenador status
+python -m coordenador status --curto
 python -m coordenador reiniciar app
 ```
+
+`status --curto` e o retrato para handoff: le os pedidos, incluindo o registro
+do trabalhador (PID conferido, prova e espera), sem varrer fichas de delegados.
 
 Para desfazer a substituicao das tres tarefas antigas, execute `python -m coordenador religar-tarefas-antigas`. Para remover somente a tarefa nova, execute `python -m coordenador remover-tarefa`.
 

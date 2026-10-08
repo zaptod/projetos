@@ -159,6 +159,13 @@ def _pedido(mesa, ident=None):
     return next(p for p in lista if p["id"] == ident) if ident else lista[0]
 
 
+def _pedir_conferencia(ident):
+    with pedidos._TRAVA:
+        dados = pedidos._ler()
+        next(p for p in dados["pedidos"] if p["id"] == ident)["conferir"] = True
+        pedidos._gravar(dados)
+
+
 def test_pedido_cria_orquestrador_com_o_texto(mesa):
     p = mesa.registrar("corrija a tela do Agora")
     assert p["situacao"] == "recebido" and mesa.despachante.criados == []   # nada na hora
@@ -294,6 +301,7 @@ def test_claude_proibido_no_meio_de_construir_passa_ao_codex(mesa):
 
 def test_entrega_aplicada_vai_ao_conferente_e_o_final_chega_ao_telegram(mesa):
     p = mesa.registrar("corrija o defeito X do app")
+    _pedir_conferencia(p["id"])
     mesa.passo()
     mesa.despachante.terminar(p["id"], aplicado=False, resposta="consertei X")
     mesa.passo()
@@ -313,6 +321,7 @@ def test_entrega_aplicada_vai_ao_conferente_e_o_final_chega_ao_telegram(mesa):
 
 def test_conferente_com_defeitos_falha(mesa):
     p = mesa.registrar("corrija o defeito X do app")
+    _pedir_conferencia(p["id"])
     mesa.passo()
     mesa.despachante.terminar(p["id"])
     mesa.passo()
@@ -321,6 +330,17 @@ def test_conferente_com_defeitos_falha(mesa):
     mesa.passo()
     assert _pedido(mesa)["situacao"] == "falhou"
     assert "quebrou Y" in mesa.avisos[-1]
+
+
+def test_entrega_codex_aplicada_fecha_pela_prova_automatica(mesa):
+    p = mesa.registrar("corrija o defeito X do app")
+    mesa.passo()
+    mesa.despachante.terminar(p["id"], resposta="testes verdes")
+    mesa.passo()
+    mesa.despachante.estados[p["id"]]["aplicado"] = {"arquivos": ["remoto/x.py"]}
+    mesa.passo()
+    assert _pedido(mesa)["situacao"] == "conferido"
+    assert len(mesa.despachante.criados) == 1
 
 
 def test_so_resposta_sem_codigo_fica_respondido(mesa):
@@ -1016,6 +1036,7 @@ def test_no_maximo_tres_execucoes_por_pedido(mesa, acao_duble):
 # ================================================ prompts (item 12)
 def test_prompts_mandam_responder_na_mensagem_final(mesa):
     p = mesa.registrar("corrija o defeito X do app")
+    _pedir_conferencia(p["id"])
     mesa.passo()
     tarefa = mesa.despachante.criados[0][2]
     assert "mensagem final" in tarefa and "NÃO crie arquivo resposta.md" in tarefa

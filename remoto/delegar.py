@@ -1046,6 +1046,25 @@ def _rodando(estado: dict) -> bool:
     return estado.get("situacao") == "rodando" and _pid_vivo(estado.get("pid")) is not False
 
 
+def reconciliar_fantasmas(*, minutos: float = 10) -> list[str]:
+    """Fecha fichas ``rodando`` cujo despachante ja morreu."""
+    agora = _agora()
+    parados = []
+    for ficha in listar():
+        if ficha.get("situacao") != "rodando" or _pid_vivo(ficha.get("pid")) is not False:
+            continue
+        try:
+            inicio = datetime.fromisoformat(str(ficha.get("inicio") or ficha.get("criado_em")))
+        except (TypeError, ValueError):
+            inicio = agora
+        if (agora - inicio).total_seconds() < minutos * 60:
+            continue
+        _mudar_estado(ficha["id"], situacao="parado", pid=None, pid_codex=None,
+                      fim=_agora_iso(), motivo="processo morreu")
+        parados.append(ficha["id"])
+    return parados
+
+
 def _janela(minutos, agora: datetime) -> bool:
     try:
         de, ate = int(minutos[0]), int(minutos[1])
@@ -1530,6 +1549,9 @@ def corrigir(tarefa_id: str, arquivo_texto: Path, *, forcar: bool = False) -> di
     destino = pasta_da(tarefa_id)
     n = len([p for p in destino.glob("correcao_*.md")]) + 1
     (destino / f"correcao_{n}.md").write_text(texto, encoding="utf-8")
+    # A proxima rodada pode mudar o diff; uma prova da rodada anterior nunca
+    # pode autorizar a aplicacao enquanto o vigia ainda nao mediu de novo.
+    _mudar_estado(tarefa_id, testes=None)
     return _rodada(tarefa_id, "corrigir", texto, forcar=forcar)
 
 
@@ -1772,6 +1794,8 @@ def _testar_travado(tarefa_id: str, estado: dict, cmd: str, timeout_s) -> dict:
            # barra normal: o pytest le o ADDOPTS com shlex e come a barra invertida,
            # e o basetemp caia DENTRO da worktree (tmp_pytestdelegados<id>bt, 02/10/2026)
            "PYTEST_ADDOPTS": f"-p no:cacheprovider --basetemp={(temp / 'bt').as_posix()}"}
+    if re.search(r"\bpytest\b", cmd) and "faulthandler_timeout" not in cmd:
+        cmd += " -o faulthandler_timeout=180"
     inicio = time.monotonic()
     log = pasta_da(tarefa_id) / "testes.log"
     with open(log, "w", encoding="utf-8", errors="replace") as fh:
@@ -1790,9 +1814,11 @@ def _testar_travado(tarefa_id: str, estado: dict, cmd: str, timeout_s) -> dict:
                  if l.strip()]
     except OSError:
         cauda = []
+    primeiro = next((l for l in cauda if "FAILED " in l or "FAULTHANDLER" in l), "")
     resultado = {"cmd": _cortar(cmd, 400), "codigo": codigo, "ok": codigo == 0,
                  "em": _agora_iso(), "dur_s": round(time.monotonic() - inicio, 1),
-                 "diff_sha": resumo["sha"], "resumo": _cortar(cauda[-1] if cauda else "", 300)}
+                 "diff_sha": resumo["sha"],
+                 "resumo": _cortar(primeiro or (cauda[-1] if cauda else ""), 300)}
     _mudar_estado(tarefa_id, testes=resultado)
     return resultado
 
@@ -1999,6 +2025,15 @@ def limpar(tarefa_id: str) -> dict:
                                                           if k != "worktree"}})
     _log(tarefa_id, "limpa" + (f"; sobrou {saida['sobrou']}" if saida.get("sobrou") else ""))
     return saida
+
+
+def abandonar(tarefa_id: str, motivo: str = "criado há mais de 24 h sem pedido aberto") -> dict:
+    """Marca uma ficha esquecida sem tocar na worktree."""
+    estado = ler_estado(tarefa_id)
+    if estado.get("situacao") != "criado":
+        raise Recusa("só abandona tarefa criada")
+    _mudar_estado(tarefa_id, situacao="abandonado", motivo=motivo, fim=_agora_iso())
+    return ler_estado(tarefa_id)
 
 
 def commits_a_frente(estado: dict) -> int | None:

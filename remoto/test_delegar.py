@@ -323,6 +323,26 @@ def test_testar_com_a_trava_ocupada_e_recusa_passageira(mundo, monkeypatch):
     assert "testar.lock" in str(erro.value) and "em andamento" in str(erro.value)
 
 
+def test_reconciliar_fantasma_fecha_pid_morto_depois_do_prazo(monkeypatch):
+    agora = datetime(2026, 10, 8, 10, 0)
+    mudancas = []
+    monkeypatch.setattr(delegar, "_agora", lambda: agora)
+    monkeypatch.setattr(delegar, "listar", lambda: [{"id": "fantasma", "situacao": "rodando",
+                                                       "pid": 12, "inicio": "2026-10-08T09:49:00"}])
+    monkeypatch.setattr(delegar, "_pid_vivo", lambda _pid: False)
+    monkeypatch.setattr(delegar, "_mudar_estado", lambda ident, **kw: mudancas.append((ident, kw)))
+    assert delegar.reconciliar_fantasmas() == ["fantasma"]
+    assert mudancas[0][1]["situacao"] == "parado"
+    assert mudancas[0][1]["motivo"] == "processo morreu"
+
+
+def test_testar_pytest_acrescenta_faulthandler(mundo):
+    _criar(mundo)
+    delegar.rodar("t01")
+    resultado = delegar.testar("t01", f'"{sys.executable}" -m pytest --version')
+    assert "-o faulthandler_timeout=180" in resultado["cmd"]
+
+
 def test_ia_ainda_rodando_e_ocupado_com_o_nome_certo(mundo):
     _criar(mundo)
     delegar.rodar("t01")

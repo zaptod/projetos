@@ -772,12 +772,29 @@ class VigiaTrabalho:
                                                    or situacao in ("falhou", "negado", "parado")))):
                 continue
             candidatos.append(d)
-        if not candidatos:
-            return
         try:
             em_uso = set(self.em_uso())
         except Exception as exc:                              # noqa: BLE001
             self.evento("trabalho_faxina", f"não li os pedidos; não limpo nada ({exc})")
+            return
+        abandonar = getattr(self.delegar, "abandonar", None)
+        for d in delegados:
+            did = str(d.get("id") or "")
+            criado = _data(d.get("criado_em"))
+            if (not callable(abandonar) or not did or did in em_uso or d.get("situacao") != "criado"
+                    or criado is None or (agora - criado).total_seconds() < 24 * 3600):
+                continue
+            if commits(d) != 0:
+                self._olho(mem, did, "precisa de olho: criado antigo com mudança não aplicada",
+                           integrar=False)
+                continue
+            try:
+                abandonar(did)
+            except Exception as exc:                          # noqa: BLE001
+                self.evento("trabalho_faxina", f"{did}: não abandonei ({exc})")
+                continue
+            self.evento("trabalho_faxina", f"abandonei {did} (criado há mais de 24 h)")
+        if not candidatos:
             return
         livres = [d for d in candidatos if str(d["id"]) not in em_uso]
         for d in livres[:FAXINA_POR_PASSO]:
@@ -954,6 +971,8 @@ class VigiaTrabalho:
             servicos = {}
         for nome in servicos_afetados(arquivos, servicos):
             self.pedir_reinicio(nome)
+        if any(str(a).replace("\\", "/").startswith("coordenador/") for a in arquivos):
+            self.pedir_reinicio("coordenador")
         try:
             self.delegar.limpar(did)
         except Exception as exc:                              # noqa: BLE001

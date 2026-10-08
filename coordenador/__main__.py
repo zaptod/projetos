@@ -114,7 +114,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m coordenador")
     sub = parser.add_subparsers(dest="acao", required=True)
     sub.add_parser("rodar")
-    sub.add_parser("status")
+    status = sub.add_parser("status")
+    status.add_argument("--curto", action="store_true")
     pedir = sub.add_parser("pedir", help="registra trabalho para o passo da Mesa despachar")
     pedir.add_argument("texto")
     pedir.add_argument("--permitido", action="append", default=[])
@@ -173,8 +174,19 @@ def main(argv=None):
                 codigo = 1
         return codigo
     if args.acao == "status":
-        import json
-        print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))
+        if args.curto:
+            from . import pedidos
+            itens = pedidos.para_o_app()["pedidos"]
+            abertos = [p for p in itens if p.get("situacao") not in pedidos.FINAIS][:14]
+            for p in abertos:
+                quem = (p.get("registro") or {}).get("delegado") or p.get("trabalhador") or "-"
+                print(f"{p['id']} | {p.get('titulo', '')[:55]} | {p.get('situacao')} | {quem} | "
+                      f"{p.get('motivo') or ''}")
+            velho = bool(ler_estado().get("codigo_velho"))
+            print("serviços: código velho" if velho else "serviços: código atual")
+        else:
+            import json
+            print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))
     elif args.acao == "reiniciar":
         s = Supervisor()
         s.reiniciar_servico(args.servico)

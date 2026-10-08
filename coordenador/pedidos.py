@@ -2119,6 +2119,12 @@ class MesaPedidos:
         if not ficha:
             self._substituir_trabalhador(dados, pedido, None)
             return
+        pedido["registro"] = {"delegado": trabalhador, "pid": ficha.get("pid"),
+                               "vivo": not self._pid_morto(ficha),
+                               "situacao": ficha.get("situacao"),
+                               "prova": ficha.get("testes"),
+                               "commit": (ficha.get("aplicado") or {}).get("commit"),
+                               "espera": pedido.get("motivo", "")}
         situacao = self._situacao_do(ficha)
         agora = self.relogio()
         if situacao != "rodando":
@@ -3015,6 +3021,14 @@ class MesaPedidos:
             return
         if not ficha.get("aplicado"):
             return                # o vigia ainda nao aplicou (testes, momento seguro)
+        if not pedido.get("conferir"):
+            do_trabalhador = str(pedido.get("resposta") or "") or self._resposta(trabalhador)
+            final = _resumo(do_trabalhador, 400) or "pronto"
+            pedido.update(situacao="conferido", motivo="", resposta=do_trabalhador[:1000],
+                          atualizado_em=_iso())
+            _linha(dados, pedido, "conferido pela prova automática: " + final, tipo="final")
+            self._avisar(pedido, "✅ Pedido conferido", final)
+            return
         ident = pedido.get("conferente") or _id_conferente(trabalhador)
         conf = self._estado_do(ident)
         if conf is None:
@@ -3269,6 +3283,12 @@ class MesaPedidos:
         dono = uuid.uuid4().hex[:12]
         with _TRAVA:
             dados = _ler()
+            reconciliar = getattr(self.despachante, "reconciliar_fantasmas", None)
+            if callable(reconciliar):
+                try:
+                    reconciliar()
+                except Exception:
+                    pass
             self._dono, self._fila_lenta = dono, []
             try:
                 self._andar_os_pedidos(dados)

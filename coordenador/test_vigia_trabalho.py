@@ -72,6 +72,10 @@ class Delegar:
         self.chamadas.append(("limpar", ident))
         self.tarefas[ident]["limpo"] = {"em": "x"}
 
+    def abandonar(self, ident):
+        self.chamadas.append(("abandonar", ident))
+        self.tarefas[ident]["situacao"] = "abandonado"
+
     def feitas(self, nome):
         return [c for c in self.chamadas if c[0] == nome]
 
@@ -985,6 +989,26 @@ def test_faxina_limpa_delegado_encerrado_ha_6h_sem_commit(mundo):
     assert {f["id"] for f in t["faxina"]} == set(limpos)
     # o diff do que caiu fica guardado na pasta (coletar antes de limpar)
     assert ("coletar", "caiu") in d.chamadas and ("coletar", "conf-velho") not in d.chamadas
+
+
+def test_criado_antigo_sem_pedido_aberto_vira_abandonado(mundo):
+    d = mundo.delegar
+    d.tarefas["esquecido"] = {"id": "esquecido", "situacao": "criado", "limpo": None,
+                               "criado_em": "2026-10-01T09:00:00"}
+    d.commits_a_frente = lambda _estado: 0
+    mundo.vigia.passo()
+    assert d.tarefas["esquecido"]["situacao"] == "abandonado"
+    assert ("abandonar", "esquecido") in d.chamadas
+
+
+def test_criado_antigo_sujo_precisa_de_olho_sem_apagar(mundo):
+    d = mundo.delegar
+    d.tarefas["sujo-antigo"] = {"id": "sujo-antigo", "situacao": "criado", "limpo": None,
+                                 "criado_em": "2026-10-01T09:00:00"}
+    d.commits_a_frente = lambda _estado: 1
+    mundo.vigia.passo()
+    assert d.tarefas["sujo-antigo"]["situacao"] == "criado"
+    assert any(x["id"] == "sujo-antigo" for x in mundo.vigia.ultimo["olho"])
 
 
 def test_faxina_sem_ler_os_pedidos_nao_limpa_nada(mundo):
