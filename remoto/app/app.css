@@ -921,6 +921,7 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 .anim-miniatura { background: repeating-conic-gradient(#ddd 0 25%, #aaa 0 50%) 50% / 12px 12px; border-radius: 4px; }.anim-sem-arte { min-width: 72px; font-size: .82em; text-align: center; }
 .anim-corte { display: flex; gap: 12px; min-height: 44px; align-items: center; }.anim-lista-quadros { display: flex; flex-wrap: wrap; gap: 4px; }.anim-quadro { display: flex; }.anim-quadro .acao { min-width: 32px; min-height: 44px; padding: 4px; }
 .anim-montado { margin-top: 8px; padding: 10px; border: 1px dashed var(--borda); border-radius: 6px; }
+.anim-video-godot { margin-top: 10px; }.anim-video-godot video { display: block; width: 100%; max-height: 360px; background: #000; }
 @media (max-width: 400px) { .atelie-novo-cabeca { flex-wrap: wrap; }.atelie-novo-cabeca h2 { font-size: 1.25em; }.anim-campos { grid-template-columns: 1fr 1fr; } }
 @media (prefers-color-scheme: dark) {
   .livro.atelie { --fundo: #14161a; --cartao: #1e2127; --texto: #e8e8ea; --fraco: #b4b8c2; --linha: #3a404c; --acento: #7ea4ff; background: radial-gradient(ellipse at center, #252b35, #11151b); }

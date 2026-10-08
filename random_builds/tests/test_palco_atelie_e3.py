@@ -48,3 +48,14 @@ def test_previa_tem_seed_estavel_e_duracao_curta_sem_escrever_no_catalogo():
     assert "hashlib.sha256" in codigo
     assert "quadros=150" in codigo
     assert "render_da_seed" in codigo
+
+
+def test_previa_escolhe_fichas_da_classe_arma_e_skill():
+    from random_builds.builds.palco.previa_animacao import _tem_peca
+    armas = [{"nome": "Sabre", "estilo": "Espada Longa", "tipo": "Reta"}]
+    ficha = {"classe": "Mago (Arcano)", "nome_arma": "Sabre",
+             "kit": [{"nome": "Chama Arcana", "elemento": "Fogo", "descricao": "aplica queimadura"}]}
+    assert _tem_peca(ficha, "classe.mago", armas)
+    assert _tem_peca(ficha, "arma.estilo.espada_longa", armas)
+    assert _tem_peca(ficha, "arma.tipo.reta", armas)
+    assert _tem_peca(ficha, "skill.chama arcana", armas)

@@ -17,6 +17,11 @@ var gatilho_animacao := ""
 var _animacoes := {}
 var _ocioso := ""
 var _terminou := false
+## Tamanho no palco = regra do Atelie (`atelie_animacoes.montagem`): o maior
+## lado do quadro vira `tamanho_padrao` corpos (1,0 = o diametro do lutador);
+## a `escala` do animacao.json multiplica por cima. Sem corpo informado: 1:1.
+var corpo_px := 0.0
+var tamanho_rel := 1.0
 
 
 func _ready() -> void:
@@ -34,7 +39,8 @@ func _preparar_catalogo() -> void:
 				continue
 			var pasta := str(animacao.get("pasta", ""))
 			if pasta != "":
-				_animacoes[chave] = {"pasta": pasta, "loop": bool(animacao.get("loop", true))}
+				_animacoes[chave] = {"pasta": pasta, "loop": bool(animacao.get("loop", true)),
+					"tamanho": _tamanho_do_catalogo(animacao.get("tamanho_padrao", "1"))}
 			if chave == "ocioso" and _ocioso == "":
 				_ocioso = chave
 	if _ocioso != "":
@@ -121,7 +127,20 @@ func _trocar(novo_gatilho: String) -> void:
 		return
 	gatilho_animacao = novo_gatilho
 	loop = bool(dado.get("loop", loop))
+	tamanho_rel = float(dado.get("tamanho", 1.0))
 	_terminou = false
+
+
+## "1,0 do corpo" -> 1.0 (o catalogo escreve o numero em portugues)
+static func _tamanho_do_catalogo(valor) -> float:
+	var texto := str(valor).replace(",", ".").strip_edges().split(" ")[0]
+	return float(texto) if texto.is_valid_float() and float(texto) > 0.0 else 1.0
+
+
+func ajustar_corpo(diametro_px: float) -> void:
+	if not is_equal_approx(corpo_px, diametro_px):
+		corpo_px = diametro_px
+		queue_redraw()
 
 
 func _duracao_atual() -> float:
@@ -136,4 +155,9 @@ func _draw() -> void:
 		return
 	var origem := Rect2(float(q.get("x", 0)), float(q.get("y", 0)), float(q.get("w", 0)), float(q.get("h", 0)))
 	if origem.size.x > 0.0 and origem.size.y > 0.0:
+		var fator := 1.0
+		if corpo_px > 0.0:
+			fator = corpo_px * tamanho_rel / maxf(origem.size.x, origem.size.y)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(fator, fator))
 		draw_texture_rect_region(textura, Rect2(-ancora, origem.size), origem)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

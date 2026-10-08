@@ -352,6 +352,8 @@ func _desenhar_quadro(f: int) -> void:
 				no.gatilho("expr")
 			elif int(s.get("golpe_fase", 0)) > 0:
 				no.gatilho("golpe_fase")
+		if no.has_method("ajustar_corpo"):
+			no.ajustar_corpo(2.0 * float(cab[slot].get("raio_corpo", 0.85)) * PX)
 		if no.has_method("avancar"):
 			no.avancar(dt_mundo)
 		else:
@@ -428,6 +430,8 @@ func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) 
 		no.atualizar(s, ctx)
 	if no.has_method("gatilho"):
 		no.gatilho("golpe_fase" if int(s.get("golpe_fase", 0)) > 0 else "ocioso")
+	if no.has_method("ajustar_corpo"):
+		no.ajustar_corpo(2.0 * float(cab[slot].get("raio_corpo", 0.85)) * PX)
 	if no.has_method("avancar"):
 		no.avancar(float(ctx.get("dt_mundo", 0.0)))
 		_seek_golpe(no, int(s.get("golpe_fase", 0)), float(s.get("golpe_p", 0.0)), float(ctx["t_jogo"]))

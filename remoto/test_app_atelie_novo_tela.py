@@ -40,6 +40,8 @@ def test_atelie_novo_tem_fluxo_de_animacao_e_nao_carrega_o_legado():
                            "duracao_por_quadro", "animTocar", "pointerdown", "animAtivarCartoes",
                            "Content-Type", "estado_personagem", "animPost"):
         assert comportamento in codigo
+    for comportamento in ("animVerNoGodot", "Renderizando no Godot", "setTimeout", "playsinline"):
+        assert comportamento in codigo
     assert ".livro.atelie { padding-top: calc(112px" in css
     assert ".livro.atelie { --fundo: #14161a" in css
 

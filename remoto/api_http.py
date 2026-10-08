@@ -70,6 +70,7 @@ from esteira_sprites import aprovar as sprites_aprovar
 from esteira_sprites import config as sprites_config
 from esteira_sprites import juiz as sprites_juiz
 from neural_fights.tools import atelie_animacoes
+from random_builds.builds.palco.previa_animacao import renderizar_previa
 
 PORTA_PADRAO = 8931
 PORTAS_PROIBIDAS = {8765}                # OAuth do YouTube
@@ -89,6 +90,63 @@ CORPO_MAX = 4096
 # um corpo grande, e so com token.
 CORPO_CORREIO_MAX = 12 * 1024 * 1024
 ANIMACAO_MAX = 20 * 1024 * 1024
+_PREVIAS_ANIMACOES: dict[str, dict] = {}
+_FILA_PREVIAS_ANIMACOES: list[str] = []
+_TRAVA_PREVIAS_ANIMACOES = threading.Lock()
+_PREVIA_ANIMACAO_OCUPADA = False
+
+
+def _pasta_previas_animacoes() -> Path:
+    pasta = runtime_dir() / "atelie_previas"
+    pasta.mkdir(parents=True, exist_ok=True)
+    limite = time.time() - 24 * 60 * 60
+    for antiga in pasta.iterdir():
+        with contextlib.suppress(OSError):
+            if antiga.stat().st_mtime < limite:
+                if antiga.is_dir():
+                    shutil.rmtree(antiga)
+                else:
+                    antiga.unlink()
+    return pasta
+
+
+def _iniciar_previa_animacao(peca: str, estado: str, animacao: str) -> str:
+    """Agenda uma previa; a mesma peca reaproveita o trabalho em andamento."""
+    global _PREVIA_ANIMACAO_OCUPADA
+    alvo = "|".join((peca, estado, animacao))
+    ident = hashlib.sha256(alvo.encode("utf-8")).hexdigest()[:16]
+    with _TRAVA_PREVIAS_ANIMACOES:
+        atual = _PREVIAS_ANIMACOES.get(ident)
+        if atual:
+            return ident
+        _PREVIAS_ANIMACOES[ident] = {"peca": peca, "estado": estado, "animacao": animacao,
+                                      "situacao": "rodando"}
+        _FILA_PREVIAS_ANIMACOES.append(ident)
+        if not _PREVIA_ANIMACAO_OCUPADA:
+            _PREVIA_ANIMACAO_OCUPADA = True
+            threading.Thread(target=_trabalhar_previas_animacoes, daemon=True).start()
+    return ident
+
+
+def _trabalhar_previas_animacoes() -> None:
+    global _PREVIA_ANIMACAO_OCUPADA
+    while True:
+        with _TRAVA_PREVIAS_ANIMACOES:
+            if not _FILA_PREVIAS_ANIMACOES:
+                _PREVIA_ANIMACAO_OCUPADA = False
+                return
+            ident = _FILA_PREVIAS_ANIMACOES.pop(0)
+            tarefa = _PREVIAS_ANIMACOES[ident]
+        try:
+            pasta = _pasta_previas_animacoes() / ident
+            arquivo = Path(renderizar_previa(tarefa["peca"], tarefa["estado"], tarefa["animacao"], pasta))
+            if not arquivo.is_file():
+                raise OSError("o Godot nao devolveu o video")
+            with _TRAVA_PREVIAS_ANIMACOES:
+                tarefa.update({"situacao": "pronto", "arquivo": arquivo})
+        except Exception:  # noqa: BLE001 - o app recebe uma frase simples
+            with _TRAVA_PREVIAS_ANIMACOES:
+                tarefa.update({"situacao": "falhou", "erro": "Nao consegui renderizar no Godot. Tente de novo."})
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -960,8 +1018,23 @@ class Manipulador(BaseHTTPRequestHandler):
             if rota == "/api/animacoes/montagem":
                 editar = {k: (consulta.get(k) or [""])[0] for k in ("peca", "estado", "animacao")}
                 return self._json(atelie_animacoes.montagem(editar if editar["peca"] else None))
-            if rota == "/api/animacoes/previa-godot":
-                return self._erro(501, "previa no Godot ainda nao disponivel")
+            achado = re.fullmatch(r"/api/animacoes/previa-godot/([a-f0-9]{16})", rota)
+            if achado:
+                with _TRAVA_PREVIAS_ANIMACOES:
+                    tarefa = _PREVIAS_ANIMACOES.get(achado.group(1))
+                    dados = dict(tarefa) if tarefa else None
+                if dados is None:
+                    return self._erro(404, "previa nao encontrada")
+                resposta = {"situacao": dados["situacao"]}
+                if dados["situacao"] == "pronto":
+                    arquivo = Path(dados.get("arquivo", ""))
+                    if not arquivo.is_file():
+                        resposta = {"situacao": "falhou", "erro": "O video da previa sumiu."}
+                    else:
+                        resposta["video"] = f"/v/{self.estado.bilhete_reusado(arquivo, self._dono)}"
+                if dados["situacao"] == "falhou":
+                    resposta["erro"] = dados.get("erro") or "Nao consegui renderizar no Godot."
+                return self._json(resposta)
             achado = re.fullmatch(r"/api/animacoes/([^/]+)/([^/]+)/([^/]+)/folha", rota)
             if achado:
                 try:
@@ -1292,6 +1365,11 @@ class Manipulador(BaseHTTPRequestHandler):
                 return self._json({"feito": True})
             if rota == "/api/animacoes/ajustes":
                 return self._json(atelie_animacoes.salvar_ajustes(corpo.get("ajustes") or corpo))
+            if rota == "/api/animacoes/previa-godot":
+                peca, estado, animacao = (corpo.get(chave) for chave in ("peca", "estado", "animacao"))
+                if not atelie_animacoes.ler(peca, estado, animacao):
+                    raise ValueError("animacao nao encontrada")
+                return self._json({"id": _iniciar_previa_animacao(peca, estado, animacao)})
         except (ValueError, TypeError, binascii.Error) as exc:
             return self._erro(400, str(exc))
         return self._erro(404, "nao existe")
@@ -2478,5 +2556,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

@@ -28,3 +28,12 @@ fica em `atelie_animacoes.montagem`: a ancora relativa vira pixels do quadro e
 e desenhada em `posicao - ancora`, como `TocadorFolha` (`Rect2(-ancora, tamanho)`).
 Sem folha, o canvas desenha o marcador neutro. Os parametros `peca`, `estado` e
 `animacao` trocam a camada em edicao sem salvar a alteracao.
+
+## Previa no Godot
+
+`POST /api/animacoes/previa-godot` recebe peca, estado e animacao ja salvos e
+devolve um id. `GET /api/animacoes/previa-godot/<id>` informa `rodando`,
+`pronto` (com URL temporaria autenticada do MP4) ou `falhou`. O render e unico
+por vez e fica em `runtime/atelie_previas` por no maximo um dia. A previa usa
+uma seed estavel e escolhe fichas cuja classe, arma ou skill corresponde a peca;
+quando nao ha como reconhecer um efeito, usa qualquer ficha do banco.
