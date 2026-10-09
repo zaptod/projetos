@@ -160,6 +160,12 @@ def main(argv=None):
         except ValueError as exc:
             print(f"recusado: {exc}", file=sys.stderr)
             return 3
+        if pedido.get("duplicado"):
+            # 08/10/2026: um 2o pedido com OUTRO texto e as mesmas pastas
+            # liberadas sumia dentro do 1o e so voltava o id repetido
+            print(f"aviso: juntado ao pedido aberto {pedido['id']} ({pedido.get('titulo') or ''}); "
+                  "para um pedido separado, libere pastas diferentes com --permitido",
+                  file=sys.stderr)
         print(pedido["id"])
         return 0
     if args.acao == "rodar":
