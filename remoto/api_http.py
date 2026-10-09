@@ -216,6 +216,25 @@ def _previa_vila_png(peca: str, estado: str, animacao: str) -> bytes:
     return bruto.getvalue()
 
 
+def _icone_do_objeto_do_atelie(nome: str) -> bytes | None:
+    """O primeiro quadro do objeto da prateleira, proprio para o celular."""
+    if nome not in {"agora", "decidir", "mandar", "ver"}:
+        return None
+    try:
+        from painel.flutuante import arte_pronta
+        imagem = arte_pronta.peca_do_atelie(f"objetos/{nome}.png")
+        if imagem is None:
+            return None
+        # a do arte_pronta e a do cache da Vila: reduzir no lugar a estragava
+        imagem = imagem.copy()
+        imagem.thumbnail((96, 96), Image.Resampling.LANCZOS)
+        saida = io.BytesIO()
+        imagem.save(saida, "PNG")
+        return saida.getvalue()
+    except (OSError, ValueError):
+        return None
+
+
 IAS_DE_CONVERSA = ("deepseek", "chatgpt", "gemini", "grok")
 # As caixas do correio (29/09, tarde: pedidos de imagem). Texto fixo aqui,
 # e nao lido do `ias`, para a rota nunca aceitar o que o correio nao conhece;
@@ -2191,6 +2210,19 @@ class Manipulador(BaseHTTPRequestHandler):
         so devolve o que esta no indice (peca do inventario que existe em
         `painel/flutuante/arte_vila`). O resto e 404, inclusive `..`.
         """
+        achado = re.fullmatch(r"/arte-vila/atelie/objetos/(agora|decidir|mandar|ver)\.png", rota)
+        if achado:
+            corpo = _icone_do_objeto_do_atelie(achado.group(1))
+            if corpo is None:
+                return self._erro(404, "nao existe")
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(corpo)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Cache-Control", "private, max-age=86400")
+            self.end_headers()
+            self.wfile.write(corpo)
+            return
         try:
             from painel.flutuante import arte_pronta
             arquivo = arte_pronta.arquivo_publico(rota)

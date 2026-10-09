@@ -224,6 +224,13 @@ def test_os_cinco_objetos_e_nada_mais_na_prateleira():
     assert HTML.count('class="objeto"') == 5
 
 
+def test_os_quatro_objetos_usam_a_arte_do_atelie_quando_existir():
+    vila = JS["vila.js"]
+    for nome in ("agora", "decidir", "mandar", "ver"):
+        assert f"/arte-vila/atelie/objetos/${{nome}}.png" in vila
+    assert "dados.mundo.versao" in vila and "atual.replaceWith(imagem)" in vila
+
+
 def test_nenhuma_tela_so_abre_por_dentro_de_outra():
     # toda tela (fora a Vila e o pareamento) é aba de um dos quatro objetos;
     # antes, Coordenador, Biblioteca, Oficina e Conversa só abriam por dentro

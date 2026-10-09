@@ -25,6 +25,7 @@ PECAS_VILA_COM_PROVA = frozenset({
     "vila.bichos.vagalume",
     *("vila.interface." + nome for nome in ("arco", "balao", "bandeirolas",
       "estatua", "gnomo", "lanterna", "balao_emote", "confete")),
+    *("vila.objetos." + nome for nome in ("agora", "decidir", "mandar", "ver")),
 })
 VILA = "Vila (PC e celular)"
 
@@ -32,6 +33,9 @@ VILA = "Vila (PC e celular)"
 def consumidores(peca: str, grupo: str = "") -> list[dict[str, str]]:
     """Devolve apenas consumidores cobertos pela prova automatica."""
     if peca in PECAS_VILA_COM_PROVA:
+        if peca.startswith("vila.objetos."):
+            return [{"onde": "App (prateleira)",
+                     "funcao": "remoto.api_http._icone_do_objeto_do_atelie"}]
         if peca.startswith("vila.habitantes."):
             funcao = "painel.flutuante.arte.desenhar_personagem / remoto.vila_nova.atlas"
         elif peca.startswith("vila.predios."):
@@ -61,8 +65,6 @@ def consumidores(peca: str, grupo: str = "") -> list[dict[str, str]]:
 def motivo_sem_consumidor(peca: str, grupo: str = "") -> str:
     if grupo in {"skill", "efeito", "elemento", "estado_personagem", "buff"}:
         return "aguarda ligacao dos gatilhos do Godot"
-    if peca.startswith("vila.objetos."):
-        return "nao existe na Vila ainda; o app usa icone de interface"
     return "a Vila ainda nao consulta esta peca"
 
 

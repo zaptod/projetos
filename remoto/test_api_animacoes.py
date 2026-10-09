@@ -66,6 +66,26 @@ def test_previa_vila_tem_chao_e_referencias_no_tamanho_do_mundo(tmp_path, monkey
         assert imagem.size == (360, 160)
 
 
+def test_icone_do_objeto_do_atelie_e_publico_e_reduzido(tmp_path, monkeypatch):
+    monkeypatch.setattr(api_http, "ARQUIVO", tmp_path / "app.json")
+    monkeypatch.setattr(atelie, "ANIMACOES", tmp_path / "animacoes")
+    folha = io.BytesIO()
+    Image.new("RGBA", (240, 120), (3, 251, 71, 255)).save(folha, "PNG")
+    atelie.salvar("vila.objetos.agora", "agora", "parado", folha.getvalue(),
+                  {"fps": 8, "ancora": {"x": .5, "y": 1},
+                   "quadros": [{"x": 0, "y": 0, "w": 240, "h": 120}]})
+    srv = api_http.criar_servidor("127.0.0.1", 0, local=True)
+    fio = threading.Thread(target=srv.serve_forever, daemon=True); fio.start()
+    try:
+        resp, corpo = pedir(srv, "GET", "/arte-vila/atelie/objetos/agora.png")
+        assert resp.status == 200 and resp.getheader("Content-Type") == "image/png"
+        with Image.open(io.BytesIO(corpo)) as imagem:
+            assert max(imagem.size) <= 96 and (3, 251, 71, 255) in imagem.get_flattened_data()
+        assert pedir(srv, "GET", "/arte-vila/atelie/objetos/ver.png")[0].status == 404
+    finally:
+        srv.shutdown(); srv.server_close()
+
+
 def test_previa_godot_roda_uma_vez_e_entrega_video(tmp_path, monkeypatch):
     catalogo = {"pecas": [{"id": "classe.mago", "grupo": "lutador", "estados": [{"id": "parado", "animacoes": [{"id": "respirar", "gatilho": "ocioso"}]}]}]}
     monkeypatch.setattr(api_http, "ARQUIVO", tmp_path / "app.json")

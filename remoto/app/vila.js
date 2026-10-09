@@ -134,6 +134,7 @@ async function vilaCarregarRetrato(comMundo) {
     vilaArranjar();
     vilaImagem("atlas", `/vilanova-atlas.png?escala=${dados.mundo.retrato.escala}`
       + `&v=${encodeURIComponent(dados.mundo.versao)}`);
+    vilaObjetosDoAtelie();
   }
   // arte nova salva no Atelie: o retrato traz a versao e o mundo (atlas e
   // folhas) e baixado de novo, sem fechar a Vila (08/10/2026)
@@ -147,6 +148,22 @@ async function vilaCarregarRetrato(comMundo) {
   Vila.trocaEm = performance.now();
   vilaCuidarDoFundo();
   vilaDesenharGente();
+}
+
+// Os quatro objetos tambem sao pecas do Atelie. A versao da Vila inclui o
+// mtime da folha, entao salvar de novo troca a URL e atualiza o cache.
+function vilaObjetosDoAtelie() {
+  const versao = encodeURIComponent(Vila.mundo?.versao || "");
+  for (const nome of ["agora", "decidir", "mandar", "ver"]) {
+    const botao = document.getElementById(`obj-${nome}`);
+    const atual = botao && botao.querySelector("span, .objeto-arte");
+    if (!atual) continue;
+    const imagem = new Image();
+    imagem.className = "objeto-arte";
+    imagem.alt = "";
+    imagem.onload = () => atual.replaceWith(imagem);
+    imagem.src = `/arte-vila/atelie/objetos/${nome}.png?v=${versao}`;
+  }
 }
 
 async function vilaCarregarEstado() {

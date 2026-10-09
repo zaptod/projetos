@@ -4,6 +4,7 @@ import io
 from PIL import Image
 
 from neural_fights.tools import atelie_animacoes, catalogo_vila, consumo_atelie
+from remoto import api_http
 from painel.flutuante import arte, arte_pronta, retrato
 
 
@@ -25,6 +26,10 @@ def _salvar(peca: dict) -> None:
 
 def _consumir(peca: dict):
     ident = peca["id"]
+    if ident.startswith("vila.objetos."):
+        bruto = api_http._icone_do_objeto_do_atelie(ident.rsplit(".", 1)[-1])
+        with Image.open(io.BytesIO(bruto or b"")) as imagem:
+            return imagem.copy()
     if ident.startswith("vila.habitantes."):
         return arte.desenhar_personagem(ident.rsplit(".", 1)[-1])
     if ident.startswith("vila.predios."):
@@ -82,7 +87,8 @@ def test_arvore_expoe_destino_e_aviso_honesto():
     pecas = [p for grupo in atelie_animacoes.arvore() for p in grupo["pecas"]]
     for peca in pecas:
         if peca["id"] in consumo_atelie.PECAS_VILA_COM_PROVA:
-            assert peca["aparece_em"] in (["Vila (PC e celular)"], ["Vila (PC)"])
+            assert peca["aparece_em"] in (["Vila (PC e celular)"], ["Vila (PC)"],
+                                             ["App (prateleira)"])
         if peca["grupo"] in {"skill", "efeito", "elemento", "estado_personagem", "buff"}:
             assert not peca["aparece_em"]
             assert "Godot" in peca["motivo_sem_consumidor"]
