@@ -11,10 +11,42 @@ import os
 import pathlib
 import tkinter as tk
 import unittest
+from unittest.mock import patch
 
 from painel import estilo
 from painel.processos import Periodico, Supervisor
 from painel.widgets import Oficina
+
+
+PANORAMA_VAZIO = {"saude": {}, "desempenho": {}, "inventario": {},
+                  "qualidade": {}, "confiabilidade": {}}
+
+
+def _resumo_vazio(*_args, **_kwargs):
+    """Impede que as Cascas leiam metricas, ledger ou diario reais."""
+    return {chave: dict(valor) for chave, valor in PANORAMA_VAZIO.items()}
+
+
+def setUpModule():
+    global _duble_panorama
+    # `Casca._pedir_resumo()` importa panorama dentro da thread de fundo.
+    # Dublar esta porta cobre todas as paginas que abrem uma Casca aqui.
+    _duble_panorama = patch("panorama.resumo", side_effect=_resumo_vazio)
+    _duble_panorama.start()
+
+
+def tearDownModule():
+    _duble_panorama.stop()
+
+
+class PanoramaDubladoTests(unittest.TestCase):
+    def test_o_resumo_das_cascas_nao_toca_os_dados_reais(self):
+        import panorama
+
+        dados = panorama.resumo()
+        self.assertEqual(PANORAMA_VAZIO, dados)
+        dados["saude"]["fila"] = "alterado"
+        self.assertEqual({}, panorama.resumo()["saude"])
 
 
 class TemaTests(unittest.TestCase):
