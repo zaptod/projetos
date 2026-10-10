@@ -10,6 +10,16 @@
       "opcao": "publico",
       "origem": "leitor",
       "tipo": "tarefa"
+    },
+    {
+      "alvo": "",
+      "em": "2026-10-10T01:18:28",
+      "evento": "2026-10-10T01:15:49",
+      "linha": 149,
+      "nota": "aplicado pelo orquestrador na hora: Wi-Fi com 1.1.1.1/8.8.8.8 (+IPv6), testado; desfazer = Set-DnsClientServerAddress -InterfaceAlias Wi-Fi -ResetServerAddresses (era DHCP: 181.213.132.8/9)",
+      "opcao": "publico",
+      "origem": "leitor",
+      "tipo": "nada"
     }
   ],
   "contexto": "O DNS é o 'catálogo de endereços' da internet: sem ele o PC não acha youtube.com, tiktok.com nem o Telegram, mesmo com a internet ligada. Medido: 10 a 19 falhas por hora o dia todo no registro do Windows; a postagem esperou 5 min em cada horário e desistiu. A troca é só no PC (não mexe no roteador), dá para desfazer em 1 minuto e precisa de administrador (talvez você precise aceitar uma janela do Windows).",
