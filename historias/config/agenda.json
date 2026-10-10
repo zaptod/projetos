@@ -1,7 +1,8 @@
 {
     "_comment": "Criacao automatica de historias. `horas` sao os disparos do Agendador do Windows (hora cheia = :20, ou 'HH:MM'). Quem decide o que cada disparo faz e `agenda.planejar`, pela hora e pelo dia; o disparo que acha rodada em andamento SAI (trava `historias__auto`).",
     "_comment_realidade": "MEDIDO: historia 8 (01/09) ~4h; historia 13 (15/09) 2h12; 00035 (27/09, 3 partes) 46 min; 00036 (6 partes) 1h22. Com parecer e conserto, 3h45 a 4h30 por historia (plano do lote, 30/09).",
-    "ativo": true,
+    "_comment_ativo": "DESLIGADA EM 10/10/2026 a pedido do Adrian (Grimorio historias/criacao-durante-a-pausa = parar): os canais de historias estao em pausa (pausa_historias.json) e a criacao abria o ChatGPT dele de madrugada para gerar imagem. Para voltar: true.",
+    "ativo": false,
     "_comment_lote": "LOTE SEMANAL DE DIA (decisoes do Adrian em 30/09/2026, Grimorio geral/lote-*): trabalho pesado so das 07h as 22h (`janela_pesada`), porque de madrugada o PC faz barulho. SEG-QUA (`dias_de_lote`, 0 = segunda) a rodada EMENDA historias ate `alvo_do_lote`: os horarios da grade ate a proxima segunda 07h mais o `piso_de_reposicao` (segunda 07:02 = 70 + 20 = 90; quarta 22:00 = 44 + 20 = 64). QUI-DOM so consertam e so criam abaixo do piso (20 = 2 dias). ESTOQUE ZERO de madrugada (nenhum video para o proximo horario) LIBERA TUDO: o canal nao pode parar. Aceita video de ate 6 dias. `lote_a_partir_de`: o 1o lote e seg 05/10; antes disso dia de lote se comporta como reposicao. `folga_da_grade`: passo novo nao comeca na meia hora em volta de cada horario da grade (o que ja esta rodando termina). `passos_por_rodada`: quantos passos uma rodada emenda antes de devolver a vez ao proximo disparo. `disco_livre_minimo_gb`: abaixo disso em `disco_a_vigiar` nada novo e criado.",
     "janela_pesada": {"inicio": 7, "fim": 22},
     "dias_de_lote": [0, 1, 2],
