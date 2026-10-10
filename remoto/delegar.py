@@ -709,8 +709,12 @@ def uso_codex(agora: float | None = None, *, rollout: Path | None = None) -> dic
             arquivos = [rollout]
         else:
             base = codex_home() / "sessions"
+            # 09/10/2026: sem DNS, 6 sessoes do apurador cairam sem
+            # `rate_limits` e ocuparam os 6 lugares lidos — a medicao sumiu,
+            # o teto recusou tudo, e sem rodar nada nunca voltaria. Le mais
+            # para tras (`_cauda` so le o fim de cada um: barato).
             arquivos = sorted(base.glob("*/*/*/rollout-*.jsonl"),
-                              key=lambda p: p.stat().st_mtime, reverse=True)[:6]
+                              key=lambda p: p.stat().st_mtime, reverse=True)[:60]
     except OSError:
         return vazio
     for arquivo in arquivos:

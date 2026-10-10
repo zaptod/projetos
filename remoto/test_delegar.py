@@ -592,6 +592,20 @@ def test_teto_do_codex(mundo):
     assert delegar.rodar("t01", forcar=True)["situacao"] == "terminou"
 
 
+def test_sessoes_caidas_nao_escondem_a_medicao(mundo):
+    """09/10: 6 sessoes sem rede, sem `rate_limits`, travaram o despachante."""
+    for p in (mundo.home / "sessions").rglob("*.jsonl"):
+        p.unlink()
+    medida = _rollout(mundo.home, 20.0, time.time() + 3600, nome="rollout-medida.jsonl")
+    os.utime(medida, (time.time() - 3600, time.time() - 3600))
+    for n in range(8):
+        caida = medida.with_name(f"rollout-caida-{n}.jsonl")
+        caida.write_text('{"type":"session_meta","payload":{}}\n', encoding="utf-8")
+    u = delegar.uso_codex()
+    assert u["situacao"] == "medido" and u["pct"] == 20.0
+    assert u["fonte"] == "rollout-medida.jsonl"
+
+
 def test_sem_medicao_recusa_a_nao_ser_pela_contagem(mundo):
     _criar(mundo)
     for p in (mundo.home / "sessions").rglob("*.jsonl"):
