@@ -10,6 +10,16 @@
       "opcao": "pausar",
       "origem": "leitor",
       "tipo": "nada"
+    },
+    {
+      "alvo": "historias/criacao-durante-a-pausa",
+      "em": "2026-10-10T01:37:32",
+      "evento": "2026-10-10T01:37:16",
+      "linha": 150,
+      "nota": "aplicado na hora: fc626d2 + pausa_historias.json; postar --ver confirmou",
+      "opcao": "pausar",
+      "origem": "leitor",
+      "tipo": "no"
     }
   ],
   "contexto": "Pedido do Adrian em 10/10 ~01:30 pelo chat: 'quero que voce de uma parada nos canais de historias'. Aplicado em fc626d2: o arquivo pausa_historias.json no PC para os dois destinos e todo caminho de publicação; os builds seguem. Para voltar: me pedir, ou apagar %LOCALAPPDATA%\\neural-fights\\pausa_historias.json.",
