@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "O DNS é o 'catálogo de endereços' da internet: sem ele o PC não acha youtube.com, tiktok.com nem o Telegram, mesmo com a internet ligada. Medido: 10 a 19 falhas por hora o dia todo no registro do Windows; a postagem esperou 5 min em cada horário e desistiu. A troca é só no PC (não mexe no roteador), dá para desfazer em 1 minuto e precisa de administrador (talvez você precise aceitar uma janela do Windows).",
+  "criado": "2026-10-09T23:48:05.370110",
+  "depende_de": [],
+  "historico": [],
+  "id": "dns-do-pc",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O PC passa a usar 1.1.1.1 e 8.8.8.8 (e os de IPv6 deles). São os mais estáveis do mundo; a operadora deixa de ser o ponto fraco.",
+      "id": "publico",
+      "pede_comentario": false,
+      "rotulo": "Cloudflare e Google (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Fica como está; só o conserto do aviso (o bot passa a avisar quando a rede voltar). Se cair de novo, os horários se perdem de novo.",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Deixar o da operadora"
+    }
+  ],
+  "origem": {
+    "pedido": "pedido-8f2f0988"
+  },
+  "pergunta": "Hoje (09/10) o DNS da operadora (Claro, 181.213.132.8 e .9) falhou das 06:39 às 22:40. Por isso 6 horários não publicaram, o bot não conseguiu avisar e o celular perdeu o app. Troco o DNS do Wi-Fi do PC por um público e estável?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Internet do PC: trocar o DNS da operadora",
+  "vigente": null
+}
