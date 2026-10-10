@@ -46,4 +46,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Permissao: O pedido 'apaga tudo por favor' chegou sem dizer O QUE apaga** — Negar (06/10/2026) `permissao-o-pedido-apaga-tudo-por-favor`
 - ✅ **Enviar o 2º vídeo se o TikTok falhar?** — Enviar mesmo assim (recomendado) (07/10/2026) `enviar-o-2o-video-se-o-tiktok-falhar`
 - ✅ **Permissao: Ligar já o palco nos duelos sem corrente? Pergunta para o Ad** — Permitir (07/10/2026) `permissao-ligar-ja-o-palco-nos-duelos-se`
-- ⏳ **Internet do PC: trocar o DNS da operadora** — Hoje (09/10) o DNS da operadora (Claro, 181.213.132.8 e .9) falhou das 06:39 às 22:40. Por isso 6 horários não publicaram, o bot não conseguiu avisar e o celular perdeu o app. Troco o DNS do Wi-Fi do PC por um público e estável? `dns-do-pc`
+- ✅ **Internet do PC: trocar o DNS da operadora** — Cloudflare e Google (recomendado) (10/10/2026) · “10/10 ~01h pelo chat: 'sim eu quero pode marcar no grimorio de uma vez'” `dns-do-pc`
