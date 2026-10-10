@@ -1,0 +1,44 @@
+{
+  "comentario": false,
+  "contexto": "Pedido do Adrian em 10/10 ~01:30 pelo chat: 'quero que voce de uma parada nos canais de historias'. Aplicado em fc626d2: o arquivo pausa_historias.json no PC para os dois destinos e todo caminho de publicação; os builds seguem. Para voltar: me pedir, ou apagar %LOCALAPPDATA%\\neural-fights\\pausa_historias.json.",
+  "criado": "2026-10-10T01:37:15.295172",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "10/10 ~01:30 pelo chat: 'quero que voce de uma parada nos canais de historias'",
+      "em": "2026-10-10T01:37:16",
+      "opcao": "pausar",
+      "origem": "cli"
+    }
+  ],
+  "id": "pausa-dos-canais",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Nada de histórias sai no YouTube nem no TikTok até você mandar voltar; builds continuam.",
+      "id": "pausar",
+      "pede_comentario": false,
+      "rotulo": "Pausar a publicação"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Como era antes.",
+      "id": "publicar",
+      "pede_comentario": false,
+      "rotulo": "Continuar publicando"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Parar a publicação das histórias no YouTube e no TikTok?",
+  "projeto": "historias",
+  "situacao": "decidida",
+  "titulo": "Pausa dos canais de histórias",
+  "vigente": {
+    "comentario": "10/10 ~01:30 pelo chat: 'quero que voce de uma parada nos canais de historias'",
+    "em": "2026-10-10T01:37:16",
+    "opcao": "pausar"
+  }
+}
