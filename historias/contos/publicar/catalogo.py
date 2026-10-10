@@ -32,6 +32,48 @@ def carregar_config() -> dict:
         return {}
 
 
+class PublicacaoPausada(RuntimeError):
+    """O Adrian pausou a publicacao das historias (`pausa_historias.json`)."""
+
+
+def _arquivo_da_pausa() -> Path:
+    # Estado da maquina, nao do git: o conftest da raiz aponta o runtime para
+    # uma pasta descartavel, e nenhum teste enxerga a pausa de verdade.
+    import os
+    proprio = os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR")
+    if proprio:
+        return Path(proprio) / "pausa_historias.json"
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return Path(base) / "neural-fights" / "pausa_historias.json"
+
+
+def pausada() -> str:
+    """O motivo, quando a publicacao das historias esta PAUSADA; "" quando publica.
+
+    10/10/2026, pedido do Adrian: "quero que voce de uma parada nos canais de
+    historias". Vale para YouTube e TikTok e para todo caminho que publica
+    (a grade, o escoar, a parte so no YouTube, a recuperacao, o painel): a
+    guarda mora em `publicar_youtube`/`publicar_tiktok`, por onde todos
+    passam. A criacao continua (`config/agenda.json`, chave `ativo`).
+    Para voltar: apagar o arquivo, ou `"pausada": false`.
+    """
+    try:
+        dados = json.loads(_arquivo_da_pausa().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(dados, dict) or not dados.get("pausada"):
+        return ""
+    motivo = str(dados.get("motivo") or "pausada pelo Adrian")
+    desde = str(dados.get("desde") or "")[:16].replace("T", " ")
+    return f"{motivo} (desde {desde})" if desde else motivo
+
+
+def barrar_pausa() -> None:
+    motivo = pausada()
+    if motivo:
+        raise PublicacaoPausada(f"publicacao das historias pausada: {motivo}")
+
+
 def slug(texto: str, limite: int = 48) -> str:
     normal = unicodedata.normalize("NFKD", str(texto or ""))
     ascii_ = normal.encode("ascii", "ignore").decode("ascii")
@@ -252,6 +294,7 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
     horario. Espalhar os pedacos ao longo de dias quebraria a leitura — eles
     sao a mesma parte, e quem assiste o primeiro quer o segundo em seguida.
     """
+    barrar_pausa()
     barrar_recusa(video)
     youtube = _rb_publicar_youtube
     cortes = _rb_publicar_cortes
@@ -277,6 +320,8 @@ def publicar_tiktok(video: Video, *, postar: bool = False, log=print,
                     prova: dict | None = None) -> str:
     """Sobe no TikTok pela conta do canal `historias` (para antes de postar
     quando `postar` e False — publicar sozinho nao e decisao de ferramenta)."""
+    if postar:
+        barrar_pausa()
     barrar_recusa(video)
     tiktok = _rb_publicar_tiktok
     # `postar or None` fazia `False` virar `None`, e `None` significa "use o

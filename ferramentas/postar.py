@@ -1424,6 +1424,20 @@ def _alcance_do_youtube(ficha: dict, alvo, visibilidade) -> None:
                f"({alcance['falhou']}); {alvo.id} continua pendente.")
 
 
+def _historias_pausadas() -> str:
+    """O motivo da PAUSA das historias (10/10/2026, pedido do Adrian), ou "".
+
+    A rodada pula o canal inteiro com uma linha so, em vez de levar cada
+    horario ate a guarda de `catalogo.publicar_*` e avisar "falhou" no
+    Telegram dez vezes por dia por uma coisa que ele mesmo pediu.
+    """
+    try:
+        from contos.publicar import catalogo
+        return catalogo.pausada()
+    except Exception:                                          # noqa: BLE001
+        return ""
+
+
 def postar_historia(*, so_ver: bool = False) -> dict:
     from contos.publicar import serie
 
@@ -5352,13 +5366,20 @@ def _main(args) -> int:
     if not args.ver and not esperar_a_rede():
         avisar([{"canal": c, "feito": False,
                  "motivo": "a rede nao voltou a tempo deste horario"}
-                for c in ("historias", "builds")])
+                for c in ("historias", "builds")
+                if not (c == "historias" and _historias_pausadas())])
         return 1
 
     rodados = []
+    pausa = _historias_pausadas()
+    if pausa and args.so in (None, "historias"):
+        _linha(f"[postar] historias: {pausa}; nada sai no YouTube nem no "
+               "TikTok (inclusive a recuperacao).")
     for canal, funcao in (("historias", postar_historia),
                           ("builds", postar_build)):
         if args.so not in (None, canal):
+            continue
+        if canal == "historias" and pausa:
             continue
         # Cada canal passa por `_rodar_canal` (que nunca levanta e avisa a
         # cota no Telegram) e, se a REDE derrubou um destino, e reposto
@@ -5416,6 +5437,8 @@ def _main(args) -> int:
     # build que falhasse no TikTok saia dela para sempre.
     for canal in ("historias", "builds"):
         if args.so not in (None, canal):
+            continue
+        if canal == "historias" and pausa:
             continue
         if tiktok_caiu_por_rede and not args.ver:
             _linha(f"[postar] recuperacao do TikTok ({canal}) fica para a "
