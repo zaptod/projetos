@@ -27,7 +27,9 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "criacao-durante-a-pausa"
+      ],
       "descricao": "Nada de histórias sai no YouTube nem no TikTok até você mandar voltar; builds continuam.",
       "id": "pausar",
       "pede_comentario": false,

@@ -60,6 +60,7 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Títulos com o nome da série no meio** — Tirar a marca da frente (06/10/2026) `titulo-marca-no-meio`
 - ✅ **Imagens sem o PicassoIA: Gemini e ChatGPT trabalham juntos?** — Duas histórias ao mesmo tempo, uma em cada gerador (recomendado) (06/10/2026) `imagens-dois-geradores-juntos`
 - ✅ **Pausa dos canais de histórias** — Pausar a publicação (10/10/2026) · “10/10 ~01:30 pelo chat: 'quero que voce de uma parada nos canais de historias'” `pausa-dos-canais`
+- ⏳ **Criar histórias durante a pausa?** — Com a publicação parada, a criação automática de histórias continua? `criacao-durante-a-pausa`
 
 <!-- decisoes:fim -->
 

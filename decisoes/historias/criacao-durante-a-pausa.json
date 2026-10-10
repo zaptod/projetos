@@ -1,0 +1,38 @@
+{
+  "comentario": true,
+  "contexto": "Hoje há 11 partes prontas (abaixo do piso de 20), então a criação vai continuar trabalhando de dia para encher o estoque, usando o Gemini e o PicassoIA (contas compartilhadas). Se parar, o estoque fica como está e volta a encher quando você liberar.",
+  "criado": "2026-10-10T01:37:21.257387",
+  "depende_de": [
+    {
+      "decisao": "pausa-dos-canais",
+      "opcao": "pausar"
+    }
+  ],
+  "historico": [],
+  "id": "criacao-durante-a-pausa",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Quando você liberar, já tem vídeo para vários dias.",
+      "id": "continuar",
+      "pede_comentario": false,
+      "rotulo": "Continuar criando (estoque pronto para a volta)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Nada de Gemini/PicassoIA para histórias até você liberar; a volta começa com estoque magro (11 partes ~1 dia).",
+      "id": "parar",
+      "pede_comentario": false,
+      "rotulo": "Parar a criação também"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Com a publicação parada, a criação automática de histórias continua?",
+  "projeto": "historias",
+  "situacao": "pendente",
+  "titulo": "Criar histórias durante a pausa?",
+  "vigente": null
+}
