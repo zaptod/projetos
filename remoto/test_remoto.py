@@ -91,11 +91,13 @@ class BaseTemp(unittest.TestCase):
         # o porteiro dos avisos tambem (vale para quem roda com unittest,
         # que nao passa pelo conftest)
         from remoto import avisos
-        antes = (avisos.ARQUIVO, avisos.REGISTRO)
+        antes = (avisos.ARQUIVO, avisos.REGISTRO, avisos.PENDENTES)
         avisos.ARQUIVO = self.pasta / "avisos_estado.json"
         avisos.REGISTRO = self.pasta / "avisos_enviados.jsonl"
+        avisos.PENDENTES = self.pasta / "avisos_pendentes.jsonl"
         self.addCleanup(lambda: (setattr(avisos, "ARQUIVO", antes[0]),
-                                 setattr(avisos, "REGISTRO", antes[1])))
+                                 setattr(avisos, "REGISTRO", antes[1]),
+                                 setattr(avisos, "PENDENTES", antes[2])))
         # o diario tambem vai para a pasta temporaria
         self._arquivo_diario = comandos.atividade._arquivo
         comandos.atividade._arquivo = lambda: self.pasta / "atividade.jsonl"
@@ -461,6 +463,31 @@ class AvisoAvulsoTests(BaseTemp):
         config.salvar({"token": "t", "autorizados": [1], "alertas": True})
         self._telegram_falso([], quebra=True)
         self.assertFalse(avisar("pronto"))
+
+    def test_falha_nao_cala_o_proximo_igual_e_guarda_pendente(self):
+        from remoto import avisos
+        from remoto.__main__ import avisar
+        config.salvar({"token": "t", "autorizados": [1], "alertas": True})
+        self._telegram_falso([], quebra=True)
+        self.assertFalse(avisar("pronto"))
+        self.assertEqual(["pronto"], [p["texto"] for p in avisos.pendentes()])
+        enviados = []
+        self._telegram_falso(enviados)
+        self.assertTrue(avisar("pronto"))
+        self.assertEqual([1], [chat for chat, _texto in enviados])
+
+    def test_bot_entrega_pendente_e_descarta_o_velho(self):
+        from remoto import avisos
+        config.salvar({"token": "t", "autorizados": [1], "alertas": True})
+        avisos.enfileirar("aviso novo")
+        avisos.enfileirar("aviso velho", agora=datetime.now() - timedelta(hours=25))
+        tg = TelegramFalso()
+        linhas = []
+        robo = bot_mod.Bot(telegram=tg, log=linhas.append)
+        robo._entregar_pendentes()
+        self.assertEqual(["aviso novo"], tg.textos())
+        self.assertEqual([], avisos.pendentes())
+        self.assertTrue(any("24 h" in linha for linha in linhas))
 
 
 class InstanciaUnicaTests(BaseTemp):

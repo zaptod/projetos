@@ -1461,11 +1461,20 @@ def avisar_telegram(texto: str, *, chave: str | None = None) -> bool:
     entregues = 0
     for chat in destinos:
         try:
-            tg.mensagem(chat, str(texto)[:3500])
-            entregues += 1
+            # sem rede o `mensagem` devolve {} sem levantar: so `ok` e entrega
+            if tg.mensagem(chat, str(texto)[:3500]).get("ok"):
+                entregues += 1
         except Exception:                                      # noqa: BLE001
             pass
-    return entregues > 0
+    origem = "carteiro.avisar_telegram"
+    if entregues:
+        avisos.confirmar(texto, chave=chave, origem=origem)
+        return True
+    # 09/10/2026: o aviso que nao saiu calava os iguais por um dia; agora
+    # volta a valer e o bot o manda quando a rede voltar
+    avisos.desfazer(texto, chave=chave)
+    avisos.enfileirar(texto, chave=chave, origem=origem)
+    return False
 
 
 def avisar_telegram_arquivo(caminho, legenda: str = "") -> bool:

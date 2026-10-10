@@ -18,4 +18,6 @@ def _claude_isolado(tmp_path, monkeypatch):
     # o porteiro dos avisos tambem: um aviso de um teste nao cala o do outro
     monkeypatch.setattr(avisos, "ARQUIVO", tmp_path / "avisos" / "avisos_estado.json")
     monkeypatch.setattr(avisos, "REGISTRO", tmp_path / "avisos" / "avisos_enviados.jsonl")
+    # e a fila de pendentes: o bot de verdade mandaria ao Adrian o aviso de teste
+    monkeypatch.setattr(avisos, "PENDENTES", tmp_path / "avisos" / "avisos_pendentes.jsonl")
     yield

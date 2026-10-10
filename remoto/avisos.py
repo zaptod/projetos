@@ -41,6 +41,7 @@ from pathlib import Path
 JANELA_S = 24 * 3600
 ARQUIVO = None              # os testes apontam para outro lugar
 REGISTRO = None
+PENDENTES = None
 _GUARDA_DIAS = 3
 _REGISTRO_MAX = 2000
 
@@ -72,6 +73,10 @@ def _registro() -> Path:
     return Path(REGISTRO) if REGISTRO else _pasta() / "avisos_enviados.jsonl"
 
 
+def _pendentes() -> Path:
+    return Path(PENDENTES) if PENDENTES else _pasta() / "avisos_pendentes.jsonl"
+
+
 def normalizar(texto: str) -> str:
     """O texto sem o que muda a cada envio (hora, data, idade, pid)."""
     limpo = str(texto or "").lower()
@@ -82,6 +87,10 @@ def normalizar(texto: str) -> str:
 
 def _assinatura(texto: str) -> str:
     return hashlib.sha1(normalizar(texto).encode("utf-8")).hexdigest()[:16]
+
+
+def chave_de(texto: str, chave: str | None = None) -> str:
+    return str(chave or ("texto:" + _assinatura(texto)))
 
 
 def _ler() -> dict:
@@ -116,7 +125,7 @@ def liberar(texto: str, *, chave: str | None = None, origem: str = "",
     """
     agora = agora or datetime.now()
     estado = _assinatura(texto)
-    chave = str(chave or ("texto:" + estado))
+    chave = chave_de(texto, chave)
     try:
         dados = _ler()
         ficha = dados.get(chave) if isinstance(dados.get(chave), dict) else None
@@ -130,12 +139,77 @@ def liberar(texto: str, *, chave: str | None = None, origem: str = "",
             return False
         dados[chave] = {"estado": estado, "em": agora.isoformat(timespec="seconds"),
                         "calados": 0, "origem": origem,
-                        "texto": " ".join(str(texto).split())[:160]}
+                        "texto": " ".join(str(texto).split())[:160],
+                        "_antes": ficha}
         _gravar(_podar(dados, agora))
     except Exception:                                          # noqa: BLE001
         return True
-    _anotar(texto, chave, origem, agora)
     return True
+
+
+def confirmar(texto: str, *, chave: str | None = None, origem: str = "",
+              agora: datetime | None = None) -> None:
+    """Confirma que o aviso saiu e so entao o registra como enviado."""
+    agora = agora or datetime.now()
+    chave = chave_de(texto, chave)
+    try:
+        dados = _ler()
+        ficha = dados.get(chave)
+        if isinstance(ficha, dict):
+            ficha.pop("_antes", None)
+            dados[chave] = ficha
+            _gravar(_podar(dados, agora))
+    except Exception:                                          # noqa: BLE001
+        pass
+    _anotar(texto, chave, origem, agora)
+
+
+def desfazer(texto: str, *, chave: str | None = None) -> None:
+    """Desfaz a reserva de um aviso que nao conseguiu sair."""
+    chave = chave_de(texto, chave)
+    try:
+        dados = _ler()
+        ficha = dados.get(chave)
+        if not isinstance(ficha, dict):
+            return
+        antes = ficha.get("_antes")
+        if antes is None:
+            dados.pop(chave, None)
+        else:
+            dados[chave] = antes
+        _gravar(dados)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def pendentes() -> list[dict]:
+    """Avisos aguardando rede, na ordem em que falharam."""
+    try:
+        return [json.loads(linha) for linha in _pendentes().read_text(
+            encoding="utf-8").splitlines() if isinstance(json.loads(linha), dict)]
+    except (OSError, ValueError):
+        return []
+
+
+def guardar_pendentes(itens: list[dict]) -> None:
+    try:
+        destino = _pendentes()
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        tmp = destino.with_name(f".{destino.name}.{os.getpid()}.tmp")
+        tmp.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n"
+                               for item in itens), encoding="utf-8")
+        os.replace(tmp, destino)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def enfileirar(texto: str, *, chave: str | None = None, origem: str = "",
+              agora: datetime | None = None) -> None:
+    itens = pendentes()
+    itens.append({"texto": str(texto), "chave": chave_de(texto, chave),
+                  "origem": origem, "em": (agora or datetime.now()).isoformat(
+                      timespec="seconds")})
+    guardar_pendentes(itens)
 
 
 def _podar(dados: dict, agora: datetime) -> dict:

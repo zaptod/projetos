@@ -76,7 +76,9 @@ def test_no_dia_seguinte_sai_de_novo():
 
 
 def test_o_que_sai_fica_registrado_e_o_calado_e_contado():
-    for i in range(5):
+    assert avisos.liberar("mesmo aviso", agora=AGORA)
+    avisos.confirmar("mesmo aviso", agora=AGORA)
+    for i in range(1, 5):
         avisos.liberar("mesmo aviso", agora=AGORA + timedelta(minutes=i))
     linhas = avisos._registro().read_text(encoding="utf-8").splitlines()
     assert len(linhas) == 1 and json.loads(linhas[0])["texto"] == "mesmo aviso"
@@ -179,3 +181,25 @@ def test_avisar_avulso_cala_o_repetido(tmp_path, monkeypatch):
                             "⚠️ historias: nao crio agora — C: com 2 GB"]
     finally:
         config.ARQUIVO = None
+
+
+def test_carteiro_sem_rede_nao_cala_o_proximo_e_vai_para_pendentes(monkeypatch):
+    """09/10: sem DNS o `mensagem` devolve {} sem levantar; contava como entregue."""
+    from ias import carteiro
+    from remoto import api
+
+    class SemRede:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def mensagem(self, *_a, **_k):
+            return {}
+
+    monkeypatch.setattr(api, "Telegram", SemRede)
+    monkeypatch.setattr(config, "carregar", lambda: {"autorizados": [1]})
+    monkeypatch.setattr(config, "token", lambda: "x")
+    assert carteiro.avisar_telegram("a rede caiu de novo") is False
+    assert carteiro.avisar_telegram("a rede caiu de novo") is False
+    textos = [p["texto"] for p in avisos.pendentes()]
+    assert textos == ["a rede caiu de novo", "a rede caiu de novo"]
+    assert avisos.liberar("a rede caiu de novo") is True

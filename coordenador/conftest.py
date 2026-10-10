@@ -18,6 +18,7 @@ def _coordenador_isolado(tmp_path, monkeypatch):
     monkeypatch.setenv("NF_COORDENADOR_PASTA", str(tmp_path / "coordenador"))
     monkeypatch.setattr(avisos, "ARQUIVO", tmp_path / "avisos" / "avisos_estado.json")
     monkeypatch.setattr(avisos, "REGISTRO", tmp_path / "avisos" / "avisos_enviados.jsonl")
+    monkeypatch.setattr(avisos, "PENDENTES", tmp_path / "avisos" / "avisos_pendentes.jsonl")
     monkeypatch.setattr(claude_estado, "ARQUIVO", tmp_path / "claude_estado" / "claude.json")
     monkeypatch.delenv("NF_CLAUDE_ESTADO", raising=False)
     from coordenador import cerebro

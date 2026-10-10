@@ -208,18 +208,24 @@ def avisar(texto: str, *, chave: str | None = None) -> bool:
     if not destinos:
         print("[remoto] ninguem autorizado ainda; nada a avisar.")
         return False
-    if not avisos.liberar(texto, chave=chave, origem="remoto --avisar"):
+    origem = "remoto --avisar"
+    if not avisos.liberar(texto, chave=chave, origem=origem):
         print("[remoto] aviso repetido (mesmo texto ha menos de um dia); calado.")
         return True
     tg = Telegram(config.token())
     entregues = 0
     for chat in destinos:
         try:
-            tg.mensagem(chat, texto, markdown=True)
-            entregues += 1
+            if tg.mensagem(chat, texto, markdown=True).get("ok"):
+                entregues += 1
         except Exception as exc:                               # noqa: BLE001
             print(f"[remoto] nao consegui avisar {chat}: {exc}")
-    return entregues > 0
+    if entregues:
+        avisos.confirmar(texto, chave=chave, origem=origem)
+        return True
+    avisos.desfazer(texto, chave=chave)
+    avisos.enfileirar(texto, chave=chave, origem=origem)
+    return False
 
 
 if __name__ == "__main__":

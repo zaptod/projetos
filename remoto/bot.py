@@ -20,7 +20,7 @@ import random
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import avisos, comandos, config, vigia_tailnet
@@ -142,9 +142,21 @@ class Bot:
             if not avisos.liberar(texto, chave=chave + "|" + avisos.normalizar(
                     evento.get("detalhe") or "")[:200], origem="bot.alerta"):
                 continue
-            saiu = True
+            entregues = 0
             for chat in config.carregar()["autorizados"]:
-                self.tg.mensagem(chat, texto, markdown=True)
+                try:
+                    if self.tg.mensagem(chat, texto, markdown=True).get("ok"):
+                        entregues += 1
+                except Exception:                              # noqa: BLE001
+                    pass
+            chave_aviso = chave + "|" + avisos.normalizar(
+                evento.get("detalhe") or "")[:200]
+            if entregues:
+                avisos.confirmar(texto, chave=chave_aviso, origem="bot.alerta")
+                saiu = True
+            else:
+                avisos.desfazer(texto, chave=chave_aviso)
+                avisos.enfileirar(texto, chave=chave_aviso, origem="bot.alerta")
         if saiu:
             self._apurar()
 
@@ -200,9 +212,80 @@ class Bot:
         """Aviso espontaneo (nao e resposta a comando): passa pelo porteiro."""
         if not avisos.liberar(texto, chave=chave, origem="bot"):
             return False
+        entregues = 0
         for chat in config.carregar()["autorizados"]:
-            self.tg.mensagem(chat, texto)
-        return True
+            try:
+                if self.tg.mensagem(chat, texto).get("ok"):
+                    entregues += 1
+            except Exception:                                  # noqa: BLE001
+                pass
+        if entregues:
+            avisos.confirmar(texto, chave=chave, origem="bot")
+            return True
+        avisos.desfazer(texto, chave=chave)
+        avisos.enfileirar(texto, chave=chave, origem="bot")
+        return False
+
+    def _entregar_pendentes(self):
+        """Tenta novamente os avisos que falharam por falta de rede."""
+        agora = datetime.now()
+        vivos = []
+        itens = avisos.pendentes()
+        if not itens:
+            return              # fila vazia: nada a regravar a cada volta
+        for item in itens:
+            quando = avisos._data(item.get("em"))
+            if quando is None or quando < agora - timedelta(hours=24):
+                self.log("[remoto] aviso pendente ha mais de 24 h descartado.")
+            else:
+                vivos.append(item)
+        if not vivos:
+            avisos.guardar_pendentes([])
+            return
+
+        if len(vivos) > 3:
+            grupos = []
+            grupo = []
+            tamanho = 100
+            for item in vivos:
+                item_tamanho = len(str(item.get("texto", ""))) + 2
+                if grupo and tamanho + item_tamanho > 3800:
+                    grupos.append(grupo)
+                    grupo, tamanho = [], 100
+                grupo.append(item)
+                tamanho += item_tamanho
+            if grupo:
+                grupos.append(grupo)
+        else:
+            grupos = [[item] for item in vivos]
+        restantes = []
+        for grupo in grupos:
+            primeiro = avisos._data(grupo[0].get("em")) or agora
+            texto = ("⚠ Avisos que nao sairam por falta de rede (desde "
+                     + primeiro.strftime("%H:%M") + ")\n\n"
+                     + "\n\n".join(str(item.get("texto", "")) for item in grupo)
+                     if len(grupo) > 1 else str(grupo[0].get("texto", "")))
+            liberados = [item for item in grupo if avisos.liberar(
+                item.get("texto", ""), chave=item.get("chave"),
+                origem=item.get("origem", "bot"))]
+            if not liberados:
+                continue
+            entregues = 0
+            for chat in config.carregar()["autorizados"]:
+                try:
+                    if self.tg.mensagem(chat, texto).get("ok"):
+                        entregues += 1
+                except Exception:                              # noqa: BLE001
+                    pass
+            if entregues:
+                for item in liberados:
+                    avisos.confirmar(item.get("texto", ""), chave=item.get("chave"),
+                                     origem=item.get("origem", "bot"))
+            else:
+                for item in liberados:
+                    avisos.desfazer(item.get("texto", ""), chave=item.get("chave"))
+                restantes.extend(grupo)
+        avisos.guardar_pendentes(restantes)
 
     # ---------------------------------------------------------------- laco
     def uma_volta(self, timeout: int = 30) -> int:
@@ -222,6 +305,10 @@ class Bot:
             self._relatorios()
         except Exception as exc:   # relatorio quebrado nao derruba o bot
             self.log(f"[remoto] erro nos relatorios: {exc}")
+        try:
+            self._entregar_pendentes()
+        except Exception as exc:
+            self.log(f"[remoto] erro nos avisos pendentes: {exc}")
         try:
             self._vigiar_tailnet()
         except Exception as exc:   # vigia quebrada nao derruba o bot
