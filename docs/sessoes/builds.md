@@ -90,6 +90,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Permissao: Ligar já o palco nos duelos sem corrente? Pergunta para o Ad** — Permitir (07/10/2026) `permissao-ligar-ja-o-palco-nos-duelos-se`
 - ✅ **Internet do PC: trocar o DNS da operadora** — Cloudflare e Google (recomendado) (10/10/2026) · “10/10 ~01h pelo chat: 'sim eu quero pode marcar no grimorio de uma vez'” `dns-do-pc`
 - ⏳ **Limpar o lixo da máquina** — Posso apagar o que a checagem de 11/10 achou sobrando? `limpeza-da-maquina`
+- ⏳ **Auditoria profunda: gastar quanto do Codex?** — O Codex bateu o limite de 5 horas 12 minutos depois de renovar (volta às 23:32). Continuo as 31 fatias em esforço ALTO, que é o mais completo e o que mais gasta? `auditoria-profunda-custo`
 
 **Builds**
 - ✅ **Variantes B** — Título próprio para cada uma (27/09/2026) `variantes-b`

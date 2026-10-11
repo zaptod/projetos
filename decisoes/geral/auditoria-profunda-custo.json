@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Medido hoje: em 12 minutos, 6 fatias em esforço alto gastaram a janela inteira de 5 h e subiram a cota da SEMANA do Codex de 16% para 31%. Restam 27 fatias de código, 4 consertos e a consolidação: a conta aponta para umas 4 a 5 janelas de 5 h (até amanhã de manhã) e uns 60 a 70% da semana. O trabalho fica parado e volta sozinho às 23:32. No esforço médio gasta bem menos, mas olha menos fundo (foi o médio que fez a auditoria rasa da manhã).",
+  "criado": "2026-10-11T18:50:42.332091",
+  "depende_de": [],
+  "historico": [],
+  "id": "auditoria-profunda-custo",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Auditoria completa, termina até amanhã de manhã, gasta a maior parte da semana do Codex.",
+      "id": "alto",
+      "pede_comentario": false,
+      "rotulo": "Continuar em esforço alto (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Gasta menos da metade, mas as fatias olham mais por cima.",
+      "id": "medio",
+      "pede_comentario": false,
+      "rotulo": "Passar para esforço médio"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Esforço alto em postar, publicar, motor e coordenador; médio no resto (painel, sprites, scripts, config).",
+      "id": "metade",
+      "pede_comentario": false,
+      "rotulo": "Alto só nas partes que publicam e no motor"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O Codex bateu o limite de 5 horas 12 minutos depois de renovar (volta às 23:32). Continuo as 31 fatias em esforço ALTO, que é o mais completo e o que mais gasta?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Auditoria profunda: gastar quanto do Codex?",
+  "vigente": null
+}
