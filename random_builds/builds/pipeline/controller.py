@@ -42,9 +42,20 @@ def _write_json(path: Path, data) -> None:
 
 def _next_id(prefixo: str = "generation") -> str:
     OUTPUTS.mkdir(exist_ok=True)
-    existing = [int(p.name.split("_")[1]) for p in OUTPUTS.glob(f"{prefixo}_*")
-                if p.name.split("_")[1].isdigit()]
-    return f"{prefixo}_{(max(existing) + 1 if existing else 1):05d}"
+    # Continua DEPOIS do maior: numero de pasta apagada nao volta (11/10/2026:
+    # falta generation_00044, tirada por arte alheia, e o ledger e o banco
+    # ainda a conhecem — um build novo com esse id herdaria o historico dela).
+    # O mkdir exclusivo e a reserva entre dois processos.
+    existentes = [int(p.name.split("_")[1]) for p in OUTPUTS.glob(f"{prefixo}_*")
+                  if p.name.split("_")[1].isdigit()]
+    numero = max(existentes, default=0) + 1
+    while True:
+        identificador = f"{prefixo}_{numero:05d}"
+        try:
+            (OUTPUTS / identificador).mkdir()
+            return identificador
+        except FileExistsError:
+            numero += 1
 
 
 def _next_generation_id() -> str:

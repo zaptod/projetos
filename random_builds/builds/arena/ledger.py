@@ -19,6 +19,8 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .. import travas
+
 OUTPUTS = Path(__file__).resolve().parents[2] / "outputs"
 ARQUIVO = OUTPUTS / "_arena" / "ledger.json"
 
@@ -72,24 +74,39 @@ class Ledger:
             "video": video,
             "quando": _agora(),
         }
-        self.dados["lutas"] = [r for r in self.lutas if r.get("id") != registro["id"]]
-        self.lutas.append(registro)
-        self.salvar()
+        with travas.trava("arena_ledger", esperar=30.0) as minha:
+            if not minha:
+                raise RuntimeError("ledger da arena ocupado")
+            self.dados = {"versao": 1, "lutas": []}
+            if self.caminho.is_file():
+                try:
+                    lido = json.loads(self.caminho.read_text(encoding="utf-8"))
+                    if isinstance(lido, dict) and isinstance(lido.get("lutas"), list):
+                        self.dados = lido
+                except (OSError, ValueError):
+                    pass
+            self.dados.setdefault("lutas", [])
+            self.dados["lutas"] = [r for r in self.lutas if r.get("id") != registro["id"]]
+            self.lutas.append(registro)
+            self.salvar()
         return registro
 
     def salvar(self) -> None:
-        self.caminho.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(self.caminho.parent), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(self.dados, fh, ensure_ascii=False, indent=1)
-            os.replace(tmp, self.caminho)
-        except BaseException:
+        with travas.trava("arena_ledger", esperar=30.0) as minha:
+            if not minha:
+                raise RuntimeError("ledger da arena ocupado")
+            self.caminho.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=str(self.caminho.parent), suffix=".tmp")
             try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump(self.dados, fh, ensure_ascii=False, indent=1)
+                os.replace(tmp, self.caminho)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
 
     # ------------------------------------------------------------- leitura
     def recorde(self, nome: str) -> dict:

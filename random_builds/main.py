@@ -641,6 +641,8 @@ def main() -> None:
     rea.add_argument("ids", nargs="*", help="IDs da biblioteca (ex.: 0007)")
 
     args = parser.parse_args()
+    if args.command == "generate-video" and args.count < 1:
+        parser.error("--count deve ser um inteiro maior ou igual a 1")
     if args.command == "noite":
         # Antes do PipelineController: instalar/listar nao precisam dele, e a
         # rodada cria o seu so quando ha duelo a gerar.
@@ -763,7 +765,7 @@ def main() -> None:
     else:
         controller.generate(seed=args.seed, generation_only=args.generation_only,
                             preview=args.preview, insert=not args.no_insert,
-                            identity=not args.no_identity,
+                            identity=not args.no_identity and not args.generation_only,
                             nome_pedido=args.nome_pedido,
                             autor_pedido=args.autor_pedido,
                             estreia=not args.no_estreia,
