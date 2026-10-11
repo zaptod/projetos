@@ -124,6 +124,8 @@ def main(argv=None):
     pedir.add_argument("--ia", choices=("codex", "claude"), default="codex")
     pedir.add_argument("--titulo", default="")
     pedir.add_argument("--tarefa", help="arquivo com o complemento da tarefa")
+    pedir.add_argument("--esforco", choices=("low", "medium", "high", "xhigh", "max", "ultra"),
+                       default=None, help="do Codex; padrao medium, high nas dificeis")
     reiniciar = sub.add_parser("reiniciar")
     reiniciar.add_argument("servico", choices=("app", "bot", "carteiro", "vila"))
     sub.add_parser("instalar-tarefa")
@@ -156,7 +158,7 @@ def main(argv=None):
             cargo = args.cargo or ("executor" if args.ia == "codex" else "orquestrador")
             pedido = pedidos.contratar(texto, "chat", cargo=cargo,
                                        permitidos=args.permitido or None, ia=args.ia,
-                                       titulo=args.titulo or None)
+                                       titulo=args.titulo or None, esforco=args.esforco)
         except ValueError as exc:
             print(f"recusado: {exc}", file=sys.stderr)
             return 3

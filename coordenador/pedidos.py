@@ -1036,7 +1036,7 @@ class MesaPedidos:
 
     # ------------------------------------------------------------ entrada
     def contratar(self, texto, origem, *, cargo=None, permitidos=None, ia=None, titulo=None,
-                 alvo=None):
+                 alvo=None, esforco=None):
         """Abre um pedido de trabalho vindo de outra porta, sem despachar aqui.
 
         A Mesa e a unica que contrata: app, cerebro e apurador apenas deixam o
@@ -1072,6 +1072,8 @@ class MesaPedidos:
             pedido = {"id": ident, "texto": texto, "origem": origem, "situacao": "recebido",
                       "motivo": "", "trabalhador": None, "conferente": None, "ia": None,
                       "ia_forcada": ia, "cargo": cargo, "permitidos": permitidos, "alvo": alvo,
+                      # 11/10: "medio por padrao, alto nas dificeis" (geral/codex-esforco)
+                      "esforco": (str(esforco).strip().lower() or None) if esforco else None,
                       "titulo": str(titulo or texto.splitlines()[0])[:160], "contratos": 0,
                       "criado_em": agora, "atualizado_em": agora, "ultimo_evento_em": agora,
                       "mensagens": 1, "do_adrian": [texto[:2000]]}
@@ -2110,9 +2112,10 @@ class MesaPedidos:
                 caminho = despachante.pasta_da(ident) / "pedido.md"
                 caminho.parent.mkdir(parents=True, exist_ok=True)
                 caminho.write_text(corpo, encoding="utf-8")
+                extra = {"esforco": pedido["esforco"]} if pedido.get("esforco") else {}
                 try:
                     despachante.criar(ident, caminho, permitidos, ia=ia, cargo=cargo,
-                                      titulo=titulo)
+                                      titulo=titulo, **extra)
                 except Exception as exc:                      # noqa: BLE001
                     return ("criar", exc)
             try:
@@ -3586,9 +3589,10 @@ def registrar(texto, origem="app", *, novo=False, responde_a=None, triar=None):
     return MESA.registrar(texto, origem, novo=novo, responde_a=responde_a, triar=triar)
 
 
-def contratar(texto, origem, *, cargo=None, permitidos=None, ia=None, titulo=None, alvo=None):
+def contratar(texto, origem, *, cargo=None, permitidos=None, ia=None, titulo=None, alvo=None,
+              esforco=None):
     return MESA.contratar(texto, origem, cargo=cargo, permitidos=permitidos, ia=ia,
-                          titulo=titulo, alvo=alvo)
+                          titulo=titulo, alvo=alvo, esforco=esforco)
 
 
 def passar_para_equipe(ident, origem="app"):

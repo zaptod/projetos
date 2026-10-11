@@ -18,6 +18,18 @@ def test_pedir_cria_um_pedido_e_deduplica(tmp_path, monkeypatch, capsys):
     assert pedido["id"] == primeiro and pedido["origem"] == "chat"
 
 
+def test_pedir_com_esforco_chega_ao_despachante(tmp_path, monkeypatch, capsys):
+    """11/10: 'medio por padrao, alto nas dificeis' sem precisar do delegar na mao."""
+    monkeypatch.setenv("NF_COORDENADOR_PASTA", str(tmp_path / "coordenador"))
+    assert cli.main(["pedir", "auditoria profunda", "--esforco", "high"]) == 0
+    ident = capsys.readouterr().out.strip()
+    gravado = next(p for p in pedidos._ler()["pedidos"] if p["id"] == ident)
+    assert gravado["esforco"] == "high"
+    assert cli.main(["pedir", "outra coisa"]) == 0
+    ident2 = capsys.readouterr().out.strip()
+    assert next(p for p in pedidos._ler()["pedidos"] if p["id"] == ident2)["esforco"] is None
+
+
 def test_pedir_juntado_avisa(tmp_path, monkeypatch, capsys):
     """O mesmo pedido de novo e juntado; o chat precisa saber. Outro texto,
     mesmo com as mesmas pastas, e outro pedido (11/10/2026)."""
