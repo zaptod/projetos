@@ -89,7 +89,12 @@ LENTO_PRAZO_S = 5 * 60      # "contratando" sem dono vivo ha 5 min: o pulso morr
 FINAIS = ("conferido", "falhou", "respondido")
 VIVOS = ("recebido", "trabalhando", "esperando", "entregue", "parado_limite",
          "esperando_voce", "executando", "contratando")
-PERMITIDOS = ["remoto/**", "coordenador/**", "docs/**", ".claude/agents/**"]
+# O PROJETO INTEIRO (decisao app-e-bot/permissao-dos-pedidos-do-app, 11/10/2026:
+# "faca isso"). Eram 4 pastas; quase todo pedido real caia fora delas e virava
+# aceite do Adrian — "pare com os builds" ficou 17 h parado assim. Continua
+# pedindo aceite so o arriscado (publicar, conta, push, apagar, decisao de
+# produto), e os arquivos dele saem de qualquer diff (`delegar.PROIBIDOS`).
+PERMITIDOS = ["**"]
 class _TravaDoArquivo:
     """Uma leitura-e-gravacao do pedidos.json por vez, entre THREADS e entre
     PROCESSOS (o app e o bot registram, o coordenador anda o `passo`).
@@ -1010,8 +1015,9 @@ class MesaPedidos:
                     continue
                 mesmo_texto = re.sub(r"\s+", " ", str(aberto.get("texto") or "")).casefold() == normalizado
                 mesmo_alvo = bool(alvo and alvo == aberto.get("alvo"))
-                mesmos_permitidos = permitidos == list(aberto.get("permitidos") or [])
-                if mesmo_texto or mesmo_alvo or (not alvo and mesmos_permitidos):
+                # 11/10/2026: "mesmas pastas liberadas" tambem juntava, e com o
+                # projeto inteiro liberado todo pedido novo sumiria no 1o aberto
+                if mesmo_texto or mesmo_alvo:
                     recibo = f"Ja esta no pedido {aberto['id']}"
                     return dict(aberto, recibo=recibo, duplicado=True, continuacao=False)
             ident = "pedido-" + uuid.uuid4().hex[:8]

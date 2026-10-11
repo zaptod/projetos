@@ -19,14 +19,18 @@ def test_pedir_cria_um_pedido_e_deduplica(tmp_path, monkeypatch, capsys):
 
 
 def test_pedir_juntado_avisa(tmp_path, monkeypatch, capsys):
-    """Outro texto com as mesmas pastas e juntado; o chat precisa saber."""
+    """O mesmo pedido de novo e juntado; o chat precisa saber. Outro texto,
+    mesmo com as mesmas pastas, e outro pedido (11/10/2026)."""
     monkeypatch.setenv("NF_COORDENADOR_PASTA", str(tmp_path / "coordenador"))
-    assert cli.main(["pedir", "arrume a tela", "--permitido", "remoto/app/**"]) == 0
+    assert cli.main(["pedir", "arrume a tela"]) == 0
     primeiro = capsys.readouterr().out.strip()
-    assert cli.main(["pedir", "outra coisa", "--permitido", "remoto/app/**"]) == 0
+    assert cli.main(["pedir", "arrume  a tela"]) == 0
     saida = capsys.readouterr()
     assert saida.out.strip() == primeiro
     assert "juntado ao pedido aberto " + primeiro in saida.err
+    assert cli.main(["pedir", "outra coisa"]) == 0
+    saida = capsys.readouterr()
+    assert saida.out.strip() != primeiro and "juntado" not in saida.err
 
 
 def test_delegar_criar_sem_pedido_recusa(capsys):

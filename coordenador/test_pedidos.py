@@ -178,10 +178,20 @@ def test_pedido_cria_orquestrador_com_o_texto(mesa):
     assert _pedido(mesa)["situacao"] == "trabalhando"
 
 
+def test_outro_texto_com_as_mesmas_pastas_e_outro_pedido(mesa):
+    """11/10: com o projeto inteiro liberado, juntar por pasta engolia todo pedido novo."""
+    assert pedidos.PERMITIDOS == ["**"]
+    primeiro = mesa.contratar("pare os builds", "chat")
+    outro = mesa.contratar("conserte a tela do Agora", "chat")
+    assert outro["id"] != primeiro["id"] and not outro.get("duplicado")
+    gravado = next(p for p in pedidos._ler()["pedidos"] if p["id"] == outro["id"])
+    assert gravado["permitidos"] == ["**"]
+
+
 def test_contratar_guarda_contrato_e_deduplica_pedido_aberto(mesa):
     primeiro = mesa.contratar("investigue a tela", "equipe", cargo="conferente",
                               permitidos=["remoto/app/**"], ia="codex", titulo="Tela")
-    repetido = mesa.contratar("outro texto", "equipe", cargo="conferente",
+    repetido = mesa.contratar("investigue  a tela", "equipe", cargo="conferente",
                               permitidos=["remoto/app/**"], ia="codex", titulo="Tela")
     assert repetido["id"] == primeiro["id"] and repetido["duplicado"]
     assert repetido["recibo"] == f"Ja esta no pedido {primeiro['id']}"

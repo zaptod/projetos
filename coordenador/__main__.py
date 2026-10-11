@@ -161,11 +161,10 @@ def main(argv=None):
             print(f"recusado: {exc}", file=sys.stderr)
             return 3
         if pedido.get("duplicado"):
-            # 08/10/2026: um 2o pedido com OUTRO texto e as mesmas pastas
-            # liberadas sumia dentro do 1o e so voltava o id repetido
+            # 08/10/2026: o pedido juntado sumia calado e so voltava o id
+            # repetido (desde 11/10 so junta o MESMO texto ou o mesmo assunto)
             print(f"aviso: juntado ao pedido aberto {pedido['id']} ({pedido.get('titulo') or ''}); "
-                  "para um pedido separado, libere pastas diferentes com --permitido",
-                  file=sys.stderr)
+                  "o mesmo texto ja esta em andamento", file=sys.stderr)
         print(pedido["id"])
         return 0
     if args.acao == "rodar":

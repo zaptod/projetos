@@ -925,6 +925,10 @@ def compor_prompt(tarefa: str, permitidos: list[str]) -> str:
     except OSError:
         regras = ""
     lista = "\n".join(f"- `{p}`" for p in permitidos)
+    if "**" in permitidos:
+        lista += ("\n\n`**` e o PROJETO INTEIRO: mexa em qualquer arquivo dele sem pedir "
+                  "permissao. Peca so para o que e arriscado: publicar, conta, push, "
+                  "apagar, repositorio externo e decisao de produto.")
     permissao = ("\n# Se precisar de permissao\n\n"
                  "Se precisar de algo fora do seu escopo, NAO desista nem invente. "
                  "Escreva `.permissao.json` na raiz da worktree e termine, com exatamente "

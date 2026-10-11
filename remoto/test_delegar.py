@@ -521,6 +521,15 @@ def test_decidir_permissao_retomada_politica_e_conta_negada(mundo, monkeypatch):
     assert delegar.decidir_permissao("t01", True)["situacao"] == "negado"
 
 
+def test_projeto_inteiro_diz_ao_trabalhador_o_que_ainda_pede_aceite():
+    """11/10 (app-e-bot/permissao-dos-pedidos-do-app): `**` = sem pedir pasta."""
+    texto = delegar.compor_prompt("faca x", ["**"])
+    assert "PROJETO INTEIRO" in texto and "publicar, conta, push" in texto
+    assert "PROJETO INTEIRO" not in delegar.compor_prompt("faca x", ["remoto/**"])
+    assert delegar._casa("ferramentas/postar.py", "**")
+    assert delegar._casa("random_builds/builds/publicar/youtube.py", "**")
+
+
 def test_caminho_protegido_aceito_entra_na_lista_do_trabalhador(mundo, monkeypatch):
     """11/10: tres aceites e o trabalhador pedia de novo — a lista nunca mudava."""
     monkeypatch.setenv("NF_DUBLE_MODO", "escopo")

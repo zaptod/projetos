@@ -1730,7 +1730,7 @@ class Manipulador(BaseHTTPRequestHandler):
                 from coordenador import pedidos
                 item = pedidos.contratar(
                     tarefa, "equipe", cargo=cargo,
-                    permitidos=["remoto/**", "coordenador/**", "docs/**"], ia=ia,
+                    permitidos=list(pedidos.PERMITIDOS), ia=ia,
                     titulo=tarefa.splitlines()[0], alvo=repo_tarefa)
                 return self._json({"feito": True, "pedido": item["id"],
                                    "recibo": item["recibo"], "duplicado": item.get("duplicado", False)})
