@@ -837,6 +837,13 @@ def resumo(estado: dict) -> dict:
     # para mostrar: e erro. Tarefa que voltou a abrir console e so feiura.
     quebradas = [i for i in agendador.get("problemas") or []
                  if i.get("estado") == "quebrada"]
+    # Leitura IMPOSSIVEL (`Get-ScheduledTask` falhou: `lido: False`) nao e
+    # calma. Ate 11/10/2026 so `ok is False` alertava, e o Agendador fora
+    # virava "💤 tudo parado" com a borda verde. Sem a chave `tarefas` (antes
+    # da primeira leitura) ainda nao ha o que dizer.
+    sem_leitura = bool(agendador) and (
+        agendador.get("lido") is False
+        or ("ok" in agendador and agendador["ok"] is None))
     alerta = ""
     if erros:
         e = erros[0]
@@ -846,6 +853,8 @@ def resumo(estado: dict) -> dict:
         alerta = "o bot do Telegram não está no ar"
     elif agendador.get("ok") is False:
         alerta = agendador.get("selo", "tarefas do Agendador com problema")
+    elif sem_leitura:
+        alerta = "não deu para ler as tarefas do Agendador"
     # TRABALHO REAL tem tres fontes, e "tudo parado" so quando nenhuma diz
     # nada: `inicio` aberto, processo de producao vivo, evento recente.
     focos = [f"{rotulo(a.get('predio'))} · {a['texto']}" for a in abertos]
@@ -859,12 +868,16 @@ def resumo(estado: dict) -> dict:
             focos.append(linha["quem"])
     if erros or bot.get("vivo") is False or quebradas:
         nivel = "erro"
+    elif sem_leitura:
+        nivel = "aviso"
     elif focos:
         nivel = "trabalhando"
     else:
         nivel = "calmo"
     if focos:
         frase = f"⚙ {len(focos)} em andamento · {focos[0]}"
+    elif sem_leitura:
+        frase = "⚠ Agendador sem leitura"
     else:
         frase = "💤 tudo parado"
     if erros:

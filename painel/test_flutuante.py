@@ -946,6 +946,31 @@ class TarefasOcultas(unittest.TestCase):
         self.assertEqual(resumo["nivel"], "calmo")
         self.assertIn("com console", resumo["alerta"])
 
+    def test_agendador_ilegivel_e_aviso_e_nao_tudo_parado(self):
+        """Auditoria de 11/10/2026: `Get-ScheduledTask` falhando virava
+        `{'nivel': 'calmo', 'frase': '💤 tudo parado', 'alerta': ''}` — a
+        borda verde dizendo "está tudo bem" sem ter conseguido olhar."""
+        from painel.flutuante import tarefas
+        sem_leitura = tarefas.examinar(None)
+        resumo = dados.resumo({"tarefas": sem_leitura, "bot": {"vivo": True}})
+        self.assertEqual(resumo["nivel"], "aviso")
+        self.assertNotIn("tudo parado", resumo["frase"])
+        self.assertIn("não deu para ler as tarefas", resumo["alerta"])
+        # Com trabalho de verdade, o foco continua na frase, mas o nivel e o
+        # alerta nao escondem que o Agendador nao foi lido.
+        trabalhando = dados.resumo({"tarefas": sem_leitura,
+                                    "bot": {"vivo": True},
+                                    "abertos": [{"texto": "render h1"}]})
+        self.assertEqual(trabalhando["nivel"], "aviso")
+        self.assertIn("render h1", trabalhando["frase"])
+        self.assertIn("não deu para ler as tarefas", trabalhando["alerta"])
+        # Erro de verdade continua mandando.
+        morto = dados.resumo({"tarefas": sem_leitura, "bot": {"vivo": False}})
+        self.assertEqual(morto["nivel"], "erro")
+        # Antes da primeira leitura (sem chave `tarefas`) nao ha o que avisar.
+        self.assertEqual(dados.resumo({"bot": {"vivo": True}})["nivel"],
+                         "calmo")
+
     def test_leitura_tolerante_do_powershell(self):
         from painel.flutuante import tarefas
 

@@ -119,10 +119,30 @@ def leves() -> dict:
             "credenciais": _credenciais(), "alertas": []}
 
 
+_PEDACOS = (("disco", "o disco"), ("travas", "as travas"),
+            ("freio", "o freio da pipeline"),
+            ("credenciais", "as credenciais"))
+
+
+def _sem_verificar(dados: dict, pedacos) -> list:
+    """Um alerta por pedaco que NAO foi lido.
+
+    Ate 11/10/2026 o `erro` de cada pedaco ficava so no dicionario: nenhum
+    alerta, e o veredito — que so le os alertas daqui — dizia "tudo em dia"
+    sem ter olhado o disco ou o freio. Nao conseguir verificar e problema.
+    """
+    alertas = []
+    for chave, nome in pedacos:
+        pedaco = dados.get(chave)
+        if isinstance(pedaco, dict) and pedaco.get("erro"):
+            alertas.append(f"nao consegui verificar {nome}: {pedaco['erro']}")
+    return alertas
+
+
 def situacao() -> dict:
     """`leves()` com os alertas ja resolvidos em frases."""
     dados = leves()
-    alertas = []
+    alertas = _sem_verificar(dados, _PEDACOS)
 
     disco = dados.get("disco") or {}
     if disco.get("situacao") == "critico":
@@ -142,6 +162,11 @@ def situacao() -> dict:
             if faltando:
                 alertas.append(f"{canal}: sem login de "
                                + ", ".join(sorted(faltando)))
+            # `None` e "a pergunta estourou", nao "tem login".
+            sem_resposta = [s for s, ok in ficha.items() if ok is None]
+            if sem_resposta:
+                alertas.append(f"{canal}: nao consegui verificar o login de "
+                               + ", ".join(sorted(sem_resposta)))
 
     ocupadas = (dados.get("travas") or {}).get("ocupadas") or []
     if ocupadas:
@@ -162,11 +187,25 @@ def completo() -> dict:
     dados = situacao()
     dados["agendador"] = _agendador()
     dados["oauth"] = _oauth_vivo()
+    dados["alertas"].extend(_sem_verificar(
+        dados, (("oauth", "o OAuth das contas"),
+                ("agendador", "as tarefas do Agendador"))))
     for canal, ficha in (dados["oauth"] or {}).items():
         if isinstance(ficha, dict) and not ficha.get("ok"):
             dados["alertas"].append(f"{canal}: {ficha.get('motivo')}")
-    faltando = (dados["agendador"] or {}).get("faltando") or []
-    fracas = (dados["agendador"] or {}).get("fracas") or []
+    agendador = dados["agendador"] or {}
+    faltando = agendador.get("faltando") or []
+    fracas = agendador.get("fracas") or []
+    sem_leitura = agendador.get("sem_leitura") or []
+    if sem_leitura and len(sem_leitura) >= agendador.get("total", 0):
+        dados["alertas"].append(
+            f"o Agendador do Windows nao respondeu: nao consegui verificar "
+            f"nenhuma das {len(sem_leitura)} tarefa(s) "
+            f"({agendador.get('motivo_sem_leitura') or '?'})")
+    elif sem_leitura:
+        dados["alertas"].append(
+            f"nao consegui verificar {len(sem_leitura)} tarefa(s) do "
+            "Windows: " + ", ".join(sem_leitura[:3]))
     if faltando:
         dados["alertas"].append(f"{len(faltando)} tarefa(s) do Windows nao "
                                 "existem: " + ", ".join(faltando[:3]))
@@ -217,17 +256,26 @@ def _agendador() -> dict:
              + _tarefas_de_geracao()
              + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
              + ["NeuralFights_bot_telegram"])
-    faltando, fracas = [], []
+    faltando, fracas, sem_leitura, motivo = [], [], [], ""
     for nome in nomes:
         try:
             ficha = tarefas_windows.conferir(nome)
-        except Exception:                                      # noqa: BLE001
+        except Exception as erro:                              # noqa: BLE001
+            # Ate 11/10/2026 isto era `continue`: com o Agendador fora, saiam
+            # "34 tarefas, nada faltando, nada fraco" — o retrato exato de
+            # tudo saudavel. Tarefa que nao deu para ler tem lista propria.
+            sem_leitura.append(nome)
+            motivo = motivo or f"{type(erro).__name__}: {erro}"
             continue
         if not ficha:
             faltando.append(nome)
         elif not ficha.get("confiavel"):
             fracas.append(nome)
-    return {"total": len(nomes), "faltando": faltando, "fracas": fracas}
+    saida = {"total": len(nomes), "faltando": faltando, "fracas": fracas,
+             "sem_leitura": sem_leitura}
+    if motivo:
+        saida["motivo_sem_leitura"] = motivo
+    return saida
 
 
 def _oauth_vivo() -> dict:

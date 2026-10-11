@@ -1132,7 +1132,8 @@ class Janela(tk.Tk):
         estado = self.estado
         resumo = estado.get("resumo") or {}
         nivel = resumo.get("nivel", "calmo")
-        cor_nivel = {"erro": self.t.erro, "trabalhando": self.t.acento,
+        cor_nivel = {"erro": self.t.erro, "aviso": self.t.aviso,
+                     "trabalhando": self.t.acento,
                      "calmo": self.t.ok}.get(nivel, self.t.borda_forte)
         if self.modo != "icone":
             self.configure(bg=self.t.erro if nivel == "erro"
@@ -1164,7 +1165,8 @@ class Janela(tk.Tk):
             if resumo.get("alerta"):
                 self._mini_alerta.configure(
                     text="❗ " + _cortar(resumo["alerta"], 34),
-                    fg=self.t.erro)
+                    fg=self.t.aviso if resumo.get("nivel") == "aviso"
+                    else self.t.erro)
             else:
                 self._mini_alerta.configure(
                     text=_cortar(texto_da_fila(estado), 36),

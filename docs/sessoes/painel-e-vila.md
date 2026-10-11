@@ -94,6 +94,15 @@ selo de erros); **FAIXA** 340×64 ("o que roda e quando sai o próximo?");
 **MÉDIO** 720×520 (pedido explícito, não passa disso: Vila + quem está vivo +
 abas Diário/Postagem/Erros/Terminal); **GRANDE** até 1180×700, limitado pela tela.
 
+**Os níveis do `dados.resumo`** (cor da borda do ícone e do ponto da faixa):
+`erro` (vermelho: erro recente, bot fora, tarefa quebrada) > `aviso` (amarelo)
+> `trabalhando` (acento) > `calmo` (verde). Desde 11/10/2026 o `aviso` é o
+Agendador **ilegível** (`tarefas.examinar(None)`: `lido: False`): antes ele
+virava "💤 tudo parado" com borda verde, porque só `ok is False` alertava.
+Não conseguir verificar nunca é calma. Sem a chave `tarefas` (antes da
+primeira leitura) não há aviso. Prova de tela do estado: coletor de demo com
+`tarefas = examinar(None)` e `resumo = dados.resumo(estado)`.
+
 **O ícone é o "fechar".** `✕` e `−` **viram o ícone**, não fecham: janela sem
 borda não aparece na barra de tarefas nem no Alt-Tab, e fechar de verdade
 esconderia os alertas (`pystray` não está instalado; o ícone faz o papel da

@@ -199,22 +199,53 @@ def completa(*, com_rede: bool = False, limite: int = 12) -> dict:
     }
 
 
+def _nao_verificado(familia) -> str:
+    """O motivo de um controle NAO ter sido verificado, ou "" se foi.
+
+    Familia ausente, que nao e dicionario ou que traz `erro` nao foi olhada.
+    Ate 11/10/2026 o veredito so lia contagens e alertas: com a vistoria e as
+    metas ilegiveis ele devolvia "tudo em dia" — verde para quem nem olhou.
+    """
+    if not isinstance(familia, dict):
+        return "nao veio resposta"
+    erro = familia.get("erro")
+    return str(erro) if erro else ""
+
+
+_NOMES = {"qualidade": "a qualidade da fila", "metas": "as metas de hoje",
+          "recursos": "os recursos"}
+
+
 def veredito(dados: dict | None = None) -> dict:
-    """Uma frase e uma cor. E o que cabe no alto de uma tela e no Telegram."""
+    """Uma frase e uma cor. E o que cabe no alto de uma tela e no Telegram.
+
+    NUNCA verde quando algum controle nao foi verificado: "nao consegui
+    olhar" vira problema com o motivo, e o veredito sai no minimo amarelo.
+    """
     dados = dados or completa()
     problemas = []
+    for familia, nome in _NOMES.items():
+        motivo = _nao_verificado(dados.get(familia))
+        if motivo:
+            problemas.append(f"nao consegui verificar {nome}: {motivo}")
 
-    qual = dados.get("qualidade") or {}
+    qual = dados.get("qualidade")
+    lida = not _nao_verificado(qual)
+    qual = qual if isinstance(qual, dict) else {}
     if qual.get("barrados"):
         problemas.append(f"{qual['barrados']} video(s) barrado(s) na vistoria")
-    if not qual.get("erro") and qual.get("liberados", 0) == 0:
+    # Fila que nao foi lida nao e fila vazia: seria trocar uma mentira por outra.
+    if lida and qual.get("liberados", 0) == 0:
         problemas.append("nenhum video liberado para o proximo horario")
 
-    alvo = dados.get("metas") or {}
+    alvo = dados.get("metas")
+    alvo = alvo if isinstance(alvo, dict) else {}
     if alvo.get("faltando"):
         problemas.append(f"{alvo['faltando']} publicacao(oes) faltando hoje")
 
-    for alerta in (dados.get("recursos") or {}).get("alertas") or []:
+    recursos = dados.get("recursos")
+    recursos = recursos if isinstance(recursos, dict) else {}
+    for alerta in recursos.get("alertas") or []:
         problemas.append(alerta)
 
     if not problemas:
