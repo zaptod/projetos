@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-11T12:39:40",
+      "evento": "2026-10-11T12:39:34",
+      "linha": 153,
+      "nota": "resposta sem pedido de origem: app-e-bot/permissao-dos-pedidos-do-app = Liberar o projeto todo (recomendado)",
+      "opcao": "projeto",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje cada pedido do app só pode mexer em 4 pastas (remoto, coordenador, docs, agentes). Quase todo pedido real (builds, histórias, postagem) cai fora delas e vira pedido de aceite para você. Em 11/10 o 'pare com os builds' ficou 17 h parado assim, e havia 15 itens velhos esperando aceite. O defeito de o aceite não liberar já foi consertado (ebf2a0d), mas a quantidade de aceites continua.",
   "criado": "2026-10-11T04:29:08.324032",
   "depende_de": [],
