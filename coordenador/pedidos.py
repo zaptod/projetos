@@ -358,13 +358,60 @@ def _arquivo():
     return estado.pasta() / "pedidos.json"
 
 
-def _ler():
+LER_TENTATIVAS = 6          # leitura trancada no Windows: tenta de novo...
+LER_ESPERA_S = 0.25         # ...com esta espera entre as tentativas
+
+
+class PedidosIlegiveis(OSError):
+    """`pedidos.json` existe e nao pode ser lido. E OSError de proposito: o app
+    (`registrar` -> 503) e o bot ja tratam OSError sem cair."""
+
+
+def _guardar_ilegivel(alvo):
+    """Copia do original ilegivel, uma por versao do arquivo (o nome leva a
+    hora da ultima modificacao: o pulso de 5 s nao empilha copias)."""
     try:
-        dados = json.loads(_arquivo().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        dados = None
-    if not isinstance(dados, dict):
-        dados = {}
+        quando = datetime.fromtimestamp(alvo.stat().st_mtime).strftime("%Y%m%d-%H%M%S")
+        copia = alvo.with_name(f"{alvo.name}.ilegivel-{quando}")
+        if not copia.exists():
+            copia.write_bytes(alvo.read_bytes())
+        return copia
+    except OSError:
+        return None
+
+
+def _ler():
+    """Auditoria 11/10/2026: ausente = Mesa vazia; existente e ilegivel NUNCA
+    vira `{}` (a proxima gravacao apagava todos os pedidos e a conversa).
+    Trancado por um instante: tenta de novo; ilegivel de vez: guarda uma copia
+    e levanta `PedidosIlegiveis`, para ninguem gravar por cima."""
+    alvo = _arquivo()
+    erro = None
+    for tentativa in range(LER_TENTATIVAS):
+        if tentativa:
+            time.sleep(LER_ESPERA_S)
+        try:
+            texto = alvo.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            dados = {}
+            break
+        except OSError as exc:
+            erro = exc
+            continue
+        try:
+            dados = json.loads(texto)
+        except ValueError as exc:
+            erro = exc
+            continue
+        if isinstance(dados, dict):
+            break
+        erro = ValueError(f"esperava um objeto JSON, veio {type(dados).__name__}")
+    else:
+        copia = _guardar_ilegivel(alvo)
+        raise PedidosIlegiveis(
+            f"pedidos.json ilegivel depois de {LER_TENTATIVAS} tentativas "
+            f"({type(erro).__name__}: {erro}); nada foi gravado por cima"
+            + (f"; copia em {copia.name}" if copia else ""))
     if not isinstance(dados.get("pedidos"), list):
         dados["pedidos"] = []
     if not isinstance(dados.get("conversa"), list):

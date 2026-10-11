@@ -998,3 +998,78 @@ def test_aplicar_com_conflito_de_verdade_devolve_a_arvore_limpa(mundo):
     assert (mundo.repo / "remoto" / "existente.py").read_bytes() == b"A = 2\r\n"
     assert not (mundo.repo / "remoto" / "novo.py").exists()
     assert _git(mundo.repo, "status", "--short").strip() == ""
+
+
+# ===================== auditoria 11/10/2026: a trava que derrubava o despachante
+def _locking_ocupado(monkeypatch, ocupado):
+    """`msvcrt.locking` de mentira: EDEADLK (o "Resource deadlock avoided" do
+    log de 11/10 13:31) enquanto `ocupado()` for verdade, depois o de verdade."""
+    import errno
+    msvcrt = pytest.importorskip("msvcrt")
+    real = msvcrt.locking
+    falhas = []
+
+    def locking(fd, modo, n):
+        if modo != msvcrt.LK_UNLCK and ocupado(len(falhas)):
+            falhas.append(modo)
+            raise OSError(errno.EDEADLK, "Resource deadlock avoided")
+        return real(fd, modo, n)
+    monkeypatch.setattr(msvcrt, "locking", locking)
+    return falhas
+
+
+def test_trava_do_despachante_espera_o_edeadlk_em_vez_de_cair(mundo, monkeypatch):
+    from remoto import api_http
+    monkeypatch.setattr(api_http, "TRAVA_ARQUIVO_ESPERA_S", 0, raising=False)
+    falhas = _locking_ocupado(monkeypatch, lambda n: n < 4)
+    _criar(mundo)
+    falhas.clear()
+    estado = delegar._mudar_estado("t01", motivo="contou os tokens")
+    assert len(falhas) == 4 and estado["motivo"] == "contou os tokens"
+
+
+def test_trava_do_despachante_tem_prazo_maior_que_os_10s_do_lk_lock(mundo, monkeypatch):
+    """`criar` segura a trava durante o `git worktree add`: os outros
+    despachantes esperam por ela, nao caem depois de ~10 s."""
+    from remoto import api_http
+    relogio = {"t": 0.0}
+    monkeypatch.setattr(api_http, "_relogio", lambda: relogio["t"], raising=False)
+    monkeypatch.setattr(api_http, "_dormir",
+                        lambda s: relogio.__setitem__("t", relogio["t"] + 1.0), raising=False)
+    _criar(mundo)
+    _locking_ocupado(monkeypatch, lambda n: relogio["t"] < 60)
+    with delegar._trava():
+        pass
+    assert relogio["t"] >= 60
+    # a trava comum (app, Mesa) segue com o prazo curto: desiste com "ocupada",
+    # um OSError que quem chama ja trata, e nao com o EDEADLK cru
+    relogio["t"] = 0.0
+    _locking_ocupado(monkeypatch, lambda n: True)
+    with pytest.raises(OSError, match="ocupada"):
+        with api_http.trava_arquivo(mundo.tmp / "comum.lock"):
+            pass
+    assert 5 <= relogio["t"] <= 30
+
+
+# ============== auditoria 11/10/2026: o timeout dos testes mata a arvore inteira
+def test_testar_no_timeout_mata_os_processos_filhos(mundo):
+    _criar(mundo)
+    delegar.rodar("t01")
+    sentinela = mundo.tmp / "filho_sobreviveu.txt"
+    pronto = mundo.tmp / "filho_nasceu.txt"
+    script = mundo.tmp / "pai.py"
+    script.write_text(
+        "import subprocess, sys, time\n"
+        "filho = 'import pathlib, sys, time; time.sleep(4); pathlib.Path(sys.argv[1]).write_text(\"x\")'\n"
+        "subprocess.Popen([sys.executable, '-c', filho, sys.argv[1]])\n"
+        "open(sys.argv[2], 'w').close()\n"
+        "time.sleep(60)\n", encoding="utf-8")
+    inicio = time.monotonic()
+    resultado = delegar.testar(
+        "t01", f'"{sys.executable}" "{script}" "{sentinela}" "{pronto}"', timeout_s=3)
+    assert resultado["codigo"] is None and not resultado["ok"]
+    assert "[estourou o tempo]" in (delegar.pasta_da("t01") / "testes.log").read_text(
+        encoding="utf-8")
+    assert pronto.exists(), "o filho nem chegou a nascer antes do prazo"
+    time.sleep(max(0.0, 7 - (time.monotonic() - inicio)))
+    assert not sentinela.exists(), "o filho do teste continuou rodando depois do timeout"

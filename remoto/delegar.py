@@ -288,10 +288,16 @@ def _agora_iso() -> str:
 
 
 # ================================================================== disco
+# Auditoria 11/10/2026: `criar` segura esta trava durante o `git worktree add`,
+# e com varios despachantes juntos os outros caiam com `[Errno 36] Resource
+# deadlock avoided` depois dos ~10 s do LK_LOCK (o Codex morria no meio).
+TRAVA_PRAZO_S = 180.0
+
+
 def _trava():
     from .api_http import trava_arquivo
     pasta().mkdir(parents=True, exist_ok=True)
-    return trava_arquivo(pasta() / "delegar.lock")
+    return trava_arquivo(pasta() / "delegar.lock", prazo=TRAVA_PRAZO_S)
 
 
 def _ler_json(caminho: Path, padrao):
@@ -1859,12 +1865,19 @@ def _testar_travado(tarefa_id: str, estado: dict, cmd: str, timeout_s) -> dict:
     with open(log, "w", encoding="utf-8", errors="replace") as fh:
         fh.write(f"$ {cmd}\n(cwd {estado['worktree']}, TEMP {temp}, diff {resumo['sha']})\n\n")
         fh.flush()
+        # Popen + `_matar` (taskkill /T): o timeout do `subprocess.run` matava
+        # so o shell, e o servidor/worker que o teste abriu seguia mexendo na
+        # worktree (auditoria 11/10/2026)
+        proc = subprocess.Popen(cmd, shell=True, cwd=estado["worktree"], stdout=fh,
+                                stderr=subprocess.STDOUT, env=env, creationflags=NO_WINDOW)
         try:
-            feito = subprocess.run(cmd, shell=True, cwd=estado["worktree"], stdout=fh,
-                                   stderr=subprocess.STDOUT, env=env, creationflags=NO_WINDOW,
-                                   timeout=timeout_s or float(config["testes_timeout_s"]))
-            codigo = feito.returncode
+            codigo = proc.wait(timeout=timeout_s or float(config["testes_timeout_s"]))
         except subprocess.TimeoutExpired:
+            _matar(proc)
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
             codigo = None
             fh.write("\n[estourou o tempo]\n")
     try:

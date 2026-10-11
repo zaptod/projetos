@@ -41,6 +41,7 @@ import argparse
 import base64
 import binascii
 import contextlib
+import errno
 import hashlib
 import hmac
 import ipaddress
@@ -534,12 +535,21 @@ def coordenador_para_o_app() -> dict:
 
 _TRAVAS_THREADS: dict[str, threading.RLock] = {}
 TRAVA_PRAZO_S = 15.0
+# Entre processos (msvcrt). Auditoria 11/10/2026: o LK_LOCK tentava ~10 s e
+# levantava `[Errno 36] Resource deadlock avoided`, que derrubava o despachante
+# do Codex quando varios rodavam juntos. Agora EDEADLK/EACCES e "ocupado, tente
+# de novo" ate o prazo (o padrao segue ~10 s; o delegar pede um maior).
+TRAVA_ARQUIVO_PRAZO_S = 10.0
+TRAVA_ARQUIVO_ESPERA_S = 0.2
+_OCUPADO = (errno.EACCES, errno.EDEADLK)
+_relogio = time.monotonic
+_dormir = time.sleep
 _TRAVAS_GUARDA = threading.Lock()
 _PROFUNDIDADE = threading.local()
 
 
 @contextlib.contextmanager
-def trava_arquivo(alvo: Path):
+def trava_arquivo(alvo: Path, prazo: float | None = None):
     """Uma escrita por vez — entre threads E entre processos.
 
     O servidor e o `--parear`/`--esquecer` sao processos diferentes: sem a
@@ -550,14 +560,18 @@ def trava_arquivo(alvo: Path):
     Uma trava por ARQUIVO, e reentrante na mesma thread: a acao do app
     segura a sua e, dentro dela, grava o rastro, que pede a mesma. Travar
     o byte duas vezes no mesmo processo esperaria ~10 s e levantaria.
+
+    `prazo`: quanto esperar pelo outro PROCESSO (padrao
+    `TRAVA_ARQUIVO_PRAZO_S`); a espera entre threads nunca e menor que ele.
     """
     alvo = Path(alvo)
     chave = os.path.normcase(str(alvo.resolve()))
     with _TRAVAS_GUARDA:
         trava = _TRAVAS_THREADS.setdefault(chave, threading.RLock())
     profundidade = _PROFUNDIDADE.__dict__.setdefault("mapa", {})
-    if not trava.acquire(timeout=TRAVA_PRAZO_S):
-        raise OSError(f"trava ocupada ha mais de {TRAVA_PRAZO_S:.0f} s: {alvo.name}")
+    entre_threads = TRAVA_PRAZO_S if prazo is None else max(TRAVA_PRAZO_S, float(prazo))
+    if not trava.acquire(timeout=entre_threads):
+        raise OSError(f"trava ocupada ha mais de {entre_threads:.0f} s: {alvo.name}")
     try:
         if profundidade.get(chave):
             profundidade[chave] += 1
@@ -568,7 +582,7 @@ def trava_arquivo(alvo: Path):
             return
         profundidade[chave] = 1
         try:
-            with _trava_de_arquivo(alvo):
+            with _trava_de_arquivo(alvo, prazo):
                 yield
         finally:
             profundidade.pop(chave, None)
@@ -577,15 +591,29 @@ def trava_arquivo(alvo: Path):
 
 
 @contextlib.contextmanager
-def _trava_de_arquivo(alvo: Path):
+def _trava_de_arquivo(alvo: Path, prazo: float | None = None):
     alvo.parent.mkdir(parents=True, exist_ok=True)
     with open(alvo, "a+b") as fh:
         if os.name == "nt":
             import msvcrt
-            fh.seek(0)
-            # LK_LOCK tenta por ~10 s e entao levanta: melhor que esperar
-            # para sempre um processo travado.
-            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            # Sem bloquear, de novo a cada TRAVA_ARQUIVO_ESPERA_S ate o prazo:
+            # ocupado (EACCES/EDEADLK) espera; vencido o prazo, um OSError
+            # "trava ocupada" que quem chama ja trata (melhor que esperar
+            # para sempre um processo travado).
+            prazo = TRAVA_ARQUIVO_PRAZO_S if prazo is None else float(prazo)
+            limite = _relogio() + prazo
+            while True:
+                fh.seek(0)
+                try:
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError as exc:
+                    if exc.errno not in _OCUPADO:
+                        raise
+                    if _relogio() >= limite:
+                        raise TimeoutError(
+                            f"trava ocupada ha mais de {prazo:.0f} s: {alvo.name}") from exc
+                    _dormir(TRAVA_ARQUIVO_ESPERA_S)
             try:
                 yield
             finally:
