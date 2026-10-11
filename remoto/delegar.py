@@ -115,12 +115,15 @@ RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_ca
          # 05/10: rascunhos de agente na raiz (resposta.md, .conf_som_real.md,
          # .tarefa_imagens_heranca.md) entraram em commits e geraram conflito
          # de merge no pedido-66e4ba54; a resposta e a MENSAGEM FINAL, nao arquivo
-         "resposta.md", ".tarefa_*.md", ".conf_*.md",
-         # 11/10: o Codex roda os testes com NEURAL_FIGHTS_RUNTIME_DIR=.rt e
-         # --basetemp=.pytest_tmp; .rt/locks e .rt/auditoria-pedidos entraram em
-         # dois commits "so documentacao" da auditoria
-         ".rt/**", "**/.rt/**", ".pytest_tmp/**", "**/.pytest_tmp/**",
-         ".pytest_saida.txt", ".pytest_erro.txt")
+         "resposta.md", ".tarefa_*.md", ".conf_*.md")
+# 11/10: o Codex roda os testes com NEURAL_FIGHTS_RUNTIME_DIR=.rt e
+# --basetemp=.pytest_tmp; .rt/locks entrou em dois commits "so documentacao".
+# Estes estao no .gitignore do repositorio — e por isso NAO entram no
+# `:(exclude)` do `git add` em `coletar`: um exclude que casa com pasta
+# ignorada faz o `git add` sair com 1 ("paths are ignored"), e as 6 primeiras
+# fatias da auditoria profunda falharam na coleta por isso (15:08).
+RUIDO_DO_GITIGNORE = (".rt/**", "**/.rt/**", ".pytest_tmp/**", "**/.pytest_tmp/**",
+                      ".pytest_saida.txt", ".pytest_erro.txt")
 # O que o Codex nunca mexe, qualquer que seja a lista da tarefa.
 # 01/10 23:5x: era "palco/**" inteiro e barrou a entrega das buscas do palco;
 # o que e do Adrian no palco sao so estes tres (as artes dele, sem commit).
@@ -1697,7 +1700,7 @@ def _e_ruido(caminho: str) -> bool:
     `:(exclude,glob)` do git: padrao sem `**/` vale so na raiz."""
     if caminho in NOSSOS:
         return True
-    for p in RUIDO:
+    for p in RUIDO + RUIDO_DO_GITIGNORE:
         if p.startswith("**/"):
             formas = (p[3:], "*/" + p[3:])
         else:

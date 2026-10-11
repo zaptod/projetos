@@ -1073,3 +1073,17 @@ def test_testar_no_timeout_mata_os_processos_filhos(mundo):
     assert pronto.exists(), "o filho nem chegou a nascer antes do prazo"
     time.sleep(max(0.0, 7 - (time.monotonic() - inicio)))
     assert not sentinela.exists(), "o filho do teste continuou rodando depois do timeout"
+
+
+def test_ruido_do_gitignore_nao_entra_no_exclude_do_git_add(mundo):
+    """11/10: exclude que casa com pasta ignorada faz `git add` sair com 1."""
+    assert ".rt/**" in delegar.RUIDO_DO_GITIGNORE and ".rt/**" not in delegar.RUIDO
+    assert delegar._e_ruido(".rt/locks/x.json") and delegar._e_ruido(".pytest_tmp/a/b")
+    _criar(mundo)
+    wt = Path(delegar.ler_estado("t01")["worktree"])
+    (wt / ".gitignore").write_text(".rt/\n", encoding="utf-8")
+    (wt / ".rt").mkdir()
+    (wt / ".rt" / "f").write_text("x", encoding="utf-8")
+    (wt / "novo.txt").write_text("y", encoding="utf-8")
+    resumo = delegar.coletar("t01")
+    assert [a["caminho"] for a in resumo["arquivos"]] == [".gitignore", "novo.txt"]
