@@ -48,6 +48,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Enviar o 2º vídeo se o TikTok falhar?** — Enviar mesmo assim (recomendado) (07/10/2026) `enviar-o-2o-video-se-o-tiktok-falhar`
 - ✅ **Permissao: Ligar já o palco nos duelos sem corrente? Pergunta para o Ad** — Permitir (07/10/2026) `permissao-ligar-ja-o-palco-nos-duelos-se`
 - ✅ **Internet do PC: trocar o DNS da operadora** — Cloudflare e Google (recomendado) (10/10/2026) · “10/10 ~01h pelo chat: 'sim eu quero pode marcar no grimorio de uma vez'” `dns-do-pc`
+- ⏳ **Limpar o lixo da máquina** — Posso apagar o que a checagem de 11/10 achou sobrando? `limpeza-da-maquina`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`

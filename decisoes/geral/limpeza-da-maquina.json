@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Sobras: 11 cópias de trabalho órfãs e 65 pastas de prova em E:\\projetos-wt (7 GB), milhares de pastas em E:\\tmp_pytest, 5 arquivos soltos na raiz do projeto desde 28/09 (11239-removebg-preview (1).png, 11243.png, sprites_transparentes.png, piriri.py, projetos-wt_prova_filaerro7.txt), a tarefa agendada NeuralFights_retomar_codex (sobra de 02/10) e os perfis de navegador ocupando 13,7 GB no C: (que tem 14 GB livres). Nada disso é usado hoje.",
+  "criado": "2026-10-11T18:15:52.882670",
+  "depende_de": [],
+  "historico": [],
+  "id": "limpeza-da-maquina",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "As cópias órfãs, as provas, o tmp_pytest, a tarefa morta e os 5 arquivos soltos. Os perfis de navegador NÃO (têm os logins).",
+      "id": "apagar",
+      "pede_comentario": false,
+      "rotulo": "Apagar tudo isso (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Apaga só E:\\tmp_pytest e as pastas de prova; o resto fica.",
+      "id": "so-tmp",
+      "pede_comentario": false,
+      "rotulo": "Só o temporário"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nada",
+      "pede_comentario": false,
+      "rotulo": "Não apagar nada"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Posso apagar o que a checagem de 11/10 achou sobrando?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Limpar o lixo da máquina",
+  "vigente": null
+}
