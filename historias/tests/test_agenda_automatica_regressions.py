@@ -752,6 +752,37 @@ class TodoErroNoMesmoLugarTests(unittest.TestCase):
         self.addCleanup(setattr, atividade, "registrar", original)
         agenda._registrar_erro({"feito": "nada", "motivo": "x"})   # nao levanta
 
+    def test_retomada_que_falha_vira_evento_com_historia_e_motivo(self):
+        """A falha ao completar roteiro truncado precisa chegar ao diario."""
+        from builds import atividade
+        from contos.roteiro import gerar, roteiro
+
+        registrados = []
+        original_registrar = atividade.registrar
+        original_carregar = roteiro.carregar
+        original_escrever = gerar.escrever_serie
+        original_config = agenda.carregar
+        original_ordem = agenda._ordem_da_retomada
+        atividade.registrar = lambda *a, **k: registrados.append(a)
+        roteiro.carregar = lambda _historia_id: {"provedor": "gemini"}
+        gerar.escrever_serie = lambda *_a, **_k: (_ for _ in ()).throw(
+            RuntimeError("limite do LLM"))
+        agenda.carregar = lambda: {}
+        agenda._ordem_da_retomada = lambda *_a: ["gemini"]
+        self.addCleanup(setattr, atividade, "registrar", original_registrar)
+        self.addCleanup(setattr, roteiro, "carregar", original_carregar)
+        self.addCleanup(setattr, gerar, "escrever_serie", original_escrever)
+        self.addCleanup(setattr, agenda, "carregar", original_config)
+        self.addCleanup(setattr, agenda, "_ordem_da_retomada", original_ordem)
+
+        agenda._retomar_texto(None, "historia_00001", [3], False,
+                              lambda *_a: None)
+
+        self.assertTrue(registrados)
+        detalhe = registrados[0][2]
+        self.assertIn("historia_00001", detalhe)
+        self.assertIn("limite do LLM", detalhe)
+
 
 class GorduraDeEstoqueTests(unittest.TestCase):
     """O canal nao pode ficar sem video novo (08/09/2026).

@@ -2195,7 +2195,8 @@ def _retomar_texto(pipeline, historia_id: str, faltam: list,
         # uso, rede). Ela nao pode derrubar a rodada: a proxima tenta de novo,
         # e ate la a historia continua fora da fila de publicacao.
         log(f"[auto] a retomada de {historia_id} nao foi ({exc}).")
-        _registrar_erro(f"retomada de {historia_id}: {exc}")
+        _registrar_erro({"historia_id": historia_id,
+                          "motivo": "retomada falhou", "erro": str(exc)})
         return {"feito": "nada", "motivo": f"retomada falhou: {exc}"[:200],
                 "historia_id": historia_id, "erro": str(exc)[:300]}
     if R.partes_que_faltam(R.carregar(historia_id)):
