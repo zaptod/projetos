@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado da auditoria profunda de 11/10 (postar.py, item 3). Hoje o build órfão fica só no TikTok para sempre.",
+  "criado": "2026-10-11T18:15:48.006650",
+  "depende_de": [],
+  "historico": [],
+  "id": "build-so-no-tiktok",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O YouTube sobe o build devido no próximo horário, junto com o novo, até zerar.",
+      "id": "divida",
+      "pede_comentario": false,
+      "rotulo": "Mesma regra das histórias (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "O build fica só no TikTok; o YouTube segue com os novos.",
+      "id": "deixar",
+      "pede_comentario": false,
+      "rotulo": "Deixar como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Quando o YouTube cai por rede e o build sai só no TikTok, hoje ele nunca mais vai ao YouTube (a reposição sobe OUTRO build). Para as histórias já existe a 'dívida': o YouTube sobe depois a parte que ficou devendo. Vale a mesma regra para os builds?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Build que saiu só no TikTok: levar ao YouTube depois?",
+  "vigente": null
+}
