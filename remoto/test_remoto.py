@@ -1595,6 +1595,15 @@ class EnvioPeriodicoTests(BaseTemp):
         # que a segunda chamada nao pode e dobrar isso.
         self.assertEqual(2, len(bot.tg.enviadas))
 
+    def test_entrega_falha_nao_marca_o_relatorio_como_enviado(self):
+        """Sem rede, `mensagem` devolve falso e o relatorio continua devido."""
+        config.salvar({**config.carregar(),
+                       "relatorios": {"metas": "00:00"}})
+        bot = self._bot()
+        bot.tg.mensagem = lambda *_a, **_k: {"ok": False}
+        bot._relatorios()
+        self.assertEqual({}, relatorios.enviados())
+
     def test_sem_horario_configurado_nao_manda_nada(self):
         config.salvar({**config.carregar(), "relatorios": {}})
         bot = self._bot()
@@ -1618,6 +1627,19 @@ class EnvioPeriodicoTests(BaseTemp):
         bot = self._bot()
         bot.uma_volta(timeout=0)
         self.assertIn("corpo de metas", bot.tg.textos())
+
+
+class ComandoComFalhaTests(BaseTemp):
+    def test_erro_no_comando_responde_e_consume_a_atualizacao(self):
+        config.autorizar(42)
+        tg = TelegramFalso([_mensagem("/ajuda")])
+        linhas = []
+        bot = bot_mod.Bot(telegram=tg, log=linhas.append)
+        with mock.patch.object(comandos, "executar", side_effect=OSError("falha temporaria")):
+            bot.uma_volta(timeout=0)
+        self.assertEqual(["nao consegui agora, mande de novo"], tg.textos())
+        self.assertEqual(2, bot.desde)
+        self.assertTrue(any("falha temporaria" in linha for linha in linhas))
 
 
 _RESUMO_DO_LOTE = {

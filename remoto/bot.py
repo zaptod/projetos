@@ -202,11 +202,17 @@ class Bot:
             return
         hoje = datetime.now().strftime("%Y-%m-%d")
         for nome in vencidos:
-            relatorios.marcar(nome, hoje)
             texto = relatorios.montar(nome)
+            entregues = 0
             for chat in config.carregar()["autorizados"]:
-                self.tg.mensagem(chat, texto, markdown=True)
-            self.log(f"[remoto] relatorio de {nome} enviado.")
+                try:
+                    if self.tg.mensagem(chat, texto, markdown=True).get("ok"):
+                        entregues += 1
+                except Exception:                              # noqa: BLE001
+                    pass
+            if entregues:
+                relatorios.marcar(nome, hoje)
+                self.log(f"[remoto] relatorio de {nome} enviado.")
 
     def avisar_todos(self, texto: str, *, chave: str | None = None) -> bool:
         """Aviso espontaneo (nao e resposta a comando): passa pelo porteiro."""
@@ -291,12 +297,18 @@ class Bot:
     def uma_volta(self, timeout: int = 30) -> int:
         novidades = self.tg.novidades(self.desde, timeout=timeout)
         for atualizacao in novidades:
-            self.desde = int(atualizacao.get("update_id", 0)) + 1
             mensagem = atualizacao.get("message") or {}
             try:
                 self._mensagem(mensagem)
             except Exception as exc:      # uma mensagem ruim nao derruba o bot
                 self.log(f"[remoto] erro tratando mensagem: {exc}")
+                chat = (mensagem.get("chat") or {}).get("id")
+                if chat is not None:
+                    try:
+                        self.tg.mensagem(chat, "nao consegui agora, mande de novo")
+                    except Exception as resposta_exc:           # noqa: BLE001
+                        self.log(f"[remoto] erro respondendo mensagem: {resposta_exc}")
+            self.desde = int(atualizacao.get("update_id", 0)) + 1
         try:
             self._alertar()
         except Exception as exc:
