@@ -59,8 +59,8 @@ Fonte: `decisoes/historias/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **IA olha de novo a parte consertada?** — Não, manter uma passada só (05/10/2026) `reolhar-depois-do-conserto`
 - ✅ **Títulos com o nome da série no meio** — Tirar a marca da frente (06/10/2026) `titulo-marca-no-meio`
 - ✅ **Imagens sem o PicassoIA: Gemini e ChatGPT trabalham juntos?** — Duas histórias ao mesmo tempo, uma em cada gerador (recomendado) (06/10/2026) `imagens-dois-geradores-juntos`
-- ✅ **Pausa dos canais de histórias** — Pausar a publicação (10/10/2026) · “10/10 ~01:30 pelo chat: 'quero que voce de uma parada nos canais de historias'” `pausa-dos-canais`
-- ✅ **Criar histórias durante a pausa?** — Parar a criação também (10/10/2026) · “10/10 01:4x pelo chat: 'por que ainda esta abrindo meu chat gpt??' (a criacao gerava imagens no ChatGPT dele durante a pausa)” `criacao-durante-a-pausa`
+- ✅ **Pausa dos canais de histórias** — Continuar publicando (11/10/2026) · “11/10 04h pelo chat: 'eu ja nao quero mais que o builds pare nem o canal de historias'” `pausa-dos-canais`
+- ↺ **Criar histórias durante a pausa?** — Parar a criação também (10/10/2026) · “10/10 01:4x pelo chat: 'por que ainda esta abrindo meu chat gpt??' (a criacao gerava imagens no ChatGPT dele durante a pausa)” · espera Pausa dos canais de histórias = Pausar a publicação `criacao-durante-a-pausa`
 
 <!-- decisoes:fim -->
 

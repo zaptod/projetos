@@ -31,6 +31,13 @@
       "em": "2026-10-10T01:37:16",
       "opcao": "pausar",
       "origem": "cli"
+    },
+    {
+      "anterior": "pausar",
+      "comentario": "11/10 04h pelo chat: 'eu ja nao quero mais que o builds pare nem o canal de historias'",
+      "em": "2026-10-11T04:14:48",
+      "opcao": "publicar",
+      "origem": "cli"
     }
   ],
   "id": "pausa-dos-canais",
@@ -61,8 +68,8 @@
   "situacao": "decidida",
   "titulo": "Pausa dos canais de histórias",
   "vigente": {
-    "comentario": "10/10 ~01:30 pelo chat: 'quero que voce de uma parada nos canais de historias'",
-    "em": "2026-10-10T01:37:16",
-    "opcao": "pausar"
+    "comentario": "11/10 04h pelo chat: 'eu ja nao quero mais que o builds pare nem o canal de historias'",
+    "em": "2026-10-11T04:14:48",
+    "opcao": "publicar"
   }
 }
