@@ -1,0 +1,1 @@
+{"pid": 4800, "criado": 1791736599.7654, "inicio": 1791737257.7269187, "pulso": 1791737257.7269187, "horario": "2026-10-11T12:07", "tipo": "rodada", "comando": "C:\\Users\\adrian\\AppData\\Roaming\\Python\\Python314\\site-packages\\pytest\\__main__.py historias/tests -q --basetemp=.pytest_tmp -p no:cacheprovider", "em_voo": null}
