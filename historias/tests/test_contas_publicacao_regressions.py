@@ -26,6 +26,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -231,6 +232,56 @@ class RegistroDePublicadosTests(unittest.TestCase):
         serie.REGISTRO.write_text(
             json.dumps({"video_id": video.id, "url": ""}) + "\n", encoding="utf-8")
         self.assertIsNone(serie.ja_publicado(video.id))
+
+
+class PublicacaoConcorrenteTests(unittest.TestCase):
+    """Duas chamadas da mesma parte nao podem cruzar a guarda do ledger."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self._trocar(serie, "REGISTRO", Path(self._tmp.name) / "publicados.jsonl")
+        self.video = type("Video", (), {
+            "id": "historia_00999:celular:p01", "fonte_id": "historia_00999",
+            "perfil": "celular", "parte": 1, "partes": 1, "titulo": "T"})()
+        barreira = threading.Barrier(2)
+        self._trocar(serie, "videos_da_serie",
+                     lambda *_a: (barreira.wait(), [self.video])[1])
+        self._trocar(qualidade, "vistoriar_serie",
+                     lambda *_a: {"avisos": [], "erros": []})
+        self._trocar(catalogo, "carregar_config", lambda: {})
+        self._trocar(serie._rb_atividade, "registrar", lambda *_a, **_k: None)
+        self.uploads = []
+
+        def subir(*_a, **_k):
+            self.uploads.append(1)
+            return "https://youtu.be/abc123"
+
+        self._trocar(catalogo, "publicar_youtube", subir)
+
+    def _trocar(self, alvo, nome, valor):
+        antes = getattr(alvo, nome)
+        setattr(alvo, nome, valor)
+        self.addCleanup(setattr, alvo, nome, antes)
+
+    def test_duas_chamadas_so_sobem_uma_vez(self):
+        erros = []
+
+        def chamar():
+            try:
+                serie.publicar("historia_00999", agendar=False, log=lambda *_a: None)
+            except Exception as exc:
+                erros.append(exc)
+
+        a = threading.Thread(target=chamar)
+        b = threading.Thread(target=chamar)
+        a.start()
+        b.start()
+        a.join(5)
+        b.join(5)
+        self.assertFalse(a.is_alive() or b.is_alive())
+        self.assertEqual([], erros)
+        self.assertEqual(1, len(self.uploads))
 
 
 class HistoriaDeTesteTests(unittest.TestCase):

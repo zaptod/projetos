@@ -43,17 +43,18 @@ class NaoPublicou(RuntimeError):
 
 
 def publicados() -> list:
-    if not REGISTRO.is_file():
-        return []
+    from builds.publicar.metricas import _pendentes
     saida = []
-    with open(REGISTRO, encoding="utf-8") as fh:
-        for linha in fh:
-            linha = linha.strip()
-            if linha:
-                try:
-                    saida.append(json.loads(linha))
-                except ValueError:
-                    continue
+    if REGISTRO.is_file():
+        with open(REGISTRO, encoding="utf-8") as fh:
+            for linha in fh:
+                linha = linha.strip()
+                if linha:
+                    try:
+                        saida.append(json.loads(linha))
+                    except ValueError:
+                        continue
+    saida.extend(linha for _, linha in _pendentes(REGISTRO))
     return saida
 
 
@@ -216,58 +217,67 @@ def publicar(historia_id: str, *, perfil: str = "celular",
                         else [None] * len(videos))
             postados_agora = 0
             for video, quando in zip(videos, marcados):
-                anterior = ja_publicado(video.id, plataforma)
-                if anterior and not forcar:
-                    log(f"[publicar] {plataforma} parte {video.parte}: ja subiu "
-                        f"em {anterior['quando'][:10]}")
-                    pulados.append({"parte": video.parte, "plataforma": plataforma,
-                                    "url": anterior["url"]})
-                    continue
-                if plataforma == "tiktok" and postados_agora >= teto_tiktok:
-                    log(f"[publicar] tiktok: teto de {teto_tiktok} por clique "
-                        f"atingido; a parte {video.parte} fica para o proximo.")
-                    break
-                rotulo = (f"parte {video.parte}/{video.partes}"
-                          if video.partes > 1 else "video")
-                log(f"[publicar] {plataforma} {rotulo}: {video.titulo}")
-                if quando:
-                    log(f"[publicar]   agendado para {quando}")
-                try:
-                    if plataforma == "youtube":
-                        url = catalogo.publicar_youtube(
-                            video, visibilidade, agendar_para=quando, log=log)
-                        # (o corte para Shorts acontece dentro de
-                        # `publicar_youtube`: uma parte comprida vira duas)
-                    elif plataforma == "tiktok":
-                        url = catalogo.publicar_tiktok(video, postar=True, log=log)
-                        # O TikTok nao devolve URL: devolve um ESTADO. Sem
-                        # esta checagem, "cliquei mas nao confirmou" entrava
-                        # no registro como publicacao boa, e a parte nunca
-                        # mais seria tentada.
-                        if not _rb_publicar_tiktok.confirmado(url):
-                            erros_envio.append(
-                                f"tiktok parte {video.parte}: {url}")
-                            log(f"[publicar]   NAO confirmado: {url}")
-                            continue
-                    else:
-                        raise NaoPublicou(f"plataforma desconhecida: {plataforma}")
-                except NaoPublicou:
-                    raise
-                except Exception as exc:
-                    if type(exc).__name__ == "CotaEsgotada":
-                        # Insistir aqui so gera N erros iguais: TODAS as
-                        # partes seguintes cairiam no mesmo teto.
-                        erros_envio.append(f"youtube: {exc}")
-                        log(f"[publicar] PARANDO a serie: {exc}")
+                from builds import travas
+                nome_da_trava = f"publicar__{historia_id}__{plataforma}"
+                with travas.trava(nome_da_trava, esperar=120.0) as minha:
+                    if not minha:
+                        erros_envio.append(
+                            f"{plataforma} parte {video.parte}: publicacao em andamento")
+                        log(f"[publicar] {plataforma} parte {video.parte}: "
+                            "outra publicacao esta em andamento.")
+                        continue
+                    anterior = ja_publicado(video.id, plataforma)
+                    if anterior and not forcar:
+                        log(f"[publicar] {plataforma} parte {video.parte}: ja subiu "
+                            f"em {anterior['quando'][:10]}")
+                        pulados.append({"parte": video.parte, "plataforma": plataforma,
+                                        "url": anterior["url"]})
+                        continue
+                    if plataforma == "tiktok" and postados_agora >= teto_tiktok:
+                        log(f"[publicar] tiktok: teto de {teto_tiktok} por clique "
+                            f"atingido; a parte {video.parte} fica para o proximo.")
                         break
-                    erros_envio.append(f"{plataforma} parte {video.parte}: {exc}")
-                    log(f"[publicar]   FALHOU: {exc}")
-                    continue
-                registrar(video, url, plataforma, quando)
-                enviados.append({"parte": video.parte, "plataforma": plataforma,
-                                 "url": url, "quando": quando})
-                postados_agora += 1
-                log(f"[publicar]   {url}")
+                    rotulo = (f"parte {video.parte}/{video.partes}"
+                              if video.partes > 1 else "video")
+                    log(f"[publicar] {plataforma} {rotulo}: {video.titulo}")
+                    if quando:
+                        log(f"[publicar]   agendado para {quando}")
+                    try:
+                        if plataforma == "youtube":
+                            url = catalogo.publicar_youtube(
+                                video, visibilidade, agendar_para=quando, log=log)
+                            # (o corte para Shorts acontece dentro de
+                            # `publicar_youtube`: uma parte comprida vira duas)
+                        elif plataforma == "tiktok":
+                            url = catalogo.publicar_tiktok(video, postar=True, log=log)
+                            # O TikTok nao devolve URL: devolve um ESTADO. Sem
+                            # esta checagem, "cliquei mas nao confirmou" entrava
+                            # no registro como publicacao boa, e a parte nunca
+                            # mais seria tentada.
+                            if not _rb_publicar_tiktok.confirmado(url):
+                                erros_envio.append(
+                                    f"tiktok parte {video.parte}: {url}")
+                                log(f"[publicar]   NAO confirmado: {url}")
+                                continue
+                        else:
+                            raise NaoPublicou(f"plataforma desconhecida: {plataforma}")
+                    except NaoPublicou:
+                        raise
+                    except Exception as exc:
+                        if type(exc).__name__ == "CotaEsgotada":
+                            # Insistir aqui so gera N erros iguais: TODAS as
+                            # partes seguintes cairiam no mesmo teto.
+                            erros_envio.append(f"youtube: {exc}")
+                            log(f"[publicar] PARANDO a serie: {exc}")
+                            break
+                        erros_envio.append(f"{plataforma} parte {video.parte}: {exc}")
+                        log(f"[publicar]   FALHOU: {exc}")
+                        continue
+                    registrar(video, url, plataforma, quando)
+                    enviados.append({"parte": video.parte, "plataforma": plataforma,
+                                     "url": url, "quando": quando})
+                    postados_agora += 1
+                    log(f"[publicar]   {url}")
     finally:
         atividade.registrar(
             "publicacao", "erro" if erros_envio else "ok",

@@ -24,6 +24,8 @@ import json
 import os
 import re
 import sys
+import tempfile
+import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -163,7 +165,7 @@ def prova_ok(laudo: dict | list | None) -> bool | None:
 # Publicacao que aconteceu e sumiu do ledger vira REPOSTAGEM, entao a regra e
 # assimetrica:
 #   - quem ACRESCENTA uma publicacao espera muito e, se ainda assim nao
-#     conseguir, grava do mesmo jeito e avisa no diario;
+#     conseguir, guarda a linha numa fila lateral atomica e avisa no diario;
 #   - quem REESCREVE desiste se a trava estiver ocupada, e tenta outro dia.
 PACIENCIA_DO_ESCRITOR = 120.0
 
@@ -172,32 +174,108 @@ def nome_da_trava(canal: str) -> str:
     return f"ledger__{canal}"
 
 
+def _pasta_de_pendentes(caminho: Path) -> Path:
+    """Fila lateral de linhas que chegaram enquanto o ledger estava travado."""
+    return caminho.with_name(f"{caminho.name}.pendentes")
+
+
+def _guardar_pendente(caminho: Path, linha: dict) -> None:
+    """Enfileira uma linha sem tocar no ledger que outro processo reescreve."""
+    pasta = _pasta_de_pendentes(caminho)
+    pasta.mkdir(parents=True, exist_ok=True)
+    descritor, temporario = tempfile.mkstemp(dir=pasta, suffix=".tmp")
+    destino = pasta / f"{os.getpid()}-{uuid.uuid4().hex}.json"
+    try:
+        with os.fdopen(descritor, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporario, destino)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporario)
+
+
+def _pendentes(caminho: Path) -> list[tuple[Path, dict]]:
+    pasta = _pasta_de_pendentes(caminho)
+    if not pasta.is_dir():
+        return []
+    saida = []
+    for arquivo in pasta.glob("*.json"):
+        try:
+            linha = json.loads(arquivo.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(linha, dict):
+            saida.append((arquivo, linha))
+    return saida
+
+
+def _chave_da_linha(linha: dict) -> tuple:
+    """A mesma publicacao: video, destino e hora (o resto pode ser completado)."""
+    return (linha.get("video_id"), linha.get("plataforma"), linha.get("quando"))
+
+
+def _linhas_do_ledger(caminho: Path) -> list[dict]:
+    if not caminho.is_file():
+        return []
+    saida = []
+    with open(caminho, encoding="utf-8") as fh:
+        for texto in fh:
+            try:
+                linha = json.loads(texto)
+            except ValueError:
+                continue
+            if isinstance(linha, dict):
+                saida.append(linha)
+    return saida
+
+
 def acrescentar_ao_ledger(caminho: Path, linha: dict, canal: str,
                           paciencia: float = PACIENCIA_DO_ESCRITOR) -> None:
     """Acrescenta uma linha. NUNCA perde a linha por causa da trava."""
     from .. import travas
     caminho.parent.mkdir(parents=True, exist_ok=True)
     with travas.trava(nome_da_trava(canal), esperar=paciencia) as minha:
-        with open(caminho, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+        if minha:
+            pendentes = [p for _, p in _pendentes(caminho)]
+            if pendentes:
+                # as pendentes aconteceram ANTES desta: a ordem e a do tempo
+                reescrever_ledger(caminho, [*_linhas_do_ledger(caminho),
+                                            *pendentes, linha])
+            else:
+                with open(caminho, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+        else:
+            _guardar_pendente(caminho, linha)
     if not minha:
         with contextlib.suppress(Exception):
             from .. import atividade
             atividade.registrar(
                 "publicacao", "erro",
-                f"gravei no ledger de {canal} SEM a trava (ocupada por "
+                f"guardei pendente no ledger de {canal} (trava ocupada por "
                 f"{paciencia:.0f} s): {linha.get('video_id')} "
-                f"({linha.get('plataforma')}). Confira se uma reescrita "
-                "simultanea nao apagou esta linha.", canal)
+                f"({linha.get('plataforma')}).", canal)
 
 
 def reescrever_ledger(caminho: Path, linhas: list) -> None:
     """Troca o arquivo inteiro de uma vez. Quem chama segura a trava."""
-    temporario = caminho.with_name(f"{caminho.name}.{os.getpid()}.tmp")
-    with open(temporario, "w", encoding="utf-8") as fh:
-        for linha in linhas:
+    pendentes = _pendentes(caminho)
+    # Quem reescreve leu por `publicados()`, que JA traz as pendentes (e a
+    # reconciliacao pode ter completado o id de uma delas): so entra a que
+    # ainda nao esta nas linhas, senao a publicacao fica em dobro no ledger.
+    ja_estao = {_chave_da_linha(linha) for linha in linhas}
+    novas = [linha for _, linha in pendentes
+             if _chave_da_linha(linha) not in ja_estao]
+    descritor, temporario = tempfile.mkstemp(dir=caminho.parent,
+                                             suffix=".tmp")
+    with os.fdopen(descritor, "w", encoding="utf-8") as fh:
+        for linha in [*linhas, *novas]:
             fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
     os.replace(temporario, caminho)
+    for arquivo, _ in pendentes:
+        with contextlib.suppress(FileNotFoundError):
+            arquivo.unlink()
 
 
 def registrar_publicacao(video, url: str, plataforma: str = "youtube",
@@ -268,18 +346,18 @@ def registrar_publicado(video, url: str, plataforma: str = "youtube", *,
 
 def publicados(canal: str = "builds") -> list[dict]:
     registro = registro_do_canal(canal)
-    if not registro.is_file():
-        return []
     saida = []
-    with open(registro, encoding="utf-8") as fh:
-        for linha in fh:
-            linha = linha.strip()
-            if not linha:
-                continue
-            try:
-                saida.append(json.loads(linha))
-            except ValueError:
-                continue
+    if registro.is_file():
+        with open(registro, encoding="utf-8") as fh:
+            for linha in fh:
+                linha = linha.strip()
+                if not linha:
+                    continue
+                try:
+                    saida.append(json.loads(linha))
+                except ValueError:
+                    continue
+    saida.extend(linha for _, linha in _pendentes(registro))
     return saida
 
 

@@ -30,6 +30,9 @@ class _Base(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.ledger = Path(self._tmp.name) / "publicados.jsonl"
+        real_registro = M.REGISTRO
+        M.REGISTRO = self.ledger
+        self.addCleanup(lambda: setattr(M, "REGISTRO", real_registro))
         self.avisos = []
         real = atividade.registrar
         atividade.registrar = lambda *a, **k: self.avisos.append(a)
@@ -41,6 +44,8 @@ class _Base(unittest.TestCase):
         self.addCleanup(lambda: setattr(travas, "trava", real))
 
     def linhas(self):
+        if not self.ledger.is_file():
+            return []
         return [json.loads(l) for l in
                 self.ledger.read_text(encoding="utf-8").splitlines() if l]
 
@@ -53,16 +58,49 @@ class QuemAcrescenta(_Base):
         self.assertEqual(["g1"], [l["video_id"] for l in self.linhas()])
         self.assertEqual([], self.avisos)
 
-    def test_trava_ocupada_grava_mesmo_assim_e_avisa(self):
+    def test_trava_ocupada_guarda_pendente_e_avisa(self):
         # Publicacao que aconteceu e nao foi registrada gera repostagem.
         self._ocupar()
         M.acrescentar_ao_ledger(self.ledger,
                                 {"video_id": "g1", "plataforma": "tiktok"},
                                 "builds", paciencia=0.1)
-        self.assertEqual(["g1"], [l["video_id"] for l in self.linhas()])
+        self.assertEqual([], self.linhas())
+        self.assertEqual(["g1"], [l["video_id"]
+                                  for l in M.publicados()])
         (aviso,) = self.avisos
         self.assertEqual(("publicacao", "erro"), aviso[:2])
-        self.assertIn("SEM a trava", aviso[2])
+        self.assertIn("pendente", aviso[2])
+
+    def test_reescrita_incorpora_a_linha_pendente(self):
+        self._ocupar()
+        M.acrescentar_ao_ledger(self.ledger, {"video_id": "durante"},
+                                "builds", paciencia=0.1)
+        M.reescrever_ledger(self.ledger, [{"video_id": "antes"}])
+        self.assertEqual(["antes", "durante"],
+                         [l["video_id"] for l in self.linhas()])
+        self.assertEqual([], list(self.ledger.parent.glob(
+            "publicados.jsonl.pendentes/*.json")))
+
+    def test_proximo_escritor_com_trava_esvazia_pendentes(self):
+        M._guardar_pendente(self.ledger, {"video_id": "antes"})
+        M.acrescentar_ao_ledger(self.ledger, {"video_id": "depois"},
+                                "builds", paciencia=0.1)
+        self.assertEqual(["antes", "depois"],
+                         [l["video_id"] for l in self.linhas()])
+        self.assertEqual([], list(self.ledger.parent.glob(
+            "publicados.jsonl.pendentes/*.json")))
+
+    def test_reconciliacao_le_a_pendente_e_nao_a_duplica(self):
+        """`publicados()` ja traz a pendente; reescrever nao pode repeti-la."""
+        M.acrescentar_ao_ledger(self.ledger, {"video_id": "antes", "plataforma": "youtube",
+                                              "quando": "2026-10-11T09:00:00"}, "builds")
+        M._guardar_pendente(self.ledger, {"video_id": "durante", "plataforma": "youtube",
+                                          "quando": "2026-10-11T09:40:00"})
+        linhas = M.publicados("builds")
+        linhas[-1]["youtube_id"] = "abc"          # a reconciliacao completou o id
+        M.reescrever_ledger(self.ledger, linhas)
+        self.assertEqual([("antes", None), ("durante", "abc")],
+                         [(l["video_id"], l.get("youtube_id")) for l in self.linhas()])
 
     def test_o_escritor_de_builds_usa_a_trava(self):
         real = M.REGISTRO
