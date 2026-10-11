@@ -68,7 +68,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import claude_estado
@@ -778,6 +778,14 @@ def tokens_na_janela(agora: float | None = None, janela_s: float = 5 * 3600) -> 
 
 def conferir_teto(config: dict, agora: float | None = None) -> dict:
     """O uso, e Recusa se passou do teto (ou se nao da para saber)."""
+    try:
+        bloqueio = json.loads(_arquivo_do_limite().read_text(encoding="utf-8"))
+        ate = float(bloqueio.get("ate") or 0)
+    except (OSError, ValueError, TypeError, AttributeError):
+        ate = 0.0
+    if ate > (time.time() if agora is None else agora):
+        raise Recusa(f"o Codex bateu o limite de uso; volta {datetime.fromtimestamp(ate):%d/%m %H:%M} "
+                     "(a propria mensagem dele; o uso medido nao mostra isso)")
     uso = uso_codex(agora)
     teto = config["teto_codex_pct"]
     if uso["pct"] is not None:
@@ -1367,6 +1375,49 @@ def _rodada(tarefa_id: str, tipo: str, prompt: str, *, forcar: bool = False) -> 
     return ler_estado(tarefa_id)
 
 
+_LIMITE_DE_USO = re.compile(
+    r"usage limit.*?try again at\s+(\d{1,2}):(\d{2})\s*([AaPp])\.?[Mm]", re.S)
+
+
+def _arquivo_do_limite() -> Path:
+    return pasta() / "limite_codex.json"
+
+
+def _registrar_limite_de_uso(tarefa_id: str) -> datetime | None:
+    """Se a rodada morreu no limite de uso, lembra ate quando (hora local).
+
+    11/10/2026: a janela renovou as 18:31, 6 trabalhos em esforco alto gastaram
+    tudo em 12 min ("tente de novo as 23:32"), e a Mesa lancou mais 10 que
+    morreram em 30 s cada, gastando as tentativas deles. O uso medido ficou em
+    98% e o teto era 100%: so a MENSAGEM do Codex sabe a hora da volta.
+    """
+    try:
+        linhas = (pasta_da(tarefa_id) / "eventos.jsonl").read_text(
+            encoding="utf-8", errors="replace").splitlines()[-12:]
+    except OSError:
+        return None
+    for bruta in reversed(linhas):
+        achado = _LIMITE_DE_USO.search(bruta)
+        if not achado:
+            continue
+        hora, minuto = int(achado.group(1)) % 12, int(achado.group(2))
+        if achado.group(3).lower() == "p":
+            hora += 12
+        agora = _agora().replace(tzinfo=None) if _agora().tzinfo else _agora()
+        volta = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+        if volta <= agora:
+            volta += timedelta(days=1)
+        try:
+            _arquivo_do_limite().write_text(json.dumps(
+                {"ate": volta.timestamp(), "texto": f"limite de uso do Codex ate {volta:%d/%m %H:%M}",
+                 "visto_em": agora.isoformat(timespec="seconds"), "por": tarefa_id}),
+                encoding="utf-8")
+        except OSError:
+            pass
+        return volta
+    return None
+
+
 def _encerrar(tarefa_id: str, rodada: _Rodada, codigo) -> None:
     nome = _nome_da_ia(ler_estado(tarefa_id))
     if rodada.motivo_parada:
@@ -1375,6 +1426,9 @@ def _encerrar(tarefa_id: str, rodada: _Rodada, codigo) -> None:
         situacao, motivo = "terminou", ""
     else:
         situacao, motivo = "falhou", f"o {nome} saiu com o código {codigo}"
+        ate = _registrar_limite_de_uso(tarefa_id)
+        if ate:
+            motivo += f" (limite de uso: volta às {ate:%H:%M})"
     with _trava():
         estado = ler_estado(tarefa_id)
         estado.update(situacao=situacao, motivo=motivo, fim=_agora_iso(), pid=None,

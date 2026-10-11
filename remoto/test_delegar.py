@@ -1087,3 +1087,30 @@ def test_ruido_do_gitignore_nao_entra_no_exclude_do_git_add(mundo):
     (wt / "novo.txt").write_text("y", encoding="utf-8")
     resumo = delegar.coletar("t01")
     assert [a["caminho"] for a in resumo["arquivos"]] == [".gitignore", "novo.txt"]
+
+
+def test_limite_de_uso_do_codex_bloqueia_ate_a_hora_que_ele_disse(mundo, monkeypatch):
+    """11/10: 'tente de novo as 11:32 PM' — 10 pedidos morreram em 30 s lancados no 98%."""
+    _criar(mundo)
+    ev = {"n": 4, "ev": {"type": "error", "message": "You\u2019ve hit your usage limit. "
+                         "Upgrade to Pro, or try again at 11:32 PM."}}
+    (delegar.pasta_da("t01") / "eventos.jsonl").write_text(json.dumps(ev) + "\n", encoding="utf-8")
+    volta = delegar._registrar_limite_de_uso("t01")
+    assert volta is not None and (volta.hour, volta.minute) == (23, 32)
+    for p in (mundo.home / "sessions").rglob("*.jsonl"):
+        p.unlink()
+    _rollout(mundo.home, 10.0, time.time() + 3600)       # o uso medido diz "folga"
+    antes = volta.timestamp() - 60                        # o relogio do teste e falso
+    with pytest.raises(delegar.Recusa, match="limite de uso"):
+        delegar.conferir_teto(delegar.ler_config(), antes)
+    assert delegar.conferir_teto(delegar.ler_config(), volta.timestamp() + 60)["pct"] == 10.0
+    delegar._arquivo_do_limite().unlink()
+    assert delegar.conferir_teto(delegar.ler_config(), antes)["pct"] == 10.0
+
+
+def test_sem_mensagem_de_limite_nao_cria_bloqueio(mundo):
+    _criar(mundo)
+    (delegar.pasta_da("t01") / "eventos.jsonl").write_text(
+        json.dumps({"ev": {"type": "error", "message": "outra coisa"}}) + "\n", encoding="utf-8")
+    assert delegar._registrar_limite_de_uso("t01") is None
+    assert not delegar._arquivo_do_limite().exists()
