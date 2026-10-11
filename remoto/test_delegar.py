@@ -521,6 +521,31 @@ def test_decidir_permissao_retomada_politica_e_conta_negada(mundo, monkeypatch):
     assert delegar.decidir_permissao("t01", True)["situacao"] == "negado"
 
 
+def test_caminho_protegido_aceito_entra_na_lista_do_trabalhador(mundo, monkeypatch):
+    """11/10: tres aceites e o trabalhador pedia de novo — a lista nunca mudava."""
+    monkeypatch.setenv("NF_DUBLE_MODO", "escopo")
+    _criar(mundo)
+    delegar.rodar("t01")
+    estado = delegar.ler_estado("t01")
+    antes = list(estado["permitidos"])
+    estado["pedido_permissao"].update(
+        categoria="caminho_protegido",
+        alvo=r"ferramentas/postar.py; random_builds/builds/publicar/**, "
+             r"%LOCALAPPDATA%\neural-fights\pausa_builds.json ../fora C:\x")
+    delegar._gravar_estado(estado)
+    e = delegar.decidir_permissao("t01", True)
+    assert e["situacao"] == "criado"
+    assert e["permitidos"] == antes + ["ferramentas/postar.py",
+                                       "random_builds/builds/publicar/**"]
+    assert "caminhos liberados agora: ferramentas/postar.py" in e["motivo"]
+    tarefa = (Path(e["worktree"]) / ".codex_tarefa.md").read_text(encoding="utf-8")
+    assert "- `random_builds/builds/publicar/**`" in tarefa
+    # o diff que mexe no caminho liberado passa a ser aceito
+    assert not delegar.avisos_do_diff(
+        [{"caminho": "ferramentas/postar.py", "mais": 1, "menos": 0}],
+        e["permitidos"], delegar.ler_config())
+
+
 # ------------------------------------------------------------- guardas
 def test_claude_proibido_barra_o_trabalhador_claude_sem_parar_o_codex(mundo):
     _criar(mundo, ia="claude", cargo="conferente")

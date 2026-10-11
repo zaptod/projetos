@@ -1472,6 +1472,45 @@ def _recriar_worktree_no_repo(estado: dict, novo_repo: Path) -> None:
     estado.update(repo=str(novo_repo), base=base, thread_id=None)
 
 
+def _caminhos_do_alvo(alvo) -> list[str]:
+    """Os caminhos do REPOSITORIO num `alvo` de permissao ("a/**, b.py; c").
+
+    Fora do repositorio (`%LOCALAPPDATA%`, `C:\\...`, `..`) nao vira caminho
+    permitido: o diff so tem arquivos da worktree.
+    """
+    saida = []
+    for bruto in re.split(r"[,;\s]+", str(alvo or "")):
+        p = re.sub(r"^(\./)+", "", bruto.strip().strip("`'\"()").replace("\\", "/"))
+        if (not p or ".." in p.split("/") or ":" in p or "%" in p
+                or p.startswith(("/", "~"))):
+            continue
+        if p not in saida:
+            saida.append(p)
+    return saida
+
+
+def _liberar_caminhos(estado: dict, alvo) -> list[str]:
+    """Soma ao `permitidos` o que o Adrian liberou e reescreve a tarefa.
+
+    11/10/2026: "Pare com os videos de build tambem" ficou 17 h parado. O
+    Adrian aceitou TRES vezes; a cada aceite o trabalhador voltava com a mesma
+    lista de caminhos (a permissao era anotada e nunca entrava nela), lia
+    "fora do escopo" de novo e pedia de novo. Devolve so os caminhos novos.
+    """
+    atuais = list(estado.get("permitidos") or [])
+    novos = [p for p in _caminhos_do_alvo(alvo) if p not in atuais]
+    if not novos:
+        return []
+    estado["permitidos"] = atuais + novos
+    try:
+        tarefa = (pasta_da(estado["id"]) / "tarefa.md").read_text(encoding="utf-8")
+        (Path(estado["worktree"]) / ".codex_tarefa.md").write_text(
+            compor_prompt(tarefa, estado["permitidos"]), encoding="utf-8")
+    except (OSError, KeyError):
+        pass
+    return novos
+
+
 def decidir_permissao(tarefa_id: str, permitir: bool, *, sempre: bool = False) -> dict:
     """Registra a decisão; quem chama escolhe se a retomada roda no fundo."""
     with _trava():
@@ -1511,11 +1550,17 @@ def decidir_permissao(tarefa_id: str, permitir: bool, *, sempre: bool = False) -
             novo_repo = _repo_valido(pedido.get("alvo"))
             if not _mesmo_caminho(novo_repo, repo_da(estado)):
                 _recriar_worktree_no_repo(estado, novo_repo)
+        liberados = []
+        if categoria == "caminho_protegido":
+            liberados = _liberar_caminhos(estado, pedido.get("alvo"))
         try:
             (Path(estado["worktree"]) / ".permissao.json").unlink()
         except OSError:
             pass
-        estado.update(situacao="criado", motivo="permissao concedida: " + str(pedido.get("o_que") or ""),
+        motivo = "permissao concedida: " + str(pedido.get("o_que") or "")
+        if liberados:
+            motivo += " — caminhos liberados agora: " + ", ".join(liberados)
+        estado.update(situacao="criado", motivo=motivo,
                       pedido_permissao=None, pid=None, pid_codex=None)
         _gravar_estado(estado)
     _log(tarefa_id, "permissao concedida: " + str(pedido.get("categoria") or ""))
