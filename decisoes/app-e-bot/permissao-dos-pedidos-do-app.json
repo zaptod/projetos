@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Hoje cada pedido do app só pode mexer em 4 pastas (remoto, coordenador, docs, agentes). Quase todo pedido real (builds, histórias, postagem) cai fora delas e vira pedido de aceite para você. Em 11/10 o 'pare com os builds' ficou 17 h parado assim, e havia 15 itens velhos esperando aceite. O defeito de o aceite não liberar já foi consertado (ebf2a0d), mas a quantidade de aceites continua.",
+  "criado": "2026-10-11T04:29:08.324032",
+  "depende_de": [],
+  "historico": [],
+  "id": "permissao-dos-pedidos-do-app",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O trabalhador mexe em qualquer arquivo do projeto sem perguntar. Continua pedindo SEU aceite só para o que é arriscado: publicar, entrar em conta, enviar ao GitHub, apagar coisas e decisões de produto. Tudo passa pelos testes antes de entrar.",
+      "id": "projeto",
+      "pede_comentario": false,
+      "rotulo": "Liberar o projeto todo (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Cada pasta fora das 4 continua pedindo aceite seu.",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Quando você pede algo pelo app, quem faz o trabalho pode mexer em qualquer arquivo do projeto sem te pedir aceite?",
+  "projeto": "app-e-bot",
+  "situacao": "pendente",
+  "titulo": "Pedidos do app sem enxurrada de aceites",
+  "vigente": null
+}
