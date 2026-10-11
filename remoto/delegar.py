@@ -115,7 +115,12 @@ RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_ca
          # 05/10: rascunhos de agente na raiz (resposta.md, .conf_som_real.md,
          # .tarefa_imagens_heranca.md) entraram em commits e geraram conflito
          # de merge no pedido-66e4ba54; a resposta e a MENSAGEM FINAL, nao arquivo
-         "resposta.md", ".tarefa_*.md", ".conf_*.md")
+         "resposta.md", ".tarefa_*.md", ".conf_*.md",
+         # 11/10: o Codex roda os testes com NEURAL_FIGHTS_RUNTIME_DIR=.rt e
+         # --basetemp=.pytest_tmp; .rt/locks e .rt/auditoria-pedidos entraram em
+         # dois commits "so documentacao" da auditoria
+         ".rt/**", "**/.rt/**", ".pytest_tmp/**", "**/.pytest_tmp/**",
+         ".pytest_saida.txt", ".pytest_erro.txt")
 # O que o Codex nunca mexe, qualquer que seja a lista da tarefa.
 # 01/10 23:5x: era "palco/**" inteiro e barrou a entrega das buscas do palco;
 # o que e do Adrian no palco sao so estes tres (as artes dele, sem commit).

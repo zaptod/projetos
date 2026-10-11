@@ -66,3 +66,9 @@ outputs/_ias/
 !.claude/agents/
 !.claude/commands/
 !.claude/settings.json
+
+# runtime e temporarios dos testes do Codex (11/10/2026)
+.rt/
+.pytest_tmp/
+.pytest_saida.txt
+.pytest_erro.txt
