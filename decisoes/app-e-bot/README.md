@@ -20,4 +20,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Conversa: pergunta que não está na lista** — O modelo decide (06/10/2026) `conversa-pergunta-livre`
 - ✅ **Ateliê: onde fica e o que vem primeiro** — Objeto próprio, três modos no topo (recomendado) (07/10/2026) `atelie-lugar-e-ordem`
 - ✅ **Ateliê: os dois 'Apagar' do mesmo cartão** — Renomear para ficar claro (recomendado) (07/10/2026) `atelie-dois-apagar`
-- ⏳ **Pedidos do app sem enxurrada de aceites** — Quando você pede algo pelo app, quem faz o trabalho pode mexer em qualquer arquivo do projeto sem te pedir aceite? `permissao-dos-pedidos-do-app`
+- ✅ **Pedidos do app sem enxurrada de aceites** — Liberar o projeto todo (recomendado) (11/10/2026) · “11/10 ~04h40 pelo chat: 'faça isso'” `permissao-dos-pedidos-do-app`
