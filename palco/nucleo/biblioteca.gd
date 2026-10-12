@@ -19,27 +19,14 @@ extends RefCounted
 ##
 ## Os nomes passam por UtilPalco.slug: "Mágica" procura "magica.tscn".
 ##
-## O PNG do ATELIE (palco/biblioteca/partes/<grupo>/..., no destino que o
-## manifesto `manifesto_slots.json` da a cada lugar) entra na MESMA cadeia,
-## logo antes da cena do mesmo nivel: o mais especifico vence, e no mesmo
-## nivel o desenho do Atelie vence a cena antiga. Sem PNG, a cadeia de hoje.
-## Um candidato que comeca com "png:" e o id de um slot do manifesto:
-##   armas    png:estilo > estilos/<estilo> > png:tipo > tipos/<tipo> > _padrao
-##            (a Corrente fica fora: a peca dela e a de Verlet, F4 a parte)
-##   objeto   png:skill > skills/<skill> > png:elemento > [Comum x cena por
-##            elemento: ORDEM_DO_COMUM] > <tipo>/_padrao > _padrao
-##            (beam e portal ficam fora: precisam de codigo para esticar/ligar a e b)
-##   evento   png:variante > <tipo>_<variante> > png:elemento > ... > png:tipo > <tipo> > _padrao
-##   em volta do lutador (estados, status, buffs, canais, transformacoes)
-##            png > lutadores/<categoria>/<nome> > <categoria>/_padrao
+## A arte do Atelie entra apenas pelo catalogo de animacoes e pelas folhas
+## correspondentes. PNG avulso de manifesto nao vira peca do palco.
 
 const RAIZ := "res://biblioteca/"
 const EXTENSOES := [".tscn", ".scn"]
 const EXT_SOM := [".wav", ".ogg", ".mp3"]
 const RESERVA := "res://nucleo/peca_reserva.gd"
-const PECA_PNG := "res://nucleo/peca_png.gd"
 const TOCADOR_FOLHA := "res://nucleo/tocador_folha.gd"
-const PREFIXO_PNG := "png:"
 ## candidato de cena que so vale se NAO for arte provisoria (CC0)
 const PREFIXO_ARTE := "arte:"
 ## Cena provisoria = cena cujo script raiz e um destes (as 38 cenas CC0 por
@@ -72,11 +59,6 @@ var raiz := RAIZ          # os testes apontam para uma biblioteca de mentira
 var _cache := {}          # caminho -> PackedScene
 var escolhas := {}        # "categoria:pedido" -> caminho escolhido (relatorio)
 var reservas := {}        # pedidos que cairam no _padrao ou na reserva embutida
-var _destinos := {}       # id do slot -> caminho do PNG (pelo manifesto)
-var _tingir_do_png := {}  # caminho do PNG -> `tingir` do slot no manifesto
-var _manifesto_de := ""   # a raiz cujo manifesto esta em _destinos
-var _texturas := {}       # caminho do PNG -> ImageTexture, ou null (nao abriu: nao tenta de novo)
-var pngs_ilegiveis := {}  # caminho -> true (o relatorio diz)
 var _provisoria := {}     # caminho da cena -> e arte provisoria (CC0)?
 var ordem_do_comum := ORDEM_DO_COMUM   # os testes trocam
 var _catalogo := {}                    # id -> peca, lido uma vez por raiz
@@ -132,8 +114,8 @@ func tem_folha_catalogada(ids: Array) -> bool:
 	return not peca.is_empty() and _tem_folha_catalogo(peca)
 
 
-func tem_folha_evento(tipo: String, elemento := "", skill := "", tipo_skill := "") -> bool:
-	return tem_folha_catalogada(["skill." + UtilPalco.slug(skill), "skill.tipo." + UtilPalco.slug(tipo_skill),
+func tem_folha_evento(tipo: String, elemento := "", skill := "", tipo_skill := "", variante := "") -> bool:
+	return tem_folha_catalogada(["movimento." + UtilPalco.slug(variante) if tipo == "movimento" else "", "skill." + UtilPalco.slug(skill), "skill.tipo." + UtilPalco.slug(tipo_skill),
 		"evento." + UtilPalco.slug(tipo), "efeito." + UtilPalco.slug(tipo),
 		"elemento." + UtilPalco.slug(elemento), "efeito.generico"])
 
@@ -171,65 +153,6 @@ func _tem_folha_catalogo(peca: Dictionary) -> bool:
 	return false
 
 
-## Le o manifesto da biblioteca uma vez (por raiz): id do slot -> caminho do
-## PNG. O manifesto e a autoridade do destino, como no painel que grava.
-func _carregar_destinos() -> void:
-	if _manifesto_de == raiz:
-		return
-	_manifesto_de = raiz
-	_destinos.clear()
-	_tingir_do_png.clear()
-	var arquivo := raiz + "manifesto_slots.json"
-	if not FileAccess.file_exists(arquivo):
-		return
-	var json := JSON.new()
-	if json.parse(FileAccess.get_file_as_string(arquivo)) != OK or typeof(json.data) != TYPE_DICTIONARY:
-		return
-	for slot in json.data.get("slots", []):
-		if typeof(slot) != TYPE_DICTIONARY or str(slot.get("grupo", "")) == "lutador":
-			continue
-		var destino := str(slot.get("destino", "")).replace("\\", "/")
-		if destino.begins_with("palco/biblioteca/"):
-			var caminho := raiz + destino.trim_prefix("palco/biblioteca/")
-			_destinos[str(slot.get("id", ""))] = caminho
-			_tingir_do_png[caminho] = str(slot.get("tingir", "nenhum"))
-
-
-## O caminho do PNG do slot `id`, ou "" (slot fora do manifesto, sem
-## desenho, ou PNG que nao abre: a cadeia segue para o desenho de hoje).
-func png_do_slot(id_slot: String) -> String:
-	_carregar_destinos()
-	var caminho := str(_destinos.get(id_slot, ""))
-	if caminho == "" or not FileAccess.file_exists(caminho):
-		return ""
-	return caminho if textura_png(caminho) != null else ""
-
-
-## A textura do PNG do Atelie, lida UMA vez (a falha tambem fica guardada:
-## um PNG quebrado nao e reaberto a cada evento). O transparente do Atelie e
-## (0,0,0,0) e o filtro (e os mipmaps) puxariam esse preto para a borda:
-## franja escura. O importador do Godot resolve com `fix_alpha_border`, que o
-## GDScript nao alcanca (Image nao expoe); aqui a textura vai PRE-MULTIPLICADA
-## e a peca desenha com mistura pre-multiplicada (peca_png.gd), o que da a
-## mesma borda limpa, inclusive nos mipmaps.
-func textura_png(caminho: String) -> Texture2D:
-	if _texturas.has(caminho):
-		return _texturas[caminho]
-	var tex: Texture2D = null
-	var imagem := Image.load_from_file(ProjectSettings.globalize_path(caminho))
-	if imagem != null and not imagem.is_empty():
-		if imagem.get_format() != Image.FORMAT_RGBA8:
-			imagem.convert(Image.FORMAT_RGBA8)
-		imagem.premultiply_alpha()
-		imagem.generate_mipmaps()
-		tex = ImageTexture.create_from_image(imagem)
-	else:
-		pngs_ilegiveis[caminho] = true
-		push_warning("[palco] PNG do Atelie nao abre, segue o desenho de hoje: " + caminho)
-	_texturas[caminho] = tex
-	return tex
-
-
 ## A cena e arte provisoria (CC0)? Pelo script raiz, sem instanciar.
 func eh_provisoria(caminho: String) -> bool:
 	if _provisoria.has(caminho):
@@ -246,18 +169,9 @@ func eh_provisoria(caminho: String) -> bool:
 	return provisoria
 
 
-static func _id_slot(grupo: String, parte: String, nivel: String, chave: String, estado := "base") -> String:
-	return PREFIXO_PNG + "%s/%s/%s/%s/%s" % [grupo, parte, nivel, chave, estado]
-
-
 func _achar(categoria: String, candidatos: Array) -> String:
 	for rel in candidatos:
 		if str(rel).is_empty():
-			continue
-		if str(rel).begins_with(PREFIXO_PNG):
-			var png := png_do_slot(str(rel).trim_prefix(PREFIXO_PNG))
-			if png != "":
-				return png
 			continue
 		var so_arte := str(rel).begins_with(PREFIXO_ARTE)
 		var nome := str(rel).trim_prefix(PREFIXO_ARTE)
@@ -265,6 +179,11 @@ func _achar(categoria: String, candidatos: Array) -> String:
 			var caminho: String = raiz + categoria + "/" + nome + str(ext)
 			if ResourceLoader.exists(caminho) and not (so_arte and eh_provisoria(caminho)):
 				return caminho
+	return ""
+
+
+static func _id_slot(grupo: String, parte: String, nivel: String, chave: String, estado := "base") -> String:
+	# A assinatura fica para os candidatos antigos, mas PNG avulso nao entra.
 	return ""
 
 
@@ -298,56 +217,9 @@ static func _vetor(valor, padrao: Vector2) -> Vector2:
 	return padrao
 
 
-## A peca de UM PNG (nucleo/peca_png.gd), empacotada na hora. `ajustes` sao
-## os campos da peca para o lugar dela (modo, girar, tamanho...); o .json do
-## painel, se existir, sobrepoe tingir e a geometria.
-func _cena_png(caminho: String, ajustes: Dictionary) -> PackedScene:
-	var textura := textura_png(caminho)
-	if textura == null:
-		return null
-	var no := Node2D.new()
-	no.name = "PecaPng"
-	no.set_script(load(PECA_PNG))
-	no.set("textura", textura)
-	no.set("origem_png", caminho)
-	for campo in ajustes:
-		no.set(campo, ajustes[campo])
-	# tingir: o .json do painel, senao o do slot no manifesto ("elemento" no
-	# comum de skill e efeito: a mesma arte serve aos 12 elementos)
-	var extra := opcoes_do_png(caminho)
-	var tingir := str(extra.get("tingir", _tingir_do_png.get(caminho, "nenhum")))
-	no.set("tingir", tingir if (tingir == "elemento" or tingir.begins_with("#")) else "")
-	no.set("empunhadura", _vetor(extra.get("empunhadura"), no.get("empunhadura")))
-	no.set("ponta", _vetor(extra.get("ponta"), no.get("ponta")))
-	for campo in ["tamanho_m", "duracao_s"]:
-		if extra.has(campo):
-			no.set(campo, float(extra[campo]))
-	no.call("preparar")
-	var cena := PackedScene.new()
-	cena.pack(no)
-	no.free()
-	return cena
-
-
 func _cena(categoria: String, pedido: String, candidatos: Array, ajustes_png := {}) -> PackedScene:
 	var caminho := _achar(categoria, candidatos)
 	var chave := categoria + ":" + pedido
-	if caminho.ends_with(".png"):
-		var chave_cache := caminho + "|" + str(ajustes_png)
-		if not _cache.has(chave_cache):
-			var feita := _cena_png(caminho, ajustes_png)
-			if feita == null:
-				# PNG que nao abre: a cadeia segue sem ele (o relatorio diz)
-				escolhas[chave] = "(png ilegivel: %s)" % caminho
-				var sem_png := []
-				for c in candidatos:
-					if not str(c).begins_with(PREFIXO_PNG):
-						sem_png.append(c)
-				var resto := _cena(categoria, pedido + "#sem_png", sem_png)
-				return resto
-			_cache[chave_cache] = feita
-		escolhas[chave] = caminho
-		return _cache[chave_cache]
 	if caminho.is_empty():
 		escolhas[chave] = "(reserva embutida)"
 		reservas[chave] = true
@@ -411,6 +283,15 @@ func lutador(nome: String, classe: String) -> PackedScene:
 		"classes/" + UtilPalco.slug(_sem_parenteses(classe)) if classe != "" else "",
 		"_padrao",
 	])
+
+
+func rostos() -> Array:
+	var cenas := []
+	for id in ["lutador.rosto.boca", "lutador.rosto.detalhe_rosto", "lutador.rosto.olhos", "lutador.rosto.sobrancelhas"]:
+		var cena := cena_catalogada([id, id + ".generico"])
+		if cena != null:
+			cenas.append(cena)
+	return cenas
 
 
 ## O elemento como chave do manifesto ("" para sem elemento / DEFAULT).
@@ -486,7 +367,7 @@ static func candidatos_evento_com_png(tipo: String, tier := "", elemento := "", 
 
 func evento(tipo: String, tier := "", elemento := "", variante := "", skill := "", tipo_skill := "") -> PackedScene:
 	var catalogada := cena_catalogada([
-		"skill." + UtilPalco.slug(skill), "skill.tipo." + UtilPalco.slug(tipo_skill),
+		"movimento." + UtilPalco.slug(variante) if tipo == "movimento" else "", "skill." + UtilPalco.slug(skill), "skill.tipo." + UtilPalco.slug(tipo_skill),
 		"evento." + UtilPalco.slug(tipo), "efeito." + UtilPalco.slug(tipo),
 		"elemento." + UtilPalco.slug(elemento), "efeito.generico"])
 	if catalogada != null:

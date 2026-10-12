@@ -73,6 +73,7 @@ def _mais_novo(pasta: Path) -> float:
 def garantir_importado(cfg: dict | None = None, *, forcar: bool = False) -> bool:
     """Importa o projeto se algo mudou desde o ultimo import. True = importou."""
     cfg = config.carregar() if cfg is None else cfg
+    config.conferir_versao_godot(cfg)
     pasta = config.projeto(cfg)
     marca = pasta / ".godot" / "palco_importado.txt"
     if not forcar and marca.is_file() and marca.stat().st_mtime >= _mais_novo(pasta):

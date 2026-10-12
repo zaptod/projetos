@@ -43,6 +43,12 @@ def _ler_json(caminho: Path) -> dict:
         return {}
 
 
+def _erros_do_godot(saida: str) -> list[str]:
+    # Avisos gerais do executavel (por exemplo, certificado do Windows) usam
+    # ``ERROR:`` tambem. O marcador proprio de falha durante o quadro e este.
+    return [linha.strip() for linha in saida.splitlines() if "SCRIPT ERROR" in linha]
+
+
 def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False,
                quadros: int | None = None, remapeamento: list | None = None,
                sons_da_luta: list | None = None, cfg: dict | None = None,
@@ -92,14 +98,20 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
     parados_py = plano.quadros_de_hitstop(doc, plano.hitstop_do_estilo(config.projeto(cfg), job["estilo"]), remap_job)
     duracao_video = (plano.quadros(int(doc["n"]) / int(doc["hz"]), remap_job) + parados_py) / 30.0
     prazo = min(float(cfg.get("timeout_s", 900)), 90.0 + 8.0 * duracao_video)
-    filme = godot.gravar_filme(arquivo_job, avi, cfg=cfg, timeout=prazo)
-    (trabalho / "godot.log").write_text(filme["saida"], encoding="utf-8")
-    rel = _ler_json(relatorio)
-    if filme["rc"] != 0 or not rel.get("ok"):
-        avisos = "; ".join(rel.get("avisos") or []) or filme["saida"][-1200:]
-        raise ErroPalco(f"o palco falhou: {filme['motivo'] or 'relatorio sem ok'} ({avisos})")
-    if not avi.is_file() or avi.stat().st_size == 0:
-        raise ErroPalco(f"o Godot saiu 0 mas o AVI nao existe: {avi}")
+    try:
+        filme = godot.gravar_filme(arquivo_job, avi, cfg=cfg, timeout=prazo)
+        (trabalho / "godot.log").write_text(filme["saida"], encoding="utf-8")
+        rel = _ler_json(relatorio)
+        erros_godot = _erros_do_godot(filme["saida"])
+        if filme["rc"] != 0 or not rel.get("ok") or erros_godot:
+            avisos = "; ".join(rel.get("avisos") or []) or "\n".join(erros_godot) or filme["saida"][-1200:]
+            motivo = filme["motivo"] or (f"{len(erros_godot)} erro(s) de script do Godot" if erros_godot else "relatorio sem ok")
+            raise ErroPalco(f"o palco falhou: {motivo} ({avisos})")
+        if not avi.is_file() or avi.stat().st_size == 0:
+            raise ErroPalco(f"o Godot saiu 0 mas o AVI nao existe: {avi}")
+    except Exception:
+        avi.unlink(missing_ok=True)
+        raise
 
     som_cfg = cfg.get("som") or {}
     ganho, lufs_avi = checagens.ganho_para_alvo(avi, alvo_lufs=float(som_cfg.get("alvo_lufs", -18.0)),
@@ -159,8 +171,6 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
         # rosto do Atelie que mostrou outra carinha no lugar da pedida (a pedida
         # nao esta desenhada): "<parte>/<nivel>/<alvo>/<vNN>" -> {pedida: usada}
         "rosto_herdado": rel.get("rosto_herdado") or {},
-        # PNG do Atelie que nao abriu (a cadeia seguiu para o desenho de hoje)
-        "pngs_ilegiveis": rel.get("pngs_ilegiveis") or [],
         "tempo": {"godot_s": filme["segundos"], "laco_godot_ms": rel.get("laco_ms"), "encode_s": segundos_encode},
         "avi_mb": round(tamanho_avi / 2 ** 20, 1),
         "nivel": {"lufs_antes": lufs_avi, "ganho_db": round(ganho, 2)}, "medidas": medidas,

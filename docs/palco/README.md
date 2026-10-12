@@ -46,7 +46,6 @@ python main.py palco editor                                       # abre o edito
 python main.py palco sintetica --destino T.json --duracao 2       # timeline de mentira
 python main.py palco ab --duelo duelo_00016 [--hud]               # A/B: o duelo x o palco
 python main.py palco ab --duelo duelo_00031 --edicao              # 16G: B = palco + a MESMA edicao do duelo
-python main.py palco vitrine [--so rostos]                        # as peças animadas, para revisão (16E)
 python main.py duelo --seed N --palco                             # um duelo novo, só palco
 python main.py duelo --seed N --palco --ab                        # + visual de hoje, lado a lado
 ```
@@ -153,7 +152,7 @@ acusa se ela não bater com a do Godot; `palco validar` mostra os quadros com
 hitstop sem abrir janela. No A/B o palco fica mais longo que o lado de hoje:
 o mais curto congela no último quadro.
 
-**16E, medido em 28/09 (21h):** a vitrine (`palco vitrine`, 10 páginas, 39 s,
+**16E, medido em 28/09 (21h):** a revisão de peças (10 páginas, 39 s,
 1170 quadros) levou 97 s de Godot; o palco do `duelo_00016` com a arte da 16E,
 o HUD e o hitstop deu 721 quadros (24,03 s: 697 + 24 de hitstop) em 53 s de
 Godot e 22 s de x264. O A/B depois da arte está em
@@ -170,7 +169,7 @@ duas vezes: a 1ª com o som da esquerda, a 2ª com o da direita (46,6 s).
   expressões montadas com as peças do Kenney (`lutadores/rosto/`, 12×);
   efeitos por (tipo × elemento) para projétil, área e beam com arte CC0
   (`objetos/<tipo>/<elemento>.tscn`); HUD do palco com nome, vida e plano
-  legíveis no celular (`--hud`); `main.py palco vitrine`.
+  legíveis no celular (`--hud`).
 - **16E, falta:** peças por classe e por estilo de arma (as 54), acessórios
   das 16 classes, arenas com arte, efeito de skill (evento) por elemento,
   orbe/summon/trap/portal com arte, e prender som em quadro de animação (API
@@ -307,7 +306,7 @@ timeline, o plano B e as medidas — ~0,9 GB por semana de lote no E:.
   `config.projeto` primeiro): na conferência levava 5,5 s para descobrir.
 - **`folha_animada.gd`** (a peça que a Oficina exporta; o fogo do Adrian) fazia
   `float()` de lista nos canais da trilha: SCRIPT ERROR a cada projétil. Agora
-  `_numero()`, como o `peca_png.gd` da ponte; teste em
+  `_numero()`; teste em
   `palco/testes/test_folha_animada.py` (falha com o arquivo antigo).
 
 A/B de novo (13:00, palco de a5296e6 + estes consertos, `duelo_00091`,

@@ -534,8 +534,7 @@ diferente de 1 e aceita qualquer `revisao`; arquivo sem o campo é revisão 1.
 | 3 | 28/09/2026 | eventos `projetil_fim`, `explosao`, `choque`, `refletido`, `texto`, `movimento`; `ponto` e `projetil` no `acerto` |
 | 4 | 01/10/2026 | a bola da corrente nova: canais `bola_x/bola_y/bola_vx/bola_vy` e cabeçalho `arma.corrente` de quem tem bola; `luta.corrente_v2` |
 
-**Paridade Python × Godot (revisão 4).** `palco/ferramentas/paridade_corrente.gd`
-lê a timeline como o palco e escreve o que leu (canais interpolados, mão, bola
-e a corrente que a peça desenharia); `random_builds/tests/test_palco_corrente_regressions.py`
-refaz as contas em Python e compara: canais a 1e-9, mão e pontas a 0,1 mm (o
-`Vector2` do Godot é float32).
+**Paridade Python × Godot (revisão 4).**
+`random_builds/tests/test_palco_corrente_regressions.py` refaz as contas em
+Python e compara os canais, a mão e as pontas a 0,1 mm (o `Vector2` do Godot é
+float32).

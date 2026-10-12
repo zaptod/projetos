@@ -19,3 +19,9 @@ def test_buscas_novas_da_biblioteca_do_palco():
     assert '"projetil_fim": true' in timeline
     assert 'variante = str(ev.get("gatilho", ""))' in palco
     assert 'variante = str(ev.get("motivo", ""))' in palco
+    assert '"movimento." + UtilPalco.slug(variante)' in biblioteca
+    assert "func rostos()" in biblioteca
+    assert '"lutador.rosto.boca"' in biblioteca
+    assert "func _donos_do_gatilho" in palco
+    assert 'tipo == "acerto"' in palco and 'tipo == "ko"' in palco
+    assert "peca_png.gd" not in biblioteca

@@ -27,8 +27,7 @@ python main.py palco render --seed 883770751 --p1 "Isandro Lumeprego" --p2 "Sila
 # um duelo já publicado contra o palco, lado a lado (--hud liga o HUD do palco)
 python main.py palco ab --duelo duelo_00016 --hud
 # a VITRINE: todas as peças animadas, página por página (~40 s de vídeo)
-python main.py palco vitrine
-python main.py palco vitrine --so rostos      # só as páginas cujo título tem "rostos"
+python main.py palco render --timeline T.json --quadros 90 --mp4 prova.mp4
 ```
 
 A vitrine sai em `outputs/_palco/vitrine/vitrine.mp4` e mostra o que a
@@ -270,7 +269,7 @@ com o nosso prompt), `data`, e o que foi feito na limpeza. **Obrigatório:**
 uma linha em `palco/biblioteca/LICENCAS.md`. Arte de IA só entra com prova de
 origem (conta compartilhada).
 
-**4. Conferir.** `python main.py palco vitrine --so folhas` mostra toda cena
+**4. Conferir.** Um render curto por `python main.py palco render` mostra a cena
 da biblioteca feita com `folha_animada.gd` (a página "FOLHAS ANIMADAS" aparece
 sozinha); para ver numa luta, `palco render` e o `<mp4>.palco.json` diz em
 `pecas` qual arquivo entrou. O beam ainda não aceita folha (ele é um traço

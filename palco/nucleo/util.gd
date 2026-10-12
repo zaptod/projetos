@@ -90,7 +90,8 @@ static func mv(x: float, y: float) -> Vector2:
 ## padrao e as filhas, `desenha_comprimento`, que leem `_comprimento_px`)
 ## fica em escala 1, como antes.
 static func esticar_arma(no: Node2D, comprimento_px: float) -> void:
-	if no.get("desenha_comprimento") == true:
+	var catalogo = no.get("catalogo_peca")
+	if no.get("desenha_comprimento") == true or (typeof(catalogo) == TYPE_DICTIONARY and not catalogo.is_empty()):
 		no.scale = Vector2.ONE
 		return
 	var ref = no.get("comprimento_ref")

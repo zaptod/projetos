@@ -10,6 +10,9 @@ var loop := true
 var ida_e_volta := false
 var duracoes: Dictionary = {}
 var ancora := Vector2.ZERO
+var escala_json := 1.0
+var espelho_json := false
+var rotacao_json := 0.0
 var indice := 0
 var sentido := 1
 var decorrido := 0.0
@@ -67,16 +70,27 @@ func carregar(pasta: String) -> bool:
 		return false
 	textura = ImageTexture.create_from_image(imagem)
 	quadros = dados["quadros"]
-	fps = maxf(0.01, float(dados.get("fps", 12.0)))
+	fps = float(dados.get("fps", 12.0))
+	if fps <= 0.0:
+		push_warning("[palco] fps invalido na folha, usando 12")
+		fps = 12.0
 	loop = bool(dados.get("loop", true))
 	ida_e_volta = bool(dados.get("ida_e_volta", false))
 	duracoes = dados.get("duracao_por_quadro", {}) if typeof(dados.get("duracao_por_quadro")) == TYPE_DICTIONARY else {}
 	var a = dados.get("ancora", {})
 	ancora = Vector2(float(a.get("x", 0.0)), float(a.get("y", 0.0))) if typeof(a) == TYPE_DICTIONARY else Vector2.ZERO
-	scale = Vector2.ONE * float(dados.get("escala", 1.0))
-	rotation_degrees = float(dados.get("rotacao", 0.0))
-	if bool(dados.get("espelho", false)):
-		scale.x = -absf(scale.x)
+	escala_json = float(dados.get("escala", 1.0))
+	espelho_json = bool(dados.get("espelho", false))
+	rotacao_json = float(dados.get("rotacao", 0.0))
+	var tamanho_folha := textura.get_size()
+	for q in quadros:
+		if typeof(q) != TYPE_DICTIONARY or float(q.get("x", -1)) < 0.0 or float(q.get("y", -1)) < 0.0 \
+				or float(q.get("w", 0)) <= 0.0 or float(q.get("h", 0)) <= 0.0 \
+				or float(q.get("x", 0)) + float(q.get("w", 0)) > tamanho_folha.x \
+				or float(q.get("y", 0)) + float(q.get("h", 0)) > tamanho_folha.y:
+			push_warning("[palco] quadro fora da folha: " + pasta)
+			quadros = []
+			return false
 	gatilho_animacao = str(dados.get("gatilho", ""))
 	queue_redraw()
 	return not quadros.is_empty()
@@ -89,9 +103,6 @@ func tocar(novo_gatilho: String) -> void:
 		# chamado a cada quadro: so troca (e recomeca) quando muda de animacao
 		if _animacoes.has(novo_gatilho) and novo_gatilho != gatilho_animacao:
 			_trocar(novo_gatilho)
-			indice = 0
-			sentido = 1
-			decorrido = 0.0
 			queue_redraw()
 		return
 	if gatilho_animacao != "" and novo_gatilho != gatilho_animacao:
@@ -104,6 +115,9 @@ func tocar(novo_gatilho: String) -> void:
 
 func gatilho(novo_gatilho: String) -> void:
 	tocar(novo_gatilho)
+	for filho in get_children():
+		if filho.has_method("gatilho"):
+			filho.gatilho(novo_gatilho)
 
 
 func avancar(delta: float) -> void:
@@ -139,6 +153,9 @@ func _trocar(novo_gatilho: String) -> void:
 	tamanho_rel = float(dado.get("tamanho", 1.0))
 	segue_animacao = str(dado.get("segue", "lutador"))
 	z_index = int(dado.get("camada", 0))
+	indice = 0
+	sentido = 1
+	decorrido = 0.0
 	_terminou = false
 
 
@@ -169,7 +186,9 @@ func _draw() -> void:
 		var fator := 1.0
 		if corpo_px > 0.0:
 			fator = corpo_px * tamanho_rel / maxf(origem.size.x, origem.size.y)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(fator, fator))
+		var escala := fator * escala_json
+		var escala_local := Vector2(-escala if espelho_json else escala, escala)
+		draw_set_transform(Vector2.ZERO, deg_to_rad(rotacao_json), escala_local)
 		# contrato (docs/sprites/ATELIE_NOVO.md): ancora RELATIVA ao quadro (0..1);
 		# valor acima de 1 e de folha antiga, em pixels
 		var ponto := ancora

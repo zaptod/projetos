@@ -144,6 +144,10 @@ func validar() -> PackedStringArray:
 	if not _eh_numero(dados.get("n")) or n <= 0:
 		e.append("n invalido: %s" % str(dados.get("n")))
 		return e
+	if typeof(dados.get("tabelas")) != TYPE_DICTIONARY:
+		e.append("tabelas ausente ou nao e objeto")
+	if typeof(dados.get("arena")) != TYPE_DICTIONARY:
+		e.append("arena ausente ou nao e objeto")
 	var trilhas = dados.get("trilhas")
 	if typeof(trilhas) != TYPE_DICTIONARY:
 		e.append("sem trilhas")
@@ -161,12 +165,17 @@ func validar() -> PackedStringArray:
 	if typeof(cab) != TYPE_ARRAY or cab.size() != 2:
 		e.append("cabecalho `lutadores` precisa de 2 entradas")
 	else:
+		var slots := {}
 		for i in 2:
 			var l = cab[i]
 			if typeof(l) != TYPE_DICTIONARY:
 				e.append("lutadores[%d] nao e objeto" % i)
-			elif not _eh_numero(l.get("raio_corpo")) or float(l.get("raio_corpo")) <= 0.0:
-				e.append("lutadores[%d].raio_corpo invalido" % i)
+			else:
+				slots[str(l.get("slot", ""))] = true
+				if not _eh_numero(l.get("raio_corpo")) or float(l.get("raio_corpo")) <= 0.0:
+					e.append("lutadores[%d].raio_corpo invalido" % i)
+		if slots.size() != 2 or not slots.has("p1") or not slots.has("p2"):
+			e.append("lutadores precisam ter exatamente os slots p1 e p2")
 	_conferir_intervalos(e, "objetos", trilhas.get("objetos", []), CANAIS_OBJETO)
 	_conferir_intervalos(e, "efeitos", trilhas.get("efeitos", []), CANAIS_EFEITO)
 	_conferir_eventos(e)

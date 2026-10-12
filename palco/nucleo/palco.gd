@@ -223,6 +223,8 @@ func _montar_cena(arena: Dictionary) -> void:
 		var c := tl.cabecalho_lutador(slot)
 		cab[slot] = c
 		var no = _instanciar(bib.lutador(str(c.get("nome", "")), str(c.get("classe", ""))), camada_lutadores)
+		for cena_rosto in bib.rostos():
+			no.add_child(cena_rosto.instantiate())
 		if no.has_method("configurar"):
 			no.configurar(c, ctx)
 		lut[slot] = no
@@ -353,7 +355,7 @@ func _desenhar_quadro(f: int) -> void:
 		if no.has_method("gatilho"):
 			if str(s.get("expr", "")) != "":
 				no.gatilho("expr")
-			elif int(s.get("golpe_fase", 0)) > 0:
+			if int(s.get("golpe_fase", 0)) > 0:
 				no.gatilho("golpe_fase")
 		if no.has_method("ajustar_corpo"):
 			no.ajustar_corpo(2.0 * float(cab[slot].get("raio_corpo", 0.85)) * PX)
@@ -612,6 +614,16 @@ func _atelie_efeitos(i: int, p: float, amostras: Dictionary, ctx: Dictionary) ->
 			atelie_efeitos.erase(chave)
 
 
+func _donos_do_gatilho(ev: Dictionary) -> Array:
+	var tipo := str(ev.get("tipo", ""))
+	var campos: Array = ["alvo"] if tipo == "acerto" else ["perdedor", "alvo"] if tipo == "ko" else ["slot", "autor", "iniciador", "alvo", "vencedor", "perdedor"]
+	for campo in campos:
+		var slot := str(ev.get(campo, ""))
+		if lut.has(slot):
+			return [slot]
+	return []
+
+
 func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 	var tipo := str(ev.get("tipo", ""))
 	if tipo == "obstaculo" and arena_no != null and arena_no.has_method("evento"):
@@ -621,15 +633,14 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 		if lut.has(slot) and lut[slot].has_method("evento"):
 			lut[slot].evento(tipo, ev, ctx)
 	var gatilho := GATILHOS_ANIMACAO.da_timeline(ev)
-	for slot in lut:
+	for slot in _donos_do_gatilho(ev):
 		if lut[slot].has_method("gatilho"):
 			lut[slot].gatilho(gatilho)
-	for slot in arm:
 		if arm[slot].has_method("gatilho"):
 			arm[slot].gatilho(gatilho)
 	var nome_skill := str(ev.get("nome", ""))
 	var tipo_skill := str(ev.get("tipo_skill", ""))
-	if not EVENTOS_COM_VFX.has(tipo) and not bib.tem_folha_evento(tipo, str(ev.get("elemento", "")), nome_skill, tipo_skill):
+	if not EVENTOS_COM_VFX.has(tipo) and not bib.tem_folha_evento(tipo, str(ev.get("elemento", "")), nome_skill, tipo_skill, str(ev.get("gatilho", ""))):
 		return
 	var pos := Vector2.ZERO
 	if tipo == "acerto" and typeof(ev.get("ponto")) == TYPE_ARRAY:
@@ -769,7 +780,6 @@ func _escrever_relatorio(ok: bool, rc: int) -> void:
 		"reservas": bib.reservas.keys(),
 		"nomes_ate_quadro": nomes_ate,
 		"rosto_herdado": rosto_herdado,
-		"pngs_ilegiveis": bib.pngs_ilegiveis.keys(),
 		"avisos": avisos,
 		"laco_ms": Time.get_ticks_msec() - t0_ms,
 		"video": {"adaptador": RenderingServer.get_video_adapter_name(),

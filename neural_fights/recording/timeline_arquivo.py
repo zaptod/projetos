@@ -205,10 +205,15 @@ def validar(doc: dict) -> list[str]:
     n = doc.get("n")
     if not isinstance(hz, int) or hz <= 0:
         problemas.append(f"hz invalido: {hz!r}")
-    if not isinstance(n, int) or n < 0:
+    if not isinstance(n, int) or n <= 0:
         return problemas + [f"n invalido: {n!r}"]
 
-    tabelas = doc.get("tabelas") or {}
+    tabelas = doc.get("tabelas")
+    if not isinstance(tabelas, dict):
+        problemas.append("tabelas ausente ou nao e objeto")
+        tabelas = {}
+    if not isinstance(doc.get("arena"), dict):
+        problemas.append("arena ausente ou nao e objeto")
     if list(tabelas.get("expressoes") or ()) != list(EXPRESSOES):
         problemas.append("tabelas.expressoes nao sao as 24 do jogo")
     if list(tabelas.get("fases") or ()) != list(FASES):
@@ -254,6 +259,11 @@ def validar(doc: dict) -> list[str]:
                         problemas.append(f"{slot}.{nome}: indice {valor!r} fora da tabela")
                         break
         problemas.extend(_problemas_da_corrente(doc, slot, canais, n))
+
+    cabecalho = doc.get("lutadores")
+    slots = {l.get("slot") for l in cabecalho if isinstance(l, dict)} if isinstance(cabecalho, list) else set()
+    if slots != {"p1", "p2"} or len(cabecalho) != 2:
+        problemas.append("lutadores precisam ter exatamente os slots p1 e p2")
 
     ids = set()
     for grupo, canais_por_tipo in (("objetos", CANAIS_OBJETO), ("efeitos", CANAIS_EFEITO)):

@@ -104,6 +104,24 @@ def test_timeline_sintetica_segue_o_schema_da_16c():
     assert timeline_arquivo.validar(doc) == []
 
 
+def test_validador_recusa_tabelas_arena_e_slots_invalidos():
+    timeline_arquivo = pytest.importorskip("neural_fights.recording.timeline_arquivo")
+    for campo, valor, esperado in (("tabelas", None, "tabelas ausente"), ("arena", None, "arena ausente")):
+        doc = sintetica.timeline_sintetica(1.0)
+        doc[campo] = valor
+        assert any(esperado in erro for erro in timeline_arquivo.validar(doc))
+    doc = sintetica.timeline_sintetica(1.0)
+    doc["lutadores"][1]["slot"] = "a"
+    assert any("exatamente os slots p1 e p2" in erro for erro in timeline_arquivo.validar(doc))
+
+
+def test_saida_do_godot_com_erro_de_script_nao_e_aceita():
+    from random_builds.builds.palco import render as render_local
+
+    erros = render_local._erros_do_godot("SCRIPT ERROR: Invalid call\nERROR: outra falha\nnormal")
+    assert erros == ["SCRIPT ERROR: Invalid call"]
+
+
 def test_sons_de_reserva_seguem_o_formato_da_16a_e_sao_deterministicos():
     doc = sintetica.timeline_sintetica(2.0)
     a = sons.sons_dos_eventos(doc)

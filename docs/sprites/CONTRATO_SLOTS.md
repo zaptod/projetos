@@ -315,14 +315,7 @@ palco/biblioteca/partes/lutador/<parte>/<nivel>/<alvo>/<variante>/<estado>.png (
   dígitos>-vNN/` (o Desfazer a traz de volta). Como não começa com `v`, nem o
   palco nem `dono_da_parte` a contam; quem a tinha fixa sai do guarda-roupa.
   Rotas, telas e medidas: `docs/sessoes/app-e-bot.md`, seção "Provador".
-- **Arma, skill, efeito e camada de estado: o palco lê o PNG direto** (07/10/2026; antes ficava no disco e o vídeo saía com o desenho antigo — medido no `duelo_00091`). Nenhuma cena-embrulho é gravada: a `Biblioteca` do palco (`palco/nucleo/biblioteca.gd`) lê o `manifesto_slots.json`, acha o PNG no `destino` do slot e monta a peça na hora (`palco/nucleo/peca_png.gd`). O PNG entra na mesma cadeia de antes, logo antes da cena do mesmo nível (o mais específico vence; no mesmo nível, o Ateliê vence a cena antiga):
-  - arma: estilo (PNG) > `armas/estilos/<estilo>` > tipo (PNG) > `armas/tipos/<tipo>` > padrão. Gabarito 1024×256: a mão na borda esquerda no meio, a ponta na borda direita (`empunhadura`/`ponta` no `.json` ao lado mudam isso). **A Corrente fica fora**: a peça dela é a de Verlet; a arte dela são elos e cabeças (F4);
-  - skill (projétil, área-chão, invocação, estrutura; projétil da arma pela `forma`; orbe no estado `orbitando`): skill > `skills/<skill>` > elemento > **comum** ↔ cena por elemento, na ordem da constante `ORDEM_DO_COMUM` (§5.3; padrão: a arte do Adrian por elemento vence o Comum, o Comum vence a provisória CC0). O comum é tingido pela cor do elemento clareada 30% (sem elemento, pela `cor` do objeto). Beam e portal ficam fora (precisam de código para esticar e ligar a e b);
-  - efeito: variante > `eventos/<tipo>_<variante>` > elemento (conjuração/impacto) > tier > tipo > comum > padrão. Imagem parada: o Godot cresce, gira com o golpe e apaga em 0,35 s (KO 0,6 s);
-  - em volta do lutador: PNG > `lutadores/<categoria>/<nome>` > desenho por código.
-  - PNG que não abre não vira peça: a cadeia segue para o desenho de hoje, a falha fica guardada (não reabre) e vai ao relatório (`pngs_ilegiveis`). A textura é pré-multiplicada e a peça desenha com mistura pré-multiplicada: sem franja escura em volta do desenho (o `fix_alpha_border` do importador não existe no GDScript).
-  - O `.json` ao lado do PNG é lido se existir (`tingir`, `empunhadura`, `ponta`, `tamanho_m`, `duracao_s`) e nunca exigido.
-  - O relatório do render (`<mp4>.palco.json → rosto_herdado`) lista as carinhas do rosto que caíram em outra porque não foram desenhadas (ex.: só o `neutro` desenhado → `tonto: neutro`).
+- **Arma, skill, efeito e camada de estado:** o palco não instancia PNG avulso de `manifesto_slots.json`. A arte entra pelo catálogo de animações e suas folhas (`folha.png` + `animacao.json`), ou a cadeia usa a cena/marcador já existente. Isso evita depender de `peca_png.gd`, que não existe mais.
 - **O `sprites_usuario/` do Ateliê** (catálogo por animação de lado, `catalogo.json`) não serve para a bolinha modular. O painel novo usa `partes/`. Ver PERGUNTAS 6.
 
 ### Prévia para o painel

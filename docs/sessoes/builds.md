@@ -796,7 +796,7 @@ rc 4/quadro liso derruba o B e o celular sai pelo pygame.
   **16E (28/09):** hitstop do render ligado pela decisão `hitstop` (+2,6% de
   duração, medido em 23 duelos), as 24 expressões com as peças do Kenney
   (CC0, 12×), efeitos por tipo × elemento com arte CC0, HUD do palco (nome,
-  vida, plano; `--hud`) e `main.py palco vitrine` (vídeo de revisão). O A/B
+  vida, plano; `--hud`) e revisão por render curto. O A/B
   depois da arte é o nó `palco-ab-2` do Grimório.
   **16G, primeira metade (30/09):** `main.py palco ab --duelo X --edicao`
   (`builds/palco/edicao.py`) faz o B com a MESMA edição do duelo (o
@@ -805,8 +805,6 @@ rc 4/quadro liso derruba o B e o celular sai pelo pygame.
   `duelo_00031` e `duelo_00030`: mesmos quadros, mesmos golpes no mesmo
   quadro, mesmo som (0% calado); medidas em `docs/palco/README.md`. A troca do
   duelo de produção espera o nó `palco-duelo-ab`; só 9:16 (o 16:9 falta).
-  **Ponte do Ateliê (07/10):** o palco passou a ler o PNG que o Ateliê grava em
-  `palco/biblioteca/partes/` também para arma, skill, efeito e camada de estado
-  (antes só o lutador; arma anexada saía `armas/_padrao`). Regras e cadeia em
-  `docs/sprites/CONTRATO_SLOTS.md` §4; teste `palco/testes/test_partes_palco.py`;
-  prova em `E:\tmp\prova_atelie2\`. O `.palco.json` ganhou `rosto_herdado`.
+  **Ponte do Ateliê (07/10):** o catálogo de animações é a entrada da arte do
+  Ateliê. PNG avulso de `manifesto_slots.json` não é instanciado pelo palco,
+  pois dependia de um script removido. Regras em `docs/sprites/CONTRATO_SLOTS.md`.

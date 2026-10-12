@@ -37,6 +37,15 @@ def test_folha_animada_nao_faz_float_de_lista():
         assert cru not in texto, cru
 
 
+def test_folha_recomeca_e_guarda_transformacoes_no_draw():
+    texto = (RAIZ / "nucleo" / "tocador_folha.gd").read_text(encoding="utf-8")
+    assert "func _trocar" in texto
+    assert "indice = 0" in texto
+    assert "fps <= 0.0" in texto
+    assert "quadro fora da folha" in texto
+    assert "rotacao_json" in texto and "espelho_json" in texto
+
+
 @pytest.mark.skipif(GODOT is None, reason="Godot nao encontrado (config/palco.json ou NF_GODOT)")
 def test_folha_animada_com_lista_no_godot(tmp_path):
     env = dict(os.environ, APPDATA=str(tmp_path / "appdata"))
