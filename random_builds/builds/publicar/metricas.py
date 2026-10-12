@@ -25,6 +25,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -241,8 +242,17 @@ def acrescentar_ao_ledger(caminho: Path, linha: dict, canal: str,
             pendentes = [p for _, p in _pendentes(caminho)]
             if pendentes:
                 # as pendentes aconteceram ANTES desta: a ordem e a do tempo
-                reescrever_ledger(caminho, [*_linhas_do_ledger(caminho),
-                                            *pendentes, linha])
+                gravou = reescrever_ledger(caminho, [*_linhas_do_ledger(caminho),
+                                                     *pendentes, linha])
+                if not gravou:
+                    _guardar_pendente(caminho, linha)
+                    with contextlib.suppress(Exception):
+                        from .. import atividade
+                        atividade.registrar(
+                            "publicacao", "erro",
+                            f"ledger de {canal} ocupado na troca; guardei "
+                            f"pendente: {linha.get('video_id')} "
+                            f"({linha.get('plataforma')}).", canal)
             else:
                 with open(caminho, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
@@ -258,8 +268,8 @@ def acrescentar_ao_ledger(caminho: Path, linha: dict, canal: str,
                 f"({linha.get('plataforma')}).", canal)
 
 
-def reescrever_ledger(caminho: Path, linhas: list) -> None:
-    """Troca o arquivo inteiro de uma vez. Quem chama segura a trava."""
+def reescrever_ledger(caminho: Path, linhas: list) -> bool:
+    """Troca o arquivo inteiro de uma vez. False preserva as pendentes."""
     pendentes = _pendentes(caminho)
     # Quem reescreve leu por `publicados()`, que JA traz as pendentes (e a
     # reconciliacao pode ter completado o id de uma delas): so entra a que
@@ -269,13 +279,31 @@ def reescrever_ledger(caminho: Path, linhas: list) -> None:
              if _chave_da_linha(linha) not in ja_estao]
     descritor, temporario = tempfile.mkstemp(dir=caminho.parent,
                                              suffix=".tmp")
-    with os.fdopen(descritor, "w", encoding="utf-8") as fh:
-        for linha in [*linhas, *novas]:
-            fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
-    os.replace(temporario, caminho)
+    try:
+        with os.fdopen(descritor, "w", encoding="utf-8") as fh:
+            for linha in [*linhas, *novas]:
+                fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        for tentativa in range(3):
+            try:
+                os.replace(temporario, caminho)
+                break
+            except PermissionError:
+                if tentativa == 2:
+                    return False
+                time.sleep(0.2 * (tentativa + 1))
+        else:  # pragma: no cover - o retorno cobre a ultima tentativa
+            return False
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(temporario)
+    if not caminho.is_file():  # pragma: no cover - defesa para replace anomalo
+        return False
     for arquivo, _ in pendentes:
         with contextlib.suppress(FileNotFoundError):
             arquivo.unlink()
+    return True
 
 
 def registrar_publicacao(video, url: str, plataforma: str = "youtube",
@@ -339,8 +367,15 @@ def registrar_publicado(video, url: str, plataforma: str = "youtube", *,
         return None
     try:
         return registrar_publicacao(video, url, plataforma, extra)
-    except Exception as exc:  # pragma: no cover - so log
-        print(f"[publicar] registro falhou: {exc}")
+    except Exception as exc:
+        try:
+            from .. import atividade
+            atividade.registrar("publicacao", "erro",
+                                f"registro falhou: {type(exc).__name__}: {exc}",
+                                canal, etapa="publicar.ledger",
+                                ref=getattr(video, "id", ""))
+        except Exception:                                      # noqa: BLE001
+            pass
         return None
 
 
@@ -724,11 +759,20 @@ def reconciliar(canal: str = "builds", log=print) -> int:
             linha["youtube_id"] = video["youtube_id"]
             linha["url"] = f"https://youtu.be/{video['youtube_id']}"
             linha["publicado_em"] = video.get("publicado_em")
+            # O id vindo do proprio canal e uma prova mais forte que o
+            # laudo incompleto do Studio: a reconciliacao confirmou a saida.
+            linha["prova_ok"] = True
             achados += 1
         if achados:
             # Reescrito inteiro porque o ledger e a linha do tempo: ordem e
             # conteudo das outras linhas nao mudam, so os campos preenchidos.
-            reescrever_ledger(registro, linhas)
+            if not reescrever_ledger(registro, linhas):
+                # Um leitor com o arquivo aberto (Windows): nada mudou no
+                # disco, e dizer "reconciliados" seria mentir. Fica para a
+                # proxima coleta; as linhas continuam sem id ate la.
+                log(f"[{canal}] ledger ocupado por um leitor na troca; "
+                    f"{achados} id(s) ficam para a proxima reconciliacao.")
+                achados = 0
     log(f"[{canal}] {achados} de {len(faltam)} upload(s) reconciliados.")
     return achados
 

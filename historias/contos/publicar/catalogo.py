@@ -305,15 +305,46 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
     # `provas` recebe UM laudo por pedaco. E por isso que ela e lista e nao
     # dicionario: quando a parte passa do limite do Shorts sao dois uploads
     # para uma linha de ledger, e um laudo so esconderia o segundo.
-    urls = []
+    urls, laudos = [], []
     for pedaco in cortes.preparar(video, limite=cortes.limite(config), log=log):
         laudo: dict = {}
-        urls.append(youtube.publicar_como_configurado(
-            pedaco, visibilidade=visibilidade, canal="historias",
-            agendar_para=agendar_para, config=config, log=log, prova=laudo))
+        try:
+            url = youtube.publicar_como_configurado(
+                pedaco, visibilidade=visibilidade, canal="historias",
+                agendar_para=agendar_para, config=config, log=log, prova=laudo)
+        except Exception as exc:
+            # O PEDACO ANTERIOR JA ESTA NO CANAL (11/10/2026). Ate aqui a
+            # excecao subia muda: `serie.publicar` nao registrava nada e a
+            # rodada seguinte subia o pedaco 1 DE NOVO (medido na prova da
+            # auditoria: 2 envios do pedaco 1, 1 linha no ledger). Com o que
+            # ja subiu na excecao, quem chama registra os pedacos entregues
+            # antes de tentar o resto.
+            if urls:
+                raise PublicacaoParcial(urls, laudos, exc) from exc
+            raise
+        urls.append(url)
+        laudos.append(laudo)
         if provas is not None:
             provas.append(laudo)
     return " | ".join(u for u in urls if u)
+
+
+class PublicacaoParcial(RuntimeError):
+    """Alguns Shorts da mesma parte subiram antes de o seguinte falhar.
+
+    `urls` e `provas` sao SO dos pedacos entregues, na ordem do corte; a
+    `causa` e a excecao do pedaco que caiu (a mensagem a carrega, para o
+    log e a ficha dizerem o que quebrou).
+    """
+
+    def __init__(self, urls: list, provas: list, causa=None):
+        texto = f"falhou depois de subir {len(urls)} pedaco(s)"
+        if causa is not None:
+            texto += f": {type(causa).__name__}: {causa}"
+        super().__init__(texto)
+        self.urls = list(urls)
+        self.provas = list(provas)
+        self.causa = causa
 
 
 def publicar_tiktok(video: Video, *, postar: bool = False, log=print,

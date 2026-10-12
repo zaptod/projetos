@@ -55,7 +55,7 @@ def escrever_lancador(python: str | None = None) -> Path:
         "rem Bot de Telegram (avisos + comandos do celular).\r\n"
         "rem Gerado por: python -m remoto --instalar\r\n"
         f'cd /d "{RAIZ}"\r\n'
-        f'"{python}" -u -X utf8 -m remoto >> "{saida}" 2>&1\r\n',
+        f'"{python}" -u -X utf8 -m remoto --saida "{saida}" > NUL 2>&1\r\n',
         encoding="utf-8")
     return destino
 

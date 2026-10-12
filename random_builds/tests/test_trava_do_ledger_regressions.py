@@ -90,6 +90,139 @@ class QuemAcrescenta(_Base):
         self.assertEqual([], list(self.ledger.parent.glob(
             "publicados.jsonl.pendentes/*.json")))
 
+    def _trancar_o_replace(self, falhas: int = 99):
+        """`os.replace` sobre o ledger falha `falhas` vezes (o leitor do
+        Windows com o arquivo aberto); depois volta a funcionar."""
+        real = M.os.replace
+        contagem = {"n": 0}
+
+        def trancado(origem, destino):
+            if Path(destino) == self.ledger and contagem["n"] < falhas:
+                contagem["n"] += 1
+                raise PermissionError("ledger aberto para leitura")
+            return real(origem, destino)
+
+        M.os.replace = trancado
+        self.addCleanup(lambda: setattr(M.os, "replace", real))
+        return contagem
+
+    def test_replace_trancado_guarda_a_linha_nova_como_pendente(self):
+        """Leitor do Windows nao pode fazer publicacao sumir do ledger.
+
+        Auditoria de 11/10/2026 (prova3): ledger com 1 linha, 1 pendente, um
+        leitor com o arquivo aberto -> `acrescentar_ao_ledger` levantava
+        `PermissionError`, a NOVA nao estava em lugar nenhum e um `.tmp`
+        ficava orfao na pasta. Agora: a nova vai para a fila lateral, o
+        ledger no disco fica como estava, zero `.tmp`, e o diario ganha o
+        erro.
+        """
+        M._guardar_pendente(self.ledger, {"video_id": "antes"})
+        contagem = self._trancar_o_replace()
+        M.acrescentar_ao_ledger(self.ledger, {"video_id": "nova"}, "builds")
+        self.assertEqual(["antes", "nova"],
+                         sorted(l["video_id"] for l in M.publicados()))
+        self.assertEqual([], list(self.ledger.parent.glob("*.tmp")))
+        self.assertEqual([], self.linhas(), "o disco nao mudou")
+        self.assertEqual(3, contagem["n"], "tentou 3 vezes antes de desistir")
+        (aviso,) = self.avisos
+        self.assertEqual(("publicacao", "erro"), aviso[:2])
+        self.assertIn("nova", aviso[2])
+
+    def test_replace_que_destranca_na_segunda_tentativa_grava(self):
+        M._guardar_pendente(self.ledger, {"video_id": "antes"})
+        self._trancar_o_replace(falhas=1)
+        M.acrescentar_ao_ledger(self.ledger, {"video_id": "nova"}, "builds")
+        self.assertEqual(["antes", "nova"], [l["video_id"] for l in self.linhas()])
+        self.assertEqual([], list(self.ledger.parent.glob(
+            "publicados.jsonl.pendentes/*.json")))
+        self.assertEqual([], self.avisos)
+
+    def test_reescrever_trancado_devolve_False_e_deixa_as_pendentes(self):
+        M._guardar_pendente(self.ledger, {"video_id": "pendente"})
+        self._trancar_o_replace()
+        self.assertFalse(M.reescrever_ledger(self.ledger, [{"video_id": "x"}]))
+        self.assertEqual(1, len(list(self.ledger.parent.glob(
+            "publicados.jsonl.pendentes/*.json"))), "a pendente FICA")
+        self.assertEqual([], list(self.ledger.parent.glob("*.tmp")))
+
+    def test_registrar_publicado_que_falha_vai_ao_diario_e_nao_so_ao_print(self):
+        """Nos builds `registrar_publicado` engolia tudo com `print`: a
+        publicacao "deu certo" sem linha no ledger e sem linha no diario
+        (prova3 da auditoria: `registrar_publicado -> None | linhas no
+        diario: 0`)."""
+        real = M.registrar_publicacao
+        M.registrar_publicacao = lambda *a, **k: (_ for _ in ()).throw(
+            PermissionError("ledger aberto"))
+        self.addCleanup(lambda: setattr(M, "registrar_publicacao", real))
+        video = type("V", (), {"id": "g1", "titulo": "T"})()
+        self.assertIsNone(M.registrar_publicado(video, "https://youtu.be/x",
+                                                canal="builds"))
+        (aviso,) = self.avisos
+        self.assertEqual(("publicacao", "erro"), aviso[:2])
+        self.assertIn("PermissionError", aviso[2])
+
+
+class Reconciliacao(_Base):
+    """O id que vem do canal depois e prova de que o video subiu (11/10/2026).
+
+    Maquina.md item 7: 49 linhas de historias com `prova_ok=False` nos 30
+    dias (o laudo saiu com `youtube_id=""`, o id veio do canal depois) — a
+    reconciliacao preenchia o id e deixava `prova_ok` falso para sempre.
+    """
+
+    def setUp(self):
+        super().setUp()
+        real = M.registro_do_canal
+        M.registro_do_canal = lambda canal="builds": self.ledger
+        self.addCleanup(lambda: setattr(M, "registro_do_canal", real))
+        for nome, valor in (("_token", lambda canal="builds": ("tok", None)),
+                            ("conferir_lista", lambda lista: None)):
+            original = getattr(M, nome)
+            setattr(M, nome, valor)
+            self.addCleanup(setattr, M, nome, original)
+
+    def _canal(self, *videos):
+        real = M.enviados
+        M.enviados = lambda token, quantos=None: list(videos)
+        self.addCleanup(lambda: setattr(M, "enviados", real))
+
+    def test_id_do_canal_vira_prova_ok(self):
+        no_ar = "2026-10-07T15:38:00Z"
+        quando = M._instante(no_ar).isoformat(timespec="seconds")
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "historia_00063:celular:p01", "plataforma": "youtube",
+            "titulo": "A Pasta Verde (Parte 1/4)", "quando": quando,
+            "youtube_id": None, "prova_ok": False,
+            "prova": [{"estado": "publicado", "youtube_id": ""}]}, "builds")
+        self._canal({"youtube_id": "abc123", "titulo": "A Pasta Verde (Parte 1/4)",
+                     "publicado_em": no_ar})
+        self.assertEqual(1, M.reconciliar("builds", log=lambda *_: None))
+        (linha,) = self.linhas()
+        self.assertEqual("abc123", linha["youtube_id"])
+        self.assertIs(True, linha["prova_ok"])
+
+    def test_sem_id_no_canal_a_prova_fica_como_estava(self):
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "h:p1", "plataforma": "youtube", "titulo": "T",
+            "quando": "2026-10-07T15:38:00", "prova_ok": False}, "builds")
+        self._canal()
+        self.assertEqual(0, M.reconciliar("builds", log=lambda *_: None))
+        (linha,) = self.linhas()
+        self.assertIs(False, linha["prova_ok"])
+
+    def test_reescrita_trancada_nao_diz_reconciliado(self):
+        no_ar = "2026-10-07T15:38:00Z"
+        quando = M._instante(no_ar).isoformat(timespec="seconds")
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "h:p1", "plataforma": "youtube", "titulo": "T",
+            "quando": quando}, "builds")
+        self._canal({"youtube_id": "abc", "titulo": "T", "publicado_em": no_ar})
+        QuemAcrescenta._trancar_o_replace(self)
+        falas = []
+        self.assertEqual(0, M.reconciliar("builds", log=falas.append))
+        self.assertIsNone(self.linhas()[0].get("youtube_id"))
+        self.assertTrue(any("proxima reconciliacao" in f for f in falas), falas)
+
     def test_reconciliacao_le_a_pendente_e_nao_a_duplica(self):
         """`publicados()` ja traz a pendente; reescrever nao pode repeti-la."""
         M.acrescentar_ao_ledger(self.ledger, {"video_id": "antes", "plataforma": "youtube",

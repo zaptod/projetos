@@ -2697,4 +2697,15 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # `--saida ARQUIVO`: o Python abre o log, em vez do `>>` do cmd, que
+    # nega escrita a outro processo (14/09 e 11/10/2026).
+    argumentos = list(sys.argv)
+    saida = None
+    if "--saida" in argumentos:
+        i = argumentos.index("--saida")
+        if i + 1 < len(argumentos):
+            saida = open(argumentos[i + 1], "a", encoding="utf-8", buffering=1)
+            argumentos = argumentos[:i] + argumentos[i + 2:]
+    if saida is not None:
+        sys.stdout = sys.stderr = saida
+    raise SystemExit(main(argumentos[1:]))

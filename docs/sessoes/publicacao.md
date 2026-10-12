@@ -670,6 +670,91 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   página lenta (≥ 60 s) é rede. (c) os testes da ligação liam o fonte; agora
   rodam `publicar()` com o navegador de mentira e prendem o prazo de 10 s
   do clique no Criar pelo número.
+- **Auditoria profunda de 11/10/2026** (`docs/auditoria/2026-10-11-profunda/`,
+  consertada em 12/10; o Codex fez a primeira passada, a parte Publicação
+  completou e provou). Cada item com teste que falhava antes:
+  - *`postar.cmd`, `bot.cmd` e `app_celular.cmd` com `>>`* (gravidade alta):
+    as 10 tarefas rodam o MESMO `postar.cmd`, e o `>>` do cmd nega escrita a
+    outro processo — o cmd do horário seguinte morria antes de o python
+    nascer, com código 0; a trava da rodada, a dona pendurada e o "em voo"
+    **nunca chegavam a rodar entre duas tarefas** (prova: dois `.cmd`
+    iguais, `b_rodou.txt existe: False`). → os três lançadores usam
+    `--saida` aberto pelo python (`postar.py`, `remoto/__main__.py`,
+    `remoto/api_http.py`) e `> NUL 2>&1`; e o `postar.txt` passou a **datar
+    cada linha** (`_SaidaDatada`, sem `buffer` para a `_linha` passar por
+    ela) — 4 dias com horário vazio tinham ficado sem causa por falta de
+    data. Precisa de `postar.py --instalar`, `python -m remoto --instalar`
+    e reiniciar o app para os `.cmd` novos valerem.
+  - *Ledger com pendente + leitor aberto no Windows* (`metricas`): o
+    `os.replace` dava `PermissionError`, a linha nova não ia nem ao ledger
+    nem à fila lateral e o `.tmp` ficava órfão; `registrar_publicado`
+    engolia com `print` (0 linhas no diário). → `reescrever_ledger` tenta 3
+    vezes (0,2/0,4 s) e devolve `False` apagando o `.tmp`;
+    `acrescentar_ao_ledger` guarda a linha como pendente e avisa no diário;
+    `registrar_publicado` registra ERRO no diário; `reconciliar` não diz
+    "reconciliados" quando a reescrita não gravou.
+  - *"Publicar mesmo assim" sem conseguir clicar virava "publicado"*
+    (`youtube_web._confirmar`): o diálogo de trás mostra "Link do vídeo" e a
+    função devolvia a URL (prova: `_confirmar -> 'https://youtu.be/…'`,
+    `confirmado -> True`; é a fábrica dos 30 rascunhos de 15/09 pela porta do
+    clique que falha). → clique que falha faz `continue` até o prazo; com o
+    aviso ainda na tela, a frase de RASCUNHO.
+  - *Laudo do YouTube sem `clicou`*: exceção depois do clique virava falha
+    comum e a fila reescolhia o vídeo. → `laudo["clicou"] = True` antes do
+    `pronto.click()` (como o TikTok) e `_depois_do_clique`: exceção depois do
+    clique passa por `desfecho.resolver` (marca "a conferir" no YouTube)
+    antes de subir; `postar_build` recebe o laudo (`_youtube_dos_builds(alvo,
+    laudo_yt)`), a ficha ganha `youtube_clicou` e `_derrubados_pela_rede` não
+    repõe o YouTube com clique dado.
+  - *Marca `[audio]` nunca virava a de clique* (`desfecho.marcar_para_conferir`
+    devolvia True sem gravar): `revisar_marcas` soltava e o vídeo com clique
+    dado voltava à fila. → a marca de áudio é **promovida** à de clique; a de
+    clique nunca desce.
+  - *`contas.json` e `_pareceres.json` lidos como `{}` quando falhavam* e
+    gravados por cima (`contas._ler`/`_gravar`, `parecer._lembretes`/
+    `_lembrar`): corrida de 3 processos deixou 6 fichas de 122; JSON pela
+    metade + `identificar()` deixava o registro só com `identidades` (o
+    Studio publicaria "onde abrir"). → ausente = vazio; trancado = 3
+    tentativas; JSON partido = cópia `.corrompido` e **levanta** (nada é
+    gravado por cima); gravação por `.tmp` + `os.replace` sob as travas
+    `contas_json`/`pareceres_json`; `renomear` grava o registro ANTES de
+    mover a pasta; `escolher` limpa o nome como `adicionar`; `lembrar` não
+    derruba o parecer, mas o que não gravou vai ao diário como ERRO.
+  - *Parte em 2 Shorts com o 2º caindo* (`catalogo.publicar_youtube`): nada
+    era registrado e a próxima execução subia o pedaço 1 de novo (prova:
+    `uploads = [p01#1, p01#1, p01#2]`, 1 linha). → `PublicacaoParcial`
+    (urls, laudos e a causa) e `serie.publicar` registra a linha com
+    `parcial: true`. O `postar` já tinha a `ParteMeioNoAr`.
+  - *ffmpeg/ffprobe que estouram o prazo* (`qualidade`): ffmpeg → "sem
+    defeito" (vídeo mudo seguia para a grade); ffprobe → "sem faixa de
+    áudio: vai ao ar mudo" para vídeo bom. → os dois viram "não consegui
+    medir" (erro próprio, `media_db`/`silencio_final` = `None`).
+  - *`--comecar` em hora local virava UTC errado* (`serie.horarios`, 3 h
+    antes): `astimezone()` em vez de `replace(tzinfo=UTC)`.
+  - *`--tudo` (escoar do app) furava a válvula*: lia a fila crua, subia parte
+    vetada sem marca e sem `prova`. → consome `proxima_historia()` uma parte
+    por volta, grava `prova`/`prova_ok`/`youtube_id` e marca a retida; o
+    laço é `range(1, teto + 1)` (a 1ª versão do conserto fazia `range(1,
+    limite)`: `--limite 1` não subia nada).
+  - *Último recurso fora de ordem publicava série em render*: o laço
+    `adiadas` não perguntava a trava `historias__render__<fonte>`. → pergunta.
+  - *Fichas de builds*: `ja_yt` nascia `feito: True` antes de o TikTok rodar
+    (TikTok caído por perfil ocupado saía `[POSTADO]`, código 0, e valia
+    como "a rede voltou"); `ja_tk` não levava `so_youtube` (Telegram dizia
+    "TikTok não subiu"). → `feito` só pelo TikTok confirmado; `so_youtube`.
+  - *Reconciliação*: id que vem do canal depois vira `prova_ok: True` (49
+    linhas de histórias ficavam `False` para sempre).
+  - *`[parecer] nao consegui avisar no Telegram: No module named 'remoto'`*
+    (24x): `agenda.py` põe a raiz do repositório no `sys.path`.
+  Testes: `random_builds/tests/test_conserto_publicacao_1110_regressions.py`,
+  `historias/tests/test_conserto_publicacao_1110_regressions.py`, e os
+  acréscimos em `test_trava_do_ledger_regressions`,
+  `test_youtube_publicar_assim_regressions`, `test_vistoria_memo_regressions`
+  e `remoto/test_remoto`. **Ficou aberto**: o build que saiu só no TikTok
+  (decisão `build-so-no-tiktok`, pendente no Grimório) e, nas histórias, a
+  reposição no mesmo horário depois de um clique no YouTube seguido de
+  exceção (a marca "a conferir" protege o horário seguinte; a ficha de
+  histórias ainda não leva `youtube_clicou`).
 
 ## 5. O estado de hoje (27/09/2026)
 

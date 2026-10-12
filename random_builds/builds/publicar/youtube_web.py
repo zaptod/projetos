@@ -959,6 +959,10 @@ def _confirmar(page, passo) -> str:
             except Exception as exc:
                 passo(f"achei 'Publicar mesmo assim' mas nao consegui clicar "
                       f"({type(exc).__name__}).")
+                # Os sinais do dialogo atras deste aviso (inclusive o link)
+                # nao confirmam nada enquanto ele continua na frente.
+                time.sleep(1.0)
+                continue
         if any(sinal in texto for sinal in
                (_sem_acento(s) for s in SINAIS_PUBLICADO)):
             link = _primeiro(page, LINK_DO_VIDEO, timeout=3.0)
@@ -1507,7 +1511,32 @@ def publicar(video, *, visibilidade: str | None = None,
                 + (f" ({estagio['falta']})" if estagio["falta"] else "")
                 + ". Nao publiquei: sairia quebrado. A janela segue aberta.")
 
+        # A PROVA DO CLIQUE, como no TikTok (`tiktok.publicar`): gravada no
+        # `laudo` — que e o `prova` de quem chamou — ANTES de o clique sair,
+        # para sobreviver a qualquer excecao daqui para baixo. Ate 11/10/2026
+        # o YouTube nao gravava: uma excecao depois do clique (a marca "a
+        # conferir" sem trava, `progresso` levantando) apagava a frase, a
+        # ficha virava "falha comum" e o video era reescolhido no horario
+        # seguinte — rascunho gemeo ou duplicata. Antes do clique, e nao
+        # depois: um `click()` que estoura o prazo pode ter despachado o
+        # clique, e repetir e pior que nao postar (17/09).
+        laudo["clicou"] = True
         pronto.click()
+        return _depois_do_clique(page, passo, laudo, canal, video)
+
+
+def _depois_do_clique(page, passo, laudo: dict, canal: str, video) -> str:
+    """Tudo o que vem depois de `pronto.click()`: confirmar, preencher o
+    laudo e resolver o desfecho.
+
+    Se algo levantar AQUI, o clique ja saiu e o video pode estar no ar: ele
+    vai para a lista "a conferir" do YouTube (pelo `laudo["clicou"]`,
+    `desfecho.classificar` diz `sem_confirmacao`) antes de a excecao subir.
+    Em 05/10/2026 foi o `progresso` levantando depois do clique; sem isto a
+    fila reescolhia o video no horario seguinte.
+    """
+    from . import desfecho as _desf
+    try:
         passo("publicar clicado; confirmando...")
         estado = _confirmar(page, passo)
         passo(estado)
@@ -1521,7 +1550,7 @@ def publicar(video, *, visibilidade: str | None = None,
             laudo["estado"] = "publicado"
         else:
             laudo["estado"] = "sem_confirmacao"
-        if not laudo["youtube_id"]:
+        if not laudo.get("youtube_id"):
             # SEGUNDA FONTE PARA O ID. Medido em 16/09/2026: em 3 das 4
             # publicacoes da noite o Studio confirmou o sucesso mas nao
             # renderizou o elemento de link, e a publicacao ficava sem a
@@ -1531,16 +1560,29 @@ def publicar(video, *, visibilidade: str | None = None,
                 laudo["youtube_id"] = _id_do_video(page.url)
             except Exception:
                 pass
-        # A MESMA GUARDA DO TIKTOK, e ela faltava aqui — onde o estrago era
-        # MAIOR. Sem confirmacao, o video nao ganha linha no ledger; como a
-        # fila escolhe pelo que ainda nao foi registrado, ele voltava no
-        # horario seguinte e subia DE NOVO. Cada tentativa deixava um
-        # rascunho: e a fabrica de rascunhos gemeos que explica os 22 do
-        # canal. No TikTok o video so saia da fila; aqui ele reenviava.
-        from . import desfecho as _desf
-        laudo["desfecho"] = _desf.resolver(canal, video, estado, laudo,
-                                           plataforma="youtube")
-        return estado
+    except Exception as exc:                                   # noqa: BLE001
+        laudo["estado"] = "sem_confirmacao"
+        try:
+            _desf.resolver(
+                canal, video,
+                f"cliquei em publicar no YouTube e algo falhou depois "
+                f"({type(exc).__name__}): o video pode estar no ar como "
+                f"publicado ou RASCUNHO — confira em studio.youtube.com.",
+                laudo, plataforma="youtube")
+        except Exception:                                      # noqa: BLE001
+            # `marcar_para_conferir` ja avisou no diario; a excecao que sobe
+            # e a original, que diz o que quebrou.
+            pass
+        raise
+    # A MESMA GUARDA DO TIKTOK, e ela faltava aqui — onde o estrago era
+    # MAIOR. Sem confirmacao, o video nao ganha linha no ledger; como a
+    # fila escolhe pelo que ainda nao foi registrado, ele voltava no
+    # horario seguinte e subia DE NOVO. Cada tentativa deixava um
+    # rascunho: e a fabrica de rascunhos gemeos que explica os 22 do
+    # canal. No TikTok o video so saia da fila; aqui ele reenviava.
+    laudo["desfecho"] = _desf.resolver(canal, video, estado, laudo,
+                                       plataforma="youtube")
+    return estado
 
 
 def main(argv=None) -> int:

@@ -79,6 +79,40 @@ def _linha(texto: str = "") -> None:
         pass
 
 
+class _SaidaDatada:
+    """Acrescenta data e hora a cada linha do log da rodada (`--saida`).
+
+    Ate 11/10/2026 o `postar.txt` nao datava as linhas, e 4 dias com horario
+    vazio (27/09, 29/09, 03/10, 04/10) ficaram sem causa porque nao dava
+    para achar a rodada no log. Sem `buffer`, de proposito: `_linha` escreve
+    pelo `write` (e e datada); com o `buffer` do arquivo exposto ela
+    escreveria bytes por fora, sem data.
+    """
+    buffer = None
+
+    def __init__(self, saida):
+        self.saida = saida
+        self.inicio = True
+
+    def write(self, texto):
+        from datetime import datetime
+        partes = str(texto).splitlines(keepends=True)
+        if not partes:
+            return 0
+        for parte in partes:
+            if self.inicio and parte:
+                self.saida.write(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] ")
+            self.saida.write(parte)
+            self.inicio = parte.endswith("\n") or parte.endswith("\r")
+        return len(texto)
+
+    def flush(self):
+        self.saida.flush()
+
+    def __getattr__(self, nome):
+        return getattr(self.saida, nome)
+
+
 def _voando(canal: str, destino: str):
     """Decora um FUNIL de publicacao: enquanto ele roda, a ficha da trava diz
     o que esta no ar (`_em_voo`, la embaixo, perto da trava da rodada). Os
@@ -978,6 +1012,9 @@ def proxima_historia(*, vistoriar: bool = True):
     # ULTIMO RECURSO: a parte seguinte de uma serie parada, fora de ordem, so
     # quando nada acima pode sair — o horario vazio continua sendo pior.
     for alvo in adiadas[:3]:
+        if travas.ocupada(f"historias__render__{alvo.fonte_id}"):
+            recusados.append(f"{alvo.id}: a historia esta sendo renderizada")
+            continue
         if _veto_lembrado(alvo) or _retencao(alvo):
             continue
         roteiro = R.carregar(alvo.fonte_id)
@@ -3196,7 +3233,11 @@ def _derrubados_pela_rede(r: dict) -> list:
     caidos = []
     # Pedaco da parte ja no YouTube (`ParteMeioNoAr`): o YouTube desta ficha
     # nunca e "da rede", diga a frase o que disser.
+    # Clique ja dado no YouTube (`youtube_clicou`): o video pode estar no ar,
+    # e repor seria subir de novo — nunca e "da rede", diga a frase o que
+    # disser (a mesma regra do `tiktok_clicou`).
     if (r.get("youtube_falhou") and not r.get("youtube_meio_no_ar")
+            and not r.get("youtube_clicou")
             and _e_de_rede(r.get("motivo"))):
         caidos.append("youtube")
     if (not r.get("tiktok_fora_da_grade") and not r.get("tiktok_clicou")
@@ -3596,11 +3637,15 @@ def postar_build(*, so_ver: bool = False) -> dict:
         _linha(f"[postar] builds: YouTube ja saiu nesta hora; "
                f"levando {alvo.id} so para o TikTok.")
         falha_tk: dict = {}
-        ficha = {"canal": "builds", "feito": True, "alvo": alvo.id,
+        # `feito` SO DEPOIS de o TikTok rodar (11/10/2026): nascia `True`, e
+        # um TikTok que falhava por motivo que nao e rede saia `[POSTADO]`,
+        # codigo 0, e valia como "a rede voltou" para a volta final.
+        ficha = {"canal": "builds", "feito": False, "alvo": alvo.id,
                  "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
                  "so_tiktok": True,
                  "tiktok": _tiktok_dos_builds(alvo, falha_tk)}
         _anotar_falha_do_tiktok(ficha, falha_tk)
+        ficha["feito"] = _tiktok_confirmado(ficha["tiktok"])
         return ficha
     alvo = proximo_build(marcar=not so_ver)
     if alvo is None:
@@ -3616,8 +3661,11 @@ def postar_build(*, so_ver: bool = False) -> dict:
     # dentro): o ledger dizia `public` numa linha e `null` na seguinte, para o
     # mesmo video. Foi assim nos dois builds de 08/09/2026.
     url, falha_yt, cota = "", None, False
+    # O laudo nasce FORA do `try`, como no TikTok: a marca `clicou` escrita
+    # dentro do `youtube_web.publicar` precisa sobreviver a excecao.
+    laudo_yt: dict = {}
     try:
-        url = _youtube_dos_builds(alvo)
+        url = _youtube_dos_builds(alvo, laudo_yt)
     except Exception as exc:                                   # noqa: BLE001
         # Mesma regra das historias (auditoria de 15/09/2026): falha do
         # YouTube — cota ou qualquer outra — nao deixa o TikTok vazio. Antes
@@ -3630,6 +3678,10 @@ def postar_build(*, so_ver: bool = False) -> dict:
             avisar_limite_diario(f"canal builds: {exc}")
     ficha = {"canal": "builds", "feito": bool(url), "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url}
+    if falha_yt and laudo_yt.get("clicou"):
+        # O CLIQUE JA TINHA SAIDO: o video pode estar no ar (o `youtube_web`
+        # ja o pos na lista "a conferir"). Repor seria subir de novo.
+        ficha["youtube_clicou"] = True
     # A VALVULA APARECE NO RELATORIO. "Libera o menos pior com aviso" so
     # funciona se o aviso for somavel: sem esta marca, a excecao vira rotina
     # silenciosa e ninguem descobre que ela virou regra.
@@ -3649,6 +3701,8 @@ def postar_build(*, so_ver: bool = False) -> dict:
     else:
         falha_tk: dict = {}
         ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo, falha_tk)
+        if ja_tk:
+            ficha["so_youtube"] = True
         _anotar_falha_do_tiktok(ficha, falha_tk)
     if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
@@ -3678,11 +3732,18 @@ def _build_ja_no_tiktok(video_id: str) -> bool:
 
 
 @_voando("builds", "youtube")
-def _youtube_dos_builds(alvo):
-    """O YouTube dos builds — `publicar_como_configurado` registra por dentro."""
+def _youtube_dos_builds(alvo, laudo: dict | None = None):
+    """O YouTube dos builds — `publicar_como_configurado` registra por dentro.
+
+    `laudo` e preenchido NO LUGAR pelo publicador (`prova=`): e por ele que
+    a marca `clicou` chega a `postar_build` quando a excecao vem depois do
+    clique.
+    """
     from builds.publicar import youtube
+    extra = {"prova": laudo} if laudo is not None else {}
     return youtube.publicar_como_configurado(alvo, canal="builds",
-                                             visibilidade="public", log=_linha)
+                                             visibilidade="public", log=_linha,
+                                             **extra)
 
 
 @_voando("builds", "tiktok")
@@ -3733,7 +3794,7 @@ def escrever_lancador() -> Path:
         "rem Gerado por: python ferramentas/postar.py --instalar\r\n"
         f'cd /d "{RAIZ}"\r\n'
         f'"{sys.executable}" -u -X utf8 ferramentas\\postar.py '
-        f'>> "{saida}" 2>&1\r\n',
+        f'--saida "{saida}" > NUL 2>&1\r\n',
         encoding="utf-8")
     return destino
 
@@ -4461,20 +4522,40 @@ def escoar_historias(*, limite: int = 0, so_ver: bool = False) -> dict:
     from contos.publicar import serie
 
     fila = fila_de_historias()
-    if limite:
-        fila = fila[:limite]
     if so_ver:
         return {"total": len(fila), "ids": [v.id for v in fila]}
 
     visibilidade = _visibilidade_das_historias()
     feitos, falhas, seguidas = [], [], 0
-    for i, alvo in enumerate(fila, 1):
+    # PELA MESMA PORTA DA RODADA (11/10/2026): `proxima_historia` — vistoria,
+    # veto de pe, retencao, trava de render. Ate aqui o escoar lia a fila
+    # crua e subia parte vetada pela IA sem marca e sem `prova` no ledger
+    # (prova da auditoria: subiu a p03 vetada, vistoriou nada, marcou nada).
+    # Uma parte por volta: cada `serie.registrar` tira a parte da fila, e a
+    # proxima chamada ja ve o teto por fonte com ela contada.
+    teto = limite or len(fila)
+    for i in range(1, teto + 1):
+        alvo, _recusados = proxima_historia(vistoriar=True)
+        if alvo is None:
+            _linha("[escoar] nenhuma parte publicavel; parei.")
+            break
         _linha(f"[escoar] {i}/{len(fila)}  {alvo.id}  {alvo.titulo[:52]}")
         try:
-            url = _subir_parte_no_youtube(alvo, visibilidade, [])
+            provas: list = []
+            url = _subir_parte_no_youtube(alvo, visibilidade, provas)
             serie.registrar(alvo, url, "youtube", None,
                             {"por": "postar.py --tudo",
-                             "visibilidade": visibilidade})
+                             "visibilidade": visibilidade, "prova": provas,
+                             "prova_ok": _prova_ok(provas),
+                             **_ids_da_parte(provas)})
+            ficha = {"canal": "historias", "feito": True,
+                     "alvo": alvo.id, "titulo": alvo.titulo,
+                     "url": url, "parte": alvo.parte,
+                     "partes": alvo.partes, "prova": provas}
+            retencao = _valvula_da_parte(ficha, alvo)
+            if retencao:
+                _marcar_retido(alvo, retencao, ("youtube",))
+            _registrar_valvula(ficha)
             _linha(f"           youtube: {url}"[:110])
             seguidas = 0
         except Exception as exc:                               # noqa: BLE001
@@ -5605,4 +5686,13 @@ def _main(args) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    argumentos = list(sys.argv)
+    saida = None
+    if "--saida" in argumentos:
+        i = argumentos.index("--saida")
+        if i + 1 < len(argumentos):
+            saida = open(argumentos[i + 1], "a", encoding="utf-8", buffering=1)
+            argumentos = argumentos[:i] + argumentos[i + 2:]
+    if saida is not None:
+        sys.stdout = sys.stderr = _SaidaDatada(saida)
+    raise SystemExit(main(argumentos[1:]))

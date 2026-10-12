@@ -279,7 +279,13 @@ def marcar_para_conferir(canal: str, video_id: str, estado: str,
                 f"estar no ar e NAO esta bloqueado, e nenhuma rodada publica "
                 f"ate o arquivo ser consertado a mao."))
             raise NaoConsegviMarcar(f"{caminho.name} ilegivel") from exc
-        if video_id in dados:
+        anterior = dados.get(video_id)
+        # A marca de audio e automatica e pode ser solta quando o render
+        # melhora; a de clique precisa sobreviver ate conferencia humana.
+        promover = (isinstance(anterior, dict)
+                    and str(anterior.get("estado") or "").startswith("[audio] ")
+                    and not str(estado or "").startswith("[audio] "))
+        if anterior is not None and not promover:
             return True                  # ja avisado; nao repete no diario
         dados[video_id] = {
             "quando": datetime.now().isoformat(timespec="seconds"),

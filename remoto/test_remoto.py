@@ -536,6 +536,34 @@ class TarefaDoBotTests(unittest.TestCase):
         self.assertIn("-X utf8", texto)
         self.assertIn("2>&1", texto)
 
+    def test_o_lancador_nao_tranca_a_saida_com_o_redirecionamento_do_cmd(self):
+        """`>>` do cmd nega escrita a outro processo (14/09/2026): a tarefa
+        seguinte morria antes de o Python nascer. O Python abre o arquivo
+        (`--saida`), como `gerar.cmd`/`auto.cmd`; o cmd vai para `> NUL`.
+        Vale para os tres lancadores de 11/10/2026: bot, postar e app."""
+        from remoto import tarefa
+        texto = tarefa.escrever_lancador().read_text(encoding="utf-8")
+        self.assertNotIn(">>", texto)
+        self.assertIn("--saida", texto)
+        self.assertIn("> NUL", texto)
+        app = (tarefa.RAIZ / "app_celular.cmd").read_text(encoding="utf-8")
+        self.assertNotIn(">>", app)
+        self.assertIn("--saida", app)
+        self.assertIn("> NUL", app)
+
+    def test_o_bot_e_o_app_abrem_a_saida_pelo_python(self):
+        """Os dois `__main__` tiram `--saida ARQUIVO` do argv e abrem o
+        arquivo em modo que deixa outro processo escrever junto."""
+        import importlib.util
+        for nome in ("__main__.py", "api_http.py"):
+            fonte = (Path(__file__).resolve().parent / nome).read_text(
+                encoding="utf-8")
+            bloco = fonte[fonte.index('if __name__ == "__main__":'):]
+            self.assertIn('"--saida"', bloco, nome)
+            self.assertIn('open(argumentos[i + 1], "a"', bloco, nome)
+            self.assertIn("sys.stdout = sys.stderr = saida", bloco, nome)
+        self.assertIsNotNone(importlib.util.find_spec("remoto.api_http"))
+
     def test_reinstalar_nao_traz_a_janela_preta_de_volta(self):
         # Pedido do Adrian (17/09/2026): a acao e o wscript com o .vbs.
         from builds import tarefas_windows as TW

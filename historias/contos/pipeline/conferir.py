@@ -110,7 +110,8 @@ def partes_da_historia(historia_id: str) -> list[dict]:
             linha["avisos"].append("ainda sem video")
             linhas.append(linha)
             continue
-        dados = qualidade._ffprobe(video)
+        # `None` = o ffprobe nao mediu (prazo estourado); aqui vale como vazio.
+        dados = qualidade._ffprobe(video) or {}
         duracao = float((dados.get("format") or {}).get("duration") or 0.0)
         linha["duracao"] = round(duracao, 2)
         # A MESMA regra da vistoria de publicar, e nao uma copia dela: desde

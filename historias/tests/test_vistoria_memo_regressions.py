@@ -106,11 +106,18 @@ class FfprobeTests(_ComOutputs):
     def test_falha_nao_vai_ao_memo(self):
         with mock.patch.object(Q.subprocess, "run",
                                side_effect=subprocess.TimeoutExpired("x", 60)):
-            self.assertEqual({}, Q._ffprobe(self.mp4))
+            self.assertIsNone(Q._ffprobe(self.mp4))
         chamadas, patcher = self._rodar_ffprobe({"format": {"duration": "9"}})
         with patcher:
             self.assertEqual({"format": {"duration": "9"}}, Q._ffprobe(self.mp4))
         self.assertEqual(1, len(chamadas))
+
+    def test_timeout_declara_que_nao_mediu_sem_inventar_video_mudo(self):
+        with mock.patch.object(Q, "_ffprobe", return_value=None):
+            laudo = Q.vistoriar_arquivo(self.mp4)
+        self.assertIn("nao consegui medir o arquivo (ffprobe)", laudo["erros"])
+        self.assertNotIn("sem faixa de audio: o video vai ao ar mudo",
+                         laudo["erros"])
 
     def test_quem_chama_nao_suja_o_memo(self):
         chamadas, patcher = self._rodar_ffprobe({"format": {"duration": "9"}})
@@ -159,6 +166,43 @@ class AudioTests(_ComOutputs):
     def test_leitura_da_saida_nao_mudou(self):
         self.assertEqual((-17.5, 0.0), Q._ler_audio(SAIDA_DO_AUDIO, 110.0))
         self.assertEqual((None, 0.0), Q._ler_audio("", 110.0))
+
+    def test_ffmpeg_que_estoura_o_prazo_e_nao_medi_e_nao_sem_defeito(self):
+        """Auditoria de 11/10/2026 (p3): mp4 MUDO de verdade reprovava
+        ("audio a -91.0 dB"); com o ffmpeg estourando os 300 s (disco a 0%
+        ocioso em 06/10) a vistoria devolvia `erros = []`, `media_db = None`
+        e o video mudo seguia para a grade. Agora a vistoria diz que nao
+        mediu — e nao afirma nem "mudo" nem "sem defeito"."""
+        sonda = {"format": {"duration": "120"},
+                 "streams": [{"codec_type": "video"}, {"codec_type": "audio"}]}
+
+        def estoura(cmd, **_k):
+            if cmd[0] == "ffmpeg":
+                raise subprocess.TimeoutExpired(cmd, 300)
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(sonda), "")
+        with mock.patch.object(Q.subprocess, "run", side_effect=estoura), \
+                mock.patch.object(Q, "erros_de_preto", return_value=[]):
+            laudo = Q.vistoriar_arquivo(self.mp4)
+        self.assertIn("nao consegui medir o audio (ffmpeg)", laudo["erros"])
+        self.assertFalse(any("mudo" in e for e in laudo["erros"]), laudo["erros"])
+        self.assertIsNone(laudo["media_db"])
+        self.assertIsNone(laudo["silencio_final"])
+        self.assertTrue(laudo["audio"])
+
+    def test_caso_zero_ffmpeg_que_mede_segue_reprovando_o_mudo(self):
+        sonda = {"format": {"duration": "120"},
+                 "streams": [{"codec_type": "video"}, {"codec_type": "audio"}]}
+
+        def mede_mudo(cmd, **_k):
+            if cmd[0] == "ffmpeg":
+                return subprocess.CompletedProcess(
+                    cmd, 0, "", "[Parsed_volumedetect_0 @ 0] mean_volume: -91.0 dB\n")
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(sonda), "")
+        with mock.patch.object(Q.subprocess, "run", side_effect=mede_mudo), \
+                mock.patch.object(Q, "erros_de_preto", return_value=[]):
+            laudo = Q.vistoriar_arquivo(self.mp4)
+        self.assertTrue(any("praticamente mudo" in e for e in laudo["erros"]),
+                        laudo["erros"])
 
 
 class ColagemTests(_ComOutputs):

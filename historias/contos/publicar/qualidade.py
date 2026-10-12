@@ -262,7 +262,7 @@ def _versao_do_fonte(modulo) -> str:
         return "?"
 
 
-def _ffprobe(caminho: Path) -> dict:
+def _ffprobe(caminho: Path) -> dict | None:
     comando = ["ffprobe", "-v", "error", "-show_entries",
                "format=duration,size:format_tags=comment:"
                "stream=codec_type,codec_name",
@@ -279,7 +279,7 @@ def _ffprobe(caminho: Path) -> dict:
             capture_output=True, text=True, timeout=60, creationflags=NO_WINDOW)
         dados = json.loads(saida.stdout or "{}")
     except (OSError, ValueError, subprocess.SubprocessError):
-        return {}
+        return None
     # So o que mediu de verdade vai ao memo: ffprobe que falhou (arquivo
     # sendo escrito, maquina engasgada) e perguntado de novo na proxima.
     if isinstance(dados, dict) and dados.get("format"):
@@ -311,7 +311,7 @@ def _audio(caminho: Path, duracao: float) -> tuple:
              AUDIO_FILTRO, "-f", "null", "-"],
             capture_output=True, text=True, timeout=300, creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError):
-        return None, 0.0
+        return None, None
     media, calado = _ler_audio(saida.stderr, duracao)
     if media is not None:
         _guardar_medida(chave, persiste, [media, calado])
@@ -582,6 +582,12 @@ def vistoriar_arquivo(caminho: Path) -> dict:
         return {"existe": False, "erros": [f"{caminho.name} nao existe"],
                 "avisos": []}
     dados = _ffprobe(caminho)
+    if dados is None:
+        return {"existe": True, "duracao": None, "bytes": caminho.stat().st_size,
+                "audio": None, "video": None, "media_db": None,
+                "silencio_final": None, "formato": "",
+                "erros": ["nao consegui medir o arquivo (ffprobe)"],
+                "avisos": ["vistoria nao mediu as faixas nem a duracao"]}
     fluxos = dados.get("streams") or []
     duracao = float((dados.get("format") or {}).get("duration") or 0.0)
     tem_video = any(f.get("codec_type") == "video" for f in fluxos)
@@ -601,17 +607,20 @@ def vistoriar_arquivo(caminho: Path) -> dict:
         avisos.append(f"{duracao:.0f}s: longo para um Short/Reel")
 
     media, calado = _audio(caminho, duracao) if tem_audio else (None, 0.0)
-    if media is not None and media < MEDIA_MINIMA_DB:
+    if media is None and tem_audio and calado is None:
+        erros.append("nao consegui medir o audio (ffmpeg)")
+        avisos.append("vistoria nao mediu o volume nem o silencio final")
+    elif media is not None and media < MEDIA_MINIMA_DB:
         erros.append(f"audio a {media:.1f} dB de media: praticamente mudo")
 
-    if calado > SILENCIO_FINAL_MAXIMO:
+    if calado is not None and calado > SILENCIO_FINAL_MAXIMO:
         erros.append(f"os ultimos {calado:.1f}s sao mudos: a narracao acabou "
                      "antes das imagens")
 
     _gravar_medidas()
     return {"existe": True, "duracao": round(duracao, 2), "bytes": tamanho,
             "audio": tem_audio, "video": tem_video, "media_db": media,
-            "silencio_final": round(calado, 2),
+            "silencio_final": round(calado, 2) if calado is not None else None,
             "formato": _formato_no_arquivo(dados),
             "erros": erros, "avisos": avisos}
 

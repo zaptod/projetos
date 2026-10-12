@@ -26,7 +26,11 @@ Duas decisoes que evitam estrago:
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -115,19 +119,54 @@ def _caminho_registro() -> Path:
 
 
 def _ler() -> dict:
-    try:
-        with open(_caminho_registro(), encoding="utf-8-sig") as fh:
-            dados = json.load(fh)
-        return dados if isinstance(dados, dict) else {}
-    except (OSError, ValueError):
+    caminho = _caminho_registro()
+    if not caminho.is_file():
         return {}
+    ultimo = None
+    for tentativa in range(3):
+        try:
+            with open(caminho, encoding="utf-8-sig") as fh:
+                dados = json.load(fh)
+            if not isinstance(dados, dict):
+                raise ValueError("contas.json nao contem um objeto")
+            return dados
+        except OSError as exc:
+            ultimo = exc
+            if tentativa < 2:
+                time.sleep(0.1)
+                continue
+            raise
+        except ValueError:
+            copia = caminho.with_suffix(caminho.suffix + ".corrompido")
+            try:
+                copia.write_bytes(caminho.read_bytes())
+            except OSError:
+                pass
+            raise
+    raise ultimo  # pragma: no cover - o laco sempre retorna ou levanta
 
 
 def _gravar(dados: dict) -> None:
+    from . import travas
     caminho = _caminho_registro()
     caminho.parent.mkdir(parents=True, exist_ok=True)
-    with open(caminho, "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    with travas.trava("contas_json", esperar=3.0) as minha:
+        if not minha:
+            raise TimeoutError("trava de contas.json ocupada")
+        descritor, temporario = tempfile.mkstemp(dir=caminho.parent,
+                                                 suffix=".tmp")
+        try:
+            with os.fdopen(descritor, "w", encoding="utf-8") as fh:
+                json.dump(dados, fh, ensure_ascii=False, indent=2)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(temporario, caminho)
+        except Exception:
+            try:
+                os.unlink(temporario)
+            except OSError:
+                pass
+            raise
 
 
 def _limpar_nome(nome: str) -> str:
@@ -152,6 +191,16 @@ def estado() -> dict:
     return dados
 
 
+@contextmanager
+def _editar():
+    """Le e grava o registro como uma unica operacao entre processos."""
+    from . import travas
+    with travas.trava("contas_json", esperar=3.0) as minha:
+        if not minha:
+            raise TimeoutError("trava de contas.json ocupada")
+        yield estado()
+
+
 def contas(servico: str) -> list:
     return list(estado()["servicos"].get(servico, {}).get("contas") or [PADRAO])
 
@@ -174,11 +223,11 @@ def adicionar(servico: str, nome: str) -> str:
     if servico not in SERVICOS:
         raise KeyError(f"servico desconhecido: {servico!r}")
     limpo = _limpar_nome(nome)
-    dados = estado()
-    bloco = dados["servicos"][servico]
-    if limpo not in bloco["contas"]:
-        bloco["contas"].append(limpo)
-    _gravar(dados)
+    with _editar() as dados:
+        bloco = dados["servicos"][servico]
+        if limpo not in bloco["contas"]:
+            bloco["contas"].append(limpo)
+        _gravar(dados)
     return limpo
 
 
@@ -232,33 +281,32 @@ def renomear(servico: str, antigo: str, novo: str) -> dict:
     limpo = _limpar_nome(novo)
     if limpo == PADRAO:
         raise ValueError("nenhuma conta pode se chamar `principal`.")
-    dados = estado()
-    bloco = dados["servicos"][servico]
-    if antigo not in bloco["contas"]:
-        raise KeyError(f"{servico} nao tem a conta {antigo!r}")
-    if limpo in bloco["contas"] and limpo != antigo:
-        raise ValueError(f"{servico} ja tem uma conta chamada {limpo!r}")
+    with _editar() as dados:
+        bloco = dados["servicos"][servico]
+        if antigo not in bloco["contas"]:
+            raise KeyError(f"{servico} nao tem a conta {antigo!r}")
+        if limpo in bloco["contas"] and limpo != antigo:
+            raise ValueError(f"{servico} ja tem uma conta chamada {limpo!r}")
 
-    movidos = []
-    if SERVICOS[servico].get("tipo") == "oauth":
-        origem = runtime_dir() / f"youtube_credentials_{antigo}.json"
-        alvo = runtime_dir() / f"youtube_credentials_{limpo}.json"
-    else:
-        origem = runtime_dir() / "browser_profiles" / f"{servico}__{antigo}"
-        alvo = runtime_dir() / "browser_profiles" / f"{servico}__{limpo}"
-    if origem.exists() and not alvo.exists():
-        alvo.parent.mkdir(parents=True, exist_ok=True)
-        origem.rename(alvo)
-        movidos.append(str(alvo))
-
-    bloco["contas"] = [limpo if c == antigo else c for c in bloco["contas"]]
-    for canal, escolhida in list((bloco.get("ativa") or {}).items()):
-        if escolhida == antigo:
-            bloco["ativa"][canal] = limpo
-    identidades = dados.setdefault("identidades", {}).setdefault(servico, {})
-    if antigo in identidades:
-        identidades[limpo] = identidades.pop(antigo)
-    _gravar(dados)
+        movidos = []
+        if SERVICOS[servico].get("tipo") == "oauth":
+            origem = runtime_dir() / f"youtube_credentials_{antigo}.json"
+            alvo = runtime_dir() / f"youtube_credentials_{limpo}.json"
+        else:
+            origem = runtime_dir() / "browser_profiles" / f"{servico}__{antigo}"
+            alvo = runtime_dir() / "browser_profiles" / f"{servico}__{limpo}"
+        bloco["contas"] = [limpo if c == antigo else c for c in bloco["contas"]]
+        for canal, escolhida in list((bloco.get("ativa") or {}).items()):
+            if escolhida == antigo:
+                bloco["ativa"][canal] = limpo
+        identidades = dados.setdefault("identidades", {}).setdefault(servico, {})
+        if antigo in identidades:
+            identidades[limpo] = identidades.pop(antigo)
+        _gravar(dados)
+        if origem.exists() and not alvo.exists():
+            alvo.parent.mkdir(parents=True, exist_ok=True)
+            origem.rename(alvo)
+            movidos.append(str(alvo))
     return {"servico": servico, "de": antigo, "para": limpo, "movidos": movidos}
 
 
@@ -314,15 +362,15 @@ def remover(servico: str, nome: str) -> bool:
     esquecer e reversivel, apagar login nao."""
     if nome == PADRAO:
         return False
-    dados = estado()
-    bloco = dados["servicos"].get(servico) or {}
-    if nome not in (bloco.get("contas") or []):
-        return False
-    bloco["contas"].remove(nome)
-    for canal, escolhida in list((bloco.get("ativa") or {}).items()):
-        if escolhida == nome:
-            bloco["ativa"][canal] = PADRAO
-    _gravar(dados)
+    with _editar() as dados:
+        bloco = dados["servicos"].get(servico) or {}
+        if nome not in (bloco.get("contas") or []):
+            return False
+        bloco["contas"].remove(nome)
+        for canal, escolhida in list((bloco.get("ativa") or {}).items()):
+            if escolhida == nome:
+                bloco["ativa"][canal] = PADRAO
+        _gravar(dados)
     return True
 
 
@@ -332,12 +380,13 @@ def escolher(servico: str, canal: str, nome: str) -> None:
         raise KeyError(f"servico desconhecido: {servico!r}")
     if canal not in CANAIS:
         raise KeyError(f"canal desconhecido: {canal!r}")
-    dados = estado()
-    bloco = dados["servicos"][servico]
-    if nome not in bloco["contas"]:
-        bloco["contas"].append(nome)
-    bloco.setdefault("ativa", {})[canal] = nome
-    _gravar(dados)
+    nome = _limpar_nome(nome)
+    with _editar() as dados:
+        bloco = dados["servicos"][servico]
+        if nome not in bloco["contas"]:
+            bloco["contas"].append(nome)
+        bloco.setdefault("ativa", {})[canal] = nome
+        _gravar(dados)
 
 
 # ------------------------------------------------------------- resolucao
@@ -453,16 +502,16 @@ def identificar(servico: str, conta: str, *, rotulo: str = "",
     """Grava quem e a conta. Chamado por quem CONSEGUE perguntar ao site."""
     from datetime import datetime
 
-    dados = _ler()
-    bloco = dados.setdefault("identidades", {}).setdefault(servico, {})
-    registro = {
-        "rotulo": rotulo or bloco.get(conta, {}).get("rotulo", ""),
-        "id": identificador or bloco.get(conta, {}).get("id", ""),
-        "conferido": datetime.now().isoformat(timespec="seconds"),
-    }
-    registro.update(extra or {})
-    bloco[conta] = registro
-    _gravar(dados)
+    with _editar() as dados:
+        bloco = dados.setdefault("identidades", {}).setdefault(servico, {})
+        registro = {
+            "rotulo": rotulo or bloco.get(conta, {}).get("rotulo", ""),
+            "id": identificador or bloco.get(conta, {}).get("id", ""),
+            "conferido": datetime.now().isoformat(timespec="seconds"),
+        }
+        registro.update(extra or {})
+        bloco[conta] = registro
+        _gravar(dados)
     return registro
 
 

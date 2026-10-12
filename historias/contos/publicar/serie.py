@@ -123,7 +123,9 @@ def horarios(quantidade: int, *, comecar_em: datetime | None = None,
     inicio = comecar_em or (datetime.now(timezone.utc)
                             + timedelta(minutes=FOLGA_MINIMA_MIN))
     if inicio.tzinfo is None:
-        inicio = inicio.replace(tzinfo=timezone.utc)
+        # A ajuda do CLI recebe hora local sem fuso; converter, em vez de
+        # chamar replace(UTC), preserva o horario que a pessoa pediu.
+        inicio = inicio.astimezone()
     minimo = datetime.now(timezone.utc) + timedelta(minutes=FOLGA_MINIMA_MIN)
     if inicio < minimo:
         inicio = minimo
@@ -263,6 +265,22 @@ def publicar(historia_id: str, *, perfil: str = "celular",
                             raise NaoPublicou(f"plataforma desconhecida: {plataforma}")
                     except NaoPublicou:
                         raise
+                    except catalogo.PublicacaoParcial as exc:
+                        # PEDACO JA NO CANAL (11/10/2026): registra o que
+                        # subiu, senao a proxima execucao sobe o pedaco 1 de
+                        # novo (medido: 2 envios do pedaco 1, 1 linha). A
+                        # linha diz que e parcial; o resto e trabalho de
+                        # pessoa no canal.
+                        url = " | ".join(exc.urls)
+                        registrar(video, url, plataforma, quando,
+                                  extra={"prova": exc.provas, "parcial": True})
+                        enviados.append({"parte": video.parte,
+                                         "plataforma": plataforma,
+                                         "url": url, "quando": quando})
+                        erros_envio.append(
+                            f"{plataforma} parte {video.parte}: {exc}")
+                        log(f"[publicar]   PARCIAL: {exc}")
+                        continue
                     except Exception as exc:
                         if type(exc).__name__ == "CotaEsgotada":
                             # Insistir aqui so gera N erros iguais: TODAS as

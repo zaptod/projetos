@@ -565,7 +565,8 @@ class SaidaComPulsoTests(unittest.TestCase):
                 ('@_voando("builds", "youtube")', "def _youtube_dos_builds("),
                 ('@_voando("builds", "tiktok")', "def _tiktok_dos_builds(")):
             self.assertIn(f"{decorador}\n{funil}", fonte)
-        self.assertIn("url = _youtube_dos_builds(alvo)", fonte)
+        # Com o laudo (11/10/2026): a marca `clicou` chega a ficha por ele.
+        self.assertIn("url = _youtube_dos_builds(alvo, laudo_yt)", fonte)
 
 
 class LimiteDaTarefaTests(unittest.TestCase):

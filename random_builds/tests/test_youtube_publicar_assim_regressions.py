@@ -137,6 +137,47 @@ class PublicarMesmoAssimTests(unittest.TestCase):
         self.assertFalse(youtube_web.confirmado(estado), estado)
         self.assertIn("RASCUNHO", estado)
 
+    def test_clique_que_falha_NAO_devolve_o_link_da_pagina_de_tras(self):
+        """Auditoria de 11/10/2026 (prova2): com o aviso na tela e o
+        `click()` levantando, a mesma volta caia na checagem dos sinais; o
+        dialogo por tras mostra "Link do video", a funcao devolvia a URL e o
+        video entrava no ledger como publicado — e no canal ficava RASCUNHO.
+        Medido: `_confirmar -> 'https://youtu.be/AbCdEfGhIjK'`, `confirmado
+        -> True`. Agora: tenta de novo ate o prazo e, com o aviso ainda la,
+        devolve a frase de RASCUNHO."""
+        pagina = PaginaFalsa(
+            aviso=True,
+            texto="Vídeo publicado\nLink do vídeo\nPublicar mesmo assim",
+            link="https://youtu.be/AbCdEfGhIjK")
+
+        def nao_clica():
+            raise RuntimeError("backdrop engoliu o clique")
+        pagina.depois_do_clique = nao_clica
+        estado, registro = _confirmar(pagina, espera=3.0)
+        self.assertFalse(youtube_web.confirmado(estado), estado)
+        self.assertNotIn("youtu.be", estado)
+        self.assertIn("RASCUNHO", estado)
+        self.assertTrue(any("nao consegui clicar" in l for l in registro), registro)
+
+    def test_clique_que_falha_uma_vez_e_passa_na_seguinte_confirma(self):
+        pagina = PaginaFalsa(
+            aviso=True,
+            texto="Vídeo publicado\nPublicar mesmo assim",
+            texto_apos="Vídeo publicado",
+            link="https://youtu.be/AbCdEfGhIjK")
+        fechar = PaginaFalsa.depois_do_clique
+        tentativas = []
+
+        def falha_so_na_primeira():
+            tentativas.append(1)
+            if len(tentativas) == 1:
+                raise RuntimeError("backdrop engoliu o clique")
+            fechar(pagina)
+        pagina.depois_do_clique = falha_so_na_primeira
+        estado, _ = _confirmar(pagina, espera=8.0)
+        self.assertEqual("https://youtu.be/AbCdEfGhIjK", estado)
+        self.assertEqual(2, len(tentativas))
+
     def test_o_rotulo_dentro_do_botao_esta_nos_seletores(self):
         """O texto nao esta no <button>, e sim num <div> dentro dele — foi
         assim que o "Publicar agora" do TikTok escapou em 31/08/2026."""
@@ -144,6 +185,85 @@ class PublicarMesmoAssimTests(unittest.TestCase):
         self.assertIn("button-text-content", juntos)
         self.assertIn("Publicar mesmo assim", juntos)
         self.assertIn("Publish anyway", juntos)
+
+
+class DepoisDoCliqueTests(unittest.TestCase):
+    """A prova do clique no laudo do YouTube, como o TikTok ja fazia
+    (auditoria de 11/10/2026, prova4: `youtube_web.py grava laudo["clicou"]?
+    False`; `classificar('', falha, laudo do YouTube) -> falha`).
+
+    Exceção DEPOIS do clique (em 05/10 foi o `progresso` levantando) apagava
+    a frase, a ficha virava falha comum e a fila reescolhia o video no
+    horario seguinte: rascunho gemeo ou duplicata.
+    """
+
+    def setUp(self):
+        from builds.publicar import desfecho
+        self.marcas = []
+        self.addCleanup(setattr, desfecho, "resolver", desfecho.resolver)
+        desfecho.resolver = (
+            lambda canal, video, estado, laudo=None, falha=None, plataforma="tiktok":
+            self.marcas.append((canal, video.id, estado, dict(laudo or {}),
+                                plataforma)) or desfecho.classificar(estado, falha, laudo))
+        self.video = type("V", (), {"id": "generation_00099:duelo:celular"})()
+
+    def test_o_laudo_ganha_clicou_antes_do_clique(self):
+        fonte = Path(youtube_web.__file__).read_text(encoding="utf-8")
+        corpo = fonte[fonte.index("def publicar("):]
+        corpo = corpo[:corpo.index("\ndef ")]
+        self.assertIn('laudo["clicou"] = True', corpo)
+        self.assertLess(corpo.index('laudo["clicou"] = True'),
+                        corpo.index("pronto.click()"))
+        self.assertIn("_depois_do_clique(page, passo, laudo, canal, video)", corpo)
+
+    def test_excecao_depois_do_clique_marca_a_conferir_e_sobe(self):
+        pagina = PaginaFalsa(aviso=False, texto="Vídeo publicado",
+                             link="https://youtu.be/AbCdEfGhIjK")
+        laudo = {"clicou": True, "youtube_id": "", "url": ""}
+
+        def passo(texto):
+            if texto.startswith("publicar clicado"):
+                raise RuntimeError("o diario nao aceitou a linha")
+        with self.assertRaises(RuntimeError):
+            youtube_web._depois_do_clique(pagina, passo, laudo, "builds", self.video)
+        (marca,) = self.marcas
+        self.assertEqual(("builds", self.video.id, "youtube"),
+                         (marca[0], marca[1], marca[4]))
+        self.assertIn("pode estar no ar", marca[2])
+        self.assertEqual("sem_confirmacao", laudo["estado"])
+        from builds.publicar import desfecho
+        self.assertEqual("sem_confirmacao",
+                         desfecho.classificar("", {"tipo": "RuntimeError"}, laudo))
+
+    def test_caminho_bom_segue_igual(self):
+        pagina = PaginaFalsa(aviso=False, texto="Vídeo publicado",
+                             link="https://youtu.be/AbCdEfGhIjK")
+        laudo = {"clicou": True, "youtube_id": "", "url": ""}
+        antes = youtube_web.ESPERA_CONFIRMAR_S
+        youtube_web.ESPERA_CONFIRMAR_S = 3.0
+        self.addCleanup(setattr, youtube_web, "ESPERA_CONFIRMAR_S", antes)
+        estado = youtube_web._depois_do_clique(pagina, lambda _t: None, laudo,
+                                               "builds", self.video)
+        self.assertEqual("https://youtu.be/AbCdEfGhIjK", estado)
+        self.assertEqual("publicado", laudo["estado"])
+        self.assertEqual("AbCdEfGhIjK", laudo["youtube_id"])
+        self.assertEqual("publicado", laudo["desfecho"])
+        self.assertEqual(1, len(self.marcas))
+
+    def test_marca_que_nao_grava_nao_esconde_a_excecao_original(self):
+        from builds.publicar import desfecho
+
+        def nao_marca(*a, **k):
+            raise desfecho.NaoConsegviMarcar("a trava esta ocupada")
+        desfecho.resolver = nao_marca
+        pagina = PaginaFalsa(aviso=False, texto="Vídeo publicado")
+        laudo = {"clicou": True, "youtube_id": "", "url": ""}
+
+        def passo(_texto):
+            raise RuntimeError("original")
+        with self.assertRaises(RuntimeError) as caso:
+            youtube_web._depois_do_clique(pagina, passo, laudo, "builds", self.video)
+        self.assertEqual("original", str(caso.exception))
 
 
 if __name__ == "__main__":

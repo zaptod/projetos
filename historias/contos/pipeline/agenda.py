@@ -39,6 +39,9 @@ from pathlib import Path
 from builds.publicar.metricas import publicado as _publicado
 
 RAIZ = Path(__file__).resolve().parents[2]
+RAIZ_DO_REPOSITORIO = RAIZ.parent
+if str(RAIZ_DO_REPOSITORIO) not in sys.path:
+    sys.path.insert(0, str(RAIZ_DO_REPOSITORIO))
 OUTPUTS = RAIZ / "outputs"
 CONFIG = RAIZ / "config" / "agenda.json"
 

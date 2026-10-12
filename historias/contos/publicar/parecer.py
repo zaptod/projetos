@@ -40,8 +40,11 @@ mas..." vira adivinhacao, e o veto tem de ser mecanico.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
+import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -92,6 +95,10 @@ SITUACOES = (SITUACAO_APROVADO, SITUACAO_REPROVADO, NAO_ASSISTIDO)
 CRITERIO = 2
 
 
+class VereditoInvalido(ValueError):
+    """O alvo nao identifica um video e nao pode virar lembranca."""
+
+
 # O veredito da IA fica GRAVADO, com a data do mp4 junto. Sem isso, o freio
 # de estoque e o reparo teriam de perguntar de novo para saber — 100 s e um
 # navegador por video, oito vezes por dia — ou, o que aconteceu em 11/09/2026,
@@ -105,12 +112,42 @@ LEMBRETES = Path(__file__).resolve().parents[2] / "outputs" / "_pareceres.json"
 def _lembretes() -> dict:
     if not LEMBRETES.is_file():
         return {}
+    for tentativa in range(3):
+        try:
+            with open(LEMBRETES, encoding="utf-8-sig") as fh:
+                dados = json.load(fh)
+            if not isinstance(dados, dict):
+                raise ValueError("_pareceres.json nao contem um objeto")
+            return dados
+        except OSError:
+            if tentativa < 2:
+                time.sleep(0.1)
+                continue
+            raise
+        except ValueError:
+            copia = LEMBRETES.with_suffix(LEMBRETES.suffix + ".corrompido")
+            try:
+                copia.write_bytes(LEMBRETES.read_bytes())
+            except OSError:
+                pass
+            raise
+
+
+def _gravar_lembretes(dados: dict) -> None:
+    LEMBRETES.parent.mkdir(parents=True, exist_ok=True)
+    descritor, temporario = tempfile.mkstemp(dir=LEMBRETES.parent, suffix=".tmp")
     try:
-        with open(LEMBRETES, encoding="utf-8-sig") as fh:
-            dados = json.load(fh)
-    except (OSError, ValueError):
-        return {}
-    return dados if isinstance(dados, dict) else {}
+        with os.fdopen(descritor, "w", encoding="utf-8") as fh:
+            json.dump(dados, fh, ensure_ascii=False, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temporario, LEMBRETES)
+    except Exception:
+        try:
+            os.unlink(temporario)
+        except OSError:
+            pass
+        raise
 
 
 def _marca_do_video(video) -> float:
@@ -125,8 +162,28 @@ def _marca_do_video(video) -> float:
 
 
 def lembrar(video, veredito: dict) -> None:
+    """Guarda o veredito. NUNCA derruba o parecer que acabou de ser dado.
+
+    A memoria e conveniencia; o veredito e o produto (100 s de navegador).
+    Mas memoria que NAO gravou precisa ser vista: `_pareceres.json` ilegivel
+    ou trancado (11/10/2026) vai ao diario como ERRO, e nada e gravado por
+    cima — ate 11/10 a leitura que falhava virava `{}` e a gravacao seguinte
+    apagava os 125 vetos.
+    """
     try:
         _lembrar(video, veredito)
+    except VereditoInvalido:
+        pass
+    except (OSError, ValueError) as exc:
+        try:
+            from builds import atividade
+            atividade.registrar(
+                "parecer", "erro",
+                f"nao gravei o parecer de {getattr(video, 'id', video)} em "
+                f"{LEMBRETES.name} ({type(exc).__name__}: {str(exc)[:160]}); "
+                f"nada foi sobrescrito.", "historias")
+        except Exception:                                      # noqa: BLE001
+            pass
     except Exception:                                          # noqa: BLE001
         pass
 
@@ -213,25 +270,37 @@ def marcar_nao_assistido(video_id: str, nota: str = "") -> bool:
     Recusa (devolve False) ficha que nao existe ou que alguem assistiu.
     """
     chave = str(video_id)
-    dados = _lembretes()
-    ficha = dados.get(chave)
-    if not ficha or situacao({**ficha, "situacao": ""}) != NAO_ASSISTIDO:
-        return False
-    ficha["situacao"] = NAO_ASSISTIDO
-    ficha["assistido"] = False
-    if nota:
-        ficha["nota"] = str(nota)
-    with open(LEMBRETES, "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    from builds import travas
+    with travas.trava("pareceres_json", esperar=3.0) as minha:
+        if not minha:
+            raise TimeoutError("trava de _pareceres.json ocupada")
+        dados = _lembretes()
+        ficha = dados.get(chave)
+        if not ficha or situacao({**ficha, "situacao": ""}) != NAO_ASSISTIDO:
+            return False
+        ficha["situacao"] = NAO_ASSISTIDO
+        ficha["assistido"] = False
+        if nota:
+            ficha["nota"] = str(nota)
+        _gravar_lembretes(dados)
     return True
 
 
 def _lembrar(video, veredito: dict) -> None:
     chave = str(getattr(video, "id", video))
     if not _e_id_de_video(chave):
-        raise ValueError(
+        raise VereditoInvalido(
             f"veredito recusado: {chave!r} nao identifica video nenhum. "
             "Quem pede parecer passa o item do catalogo.")
+    from builds import travas
+    with travas.trava("pareceres_json", esperar=3.0) as minha:
+        if not minha:
+            raise TimeoutError("trava de _pareceres.json ocupada")
+        _lembrar_travado(video, veredito)
+
+
+def _lembrar_travado(video, veredito: dict) -> None:
+    chave = str(getattr(video, "id", video))
     dados = _lembretes()
     marca = _marca_do_video(video)
     vista = veredito.get("vista", "")
@@ -280,9 +349,7 @@ def _lembrar(video, veredito: dict) -> None:
         "criterio": int(veredito.get("criterio") or 1),
         "quando": datetime.now().isoformat(timespec="seconds"),
     }
-    LEMBRETES.parent.mkdir(parents=True, exist_ok=True)
-    with open(LEMBRETES, "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    _gravar_lembretes(dados)
 
 
 def ja_olhado(video) -> bool:
@@ -428,10 +495,13 @@ def lembrado(video) -> dict | None:
 
 
 def esquecer(video) -> None:
-    dados = _lembretes()
-    if dados.pop(str(getattr(video, "id", video)), None) is not None:
-        with open(LEMBRETES, "w", encoding="utf-8") as fh:
-            json.dump(dados, fh, ensure_ascii=False, indent=2)
+    from builds import travas
+    with travas.trava("pareceres_json", esperar=3.0) as minha:
+        if not minha:
+            raise TimeoutError("trava de _pareceres.json ocupada")
+        dados = _lembretes()
+        if dados.pop(str(getattr(video, "id", video)), None) is not None:
+            _gravar_lembretes(dados)
 
 
 class SemParecer(RuntimeError):
