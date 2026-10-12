@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Avaliação de arquitetura de 12/10 (P3). As três tarefas enchem o Agendador de falhas falsas, que escondem falha real. Desligar é reversível (religar-tarefas-antigas). A tarefa NeuralFights_retomar_codex é sobra de 02/10 e nunca mais roda.",
+  "criado": "2026-10-12T18:36:13.091794",
+  "depende_de": [],
+  "historico": [],
+  "id": "gerente-unico-dos-servicos",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O coordenador segue mantendo tudo de pé; as tarefas ficam desabilitadas, dá para religar.",
+      "id": "desligar",
+      "pede_comentario": false,
+      "rotulo": "Desligar as três e apagar a retomar_codex (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Hoje o app, o bot e a Vila são mantidos por DOIS gerentes ao mesmo tempo: o coordenador e três tarefas do Agendador que tentam ligar de novo a cada 10 minutos e falham sempre (já tem um no ar). Desligo as três tarefas e deixo só o coordenador?",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Um gerente só para app, bot e Vila",
+  "vigente": null
+}
