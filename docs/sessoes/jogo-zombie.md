@@ -52,6 +52,7 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ⏳ **Auditoria profunda: gastar quanto do Codex?** — O Codex bateu o limite de 5 horas 12 minutos depois de renovar (volta às 23:32). Continuo as 31 fatias em esforço ALTO, que é o mais completo e o que mais gasta? `auditoria-profunda-custo`
 - ⏳ **Um gerente só para app, bot e Vila** — Hoje o app, o bot e a Vila são mantidos por DOIS gerentes ao mesmo tempo: o coordenador e três tarefas do Agendador que tentam ligar de novo a cada 10 minutos e falham sempre (já tem um no ar). Desligo as três tarefas e deixo só o coordenador? `gerente-unico-dos-servicos`
 - ⏳ **Reiniciar serviços sozinho quando o código muda?** — Hoje o coordenador reinicia app e bot sozinho sempre que nota que o código no disco mudou, inclusive no meio de uma edição e perto do horário de postagem (11/10 às 15:17, a 20 min do post). Troco para reiniciar só quando uma entrega é aplicada ou quando alguém manda reiniciar? `reinicio-por-codigo-velho`
+- ⏳ **O ramo main está 945 commits atrás** — O main do repositório parou em 20/02; todo o trabalho de 8 meses vive no ramo refactor/arquitetura. Como o repositório vai ser mostrado a outras pessoas, faço o main receber o ramo? `main-recebe-o-ramo`
 
 **Jogo zombie**
 - ✅ **Formato do 1º vídeo** — Duelo (27/09/2026) `formato-do-primeiro-video`
