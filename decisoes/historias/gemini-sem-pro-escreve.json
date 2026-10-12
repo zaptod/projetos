@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Achado da auditoria profunda (roteiro e LLM). Você já disse que o Flash era o problema de qualidade das histórias.",
+  "criado": "2026-10-12T19:20:07.298372",
+  "depende_de": [],
+  "historico": [],
+  "id": "gemini-sem-pro-escreve",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Nunca escreve no Flash; se nenhum provedor forte estiver disponível, a rodada espera.",
+      "id": "cair",
+      "pede_comentario": false,
+      "rotulo": "Pular para o próximo provedor (DeepSeek/ChatGPT) e avisar no Telegram (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Você decide depois se a mantém.",
+      "id": "flash-avisado",
+      "pede_comentario": false,
+      "rotulo": "Escrever no Flash, mas avisar no Telegram e marcar a história"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "flash",
+      "pede_comentario": false,
+      "rotulo": "Deixar como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Quando o Gemini não consegue entrar no modelo forte (Pro), hoje a história é escrita no Flash sem avisar você (224 vezes de 06 a 08/10). O que fazer?",
+  "projeto": "historias",
+  "situacao": "pendente",
+  "titulo": "Gemini sem o modelo forte pode escrever roteiro?",
+  "vigente": null
+}

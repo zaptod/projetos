@@ -16,3 +16,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Imagens sem o PicassoIA: Gemini e ChatGPT trabalham juntos?** — Duas histórias ao mesmo tempo, uma em cada gerador (recomendado) (06/10/2026) `imagens-dois-geradores-juntos`
 - ✅ **Pausa dos canais de histórias** — Continuar publicando (11/10/2026) · “11/10 04h pelo chat: 'eu ja nao quero mais que o builds pare nem o canal de historias'” `pausa-dos-canais`
   - ↺ **Criar histórias durante a pausa?** — Parar a criação também (10/10/2026) · “10/10 01:4x pelo chat: 'por que ainda esta abrindo meu chat gpt??' (a criacao gerava imagens no ChatGPT dele durante a pausa)” · espera Pausa dos canais de histórias = Pausar a publicação `criacao-durante-a-pausa`
+- ⏳ **Gemini sem o modelo forte pode escrever roteiro?** — Quando o Gemini não consegue entrar no modelo forte (Pro), hoje a história é escrita no Flash sem avisar você (224 vezes de 06 a 08/10). O que fazer? `gemini-sem-pro-escreve`
