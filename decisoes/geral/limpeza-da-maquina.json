@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-12T19:54:35",
+      "evento": "2026-10-12T19:48:29",
+      "linha": 154,
+      "nota": "resposta sem pedido de origem: geral/limpeza-da-maquina = Apagar tudo isso (recomendado)",
+      "opcao": "apagar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Sobras: 11 cópias de trabalho órfãs e 65 pastas de prova em E:\\projetos-wt (7 GB), milhares de pastas em E:\\tmp_pytest, 5 arquivos soltos na raiz do projeto desde 28/09 (11239-removebg-preview (1).png, 11243.png, sprites_transparentes.png, piriri.py, projetos-wt_prova_filaerro7.txt), a tarefa agendada NeuralFights_retomar_codex (sobra de 02/10) e os perfis de navegador ocupando 13,7 GB no C: (que tem 14 GB livres). Nada disso é usado hoje.",
   "criado": "2026-10-11T18:15:52.882670",
   "depende_de": [],
