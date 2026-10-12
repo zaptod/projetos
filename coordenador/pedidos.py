@@ -250,7 +250,9 @@ _PUBLICA = ("publicar", "postar", "upload", "publish", "push")
 # recusas do `delegar._preparar_rodada` que so pedem para esperar (a janela,
 # o paralelo cheio, o teto do Codex, a ficha ainda "rodando"): o relancamento
 # recusado por elas NAO gasta retomada. O comeco de cada mensagem do delegar.
-RECUSAS_DE_ESPERA = ("nada começa entre", "no máximo", "da janela de 5 h", "já está rodando")
+# "bateu o limite de uso" (11/10): sem ela, 30 pedidos gastaram as 5 retomadas esperando as 23:32 e viraram "falhou"
+RECUSAS_DE_ESPERA = ("nada começa entre", "no máximo", "da janela de 5 h", "já está rodando",
+                     "bateu o limite de uso")
 JANELA_ANTES_MIN, JANELA_DEPOIS_MIN = 12, 18      # a janela das postagens
 
 # perguntas curtas de estado continuam no cerebro (resposta em segundos)

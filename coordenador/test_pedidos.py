@@ -1066,3 +1066,10 @@ def test_o_cargo_do_orquestrador_nao_manda_criar_resposta_md():
     assert "deixe em `resposta.md`" not in cargo
     assert "MENSAGEM FINAL" in cargo and "Nao crie arquivo `resposta.md`" in cargo
     assert "vale acima de qualquer instrução antiga do cargo" in pedidos._COMO_RESPONDER
+
+
+def test_recusa_por_limite_de_uso_do_codex_nao_gasta_retomada():
+    """11/10: 30 pedidos viraram 'falhou' esperando o Codex voltar as 23:32."""
+    assert any("bateu o limite de uso" in r for r in pedidos.RECUSAS_DE_ESPERA)
+    recusa = "o Codex bateu o limite de uso; volta 11/10 23:32 (a propria mensagem dele)"
+    assert any(p in recusa for p in pedidos.RECUSAS_DE_ESPERA)
