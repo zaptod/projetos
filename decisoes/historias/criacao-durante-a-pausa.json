@@ -26,6 +26,14 @@
       "em": "2026-10-10T01:42:30",
       "opcao": "parar",
       "origem": "cli"
+    },
+    {
+      "anterior": "parar",
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-13T13:59:12",
+      "opcao": "continuar",
+      "origem": "app"
     }
   ],
   "id": "criacao-durante-a-pausa",
@@ -51,11 +59,11 @@
   },
   "pergunta": "Com a publicação parada, a criação automática de histórias continua?",
   "projeto": "historias",
-  "situacao": "a_rever",
+  "situacao": "decidida",
   "titulo": "Criar histórias durante a pausa?",
   "vigente": {
-    "comentario": "10/10 01:4x pelo chat: 'por que ainda esta abrindo meu chat gpt??' (a criacao gerava imagens no ChatGPT dele durante a pausa)",
-    "em": "2026-10-10T01:42:30",
-    "opcao": "parar"
+    "comentario": "",
+    "em": "2026-10-13T13:59:12",
+    "opcao": "continuar"
   }
 }
