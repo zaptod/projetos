@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-13T13:57:19",
+      "evento": "2026-10-13T13:57:14",
+      "linha": 156,
+      "nota": "resposta sem pedido de origem: geral/reinicio-por-codigo-velho = Só quando pedido: entrega aplicada ou comando reiniciar (recomendado)",
+      "opcao": "pedido",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Avaliação de arquitetura de 12/10 (P3/P4). Em 05/10 foram 211 quedas/reinícios num dia por causa disso. Código mudando sem commit é alguém editando, não uma versão nova.",
   "criado": "2026-10-12T18:36:17.435621",
   "depende_de": [],
