@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-13T14:00:06",
+      "evento": "2026-10-13T13:59:59",
+      "linha": 163,
+      "nota": "resposta sem pedido de origem: geral/enviar-ao-github = Enviar main e refactor/arquitetura (recomendado)",
+      "opcao": "enviar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Push é ação para fora do PC: por regra, só com a sua autorização. O repositório 'vai ser mostrado'. Os relatórios de auditoria ficam em docs/auditoria e citam caminhos locais (E:\\projetos, %LOCALAPPDATA%), nada de senha ou token.",
   "criado": "2026-10-13T13:58:52.241926",
   "depende_de": [],
