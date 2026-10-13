@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-13T13:57:54",
+      "evento": "2026-10-13T13:57:51",
+      "linha": 158,
+      "nota": "resposta sem pedido de origem: geral/auditoria-profunda-custo = Continuar em esforço alto (recomendado)",
+      "opcao": "alto",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Medido hoje: em 12 minutos, 6 fatias em esforço alto gastaram a janela inteira de 5 h e subiram a cota da SEMANA do Codex de 16% para 31%. Restam 27 fatias de código, 4 consertos e a consolidação: a conta aponta para umas 4 a 5 janelas de 5 h (até amanhã de manhã) e uns 60 a 70% da semana. O trabalho fica parado e volta sozinho às 23:32. No esforço médio gasta bem menos, mas olha menos fundo (foi o médio que fez a auditoria rasa da manhã).",
   "criado": "2026-10-11T18:50:42.332091",
   "depende_de": [],
