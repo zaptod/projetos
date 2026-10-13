@@ -13,13 +13,38 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import acoes_pc
-from .estado import gravar_estado, pasta
+from .estado import gravar_estado, ler_estado, pasta, tomar_reinicios_pendentes
 
 RAIZ = Path(r"E:\projetos")
 ESPERAS = (5, 15, 60, 300)
 LIMITE_FALHAS_HORA = 5
 FALHAS_SAUDE = 3
 PULSO_S = 5
+# A janela das postagens (CLAUDE.md, lei 4): nada de religar servico de
+# `post-12` a `post+18` min. Ate 13/10/2026 o `seguro()` so olhava a
+# publicacao em voo e o app/bot foram religados a 20 min do post das 15:37.
+JANELA_ANTES_MIN = 12
+JANELA_DEPOIS_MIN = 18
+# Quanto `reiniciar_servico` espera o processo velho MORRER antes de subir o
+# novo (12/10: o carteiro antigo seguiu vivo ao lado do novo).
+MORTE_PRAZO_S = 15
+MORTE_PASSO_S = 0.5
+
+
+def janela_das_postagens(agora, antes_min=JANELA_ANTES_MIN, depois_min=JANELA_DEPOIS_MIN):
+    """(dentro, texto): `agora` esta entre `post-antes` e `post+depois` de
+    algum horario da grade (`random_builds/builds/grade.py`)?"""
+    from random_builds.builds import grade
+    proximo = grade.proximo_em(agora)
+    if proximo - agora <= timedelta(minutes=antes_min):
+        return True, f"janela das postagens ({proximo:%H:%M}, em {int((proximo - agora).total_seconds() // 60)} min)"
+    hora = grade.slot(agora)
+    ultimo = agora.replace(hour=hora, minute=grade.minuto(hora), second=0, microsecond=0)
+    if ultimo > agora:                      # antes do 1o horario do dia: o ultimo foi ontem
+        ultimo -= timedelta(days=1)
+    if agora - ultimo < timedelta(minutes=depois_min):
+        return True, f"janela das postagens ({ultimo:%H:%M}, há {int((agora - ultimo).total_seconds() // 60)} min)"
+    return False, ""
 
 
 def agora_iso(agora=None):
@@ -230,9 +255,15 @@ class Supervisor:
                  git=None, comandos=None, aplicar=None, claude_proibido=None,
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
                  cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None,
-                 gerente_equipe=None, pedidos=None, aplicar_app=None, conversa=None, obsidian=None):
+                 gerente_equipe=None, pedidos=None, aplicar_app=None, conversa=None, obsidian=None,
+                 carregar=None, janela=None, dormir=None, pendentes=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
+        # a janela das postagens (dublavel), a espera pela morte do processo
+        # velho e os `coordenador reiniciar` que ficaram pendentes em disco
+        self.janela = janela or janela_das_postagens
+        self.dormir = dormir or time.sleep
+        self.pendentes = pendentes or tomar_reinicios_pendentes
         self.iniciar = iniciar or self._iniciar
         self.parar = parar or self._parar
         self.avisar = avisar or self._avisar
@@ -283,9 +314,42 @@ class Supervisor:
         self.trabalho = {}
         self.reinicio_pedido = set()
         self.estado = {n: {"situacao": "parado", "pid": None, "desde": None,
-                           "reinicios_24h": 0, "ultimo_erro": "", "codigo_velho": False,
+                           "reinicios_24h": 0, "reinicios": [], "ultimo_erro": "",
+                           "codigo_velho": False, "reinicio_pedido": False,
                            "saude": "desconhecida", "proximo_reinicio": None,
                            "motivo_espera": ""} for n in self.servicos}
+        # `reinicios_24h` e o reinicio pedido sobrevivem ao coordenador subir
+        # de novo (antes zeravam a cada subida: a tarefa religa a cada 5 min)
+        self._retomar((carregar or ler_estado)())
+
+    def _retomar(self, anterior):
+        servicos = anterior.get("servicos") if isinstance(anterior, dict) else None
+        if not isinstance(servicos, dict):
+            return
+        for nome, estado in self.estado.items():
+            velho = servicos.get(nome) or {}
+            if not isinstance(velho, dict):
+                continue
+            estado["reinicios"] = [str(x) for x in (velho.get("reinicios") or []) if x]
+            if velho.get("reinicio_pedido"):
+                self.reinicio_pedido.add(nome)
+            self._contar_reinicios(nome)
+
+    def _contar_reinicios(self, nome):
+        """Os reinicios das ultimas 24 h, contados de verdade (nao zera na subida)."""
+        estado = self.estado[nome]
+        limite = self.relogio() - timedelta(hours=24)
+        vivos = []
+        for carimbo in estado.get("reinicios") or []:
+            try:
+                if datetime.fromisoformat(carimbo) > limite:
+                    vivos.append(carimbo)
+            except ValueError:
+                continue
+        estado["reinicios"] = vivos[-200:]
+        estado["reinicios_24h"] = len(estado["reinicios"])
+        estado["reinicio_pedido"] = nome in self.reinicio_pedido
+        return estado["reinicios_24h"]
 
     def evento(self, servico, tipo, texto):
         self.eventos.append({"em": agora_iso(self.relogio()), "servico": servico,
@@ -406,9 +470,12 @@ class Supervisor:
         processos = self.processos() if processos is None else processos
         if publicacao_rodando(processos):
             return False, "publicacao em andamento"
-        # 03/10/2026: sem janela de relógio ("NÃO FICA ESPERANDO HORÁRIO"). A trava
-        # é a publicação em voo, acima; o resto pode reiniciar na hora.
         agora = self.relogio()
+        # D3 (Grimorio, 13/10/2026): nunca dentro da janela das postagens,
+        # `post-12` a `post+18` min da grade. A publicacao em voo continua acima.
+        dentro, texto = self.janela(agora)
+        if dentro:
+            return False, texto
         if nome == "carteiro" and self.carteiro().get("situacao") == "entregando":
             # 02/10 00:04: um pedido condenado segurou o carteiro velho por 7 min
             # e o Adrian: "ele nunca vai parar de rodar". Espera no maximo
@@ -464,8 +531,12 @@ class Supervisor:
             self.evento(nome, "caiu", str(exc))
             return False
         estado.update(situacao="rodando", pid=pid, desde=agora_iso(self.relogio()), saude="desconhecida",
-                      proximo_reinicio=None, motivo_espera="", codigo_velho=False,
-                      reinicios_24h=estado["reinicios_24h"] + 1)
+                      proximo_reinicio=None, motivo_espera="", codigo_velho=False)
+        estado.setdefault("reinicios", []).append(agora_iso(self.relogio()))
+        self._contar_reinicios(nome)
+        # religou com sucesso: a conta de saude ruim recomeca (antes ficava em
+        # 3 e o app novo era morto no pulso seguinte, com a porta ainda fechada)
+        self.saudes_ruins[nome] = 0
         self.evento(nome, "religou", f"PID {pid}")
         return True
 
@@ -504,11 +575,13 @@ class Supervisor:
                 self.religar(nome, "saude ruim")
             return
         self.saudes_ruins[nome] = 0
-        if nome in self.reinicio_pedido or self.git(ficha, estado["desde"]):
-            if not estado["codigo_velho"]:
-                self.velho_desde[nome] = self.relogio()
-                estado["codigo_velho"] = True
-                self.evento(nome, "codigo_velho", "codigo mudou desde o inicio")
+        # D3 (13/10/2026): codigo velho so INFORMA (status, app); o reinicio
+        # acontece quando alguem PEDE (vigia ao aplicar, `coordenador reiniciar`).
+        if not estado["codigo_velho"] and self.git(ficha, estado["desde"]):
+            estado["codigo_velho"] = True
+            self.evento(nome, "codigo_velho", "codigo mudou desde o inicio; reinicio so quando pedido")
+        if nome in self.reinicio_pedido:
+            self.velho_desde.setdefault(nome, self.relogio())
             ultima = self.religado_por_codigo.get(nome)
             if ultima is not None:
                 passou = (self.relogio() - ultima).total_seconds()
@@ -517,15 +590,7 @@ class Supervisor:
                                                 f"no máximo uma vez a cada {RELIGADA_MIN_S} s",
                                   proximo_reinicio=None)
                     return
-            ok, espera = self.seguro(nome, processos)
-            if ok:
-                self.parar(achado["pid"])
-                self.religar(nome, "codigo velho", forcar=True)
-                self.religado_por_codigo[nome] = self.relogio()
-                self.reinicio_pedido.discard(nome)
-                self.evento(nome, "reiniciou", "codigo atualizado")
-            else:
-                estado.update(motivo_espera=espera, proximo_reinicio=None)
+            self.reiniciar_servico(nome, processos=processos)
 
     def processar_comandos(self):
         """Todo comando pendente do app e aplicado AQUI, no pulso (04/10/2026).
@@ -557,7 +622,15 @@ class Supervisor:
                 elif nome == "servico_ligar":
                     self.religar(valor)
                 elif nome == "servico_reiniciar":
-                    self.reiniciar_servico(valor)
+                    if not self.reiniciar_servico(valor):
+                        # recusado pelo momento (janela, publicacao, carteiro):
+                        # fica PEDIDO e sai no pulso em que for seguro; o
+                        # comando nao e "executado" (auditoria, item 4)
+                        self.reinicio_pedido.add(valor)
+                        motivo = self.estado[valor].get("motivo_espera") or "momento não seguro"
+                        self.aplicar(comando["id"], nota=f"pendente: {motivo}")
+                        self.evento(str(valor), "comando", f"{nome} pendente: {motivo}")
+                        continue
                 else:
                     self._executar_acao(valor)
                 self.aplicar(comando["id"], nota="executado pelo coordenador")
@@ -688,26 +761,79 @@ class Supervisor:
         """O vigia aplicou codigo deste servico: reinicia no proximo momento seguro."""
         if nome in self.servicos:
             self.reinicio_pedido.add(nome)
+            self.estado[nome]["reinicio_pedido"] = True
             self.evento(nome, "reinicio_pedido", "entrega do Codex aplicada")
 
     def reiniciar_tudo(self):
         for nome in self.servicos:
-            self.reiniciar_servico(nome)
+            if not self.reiniciar_servico(nome):
+                self.reinicio_pedido.add(nome)
 
-    def reiniciar_servico(self, nome, *, forcar=False):
-        """Para o processo adotado antes de subir outro, sem duplicar servico."""
-        if self.servicos[nome].get("reinicio_seguro") and not forcar:
-            ok, espera = self.seguro(nome)
+    def _esperar_morrer(self, nome, pids):
+        """Espera os pids sumirem da lista de processos (ate MORTE_PRAZO_S);
+        devolve os que continuaram vivos."""
+        padrao = re.compile(self.servicos[nome]["assinatura"], re.I)
+        prazo = int(MORTE_PRAZO_S / MORTE_PASSO_S)
+        vivos = set(pids)
+        for _ in range(prazo):
+            atuais = {p["pid"] for p in self.processos() if padrao.search(p["comando"])}
+            vivos &= atuais
+            if not vivos:
+                return []
+            self.dormir(MORTE_PASSO_S)
+        return sorted(vivos)
+
+    def reiniciar_servico(self, nome, *, forcar=False, processos=None):
+        """Mata o(s) processo(s) adotado(s) DE VERDADE antes de subir outro.
+
+        Recusado (janela das postagens, publicacao em voo, carteiro
+        entregando) devolve False com `motivo_espera` preenchido; quem chamou
+        decide se deixa pendente. 12/10/2026: o carteiro velho seguiu vivo ao
+        lado do novo porque ninguem conferia se o `taskkill` tinha surtido
+        efeito.
+        """
+        estado = self.estado[nome]
+        processos = self.processos() if processos is None else processos
+        if not forcar:
+            ok, espera = self.seguro(nome, processos)
             if not ok:
-                self.estado[nome].update(situacao="reiniciando", motivo_espera=espera)
+                estado.update(situacao="reiniciando", motivo_espera=espera)
                 return False
-        achado = self._adotar(self.servicos[nome], self.processos())
-        if achado:
-            self.parar(achado["pid"])
-            self.estado[nome]["pid"] = None
-        return self.religar(nome, "pedido", forcar=forcar)
+        padrao = re.compile(self.servicos[nome]["assinatura"], re.I)
+        pids = [p["pid"] for p in processos if padrao.search(p["comando"])]
+        if pids:
+            for pid in pids:
+                self.parar(pid)
+            vivos = self._esperar_morrer(nome, pids)
+            if vivos:
+                for pid in vivos:                 # segunda tentativa, e sem subir outro
+                    self.parar(pid)
+                estado.update(situacao="reiniciando",
+                              motivo_espera=f"o processo velho ({', '.join(map(str, vivos))}) não morreu")
+                self.evento(nome, "reinicio_falhou", estado["motivo_espera"])
+                return False
+            estado["pid"] = None
+        if not self.religar(nome, "pedido", forcar=True):
+            return False
+        self.religado_por_codigo[nome] = self.relogio()
+        self.reinicio_pedido.discard(nome)
+        self.velho_desde.pop(nome, None)
+        estado["reinicio_pedido"] = False
+        self.evento(nome, "reiniciou", "a pedido")
+        return True
 
     def pulso(self):
+        # `coordenador reiniciar <svc>` recusado pela janela deixa o pedido em
+        # disco; o residente o assume aqui e reinicia quando for seguro
+        try:
+            for nome in self.pendentes():
+                if nome in self.servicos and nome not in self.reinicio_pedido:
+                    self.reinicio_pedido.add(nome)
+                    self.evento(nome, "reinicio_pedido", "pedido pela linha de comando")
+        except Exception as exc:                  # noqa: BLE001 - disco nao para o pulso
+            self.log(f"[coordenador] nao li os reinicios pendentes: {exc}")
+        for nome in self.servicos:
+            self._contar_reinicios(nome)
         processos = self.processos()
         # 01/10 23:56: a consulta do Windows as vezes volta vazia (lenta ou
         # falhou) e o coordenador achava que TUDO tinha caido e subia de novo.
@@ -758,7 +884,13 @@ class Supervisor:
             return 1
         try:
             while not parar():
-                self.pulso()
+                try:
+                    self.pulso()
+                except Exception as exc:          # noqa: BLE001 - um pulso ruim nao mata o laco
+                    # 13/10/2026: um PermissionError do `estado.json` (o app
+                    # lendo no instante do replace) saia daqui e o coordenador
+                    # morria com as threads do vigia e dos pedidos
+                    self.log(f"[coordenador] pulso falhou: {type(exc).__name__}: {exc}")
                 time.sleep(PULSO_S)
         finally:
             trava.soltar()

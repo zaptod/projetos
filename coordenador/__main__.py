@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .estado import ler_estado
+from .estado import ler_estado, pedir_reinicio_pendente
 from .supervisor import Supervisor
 
 NOME = "NeuralFights_coordenador"
@@ -110,6 +110,22 @@ def montar() -> Supervisor:
     return s
 
 
+def reiniciar_pela_linha_de_comando(servico, supervisor=None, pendente=None, saida=print):
+    """`python -m coordenador reiniciar <svc>`: recusado pelo momento (janela
+    das postagens, publicacao em voo, carteiro entregando) NAO imprime "ok":
+    diz o motivo, deixa o pedido em disco para o coordenador residente e sai
+    com 2. Ate 13/10/2026 imprimia "ok" e saia 0 sem reiniciar nada."""
+    s = supervisor or Supervisor()
+    if s.reiniciar_servico(servico):
+        saida("ok")
+        return 0
+    motivo = s.estado[servico].get("motivo_espera") or "momento não seguro"
+    (pendente or pedir_reinicio_pendente)(servico)
+    saida(f"não reiniciei o {servico}: {motivo}; ficou pendente, o coordenador "
+          "reinicia quando a janela fechar")
+    return 2
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m coordenador")
     sub = parser.add_subparsers(dest="acao", required=True)
@@ -200,9 +216,7 @@ def main(argv=None):
             import json
             print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))
     elif args.acao == "reiniciar":
-        s = Supervisor()
-        s.reiniciar_servico(args.servico)
-        print("ok")
+        return reiniciar_pela_linha_de_comando(args.servico)
     elif args.acao == "instalar-tarefa":
         instalar()
     elif args.acao == "remover-tarefa":

@@ -17,7 +17,7 @@
       "cwd": "E:\\projetos",
       "log": "E:\\projetos\\outputs\\bot.txt",
       "janela": "oculta",
-      "assinatura": "-m\\s+remoto(?:\\s|$)",
+      "assinatura": "-m\\s+remoto(?!\\S)(?!.*--(?:avisar|apurar|status|esquecer|instalar|desinstalar|testar-conserto)\\b)",
       "saude": "processo vivo",
       "modulos": ["remoto"],
       "reinicio_seguro": false
