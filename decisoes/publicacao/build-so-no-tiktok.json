@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-13T13:59:45",
+      "evento": "2026-10-13T13:59:38",
+      "linha": 162,
+      "nota": "resposta sem pedido de origem: publicacao/build-so-no-tiktok = Mesma regra das histórias (recomendado)",
+      "opcao": "divida",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado da auditoria profunda de 11/10 (postar.py, item 3). Hoje o build órfão fica só no TikTok para sempre.",
   "criado": "2026-10-11T18:15:48.006650",
   "depende_de": [],
