@@ -53,6 +53,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Um gerente só para app, bot e Vila** — Desligar as três e apagar a retomar_codex (recomendado) (13/10/2026) `gerente-unico-dos-servicos`
 - ✅ **Reiniciar serviços sozinho quando o código muda?** — Só quando pedido: entrega aplicada ou comando reiniciar (recomendado) (13/10/2026) `reinicio-por-codigo-velho`
 - ✅ **O ramo main está 945 commits atrás** — main recebe o ramo refactor/arquitetura (recomendado) (13/10/2026) `main-recebe-o-ramo`
+- ⏳ **Enviar o ramo ao GitHub (push)?** — O main local já recebeu o ramo (como você decidiu). Posso enviar ao GitHub (origin)? São uns 250 commits desde o último envio, incluindo os relatórios da auditoria com nomes de arquivos e caminhos do seu PC. `enviar-ao-github`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`

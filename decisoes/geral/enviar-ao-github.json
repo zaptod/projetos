@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Push é ação para fora do PC: por regra, só com a sua autorização. O repositório 'vai ser mostrado'. Os relatórios de auditoria ficam em docs/auditoria e citam caminhos locais (E:\\projetos, %LOCALAPPDATA%), nada de senha ou token.",
+  "criado": "2026-10-13T13:58:52.241926",
+  "depende_de": [],
+  "historico": [],
+  "id": "enviar-ao-github",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "git push origin main refactor/arquitetura",
+      "id": "enviar",
+      "pede_comentario": false,
+      "rotulo": "Enviar main e refactor/arquitetura (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "so-main",
+      "pede_comentario": false,
+      "rotulo": "Enviar só o main"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nao",
+      "pede_comentario": false,
+      "rotulo": "Não enviar agora"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O main local já recebeu o ramo (como você decidiu). Posso enviar ao GitHub (origin)? São uns 250 commits desde o último envio, incluindo os relatórios da auditoria com nomes de arquivos e caminhos do seu PC.",
+  "projeto": "geral",
+  "situacao": "pendente",
+  "titulo": "Enviar o ramo ao GitHub (push)?",
+  "vigente": null
+}
