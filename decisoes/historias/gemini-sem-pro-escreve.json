@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-13T13:59:27",
+      "evento": "2026-10-13T13:59:24",
+      "linha": 161,
+      "nota": "resposta sem pedido de origem: historias/gemini-sem-pro-escreve = Pular para o próximo provedor (DeepSeek/ChatGPT) e avisar no Telegram (recomendado)",
+      "opcao": "cair",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado da auditoria profunda (roteiro e LLM). Você já disse que o Flash era o problema de qualidade das histórias.",
   "criado": "2026-10-12T19:20:07.298372",
   "depende_de": [],
