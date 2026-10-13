@@ -3,7 +3,15 @@
   "contexto": "Avaliação de arquitetura de 12/10 (D5). Quem abrir o GitHub hoje vê um projeto de fevereiro.",
   "criado": "2026-10-12T18:36:20.452649",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-13T13:56:46",
+      "opcao": "receber",
+      "origem": "app"
+    }
+  ],
   "id": "main-recebe-o-ramo",
   "midias": [],
   "opcoes": [
@@ -34,7 +42,11 @@
   },
   "pergunta": "O main do repositório parou em 20/02; todo o trabalho de 8 meses vive no ramo refactor/arquitetura. Como o repositório vai ser mostrado a outras pessoas, faço o main receber o ramo?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "O ramo main está 945 commits atrás",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-13T13:56:46",
+    "opcao": "receber"
+  }
 }
