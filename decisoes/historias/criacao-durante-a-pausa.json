@@ -10,6 +10,16 @@
       "opcao": "parar",
       "origem": "leitor",
       "tipo": "nada"
+    },
+    {
+      "alvo": "",
+      "em": "2026-10-13T13:59:14",
+      "evento": "2026-10-13T13:59:12",
+      "linha": 160,
+      "nota": "resposta sem pedido de origem: historias/criacao-durante-a-pausa = Continuar criando (estoque pronto para a volta)",
+      "opcao": "continuar",
+      "origem": "leitor",
+      "tipo": "nada"
     }
   ],
   "contexto": "Hoje há 11 partes prontas (abaixo do piso de 20), então a criação vai continuar trabalhando de dia para encher o estoque, usando o Gemini e o PicassoIA (contas compartilhadas). Se parar, o estoque fica como está e volta a encher quando você liberar.",
