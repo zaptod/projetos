@@ -49,10 +49,10 @@ Fonte: `decisoes/jogo-zombie/` e `decisoes/geral/`. **Decisão vigente do Adrian
 - ✅ **Permissao: Ligar já o palco nos duelos sem corrente? Pergunta para o Ad** — Permitir (07/10/2026) `permissao-ligar-ja-o-palco-nos-duelos-se`
 - ✅ **Internet do PC: trocar o DNS da operadora** — Cloudflare e Google (recomendado) (10/10/2026) · “10/10 ~01h pelo chat: 'sim eu quero pode marcar no grimorio de uma vez'” `dns-do-pc`
 - ✅ **Limpar o lixo da máquina** — Apagar tudo isso (recomendado) (12/10/2026) `limpeza-da-maquina`
+- ✅ **Um gerente só para app, bot e Vila** — Desligar as três e apagar a retomar_codex (recomendado) (13/10/2026) `gerente-unico-dos-servicos`
 - ✅ **Reiniciar serviços sozinho quando o código muda?** — Só quando pedido: entrega aplicada ou comando reiniciar (recomendado) (13/10/2026) `reinicio-por-codigo-velho`
 - ✅ **O ramo main está 945 commits atrás** — main recebe o ramo refactor/arquitetura (recomendado) (13/10/2026) `main-recebe-o-ramo`
 - ⏳ **Auditoria profunda: gastar quanto do Codex?** — O Codex bateu o limite de 5 horas 12 minutos depois de renovar (volta às 23:32). Continuo as 31 fatias em esforço ALTO, que é o mais completo e o que mais gasta? `auditoria-profunda-custo`
-- ⏳ **Um gerente só para app, bot e Vila** — Hoje o app, o bot e a Vila são mantidos por DOIS gerentes ao mesmo tempo: o coordenador e três tarefas do Agendador que tentam ligar de novo a cada 10 minutos e falham sempre (já tem um no ar). Desligo as três tarefas e deixo só o coordenador? `gerente-unico-dos-servicos`
 
 **Jogo zombie**
 - ✅ **Formato do 1º vídeo** — Duelo (27/09/2026) `formato-do-primeiro-video`
