@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-13T13:57:34",
+      "evento": "2026-10-13T13:57:28",
+      "linha": 157,
+      "nota": "resposta sem pedido de origem: geral/gerente-unico-dos-servicos = Desligar as três e apagar a retomar_codex (recomendado)",
+      "opcao": "desligar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Avaliação de arquitetura de 12/10 (P3). As três tarefas enchem o Agendador de falhas falsas, que escondem falha real. Desligar é reversível (religar-tarefas-antigas). A tarefa NeuralFights_retomar_codex é sobra de 02/10 e nunca mais roda.",
   "criado": "2026-10-12T18:36:13.091794",
   "depende_de": [],
