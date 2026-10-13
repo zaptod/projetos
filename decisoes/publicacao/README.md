@@ -15,4 +15,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Parte devida ao YouTube que é RETIDA** — Sobe mesmo assim (07/10/2026) `divida-retida-fura-valvula`
 - ✅ **h16 p01 só no TikTok desde 16/09** — Subir pelo --so-youtube (07/10/2026) `h16-p01-so-no-tiktok`
 - ✅ **YouTube fica 3 horários atrás do TikTok** — YouTube alcança (recomendado) (07/10/2026) `youtube-atras-do-tiktok`
-- ⏳ **Build que saiu só no TikTok: levar ao YouTube depois?** — Quando o YouTube cai por rede e o build sai só no TikTok, hoje ele nunca mais vai ao YouTube (a reposição sobe OUTRO build). Para as histórias já existe a 'dívida': o YouTube sobe depois a parte que ficou devendo. Vale a mesma regra para os builds? `build-so-no-tiktok`
+- ✅ **Build que saiu só no TikTok: levar ao YouTube depois?** — Mesma regra das histórias (recomendado) (13/10/2026) `build-so-no-tiktok`
