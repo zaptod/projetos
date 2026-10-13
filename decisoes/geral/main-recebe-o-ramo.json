@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-13T13:57:03",
+      "evento": "2026-10-13T13:56:46",
+      "linha": 155,
+      "nota": "resposta sem pedido de origem: geral/main-recebe-o-ramo = main recebe o ramo refactor/arquitetura (recomendado)",
+      "opcao": "receber",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Avaliação de arquitetura de 12/10 (D5). Quem abrir o GitHub hoje vê um projeto de fevereiro.",
   "criado": "2026-10-12T18:36:20.452649",
   "depende_de": [],
