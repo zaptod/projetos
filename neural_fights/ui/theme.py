@@ -115,6 +115,11 @@ def registrar_rolagem(alvo: tk.Misc, ao_rolar) -> None:
                 widget = raiz.winfo_containing(evento.x_root, evento.y_root)
             except (tk.TclError, KeyError):
                 widget = None
+            if widget is None:
+                # outra janela por cima do ponto: vale o widget do evento
+                widget = getattr(evento, "widget", None)
+                if not isinstance(widget, tk.Misc):
+                    widget = None
             while widget is not None:
                 funcao = registro.get(str(widget))
                 if funcao is not None:

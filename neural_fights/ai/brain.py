@@ -91,7 +91,7 @@ from neural_fights.ai.skill_contracts import (
 from neural_fights.ai.personalities import (
     TODOS_TRACOS, TRACOS_AGRESSIVIDADE, TRACOS_DEFENSIVO, TRACOS_MOBILIDADE,
     TRACOS_SKILLS, TRACOS_MENTAL, TRACOS_ESPECIAIS,
-    ARQUETIPO_DATA, ESTILOS_LUTA, QUIRKS, FILOSOFIAS, HUMORES,
+    ARQUETIPO_DATA, ESTILOS_LUTA, QUIRKS_ATIVOS, FILOSOFIAS, HUMORES,
     PERSONALIDADES_PRESETS, INSTINTOS, RITMOS, RITMO_MODIFICADORES,
     perfil_de_tracos
 )
@@ -500,7 +500,8 @@ class AIBrain:
         # Aplica quirks fixos + chance de um extra aleatório
         self.quirks = list(preset["quirks_fixos"])
         if self.rng.random() < 0.3 and len(self.quirks) < 3:
-            quirks_disponiveis = [q for q in QUIRKS.keys() if q not in self.quirks]
+            # MOT-30: o extra do preset sai so dos quirks com efeito.
+            quirks_disponiveis = [q for q in QUIRKS_ATIVOS if q not in self.quirks]
             if quirks_disponiveis:
                 self.quirks.append(self.rng.choice(quirks_disponiveis))
         
@@ -860,15 +861,20 @@ class AIBrain:
         }
         
         self.quirks = []
-        
+
+        # MOT-30 / ``builds/quirks-sem-efeito``: so quirk com leitor na luta
+        # entra no sorteio (QUIRKS_ATIVOS); o mapa por traco fica com os
+        # ativos dele (traco sem nenhum ativo nao sorteia por aqui).
         for traco in self.tracos:
-            if traco in quirks_por_traco and self.rng.random() < 0.5:
-                quirk = self.rng.choice(quirks_por_traco[traco])
+            opcoes = [q for q in quirks_por_traco.get(traco, ()) if q in QUIRKS_ATIVOS]
+            if opcoes and self.rng.random() < 0.5:
+                quirk = self.rng.choice(opcoes)
                 if quirk not in self.quirks:
                     self.quirks.append(quirk)
-        
+
+        num_quirks = min(num_quirks, len(QUIRKS_ATIVOS))
         while len(self.quirks) < num_quirks:
-            quirk = self.rng.choice(list(QUIRKS.keys()))
+            quirk = self.rng.choice(list(QUIRKS_ATIVOS))
             if quirk not in self.quirks:
                 self.quirks.append(quirk)
 
@@ -1801,69 +1807,50 @@ class AIBrain:
                 # filtro compara com a MELHOR qualidade ja vista.
                 janela["qualidade"] = 0.0
         
-        # Detecta novas janelas
-        nova_janela = False
-        tipo_janela = None
-        qualidade = 0.0
-        duracao = 0.0
-        
+        # Detecta novas janelas. MOT-14 (auditoria de 11/10/2026): as sete
+        # condicoes sobrescreviam a mesma variavel e so a ULTIMA era comparada
+        # (stun 1,0 perdia para "recuando" 0,75). Agora cada uma e candidata
+        # e vale a de maior qualidade do quadro (empate: a primeira da lista).
+        candidatas = []  # (qualidade, tipo, duracao)
+
         # 1. Pós-ataque do oponente (recovery)
         if hasattr(inimigo, 'atacando') and not inimigo.atacando:
             if hasattr(inimigo, 'cooldown_ataque') and 0.1 < inimigo.cooldown_ataque < 0.6:
-                nova_janela = True
-                tipo_janela = "pos_ataque"
-                qualidade = 0.8
-                duracao = inimigo.cooldown_ataque
-        
+                candidatas.append((0.8, "pos_ataque", inimigo.cooldown_ataque))
+
         # 2. Oponente usando skill (channeling)
         if hasattr(inimigo, 'canalizando') and inimigo.canalizando:
-            nova_janela = True
-            tipo_janela = "canalizando"
-            qualidade = 0.9
-            duracao = 1.0
-        
+            candidatas.append((0.9, "canalizando", 1.0))
+
         # 3. Oponente no ar (menos mobilidade)
         if hasattr(inimigo, 'z') and inimigo.z > 0.5:
-            nova_janela = True
-            tipo_janela = "aereo"
-            qualidade = 0.6
-            duracao = 0.5
-        
+            candidatas.append((0.6, "aereo", 0.5))
+
         # 4. Oponente stunado ou lento
         if hasattr(inimigo, 'stun_timer') and inimigo.stun_timer > 0:
-            nova_janela = True
-            tipo_janela = "stunado"
-            qualidade = 1.0
-            duracao = inimigo.stun_timer
-        
+            candidatas.append((1.0, "stunado", inimigo.stun_timer))
+
         # 5. Oponente com estamina baixa
         if hasattr(inimigo, 'estamina') and inimigo.estamina < 20:
-            nova_janela = True
-            tipo_janela = "exausto"
-            qualidade = 0.7
-            duracao = 1.5
-        
+            candidatas.append((0.7, "exausto", 1.5))
+
         # 6. Oponente recuando (costas viradas parcialmente) — Onda 8A:
         # observado pela velocidade real, não pela intenção telepática.
         if self._observar(inimigo).intencao == "recuando":
-            nova_janela = True
-            tipo_janela = "recuando"
-            qualidade = 0.75
-            duracao = 0.8
-        
+            candidatas.append((0.75, "recuando", 0.8))
+
         # 7. Oponente usou skill de mana alta (esperando cooldown)
         if hasattr(inimigo, 'cd_skill_arma') and inimigo.cd_skill_arma > 2.0:
-            nova_janela = True
-            tipo_janela = "skill_cd"
-            qualidade = 0.65
-            duracao = min(2.0, inimigo.cd_skill_arma)
-        
+            candidatas.append((0.65, "skill_cd", min(2.0, inimigo.cd_skill_arma)))
+
         # Atualiza janela se encontrou uma melhor
-        if nova_janela and qualidade > janela.get("qualidade", 0):
-            janela["aberta"] = True
-            janela["tipo"] = tipo_janela
-            janela["qualidade"] = qualidade
-            janela["duracao"] = duracao
+        if candidatas:
+            qualidade, tipo_janela, duracao = max(candidatas, key=lambda c: c[0])
+            if qualidade > janela.get("qualidade", 0):
+                janela["aberta"] = True
+                janela["tipo"] = tipo_janela
+                janela["qualidade"] = qualidade
+                janela["duracao"] = duracao
     
     # =========================================================================
     # SISTEMA DE ATAQUE INTELIGENTE v8.0
@@ -2378,17 +2365,23 @@ class AIBrain:
         
         # === OPONENTE CONTRA PAREDE/OBSTÁCULO ===
         oponente_vulneravel = esp.get("oponente_contra_parede", False) or esp.get("oponente_perto_obstaculo", False)
+        # MOT-7 (auditoria de 11/10/2026): o bonus somava em
+        # ``agressividade_base`` a cada 0,2 s e nunca desfazia (em 0,6 s o
+        # PREDADOR ficava em 1,0 a luta inteira). Agora e um bonus que vale
+        # enquanto o inimigo esta no canto, lido por ``agressividade_efetiva``.
+        bonus_canto = 0.0
         if oponente_vulneravel and distancia < 6.0:
             tatica["forcar_canto"] = True
             self.confianca = min(1.0, self.confianca + 0.15)
-            
+
             # Pressão extra baseada em traços
             if "PREDADOR" in self.tracos:
-                self.agressividade_base = min(1.0, self.agressividade_base + 0.25)
+                bonus_canto += 0.25
             if "SANGUINARIO" in self.tracos or "IMPLACAVEL" in self.tracos:
-                self.agressividade_base = min(1.0, self.agressividade_base + 0.2)
+                bonus_canto += 0.2
             if "OPORTUNISTA" in self.tracos:
-                self.agressividade_base = min(1.0, self.agressividade_base + 0.15)
+                bonus_canto += 0.15
+        self.bonus_canto = min(0.4, bonus_canto)
         
         # === USO DE COBERTURA ===
         obs_proximo = esp.get("obstaculo_proximo") or esp.get("obstaculo_proxima")
@@ -2721,21 +2714,26 @@ class AIBrain:
         perc = self.percepcao_arma
         p = self.parent
         
-        # Avalia posição de combate
-        ang_relativo = 0.0
+        # Avalia posição de combate. MOT-9 (auditoria de 11/10/2026): o
+        # brain passava só "onde eu estou no olhar DELE" e a função usava esse
+        # número para o MEU arco (atrás do inimigo dava "aproximar"; de costas,
+        # "posso atacar"). Agora vão os dois ângulos, cada um no seu olhar.
+        dx = p.pos[0] - inimigo.pos[0]
+        dy = p.pos[1] - inimigo.pos[1]
+        ang_meu = 0.0
+        if hasattr(p, 'angulo_olhar'):
+            ang_meu = math.degrees(math.atan2(-dy, -dx)) - p.angulo_olhar
+        ang_dele = 0.0
         if hasattr(inimigo, 'angulo_olhar'):
-            # Calcula ângulo entre direção que inimigo olha e minha posição
-            dx = p.pos[0] - inimigo.pos[0]
-            dy = p.pos[1] - inimigo.pos[1]
-            ang_para_mim = math.degrees(math.atan2(dy, dx))
-            ang_relativo = ang_para_mim - inimigo.angulo_olhar
-        
+            ang_dele = math.degrees(math.atan2(dy, dx)) - inimigo.angulo_olhar
+
         # Usa o sistema de avaliação de posição
         avaliacao = evaluate_combat_position(
             p.dados.arma_obj if hasattr(p.dados, 'arma_obj') else None,
             inimigo.dados.arma_obj if hasattr(inimigo.dados, 'arma_obj') else None,
             distancia,
-            ang_relativo
+            ang_meu,
+            ang_dele,
         )
         
         perc["estrategia_recomendada"] = avaliacao["recomendacao"]
@@ -3138,6 +3136,9 @@ class AIBrain:
             "ESPERAR": ("BLOQUEAR", None),
             "ESPERAR_ABERTURA": ("CIRCULAR", None),
             "FURAR_GUARDA": ("MATAR", None),
+            # MOT-8: o covarde marcava "FUGIR" ao apanhar e o despachante
+            # apagava a reacao (nao estava neste dicionario).
+            "FUGIR": ("FUGIR", lambda: setattr(self, 'medo', min(1.0, self.medo + 0.1))),
         }
         
         if reacao == "ESQUIVAR":
@@ -4583,7 +4584,8 @@ class AIBrain:
         # lideranca. O leitor antigo (get_agressividade_efetiva) era morto;
         # este e o consumidor real.
         ritmo = getattr(self, "ritmo_modificadores", {}).get("agressividade", 0)
-        return max(0.05, min(0.98, base + eixo + humor + ritmo * 0.6))
+        canto = self.__dict__.get("bonus_canto", 0.0)  # MOT-7
+        return max(0.05, min(0.98, base + eixo + humor + ritmo * 0.6 + canto))
 
     def _aplicar_agressividade_efetiva(self):
         """Estágio da pilha: a proposta escala/desescala pela agressividade."""

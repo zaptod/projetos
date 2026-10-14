@@ -2290,13 +2290,24 @@ class Channel:
                 dano = modificar_dano(dano)
             direcao_x = dx / dist if dist > 0.0 else 0.0
             direcao_y = dy / dist if dist > 0.0 else 0.0
+            # MOT-1 (auditoria de 11/10/2026): cada tick de 0,1 s mandava o
+            # status; QUEIMANDO faz append de um DoT novo e o alvo terminava
+            # o canal de 3 s com 30 queimaduras (+92% de dano escondido). O
+            # status vai so no PRIMEIRO tick que pega cada alvo; os outros sao
+            # "NORMAL", como os ticks da AREA (``"tipo": "NORMAL"``).
+            aplicados = self.__dict__.setdefault("_efeito_aplicado_em", set())
+            if id(alvo) in aplicados:
+                efeito_tick = "NORMAL"
+            else:
+                efeito_tick = self.tipo_efeito
+                aplicados.add(id(alvo))
             resolver = getattr(alvo, "resolver_impacto", None)
             if callable(resolver):
                 impacto = resolver(
                     dano,
                     direcao_x,
                     direcao_y,
-                    self.tipo_efeito,
+                    efeito_tick,
                     atacante=self.dono,
                     ignorar_recuperacao_impacto=True,
                     gerar_recuperacao_impacto=False,
@@ -2312,7 +2323,7 @@ class Channel:
                             dano,
                             direcao_x,
                             direcao_y,
-                            self.tipo_efeito,
+                            efeito_tick,
                             atacante=self.dono,
                             ignorar_recuperacao_impacto=True,
                             gerar_recuperacao_impacto=False,
@@ -2324,7 +2335,7 @@ class Channel:
                             dano,
                             direcao_x,
                             direcao_y,
-                            self.tipo_efeito,
+                            efeito_tick,
                             atacante=self.dono,
                         )
 

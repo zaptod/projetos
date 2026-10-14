@@ -208,10 +208,9 @@ def aplicar_desfecho(ini, alvo, desfecho: str, ex: float, ey: float):
         dash = getattr(alvo, "iniciar_dash", None)
         saiu = False
         if callable(dash):
-            try:
-                saiu = bool(dash(ang_fuga, forca=18.0, ignorar_custo=True))
-            except TypeError:
-                saiu = bool(dash(ang_fuga, 18.0))
+            # MOT-21: o ``except TypeError`` chamava o dash DE NOVO quando o
+            # erro era de dentro dele (dois dashes, o erro escondido).
+            saiu = bool(dash(ang_fuga, forca=18.0, ignorar_custo=True))
         if not saiu:
             alvo.vel[0] -= ex * 12.0
             alvo.vel[1] -= ey * 12.0

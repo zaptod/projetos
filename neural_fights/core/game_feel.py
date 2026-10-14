@@ -352,10 +352,19 @@ class HitStopManager:
             cor_flash=cor_flash
         )
         
-        # Se já tem hit stop ativo, empilha (usa o maior)
+        self._registrar_evento(evento)
+
+    def _registrar_evento(self, evento: HitStopEvent):
+        """Um hit stop por vez, e vale o MAIOR.
+
+        MOT-18 (auditoria de 11/10/2026): com um ativo, o maior ia para uma
+        fila e tocava DEPOIS do atual (0,023 + 0,5 = 0,525 s parados). Agora
+        o timer fica no maior dos dois e o evento maior assume, sem fila.
+        """
         if self.timer_ativo > 0 and self.evento_atual:
-            if duracao > self.evento_atual.duracao:
-                self.fila_eventos.append(evento)
+            self.timer_ativo = max(self.timer_ativo, evento.duracao)
+            if evento.duracao > self.evento_atual.duracao:
+                self.evento_atual = evento
         else:
             self._iniciar_hitstop(evento)
     
@@ -485,9 +494,16 @@ class SuperArmorSystem:
             # Onda 6 (v2): armor OPT-IN — só em intenção explicitamente
             # defensiva (mesma lista da redução em entities.tomar_dano).
             # A v1 (dormir só no golpe) manteve uptime ~85-90%: passiva.
-            self.data.ativo = acao_atual in (
+            # MOT-10: ligar pelo ``_ativar_armor`` (zera o absorvido a cada
+            # postura defensiva nova); escrevendo ``data.ativo`` direto o
+            # ``dano_absorvido`` nunca zerava.
+            defensivo = acao_atual in (
                 "BLOQUEAR", "RECUAR", "CIRCULAR", "COMBATE", "CONTRA_ATAQUE",
             )
+            if defensivo and not self.data.ativo:
+                self._ativar_armor()
+            elif not defensivo and self.data.ativo:
+                self._desativar_armor()
             return self.data.ativo
         
         elif tipo_ativacao == "ataque":
@@ -591,7 +607,10 @@ class SuperArmorSystem:
         # Verifica se armor quebra
         if self.data.dano_absorvido >= self.data.limite_dano:
             self._quebrar_armor()
-            return (dano_base * 0.5, knockback_x, knockback_y, True)  # Stagger quando quebra
+            # MOT-10: o golpe que quebra volta INTEIRO, com stagger. Antes
+            # voltava pela metade, menos que a absorcao normal (x0,75 no
+            # Cavaleiro, x0,6 no Paladino): quebrar doia menos que absorver.
+            return (dano_base, knockback_x, knockback_y, True)  # Stagger quando quebra
         
         return (dano_final, kb_x_final, kb_y_final, False)  # Sem stagger
     
@@ -1100,8 +1119,9 @@ class GameFeelManager:
     @classmethod
     def reset(cls):
         """Reset para nova partida"""
-        if cls._instance:
-            HitStopManager.reset()
+        # MOT-18: o HitStopManager e singleton proprio; sem GameFeelManager
+        # vivo ele nao era zerado e um hit stop sobrava para a luta seguinte.
+        HitStopManager.reset()
         cls._instance = None
     
     def __init__(self):
@@ -1126,8 +1146,10 @@ class GameFeelManager:
         self.lutadores = list(lutadores)
         
         for lutador in lutadores:
-            # Sistema de Super Armor
+            # Sistema de Super Armor (novo a cada registro = armadura inteira
+            # no inicio do round; ``reset_armor`` faz o mesmo num sistema vivo)
             self.super_armor_systems[lutador] = SuperArmorSystem(lutador)
+            self.super_armor_systems[lutador].reset_armor()
             
             # Sistema de Channeling
             self.channeling_systems[lutador] = ChannelingSystem(lutador)

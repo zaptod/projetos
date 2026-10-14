@@ -95,7 +95,6 @@ HUMOR_EXPRESSAO = {
     "CONFIANTE": "confiante",
     "ANIMADO": "animado",
     "EUFORICO": "euforico",
-    "EXTASE": "extase",
     "ASSUSTADO": "panico",
     "NERVOSO": "nervoso",
     "DESESPERADO": "desespero",
@@ -103,7 +102,8 @@ HUMOR_EXPRESSAO = {
     "FOCADO": "focado",
     "GLACIAL": "glacial",
     "ENTEDIADO": "tedio",
-    "MELANCOLICO": "tristeza",
+    # MELANCOLICO/EXTASE saíram de HUMORES (MOT-31): nenhum lutador chegava
+    # neles. As carinhas "tristeza"/"extase" continuam nas expressões.
 }
 
 

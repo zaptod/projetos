@@ -1038,6 +1038,30 @@ QUIRKS = {
     },
 }
 
+# MOT-30 (auditoria de 11/10/2026) e decisao do Adrian de 14/10/2026
+# (Grimorio ``builds/quirks-sem-efeito``: "Tirar do sorteio agora,
+# implementar aos poucos"; "o video para de prometer o que nao acontece").
+# So estes quirks tem leitor na luta (``"<QUIRK>" in self.quirks`` no
+# brain); o sorteio (``AIBrain._gerar_quirks`` e o extra dos presets) usa so
+# eles. A auditoria contou 29 sem efeito; a medicao de 14/10 achou 43: 13
+# outros so apareciam no mapa de sorteio por traco (``quirks_por_traco``),
+# que tambem nao e leitura, e "IMORTAL" so existe como BUFF (skills), nunca
+# como quirk. Os ``quirks_fixos`` dos presets ficam como estao
+# (rotulo do preset). Quem implementar um quirk o acrescenta aqui; o teste
+# ``test_quirk_sorteado_tem_leitor`` cobra os dois sentidos.
+QUIRKS_ATIVOS = (
+    "SEDE_SANGUE",
+    "ESQUIVA_REFLEXA",
+    "CONTRA_ATAQUE_PERFEITO",
+    "MESTRE_COMBO",
+    "WHIFF_PUNISHER",
+    "FRAME_PERFECT",
+    "CALCULO_MORTAL",
+    "REFLEXOS_DIVINOS",
+    "MESTRE_DISTANCIA",
+    "LEITURA_CORPORAL",
+)
+
 
 # =============================================================================
 # FILOSOFIAS DE COMBATE (12+)
@@ -1177,8 +1201,11 @@ HUMORES = {
     "DETERMINADO": {"mod_agressividade": 0.1, "mod_defesa": 0.15},
     # === NOVOS HUMORES v11.0 ===
     "EUFORICO": {"mod_agressividade": 0.35, "mod_defesa": -0.15},
-    "MELANCOLICO": {"mod_agressividade": -0.15, "mod_defesa": 0.05},
-    "EXTASE": {"mod_agressividade": 0.5, "mod_defesa": -0.3},
+    # MOT-31 (auditoria de 11/10/2026): MELANCOLICO e EXTASE saíram do
+    # catálogo — nenhum caminho da escada de humor (emotions.atualizar_humor)
+    # os produzia desde a 5C, que os deixou "para decidir" (ledger, V4).
+    # Mesmo critério da decisão dos quirks (``builds/quirks-sem-efeito``): o
+    # catálogo não promete o que a luta não faz. Voltam com um produtor.
     "GLACIAL": {"mod_agressividade": 0.05, "mod_defesa": 0.2},
     "BERSERK": {"mod_agressividade": 0.6, "mod_defesa": -0.4},
 }

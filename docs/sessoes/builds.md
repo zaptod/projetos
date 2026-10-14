@@ -823,6 +823,72 @@ gatilhos no Ateliê):
   personagem em edição (e a altura em metros). Os estilos do editor são os do
   catálogo do banco.
 
+**Lote 2: o que MUDA a luta, num lote só** (MOT-1–4, 6–11, 14–21, 30, 31,
+lava e o empate do BLD-6). O MOT-5 ficou fora por decisão
+(`atordoamento-e-relogio`: manter). Medido no harness, corpus completo (546
+lutas, fixture engine), HEAD → lote:
+
+| | antes | depois |
+|---|---|---|
+| `winrate_p1` (120 espelhos) | 0,458 | **0,500** |
+| idem, smoke (48) | 0,458 | 0,521 |
+| combos por luta | 2,99 | 3,17 |
+| maior combo do corpus (C2) | 9 | 10 → **re-pino** do alvo para 10 |
+| status de CC por luta (K2) | 1,766 | 1,760 |
+| maior seca p90 | 5,93 s | 5,53 s |
+| bloqueios por luta | 1,36 | 1,29 |
+
+Alvos já fora na onda 99 antes do lote (B1, K4, R2_meta, R3_meta) seguem
+iguais. O smoke na onda 11 (o gate) passa sem nenhuma violação. Os gates
+pesados (`NF_QUALITY_GATE`, `NF_RECORDING_GATE`, `NF_SKILL_GATE`) dão 54
+passed. O MOT-6 sozinho (cópia do HEAD só com o coreógrafo novo) não mexeu
+no `winrate_p1` (0,458). A paridade de 0,500 é do lote inteiro.
+
+- **O que cada um faz:**
+  - MOT-1: o canal manda o status só no 1º tick por alvo (eram 30 queimaduras em 3 s);
+  - MOT-2: fonte contínua (Transform, Channel, trap, tick de área/DoT, lava) paga a guarda em proporção ao dano segurado (`DANO_REFERENCIA_GUARDA` = 30) e não conta bloqueio;
+  - MOT-3: raiva com teto 1,0, e fonte contínua não enfurece;
+  - MOT-4: o eco do Feiticeiro só repete PROJETIL, AREA, BEAM e SUMMON, nunca a Troca de Almas;
+  - MOT-6: fluxo do coreógrafo com ângulo normalizado; quem está parado não avança;
+  - MOT-7: o bônus de canto vale enquanto o inimigo está no canto e não grava mais em `agressividade_base`;
+  - MOT-8: o covarde foge;
+  - MOT-9: "posso atacar" usa o meu ângulo;
+  - MOT-10: quebrar a armadura dói o golpe inteiro;
+  - MOT-11: o cache de perfil de arma é por medidas;
+  - MOT-14: vale a melhor janela do quadro;
+  - MOT-15: o Ladino esquiva antes da guarda;
+  - MOT-17: teleporte da mão na corrente V2;
+  - MOT-18: o hit stop usa o maior, sem fila;
+  - MOT-19: BEAM canalizável tem duração;
+  - MOT-20: dano fracionário em obstáculo;
+  - MOT-21: o escape não repete o dash.
+- **MOT-16 era alarme parcial**: PUXADO, VORTEX e EMPURRÃO têm efeito real no
+  `tomar_dano` desde a Onda 10D. Devolver `False` derrubou o K2 do smoke de
+  1,71 para 1,23. Ficou só a limpeza de `sendo_puxado`/`em_vortex`, que não
+  tinham leitor.
+- **Quirks** (`builds/quirks-sem-efeito`): só os 10 com leitor entram no
+  sorteio (`personalities.QUIRKS_ATIVOS`). A auditoria contou 29 sem efeito; a
+  medição achou 43:
+  - os 29 da auditoria;
+  - 13 que só eram citados no mapa de sorteio por traço;
+  - "IMORTAL", que só existe como buff.
+
+  Os `quirks_fixos` dos presets ficam.
+- **Humores**: MELANCOLICO e EXTASE saíram do catálogo (nenhum produtor), pelo
+  mesmo critério dos quirks.
+- **Lava** (`builds/lava-do-vulcao`): em pé na poça do Vulcão ou no fogo do
+  Inferno, 6% da vida máxima por segundo (`PERIGO_CHAO_DANO_PCT_S`), em ticks
+  de 0,5 s, sem RNG. Em 24 lutas do smoke: no Vulcão, ~12% da vida por luta
+  e 1 morte pela lava; no Inferno, ~2%. A IA ainda não desvia da poça.
+- **Empate** (`builds/empate-persistente`): três empates não viram mais
+  vitória do p1. Vence quem tem mais HP (fração). Com HP igual, vence quem
+  tirou mais vida. Ainda igual, decide a paridade da seed (par = p1). O
+  `fight.json` leva `desempate: hp|dano|seed`. Evento sem vencedor levanta
+  `EmpatePersistente`.
+- Re-pinos: `tests/test_corrente_v2_regressions.py` (as 3 digitais de luta,
+  chave desligada) e `alvos_qualidade.json` (C2 9 → 10; a descrição do V4
+  registra a purga dos humores).
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

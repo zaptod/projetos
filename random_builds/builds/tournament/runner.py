@@ -259,11 +259,66 @@ def simular_luta(p1: str, p2: str, cenario: str, base_seed: int,
             raise RuntimeError(f"motor falhou em {p1} vs {p2}: {resultado.error}")
         if resultado.winner is not None:
             break
-    vencedor = resultado.winner or p1
+    extra = {}
+    vencedor = resultado.winner
+    if vencedor is None:
+        # BLD-6: tres empates nao viram mais vitoria inventada do p1.
+        dano_p1 = _vida_tirada(resultado.p2_hp, resultado.p2_hp_ratio)
+        dano_p2 = _vida_tirada(resultado.p1_hp, resultado.p1_hp_ratio)
+        vencedor, criterio = desempatar(
+            p1, p2, resultado.p1_hp_ratio, resultado.p2_hp_ratio,
+            dano_p1, dano_p2, resultado.seed)
+        extra["desempate"] = criterio
     hp = (resultado.p1_hp_ratio if vencedor == p1 else resultado.p2_hp_ratio)
-    return {"vencedor": resultado.winner, "duracao": resultado.duration,
+    return {"vencedor": vencedor, "duracao": resultado.duration,
             "motivo": resultado.reason, "seed": resultado.seed,
-            "hp_vencedor": max(0.0, hp) * 100, "corrente_v2": chave}
+            "hp_vencedor": max(0.0, hp) * 100, "corrente_v2": chave, **extra}
+
+
+class EmpatePersistente(RuntimeError):
+    """Uma luta chegou ao evento sem vencedor (nao deveria: ha desempate)."""
+
+
+def _vida_tirada(hp_restante, fracao_restante) -> float:
+    """Vida que o OUTRO tirou deste lutador (vida_max - restante)."""
+    try:
+        hp_restante = max(0.0, float(hp_restante))
+        fracao = float(fracao_restante)
+    except (TypeError, ValueError):
+        return 0.0
+    if fracao <= 0.0 or fracao >= 1.0:
+        return 0.0 if fracao >= 1.0 else float("nan")
+    return hp_restante / fracao - hp_restante
+
+
+def desempatar(p1: str, p2: str, hp1: float, hp2: float, dano_p1: float, dano_p2: float,
+               seed: int) -> tuple[str, str]:
+    """Quem vence uma luta que empatou nas tres tentativas.
+
+    Decisao do Adrian de 14/10/2026 (Grimorio ``builds/empate-persistente``:
+    "Desempatar pelo HP que sobrou"). Regra, nesta ordem:
+
+    1. ``hp``: a maior FRACAO de vida que sobrou (``hp1``/``hp2``, 0..1);
+    2. ``dano``: HP exatamente igual -> quem tirou mais vida do outro
+       (``dano_p1`` e o que o p1 causou); NaN (vida maxima desconhecida, os
+       dois em 0) conta como empate aqui;
+    3. ``seed``: ainda igual -> a paridade da seed da ultima tentativa (par =
+       p1, impar = p2). Deterministico e sem vies de lado, ao contrario do
+       antigo "or p1".
+
+    Devolve ``(vencedor, criterio)``.
+    """
+    try:
+        hp1, hp2 = float(hp1), float(hp2)
+    except (TypeError, ValueError):
+        hp1 = hp2 = 0.0
+    if abs(hp1 - hp2) > 1e-9:
+        return (p1 if hp1 > hp2 else p2), "hp"
+    d1 = float(dano_p1) if dano_p1 == dano_p1 else 0.0
+    d2 = float(dano_p2) if dano_p2 == dano_p2 else 0.0
+    if abs(d1 - d2) > 1e-6:
+        return (p1 if d1 > d2 else p2), "dano"
+    return (p1 if int(seed) % 2 == 0 else p2), "seed"
 
 
 def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
@@ -317,6 +372,26 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             break
 
     referencia = gravacoes[0]
+    desempate = None
+    if referencia.get("empate") or not referencia.get("vencedor"):
+        # BLD-6 / ``builds/empate-persistente``: desempata pelo HP que sobrou
+        # (e pelo dano causado, e pela paridade da seed). Os dois formatos sao
+        # a mesma luta; a referencia decide para os dois.
+        hp_final = referencia.get("hp_final") or {}
+        tirado = {"p1": 0.0, "p2": 0.0}
+        for evento in referencia.get("eventos_dano") or ():
+            try:
+                _t, slot_que_apanhou, dano, *_ = evento
+                tirado["p2" if slot_que_apanhou == "p1" else "p1"] += float(dano)
+            except (TypeError, ValueError):
+                continue
+        vencedor_d, desempate = desempatar(
+            p1, p2, float(hp_final.get("p1", 0.0)) / 100.0,
+            float(hp_final.get("p2", 0.0)) / 100.0,
+            tirado["p1"], tirado["p2"], int(referencia.get("seed", base_seed)))
+        for gravacao in gravacoes:
+            gravacao["vencedor"] = vencedor_d
+            gravacao["hp_vencedor"] = hp_final.get("p1" if vencedor_d == p1 else "p2", 0.0)
     # Invariante barata: os formatos precisam contar a mesma historia.
     vencedores = {g.get("vencedor") for g in gravacoes}
     if len(vencedores) > 1:
@@ -370,6 +445,7 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
         "metricas_video": referencia.get("metricas_video"),
         "camera_por_perfil": {perfil: g.get("camera_modo")
                               for perfil, g in zip(perfis, gravacoes)},
+        **({"desempate": desempate} if desempate else {}),
     }
 
 
@@ -458,7 +534,12 @@ def _ko_type(motivo: str) -> str:
 
 def _evento_base(p1: str, p2: str, bruto: dict, fichas: dict, gerados: set,
                  cenario: str) -> dict:
-    vencedor = bruto["vencedor"] or p1
+    # BLD-6: era ``bruto["vencedor"] or p1`` (vitoria inventada do p1). O
+    # bruto ja vem desempatado (``desempatar``); sem vencedor e erro.
+    vencedor = bruto.get("vencedor")
+    if not vencedor:
+        raise EmpatePersistente(
+            f"{p1} x {p2}: luta sem vencedor (seed {bruto.get('seed')})")
     perdedor = p2 if vencedor == p1 else p1
     evento = {
         "p1": p1, "p2": p2,
@@ -474,7 +555,7 @@ def _evento_base(p1: str, p2: str, bruto: dict, fichas: dict, gerados: set,
     }
     for chave in ("clipes", "serie_hp", "serie_plano", "eventos_narrativos",
                   "eventos_dano", "sons", "ko_em_clipe", "duracao_clipe", "camera",
-                  "metricas_video", "corrente_v2"):
+                  "metricas_video", "corrente_v2", "desempate"):
         if bruto.get(chave) is not None:
             evento[chave] = bruto[chave]
     return evento

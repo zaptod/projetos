@@ -205,8 +205,8 @@ def test_roda_do_mouse_rola_o_wizard(monkeypatch, tmp_path):
         x = canvas.winfo_rootx() + canvas.winfo_width() // 2
         y = canvas.winfo_rooty() + canvas.winfo_height() // 2
         antes = canvas.yview()[0]
-        alvo = app.winfo_containing(x, y)
-        assert alvo is not None
+        # o widget sob o ponteiro (ou o canvas, se outra janela cobre o ponto)
+        alvo = app.winfo_containing(x, y) or canvas
         alvo.event_generate("<MouseWheel>", delta=-120, rootx=x, rooty=y, x=1, y=1)
         app.update()
         assert canvas.yview()[0] > antes

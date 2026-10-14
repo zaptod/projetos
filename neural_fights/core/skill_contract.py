@@ -186,7 +186,36 @@ def _fontes_da_skill(nome: str) -> Tuple[str, ...]:
             if skill_nome == nome:
                 papel = KIT_PAPEIS[idx] if idx < len(KIT_PAPEIS) else f"SLOT{idx}"
                 fontes.append(f"classe:{classe}:{papel}")
+    # MOT-32 (auditoria de 11/10/2026): skill que so arma do banco tem (as 7
+    # de SKILLS_FORA_DE_ROTACAO) saia "inalcancavel". A arma tambem e fonte.
+    fontes.extend(f"arma:{arma}" for arma in _armas_com_skill().get(nome, ()))
     return tuple(fontes)
+
+
+_ARMAS_POR_SKILL: Optional[Dict[str, Tuple[str, ...]]] = None
+
+
+def _armas_com_skill() -> Dict[str, Tuple[str, ...]]:
+    """skill -> armas do banco que a carregam (lido uma vez por processo).
+
+    So o contrato DESCRITIVO usa isto (``fontes``); a IA nao le ``fontes``,
+    entao o banco nao entra na luta por aqui. Sem banco legivel, vazio.
+    """
+    global _ARMAS_POR_SKILL
+    if _ARMAS_POR_SKILL is None:
+        mapa: Dict[str, list] = {}
+        try:
+            from neural_fights.data import database
+
+            for arma in database.carregar_armas():
+                for hab in getattr(arma, "habilidades", None) or ():
+                    nome = hab.get("nome") if isinstance(hab, dict) else hab
+                    if nome:
+                        mapa.setdefault(str(nome), []).append(arma.nome)
+        except Exception:
+            mapa = {}
+        _ARMAS_POR_SKILL = {k: tuple(sorted(set(v))) for k, v in mapa.items()}
+    return _ARMAS_POR_SKILL
 
 
 def _geometria(data: Dict, tipo: str) -> Tuple[float, float, bool, bool, float]:
@@ -395,8 +424,10 @@ def derivar_contrato_de_data(nome: str, data: Dict) -> SkillContract:
         duracao=max(
             0.0,
             _num(
+                # MOT-19: BEAM canalizavel (Chamas do Dragao, Desintegrar)
+                # dura ``duracao_max`` como o CHANNEL; saia 0 no contrato.
                 data.get("duracao_max")
-                if tipo == "CHANNEL"
+                if (tipo == "CHANNEL" or canalizavel)
                 else data.get("duracao")
             ),
         ),
@@ -441,8 +472,9 @@ def catalogo_de_contratos() -> Dict[str, SkillContract]:
 
 def limpar_cache_contratos() -> None:
     """Para testes que mutam SKILL_DB (o catálogo real nunca muda em jogo)."""
-    global _CACHE_CONTRATOS
+    global _CACHE_CONTRATOS, _ARMAS_POR_SKILL
     _CACHE_CONTRATOS = None
+    _ARMAS_POR_SKILL = None
 
 
 # ---------------------------------------------------------------------------

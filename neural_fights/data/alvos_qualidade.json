@@ -114,10 +114,10 @@
   },
   "C2_anti_stunlock": {
     "metrica": "maior_combo_corpus",
-    "max": 9,
+    "max": 10,
     "enforce_onda": 8,
     "min_lutas": 30,
-    "descricao": "Onda 8H: teto do maior combo do corpus. Tres freios: hitstun decresce 15% por hit, pushback cresce com o combo (a string se encerra espacialmente), e do 8o hit em diante o alvo acorda (stun zero). Sem eles o smoke registrou combo de 18 hits. Burst de escape (estamina + chance por personalidade) e o contra-jogo ativo; guarda bloqueada nao toma hitstun (quebra-combo universal)."
+    "descricao": "Onda 8H: teto do maior combo do corpus. Tres freios: hitstun decresce 15% por hit, pushback cresce com o combo (a string se encerra espacialmente), e do 8o hit em diante o alvo acorda (stun zero). Sem eles o smoke registrou combo de 18 hits. Burst de escape (estamina + chance por personalidade) e o contra-jogo ativo; guarda bloqueada nao toma hitstun (quebra-combo universal). Re-pino 9 -> 10 no lote de simulacao da auditoria (14/10/2026): a IA passou a escolher a MELHOR janela de ataque do quadro (MOT-14: 'stunado' 1,0 deixou de perder para 'recuando' 0,75) e os combos subiram 6% (2,99 -> 3,17 por luta); um combo de 10 em 546 lutas do corpus completo (smoke: dentro de 9)."
   },
   "R1_tempo_colado": {
     "metrica": "pct_tempo_colado_media",
@@ -557,7 +557,7 @@
     "min": 12,
     "enforce_onda": 5,
     "min_lutas": 100,
-    "descricao": "Onda 5C: 13 dos 15 humores do catalogo tem produtor real e todos os 13 aparecem no corpus (eram 5 — DESESPERADO era penultimo na escada, BERSERK/EUFORICO/GLACIAL nao tinham caminho). Piso 12 da margem ao ruido de RNG entre corpora. EXTASE/MELANCOLICO sao decisao da 5E (produtor ou purga)."
+    "descricao": "Onda 5C: 13 dos 15 humores do catalogo tem produtor real e todos os 13 aparecem no corpus (eram 5 — DESESPERADO era penultimo na escada, BERSERK/EUFORICO/GLACIAL nao tinham caminho). Piso 12 da margem ao ruido de RNG entre corpora. EXTASE/MELANCOLICO sairam do catalogo em 14/10/2026 (auditoria, MOT-31: purga, nenhum produtor); o catalogo tem os 13."
   },
   "V5_momentum_saturado": {
     "metrica": "pct_momentum_saturado_media",

@@ -654,7 +654,8 @@ class Arena:
         if obs is None or not getattr(obs, "destrutivel", False) or not obs.solido:
             return False
         try:
-            obs.hp = int(obs.hp) - int(max(0.0, float(dano)))
+            # MOT-20: o int() jogava fora o dano fracionario (50 x 0,9 = 0).
+            obs.hp = float(obs.hp) - max(0.0, float(dano))
         except (TypeError, ValueError):
             return False
         if obs.hp > 0:

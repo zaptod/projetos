@@ -20,6 +20,11 @@ import math
 from neural_fights.ai.contracts import obter_brain
 
 
+def _delta_ang(a: float, b: float) -> float:
+    """Distancia angular entre ``a`` e ``b`` (rad), sempre em [0, pi]."""
+    return abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+
+
 class CombatChoreographer:
     """
     Coordenador de Coreografia de Combate v6.0.
@@ -215,15 +220,18 @@ class CombatChoreographer:
         
         # Direção do movimento relativo ao oponente
         if l1 and l2:
-            # L1 indo em direção a L2?
+            # MOT-6 (auditoria de 11/10/2026): ``ang + pi`` saía de [-pi, pi]
+            # sem normalizar e o parado contava como velocidade de ângulo 0;
+            # o L2 avançando só era visto em 2 de 8 direções e, a 0° e 45°,
+            # o fluxo ia para o L1 (o momento PRESSURE só dá
+            # PRESSIONAR_CONTINUO ao L1). Diferença angular normalizada e
+            # parado nunca avança.
             ang_l1_para_l2 = math.atan2(l2.pos[1] - l1.pos[1], l2.pos[0] - l1.pos[0])
-            ang_vel_l1 = math.atan2(l1.vel[1], l1.vel[0]) if vel1_mag > 0.5 else 0
-            l1_avancando = abs(ang_l1_para_l2 - ang_vel_l1) < math.pi / 3
-            
-            # L2 indo em direção a L1?
-            ang_l2_para_l1 = ang_l1_para_l2 + math.pi
-            ang_vel_l2 = math.atan2(l2.vel[1], l2.vel[0]) if vel2_mag > 0.5 else 0
-            l2_avancando = abs(ang_l2_para_l1 - ang_vel_l2) < math.pi / 3
+            ang_l2_para_l1 = math.atan2(l1.pos[1] - l2.pos[1], l1.pos[0] - l2.pos[0])
+            l1_avancando = vel1_mag > 0.5 and _delta_ang(
+                ang_l1_para_l2, math.atan2(l1.vel[1], l1.vel[0])) < math.pi / 3
+            l2_avancando = vel2_mag > 0.5 and _delta_ang(
+                ang_l2_para_l1, math.atan2(l2.vel[1], l2.vel[0])) < math.pi / 3
             
             # Atualiza fluxo
             if l1_avancando and not l2_avancando:

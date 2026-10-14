@@ -14,6 +14,14 @@ ESTAMINA_REGEN_S = 12.0
 ESTAMINA_REGEN_GUARDA_S = 4.0
 CUSTO_ESTAMINA_DASH = 25.0
 CUSTO_ESTAMINA_BLOQUEIO = 15.0
+# MOT-2 (14/10/2026): fonte CONTINUA (contato de Transform, Channel, trap,
+# tick de area/DoT, lava) paga a guarda em proporcao ao dano que ela segurou:
+# segurar este tanto de dano custa a guarda inteira de um golpe.
+DANO_REFERENCIA_GUARDA = 30.0
+# Lava do Vulcao e fogo do Inferno (14/10/2026, ``builds/lava-do-vulcao``):
+# 6% da vida maxima por segundo em pe na poca, em ticks de 0,5 s.
+PERIGO_CHAO_DANO_PCT_S = 0.06
+PERIGO_CHAO_TICK_S = 0.5
 CUSTO_ESTAMINA_PARRY = 10.0
 COOLDOWN_DASH_S = 1.6
 # Bloqueio direcional: só cobre o arco frontal; parry é o bloqueio

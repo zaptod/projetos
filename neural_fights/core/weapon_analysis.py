@@ -103,6 +103,16 @@ class WeaponProfile:
         return ThreatLevel.LOW
 
 
+# MOT-11: todo campo da arma que ``analisar_arma``/``_calcular_tamanho_arma``
+# leem entra na chave do cache do perfil.
+_CAMPOS_DO_PERFIL = (
+    "comp_cabo", "comp_lamina", "largura", "peso", "dano",
+    "comp_corrente", "comp_ponta", "distancia", "distancia_max",
+    "forma1_cabo", "forma1_lamina", "forma2_cabo", "forma2_lamina",
+    "tamanho_arco", "tamanho_projetil",
+)
+
+
 class WeaponAnalyzer:
     """Analisador de armas para criar perfis e comparações"""
     
@@ -198,8 +208,13 @@ class WeaponAnalyzer:
         if arma is None:
             return self._criar_perfil_desarmado()
         
-        # Cache por nome da arma
-        cache_key = f"{arma.nome}_{arma.tipo}"
+        # MOT-11 (auditoria de 11/10/2026): a chave era só (nome, tipo), e
+        # arma editada ou homônima recebia o perfil velho: a percepção da IA
+        # dependia da história do processo, não da semente. A chave leva
+        # todo campo que o perfil lê.
+        cache_key = (arma.nome, arma.tipo) + tuple(
+            getattr(arma, campo, None) for campo in _CAMPOS_DO_PERFIL
+        )
         if cache_key in self._cache_profiles:
             return self._cache_profiles[cache_key]
         
@@ -437,8 +452,18 @@ class WeaponAnalyzer:
         return dist_segura
     
     def avaliar_posicao_combate(self, minha_arma, arma_inimigo,
-                                 distancia: float, angulo_relativo: float) -> Dict:
-        """Avalia uma posição de combate"""
+                                 distancia: float, ang_meu: float,
+                                 ang_dele: float = 0.0) -> Dict:
+        """Avalia uma posição de combate.
+
+        MOT-9 (auditoria de 11/10/2026): ``ang_meu`` é o ângulo do inimigo no
+        MEU olhar (decide se eu posso atacar); ``ang_dele`` é o meu ângulo no
+        olhar DELE (decide a ameaça). Antes um número só, o do olhar dele,
+        servia para os dois.
+        """
+        ang_meu = (float(ang_meu) + 180.0) % 360.0 - 180.0
+        ang_dele = (float(ang_dele) + 180.0) % 360.0 - 180.0
+        angulo_relativo = ang_meu
         p_minha = self.analisar_arma(minha_arma)
         p_inimigo = self.analisar_arma(arma_inimigo)
         
@@ -457,9 +482,8 @@ class WeaponAnalyzer:
                     resultado["posso_atacar"] = True
         
         if p_inimigo:
-            # Verifico ameaça do inimigo
-            angulo_para_mim = (angulo_relativo + 180) % 360 - 180
-            ameaca = p_inimigo.get_threat_at_distance(distancia, angulo_para_mim)
+            # Verifico ameaça do inimigo (no olhar DELE)
+            ameaca = p_inimigo.get_threat_at_distance(distancia, ang_dele)
             resultado["ameaca_inimigo"] = ameaca
             
             if ameaca.value >= ThreatLevel.HIGH.value:
@@ -506,6 +530,8 @@ def get_safe_distance(minha_arma, arma_inimigo) -> float:
     return analisador_armas.calcular_distancia_segura(minha_arma, arma_inimigo)
 
 
-def evaluate_combat_position(minha_arma, arma_inimigo, distancia: float, angulo: float) -> Dict:
-    """Função de conveniência para avaliar posição de combate"""
-    return analisador_armas.avaliar_posicao_combate(minha_arma, arma_inimigo, distancia, angulo)
+def evaluate_combat_position(minha_arma, arma_inimigo, distancia: float, ang_meu: float,
+                             ang_dele: float = 0.0) -> Dict:
+    """Função de conveniência para avaliar posição de combate (MOT-9)."""
+    return analisador_armas.avaliar_posicao_combate(
+        minha_arma, arma_inimigo, distancia, ang_meu, ang_dele)

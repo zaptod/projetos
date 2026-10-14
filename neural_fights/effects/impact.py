@@ -67,7 +67,8 @@ class ImpactFlash:
             ey = centro[1] + math.sin(ang) * comp_atual
             pygame.draw.line(s, cor_core, centro, (int(ex), int(ey)), max(1, tam // 5))
         
-        self.tela = tela
+        # MOT-33: ``self.tela = tela`` guardava a tela num atributo que
+        # ninguém lia (e prendia a superfície viva no efeito).
         tela.blit(s, (sx - tam * 2, sy - tam * 2))
 
 
@@ -204,10 +205,14 @@ class BlockEffect:
                            math.radians(ang_start), math.radians(ang_end), max(3, tam // 4))
             tela.blit(s, (sx - tam, sy - tam))
         
+        # MOT-33: desenhar cor com alfa direto na tela ignora o alfa (a
+        # faísca nunca esmaecia). Cada uma vai numa superfície SRCALPHA.
         for f in self.faiscas:
             fx, fy = cam.converter(f['x'], f['y'])
-            alpha_f = int(255 * (f['vida'] / 0.3))
-            pygame.draw.circle(tela, (255, 255, 150, alpha_f), (int(fx), int(fy)), 2)
+            alpha_f = max(0, min(255, int(255 * (f['vida'] / 0.3))))
+            faisca = pygame.Surface((4, 4), pygame.SRCALPHA)
+            pygame.draw.circle(faisca, (255, 255, 150, alpha_f), (2, 2), 2)
+            tela.blit(faisca, (int(fx) - 2, int(fy) - 2))
 
 
 class DashTrail:

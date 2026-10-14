@@ -88,20 +88,24 @@ def test_pipe_quebrado_diz_o_motivo_do_ffmpeg():
 # --------------------------------------------------------- fps e duracao
 @pytest.mark.parametrize("fps", [-30, 0, 24, 25, 50, 120])
 def test_fps_que_nao_divide_60_e_recusado(fps):
-    with pytest.raises(ValueError):
-        fight_recorder.gravar_luta(p1="a", p2="b", saida=None, fps_saida=fps)
+    # lutadores de verdade: o ValueError tem de ser o do fps, nao o do nome
+    p1, p2 = _dois_nomes()
+    with pytest.raises(ValueError, match="fps precisa dividir"):
+        fight_recorder.gravar_luta(p1=p1, p2=p2, saida=None, fps_saida=fps, max_duracao=0.2)
 
 
 def test_duracao_zero_e_recusada():
-    with pytest.raises(ValueError):
-        fight_recorder.gravar_luta(p1="a", p2="b", saida=None, max_duracao=0)
+    p1, p2 = _dois_nomes()
+    with pytest.raises(ValueError, match="max_duracao"):
+        fight_recorder.gravar_luta(p1=p1, p2=p2, saida=None, max_duracao=0)
 
 
 def test_timeline_recusa_fps_invalido():
     from neural_fights.recording.timeline import gravar_timeline
 
-    with pytest.raises(ValueError):
-        gravar_timeline(p1="a", p2="b", fps_video=24)
+    p1, p2 = _dois_nomes()
+    with pytest.raises(ValueError, match="fps precisa dividir"):
+        gravar_timeline(p1=p1, p2=p2, fps_video=24, max_duracao=0.2)
 
 
 @pytest.mark.parametrize("argv", [
@@ -179,7 +183,12 @@ def test_demo_anterior_sobrevive_a_cast_recusado(tmp_path, monkeypatch):
 
     destino = tmp_path / "bola.mp4"
     destino.write_bytes(b"demo-anterior-boa")
-    monkeypatch.setattr(fight_recorder, "_abrir_ffmpeg", lambda *a, **k: _PopenFalso(0, b""))
+
+    def abrir_como_o_ffmpeg(saida, *a, **k):
+        Path(saida).write_bytes(b"")  # o ``-y`` trunca o destino ao abrir
+        return _PopenFalso(0, b"")
+
+    monkeypatch.setattr(fight_recorder, "_abrir_ffmpeg", abrir_como_o_ffmpeg)
     monkeypatch.setattr(entities.Lutador, "usar_skill_classe", lambda self, *a, **k: False)
     resultado = skill_demo.gravar_demo("Bola de Fogo", saida=destino)
     assert resultado["ok"] is False

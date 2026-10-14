@@ -424,13 +424,18 @@ class LutaAntigaIdenticaTests(unittest.TestCase):
     Arremesso e Mangual × Chicote (as duas famílias).
     """
 
+    # re-pino MOT (lote de simulacao da auditoria, 14/10/2026): as tres
+    # lutas mudam pelos consertos do motor (MOT-1..21, 30, lava), nao pela
+    # corrente — a chave segue desligada e o carimbo False segue igual a
+    # "sem carimbo". Antes: (1563, p2, 0.0, 30.96), (2698, p1, 95.87, 0.0),
+    # (1939, p1, 528.53, 0.0).
     DIGITAIS = [
-        ["Aurora o Bravo", "Jin a Protetora", 9020, 1563, "p2", "knockout",
-         0.0, 30.961651999999958],
-        ["Adelaide a Justa", "Elara o Lendário", 9002, 2698, "p1", "knockout",
-         95.87409000000004, 0.0],
-        ["Octavia o Lendário", "Nyx a Impiedosa", 30010, 1939, "p1", "knockout",
-         528.5279690934153, 0.0],
+        ["Aurora o Bravo", "Jin a Protetora", 9020, 1810, "p1", "knockout",
+         33.758116666666524, 0.0],
+        ["Adelaide a Justa", "Elara o Lendário", 9002, 1764, "p1", "knockout",
+         368.43616250000025, 0.0],
+        ["Octavia o Lendário", "Nyx a Impiedosa", 30010, 2575, "p1", "knockout",
+         545.5433344834153, 0.0],
     ]
 
     def test_seed_antiga_identica_com_a_chave_desligada(self):

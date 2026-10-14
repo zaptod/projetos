@@ -76,6 +76,7 @@ V_REF_FRAC = 0.55                 # referência do v² (medida no corpus; ver ve
 V_MIN_FRAC = 0.45                 # fração da velocidade de referência para valer golpe
 MULT_DANO_MIN = 0.6
 MULT_DANO_MAX = 1.4
+TELEPORTE_MAO_MIN_M = 0.5         # MOT-17: salto da mão a partir do qual é teleporte
 
 
 def chave_ligada(match_config=None) -> bool:
@@ -363,6 +364,15 @@ def atualizar_bola(lutador, inimigo, dt: float) -> BolaCorrente | None:
     phi = math.radians(_real(getattr(lutador, "angulo_olhar", 0.0), 0.0))
     hx1, hy1 = mao(lutador)
     hx0, hy0 = bola.mao_ant if bola.mao_ant is not None else (hx1, hy1)
+    # MOT-17 (auditoria de 11/10/2026): um salto da mao (virada de 180°,
+    # teleporte, troca de posicao) entrava como velocidade da mao e o
+    # arrasto passava a velocidade dele para a bola. Salto maior que o que a
+    # mao anda num tick e teleporte: a bola vai junto, sem velocidade nova.
+    salto = math.hypot(hx1 - hx0, hy1 - hy0)
+    if salto > max(TELEPORTE_MAO_MIN_M, 3.0 * velocidade_nominal(lutador) * dt):
+        bola.x += hx1 - hx0
+        bola.y += hy1 - hy0
+        hx0, hy0 = hx1, hy1
 
     decorrido = _decorrido(lutador, total)
     ataque_id = getattr(lutador, "ataque_id", 0)
@@ -442,8 +452,13 @@ def atualizar_bola(lutador, inimigo, dt: float) -> BolaCorrente | None:
             # folga: a mão vai tomando a folga, a bola não cai na mão
             a_r = -RECOLHE_C * min(0.0, v_r)
         a_r = max(-a_max, min(a_max, a_r))
-        ax = a_t * etx + a_r * erx - ARRASTO * relx
-        ay = a_t * ety + a_r * ery - ARRASTO * rely
+        # MOT-17: o arrasto tambem respeita o teto de aceleracao.
+        arr_x, arr_y = -ARRASTO * relx, -ARRASTO * rely
+        arr = math.hypot(arr_x, arr_y)
+        if arr > a_max > 0.0:
+            arr_x, arr_y = arr_x * a_max / arr, arr_y * a_max / arr
+        ax = a_t * etx + a_r * erx + arr_x
+        ay = a_t * ety + a_r * ery + arr_y
 
         x0, y0 = bola.x, bola.y
         bola.vx += ax * h

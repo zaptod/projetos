@@ -368,6 +368,11 @@ class Simulador:
             self._recarregar_tudo_owned()
 
     def _recarregar_tudo_owned(self):
+        # MOT-11: o cache de perfis de arma e global ao processo; uma arma
+        # editada (Forja) entre lutas nao pode herdar o perfil velho.
+        from neural_fights.core.weapon_analysis import analisador_armas
+
+        analisador_armas._cache_profiles.clear()
         self.p1, self.p2, self.cenario, _ = self.carregar_luta_dados()
         self._configurar_partida_atual()
 
@@ -2231,7 +2236,9 @@ class Simulador:
                     if self._alvo_em_transicao_sombria(self.p2)
                     else self.arena.aplicar_limites(self.p2, dt)
                 )
-                
+                # Lava do Vulcao e fogo do Inferno (decisao ``lava-do-vulcao``)
+                self._aplicar_perigo_do_chao(dt)
+
                 # Debug apenas para impactos reais
                 if p1_impacto > 0 or p2_impacto > 0:
                     logger.debug(
@@ -2722,6 +2729,51 @@ class Simulador:
                 vida = random.uniform(0.4, 0.8)
                 self.particulas.append(Particula(x, y, cor, vx, vy, tamanho, vida))
     
+    def _aplicar_perigo_do_chao(self, dt):
+        """Lava do Vulcão e fogo do Inferno machucam quem pisa.
+
+        Decisão do Adrian de 14/10/2026 (Grimório ``builds/lava-do-vulcao``:
+        "Ligar o dano da lava"). O catálogo prometia "Poças de lava (dano!)"
+        e ``Arena.esta_em_zona_perigo`` existia sem chamador. Quem está no
+        chão dentro da zona leva ``PERIGO_CHAO_DANO_PCT_S`` da vida máxima
+        por segundo, em ticks de ``PERIGO_CHAO_TICK_S`` (no ar, nada). O
+        dano é uma fonte contínua (``tipo_fonte="lava"``): não gera
+        invencibilidade, não sobe a raiva e paga a guarda em proporção.
+        Sem sorteio: nada aqui consome RNG.
+        """
+        arena = getattr(self, "arena", None)
+        verificar = getattr(arena, "esta_em_zona_perigo", None)
+        if not callable(verificar):
+            return
+        from neural_fights.utils.config import PERIGO_CHAO_DANO_PCT_S, PERIGO_CHAO_TICK_S
+
+        for lutador in (getattr(self, "p1", None), getattr(self, "p2", None)):
+            if lutador is None or getattr(lutador, "morto", False):
+                continue
+            no_chao = float(getattr(lutador, "z", 0.0) or 0.0) <= 0.05
+            perigo = (
+                no_chao
+                and not self._alvo_em_transicao_sombria(lutador)
+                and verificar(lutador.pos[0], lutador.pos[1])
+            )
+            if not perigo:
+                lutador.perigo_chao_timer = 0.0
+                continue
+            acumulado = getattr(lutador, "perigo_chao_timer", 0.0) + dt
+            while acumulado >= PERIGO_CHAO_TICK_S and not getattr(lutador, "morto", False):
+                acumulado -= PERIGO_CHAO_TICK_S
+                dano = float(lutador.vida_max) * PERIGO_CHAO_DANO_PCT_S * PERIGO_CHAO_TICK_S
+                lutador.resolver_impacto(
+                    dano, 0.0, 0.0, "NORMAL",
+                    atacante=None,
+                    fonte_impacto=object(),
+                    ignorar_recuperacao_impacto=True,
+                    gerar_recuperacao_impacto=False,
+                    metadata_impacto={"tipo_fonte": "lava", "dot_tick": True,
+                                      "perigo": perigo},
+                )
+            lutador.perigo_chao_timer = acumulado
+
     @staticmethod
     def _alvo_em_transicao_sombria(alvo):
         """Indica que o alvo está fora do espaço físico durante um portal."""

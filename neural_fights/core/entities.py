@@ -128,6 +128,22 @@ class _StatusTimerAttr:
         obj.status_timers.set(self.status_id, valor)
 
 
+# Fontes que batem por quadro ou por tick (MOT-2/MOT-3, 14/10/2026): a guarda
+# paga proporcional e a raiva nao sobe a cada impacto delas.
+FONTES_CONTINUAS = frozenset({"transform_skill", "trap_skill", "channel_skill", "dot_tick", "lava"})
+# MOT-4: so estes tipos de skill tem o eco do Feiticeiro (o efeito se soma).
+TIPOS_COM_ECO = frozenset({"PROJETIL", "AREA", "BEAM", "SUMMON"})
+
+
+def _eh_fonte_continua(metadata_impacto) -> bool:
+    if not metadata_impacto:
+        return False
+    return bool(
+        metadata_impacto.get("dot_tick")
+        or metadata_impacto.get("tipo_fonte") in FONTES_CONTINUAS
+    )
+
+
 class Lutador:
     """
     Classe principal do lutador com suporte completo a:
@@ -1809,8 +1825,15 @@ class Lutador:
             # (2/40 de winrate, imovel por tres medicoes). O eco roda o
             # dispatch completo de novo SEM custo/cd/contador, e roda ANTES
             # dos writes: rolado depois, quicaria no proprio cooldown.
+            # MOT-4 (auditoria de 11/10/2026): o eco repetia QUALQUER skill.
+            # Na "Troca de Almas" o segundo ``_trocar_posicoes`` desfazia o
+            # primeiro (40 de mana e 30 s de cooldown por nada). So ecoa o
+            # que se soma (projetil, area, beam, invocacao); o tipo e
+            # conferido ANTES do sorteio, para nao gastar RNG a toa.
             if (
                 "Feiticeiro" in self.classe_nome
+                and data.get("tipo") in TIPOS_COM_ECO
+                and efeito != "TROCAR_POS"
                 and self.rng_runtime.random() < 0.22
             ):
                 # (0,15 -> 0,22 na rodada 2: o Feiticeiro da fixture e
@@ -3328,12 +3351,34 @@ class Lutador:
         for buff in self._buffs_validos():
             dano_final *= max(0.0, getattr(buff, "mod_dano_recebido", 1.0))
         
+        # MOT-15 (auditoria de 11/10/2026): a esquiva do Ladino vinha DEPOIS
+        # da guarda, que ja tinha cobrado a estamina e contado o bloqueio de
+        # um golpe que nao pegou. Mesmo sorteio, so mudou a ordem.
+        if (
+            "Ladino" in self.classe_nome
+            and not (
+                atacante is not None
+                and "Duelista" in getattr(atacante, "classe_nome", "")
+            )
+            and self.rng_runtime.random() < 0.12
+        ):
+            # (0,20 -> 0,15 -> 0,12 nas rodadas de knobs da O6: Ladino no B1)
+            # Onda 6 (contrato do Duelista): "ataques nunca erram" — a
+            # esquiva do Ladino é o único errar do motor, e o Duelista a
+            # atravessa. (Guard antes do draw: sem sorteio contra Duelista.)
+            self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="esquiva")
+            # Passe 6 (arte): contador consumido pelo feedback visual da
+            # esquiva (burst de afterimages + ESQUIVA! no renderer).
+            self.esquivas_visuais = getattr(self, "esquivas_visuais", 0) + 1
+            return False
+
         # === ONDA 8B: BLOQUEIO DIRECIONAL / PARRY ===
         # Substitui a postura ×0.75 do Cavaleiro (Onda 6): agora TODO
         # lutador tem guarda real — direcional, paga em estamina e com
         # recompensa de timing (parry). O Cavaleiro vira o mestre da
         # guarda (reduz mais, paga menos) em vez de dono do único
         # desconto defensivo do motor.
+        fonte_continua = _eh_fonte_continua(metadata_impacto)
         guarda = self._avaliar_bloqueio(atacante)
         if guarda is not None:
             from neural_fights.utils.config import (
@@ -3392,17 +3437,29 @@ class Lutador:
                 if eh_cavaleiro
                 else FATOR_DANO_BLOQUEIO
             )
+            dano_antes_guarda = dano_final
             dano_final *= fator
             empurrao_x *= FATOR_KNOCKBACK_BLOQUEIO
             empurrao_y *= FATOR_KNOCKBACK_BLOQUEIO
             custo = CUSTO_ESTAMINA_BLOQUEIO * (0.5 if eh_cavaleiro else 1.0)
+            if fonte_continua:
+                # MOT-2 (auditoria de 11/10/2026): fonte continua (contato de
+                # Transform, Channel, trap, tick de area/DoT) gera um impacto
+                # por quadro/tick, e a guarda inteira era cobrada a cada um:
+                # quebrava em 7 quadros e o contador de bloqueios inflava. Ela
+                # paga em proporcao ao dano que segurou e nao conta bloqueio.
+                from neural_fights.utils.config import DANO_REFERENCIA_GUARDA
+
+                bloqueado = max(0.0, dano_antes_guarda - dano_final)
+                custo *= min(1.0, bloqueado / max(1e-6, DANO_REFERENCIA_GUARDA))
             self.estamina = max(0.0, self.estamina - custo)
             if self.brain is not None:
                 self.brain.ultimo_bloqueio = 0.0
-            self.bloqueios_visuais = getattr(self, "bloqueios_visuais", 0) + 1
-            self.contadores_luta["bloqueios"] = (
-                self.contadores_luta.get("bloqueios", 0) + 1
-            )
+            if not fonte_continua:
+                self.bloqueios_visuais = getattr(self, "bloqueios_visuais", 0) + 1
+                self.contadores_luta["bloqueios"] = (
+                    self.contadores_luta.get("bloqueios", 0) + 1
+                )
 
         dano_final *= max(0.0, float(getattr(self, "mod_defesa", 1.0)))
 
@@ -3419,25 +3476,7 @@ class Lutador:
             from neural_fights.models import ENCANTAMENTOS as _ENC
             _pen = _ENC.get("Penetração", {}).get("armor_ignore", 30) / 100.0
             dano_final += (dano_antes_defesas - dano_final) * _pen
-        
-        if (
-            "Ladino" in self.classe_nome
-            and not (
-                atacante is not None
-                and "Duelista" in getattr(atacante, "classe_nome", "")
-            )
-            and self.rng_runtime.random() < 0.12
-        ):
-            # (0,20 -> 0,15 -> 0,12 nas rodadas de knobs da O6: Ladino no B1)
-            # Onda 6 (contrato do Duelista): "ataques nunca erram" — a
-            # esquiva do Ladino é o único errar do motor, e o Duelista a
-            # atravessa. (Guard antes do draw: sem sorteio contra Duelista.)
-            self.ultimo_resultado_impacto = ImpactResult(False, bloqueado_por="esquiva")
-            # Passe 6 (arte): contador consumido pelo feedback visual da
-            # esquiva (burst de afterimages + ESQUIVA! no renderer).
-            self.esquivas_visuais = getattr(self, "esquivas_visuais", 0) + 1
-            return False
-        
+
         if not ignorar_escudo:
             for buff in self._buffs_validos():
                 if buff.escudo_atual > 0:
@@ -3618,9 +3657,12 @@ class Lutador:
             "POSSESSO": (100, 0, 100),
         }.get(tipo_efeito, (255, 255, 255))
         
-        if self.brain is not None:
-            self.brain.raiva += 0.2
-        
+        # MOT-3: era o unico incremento de raiva sem teto (fonte continua a
+        # levava a 12, e todo limiar ``raiva > 0.7`` ficava ligado por ate
+        # 50 s). Teto 1,0, e fonte continua nao enfurece a cada quadro.
+        if self.brain is not None and not _eh_fonte_continua(metadata_impacto):
+            self.brain.raiva = min(1.0, self.brain.raiva + 0.2)
+
         # Knockback proporcional ao dano e vida restante
         kb = 15.0 + (1.0 - (self.vida/self.vida_max)) * 10.0
         kb += dano_final * 0.2  # Dano alto = mais knockback
@@ -4064,11 +4106,12 @@ class Lutador:
             self.stun_timer = max(self.stun_timer, 0.5)
             
         elif efeito == "PUXADO":
-            # Puxado: Atração gravitacional (implementado no efeito de área)
-            if not hasattr(self, 'sendo_puxado'):
-                self.sendo_puxado = False
-            self.sendo_puxado = True
-            
+            # Puxado: o puxão de verdade é aplicado em ``tomar_dano``
+            # (``self.puxao``, Onda 10D), então "aplicado" é verdade. MOT-16
+            # (auditoria de 11/10/2026) é alarme parcial: só o
+            # ``sendo_puxado`` que este ramo gravava não tinha leitor e saiu.
+            pass
+
         elif efeito == "TEMPO_PARADO":
             # Tempo parado: Completamente imobilizado
             duracao_tempo_parado = duracao or duracao_padrao
@@ -4080,10 +4123,8 @@ class Lutador:
             self.tempo_parado = True
             
         elif efeito == "VORTEX":
-            # Vortex: Sendo puxado continuamente
-            if not hasattr(self, 'em_vortex'):
-                self.em_vortex = False
-            self.em_vortex = True
+            # Vortex: idem PUXADO (o ``em_vortex`` sem leitor saiu; MOT-16).
+            pass
         
         # =================================================================
         # DEBUFFS
@@ -4125,13 +4166,13 @@ class Lutador:
         # EFEITOS DE EMPURRÃO/MOVIMENTO
         # =================================================================
         elif efeito == "EMPURRAO":
-            # Já tratado pelo knockback normal
+            # Empurrão real em ``tomar_dano`` (Onda 10D) ou na própria área.
             pass
-            
+
         elif efeito == "EXPLOSAO":
             # Explosão já causa o knockback
             pass
-        
+
         # =================================================================
         # EFEITOS ESPECIAIS
         # =================================================================
