@@ -450,8 +450,12 @@ class PaginaDaOficina(unittest.TestCase):
     def test_hover_preserva_vista_ativa(self):
         """PNL-18: o <Leave> apagava o destaque da vista ativa."""
         p = self.pagina
+        # Retirada (withdraw), a janela nao recebe <Enter>/<Leave> e o teste
+        # passaria sem testar nada (medido: passava no codigo antigo).
+        self.app.deiconify()
         self.app.update()
         ativa = p._botoes_vista[p.vista]
+        self.assertTrue(ativa.winfo_viewable())
         self.assertEqual(p.t.acento_fundo, ativa.cget("bg"))
         ativa.event_generate("<Enter>")
         ativa.event_generate("<Leave>")
