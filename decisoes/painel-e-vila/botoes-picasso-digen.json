@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:47:03",
+      "evento": "2026-10-14T08:46:59",
+      "linha": 176,
+      "nota": "resposta sem pedido de origem: painel-e-vila/botoes-picasso-digen = Tirar os botões (recomendado)",
+      "opcao": "tirar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:58:13.725426",
   "depende_de": [],
