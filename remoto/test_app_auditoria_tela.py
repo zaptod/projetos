@@ -99,7 +99,8 @@ def test_faixa_sem_pc_nao_cobre_as_abas_e_o_titulo_fica_numa_linha(tela_isolada,
     fora = _pc_fora(tela_isolada, monkeypatch)
     with _pagina(tela_isolada) as page:
         # a carga da Vila assenta antes: um 200 atrasado dela apagaria a faixa
-        page.wait_for_load_state("networkidle")
+        # (networkidle nao serve: a Vila consulta o PC em ciclo)
+        page.wait_for_timeout(3000)
         fora["sim"] = True
         _abrir_objeto(page, "agora", "agora")
         _abrir_aba(page, "agora", "oficina")
@@ -116,6 +117,8 @@ def test_faixa_sem_pc_nao_cobre_as_abas_e_o_titulo_fica_numa_linha(tela_isolada,
         assert "off" in (page.locator("#conexao").get_attribute("class") or "")
         titulo = page.locator("#titulo").bounding_box()
         assert titulo["height"] < 30, titulo                       # uma linha só
+        # a hora da queda aparece inteira (quem encolhe é o título)
+        assert page.locator("#conexao").evaluate("c => c.scrollWidth <= c.clientWidth")
         cabeca = page.locator("header").bounding_box()
         faixa = page.locator("#aviso").bounding_box()
         abas = page.locator("#tela-coordenador .abas-objeto").bounding_box()

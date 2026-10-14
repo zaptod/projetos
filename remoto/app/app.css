@@ -24,8 +24,10 @@ header {
 }
 header h1 { font-size: 17px; margin: 0; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#conexao { font-size: 12px; color: var(--fraco); flex: 0 1 auto;
-  max-width: 44%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* a hora da queda ("PC sem o servidor desde 01:37") vale mais que o título:
+   a aba aberta já diz onde ele está. Quem encolhe é o h1. */
+#conexao { font-size: 12px; color: var(--fraco); flex: 0 0 auto;
+  max-width: 62%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #conexao.off { color: var(--erro); font-weight: 600; }
 main { padding: 12px 16px; max-width: 640px; margin: 0 auto; }
 .cartao {

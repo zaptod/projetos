@@ -2972,7 +2972,9 @@ e7ea729 e 3 deles falhavam ainda na entrega do Codex.
 - **Parear com o PC fora** (item 8): "Não consegui falar com o PC. Confira o
   Tailscale neste celular." ou "O PC respondeu com erro N.".
 - **Título numa linha** (item 9): `h1` sem quebra, com reticências; "livre"
-  aparece como "Rodízio".
+  aparece como "Rodízio". O `#conexao` não encolhe (até 62%): a hora da
+  queda ("PC sem o servidor desde 02:17") vale mais que o título, e a aba
+  aberta já diz onde ele está ("Agora · Coo…").
 - **Continuar do diálogo** (item 10): desligado até a lista de Geração/História
   chegar e ter um id; a lista de um diálogo anterior não libera o atual.
 - **Prova de tela antiga** (item 11): espera `#anim-grupos button`.
