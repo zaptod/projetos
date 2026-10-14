@@ -3,7 +3,14 @@
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:22.340815",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+      "em": "2026-10-14T08:45:47",
+      "opcao": "primeiro-reembolso",
+      "origem": "cli"
+    }
+  ],
   "id": "arena-dois-pagantes",
   "midias": [],
   "opcoes": [
@@ -34,7 +41,11 @@
   },
   "pergunta": "Na live, se duas pessoas pagam !arena no mesmo round, qual vale? E o comando pago que cai em cooldown hoje some sem reembolso.",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Live: !arena com dois pagantes",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+    "em": "2026-10-14T08:45:47",
+    "opcao": "primeiro-reembolso"
+  }
 }

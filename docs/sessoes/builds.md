@@ -147,7 +147,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Lava do Vulcão e do Inferno** — Ligar o dano da lava (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `lava-do-vulcao`
 - ✅ **Som da vitória** — Uma fanfarra curta de vitória (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `som-da-vitoria`
 - ✅ **Volume dos golpes depois do conserto** — Pode aplicar direto (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `volume-dos-golpes`
-- ⏳ **Live: !arena com dois pagantes** — Na live, se duas pessoas pagam !arena no mesmo round, qual vale? E o comando pago que cai em cooldown hoje some sem reembolso. `arena-dois-pagantes`
+- ✅ **Live: !arena com dois pagantes** — Vale o primeiro; o que não coube é recusado com reembolso na tela (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `arena-dois-pagantes`
 - ⏳ **Estatísticas do torneio** — O arquivo salvo do torneio tem campos (KO mais rápido, luta mais longa, mais agressivo) que nunca são preenchidos. Preencher ou tirar? `estatisticas-do-torneio`
 - ⏳ **Moderação da live** — Existe uma função de banimento na live que nada chama. Ligar a um comando de moderador ou remover? `banimento-na-live`
 
