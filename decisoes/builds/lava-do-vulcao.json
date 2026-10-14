@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:10.572437",
+  "depende_de": [],
+  "historico": [],
+  "id": "lava-do-vulcao",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ligar",
+      "pede_comentario": false,
+      "rotulo": "Ligar o dano da lava (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tirar-promessa",
+      "pede_comentario": false,
+      "rotulo": "Tirar a promessa do catálogo"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O catálogo promete dano de lava nas arenas Vulcão e Inferno, mas a lava não machuca. O que fazer?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Lava do Vulcão e do Inferno",
+  "vigente": null
+}

@@ -143,6 +143,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ⏳ **Nome pedido pelo comentarista** — O nome que o público pede para o personagem tem uma regra 'não termina em qualidade' (ex.: não aceita 'João Forte'). Mantém a regra? `nome-pedido-livre`
 - ⏳ **Os 29 traços sem efeito** — 29 traços de personalidade são sorteados para os lutadores mas não fazem nada na luta. O que fazer? `quirks-sem-efeito`
 - ⏳ **Atordoamento e relógio de ataque** — Hoje o atordoamento pausa o relógio de ataque do lutador (muda o ritmo de toda luta). Mantém? `atordoamento-e-relogio`
+- ⏳ **Lava do Vulcão e do Inferno** — O catálogo promete dano de lava nas arenas Vulcão e Inferno, mas a lava não machuca. O que fazer? `lava-do-vulcao`
 
 <!-- decisoes:fim -->
 
