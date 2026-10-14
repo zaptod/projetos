@@ -16,7 +16,7 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **h16 p01 só no TikTok desde 16/09** — Subir pelo --so-youtube (07/10/2026) `h16-p01-so-no-tiktok`
 - ✅ **YouTube fica 3 horários atrás do TikTok** — YouTube alcança (recomendado) (07/10/2026) `youtube-atras-do-tiktok`
 - ✅ **Build que saiu só no TikTok: levar ao YouTube depois?** — Mesma regra das histórias (recomendado) (13/10/2026) `build-so-no-tiktok`
-- ⏳ **Visibilidade gravada no registro** — Ao publicar uma história, o registro anota sempre 'pública', mesmo se o vídeo subiu privado. O que gravar? `visibilidade-no-ledger`
+- ✅ **Visibilidade gravada no registro** — A visibilidade que o publicador de fato usou (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `visibilidade-no-ledger`
 - ⏳ **Chave 'postar automático' do TikTok nos builds** — No config dos builds, o TikTok está com 'postar automático: não', mas a grade posta sempre. O que vale? `tiktok-postar-automatico`
 - ⏳ **Duelo de 12/10 que saiu só no TikTok** — O conserto que leva ao YouTube o build que saiu só no TikTok vale a partir de 13/10. O duelo_00076 saiu só no TikTok em 12/10 às 16:31, um dia antes. Levar ele também? `duelo-00076-ao-youtube`
 - ⏳ **Quando o arquivo de pareceres não abre** — Se o arquivo com os pareceres das histórias estiver corrompido ou trancado, toda parte fica 'retida'. Hoje, para o horário não ficar vazio, sai uma parte marcada 'a conferir'. Prefere que nesse caso nada saia? `pareceres-ilegiveis`
