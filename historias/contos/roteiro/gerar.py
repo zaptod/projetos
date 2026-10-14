@@ -37,9 +37,9 @@ class GeracaoFalhou(RuntimeError):
 
 
 def _gravar(caminho: Path, dados) -> None:
-    caminho.parent.mkdir(parents=True, exist_ok=True)
-    with open(caminho, "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    # Temporario + `os.replace` (HIS-1, 11/10/2026): a biblia e o que a
+    # retomada le; meia biblia no disco matava a historia inteira.
+    R._gravar_json_atomico(caminho, dados)
 
 
 def _guardar_conversa(pasta: Path, nome: str, texto: str) -> None:
@@ -707,13 +707,24 @@ def _resultado_da_historia(historia_id: str, log) -> dict:
             "gerado_em": datetime.now().isoformat(timespec="seconds")}
 
 
+ILEGIVEL = "ilegivel"
+
+
 def _situacao(historia_id: str | None) -> str:
-    """"nova" (sem roteiro gravado), "incompleta" ou "completa"."""
+    """"nova" (sem roteiro gravado), "incompleta", "completa" ou "ilegivel".
+
+    "ilegivel" = o `roteiro.json` EXISTE e nao le (truncado, corrompido,
+    trancado). Ate 11/10/2026 isso respondia "nova", e a queda de provedor
+    escrevia outra biblia na mesma pasta, por cima das cenas da historia
+    antiga (HIS-1). Arquivo que existe nunca e "nova".
+    """
     if not historia_id:
         return "nova"
     try:
         roteiro = R.carregar(historia_id)
     except (OSError, ValueError):
+        if (R.OUTPUTS / historia_id / "roteiro.json").exists():
+            return ILEGIVEL
         return "nova"
     return "incompleta" if R.partes_que_faltam(roteiro) else "completa"
 
@@ -740,6 +751,18 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
     if not ordem:
         raise GeracaoFalhou("nenhum provedor configurado para o roteiro")
     ultimo = None
+    # A QUEDA DE ANTES DA BIBLIA (HIS-2, 14/10/2026): o Gemini que abre fora
+    # do modelo forte cai antes de a historia existir, e a queda dele nao
+    # tinha onde ficar. Ela entra no `roteiro.json` de quem escreveu.
+    sem_casa = []
+
+    def _com_as_quedas_de_antes(resultado: dict) -> dict:
+        nova = (resultado or {}).get("historia_id")
+        if nova:
+            for queda in sem_casa:
+                R.registrar_queda(nova, queda)
+        return resultado
+
     for indice, provedor in enumerate(ordem):
         proximo = ordem[indice + 1] if indice + 1 < len(ordem) else None
         # CONTA OCUPADA PASSA AO PROXIMO LIVRE (17/09/2026): so o ULTIMO da
@@ -748,6 +771,13 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
         if ao_tentar:
             ao_tentar(provedor)
         situacao = _situacao(historia_id)
+        if situacao == ILEGIVEL:
+            # NENHUM provedor resolve isto, e todos piorariam: escrever
+            # "de novo" e apagar a historia que esta no disco (HIS-1).
+            raise GeracaoFalhou(
+                f"o roteiro.json de {historia_id} existe mas nao le (truncado "
+                "ou trancado); nao escrevo outra biblia por cima das cenas "
+                "dela. Conserte ou tire o arquivo da pasta e rode de novo.")
         if situacao == "completa":
             # Caiu DEPOIS da ultima parte: nada a reescrever.
             return _resultado_da_historia(historia_id, log)
@@ -762,12 +792,13 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
                         f"a retomada com o {provedor} deixou as partes "
                         f"{feito['faltam']} sem escrever")
                 return _resultado_da_historia(historia_id, log)
-            return gerar_serie(provedor=provedor, partes=partes,
-                               cenas_por_parte=cenas_por_parte, tema=tema,
-                               historia_id=historia_id, headless=headless,
-                               config=config, tipo=tipo,
-                               espera_da_conta=espera, ao_nascer=ao_nascer,
-                               log=log)
+            return _com_as_quedas_de_antes(gerar_serie(
+                provedor=provedor, partes=partes,
+                cenas_por_parte=cenas_por_parte, tema=tema,
+                historia_id=historia_id, headless=headless,
+                config=config, tipo=tipo,
+                espera_da_conta=espera, ao_nascer=ao_nascer,
+                log=log))
         except Exception as exc:                               # noqa: BLE001
             ultimo = exc
             historia_id = historia_id or getattr(exc, "historia_id", None)
@@ -778,7 +809,12 @@ def escrever_serie(provedores, *, partes: int = S.PARTES_PADRAO,
                 + (f"; o {proximo} assume." if proximo else "; sem outro "
                    "provedor na lista."))
             if historia_id:
+                for anterior in sem_casa:
+                    R.registrar_queda(historia_id, anterior)
+                sem_casa.clear()
                 R.registrar_queda(historia_id, queda)
+            else:
+                sem_casa.append(queda)
             if ao_falhar:
                 with contextlib.suppress(Exception):
                     ao_falhar(provedor, exc, proximo)

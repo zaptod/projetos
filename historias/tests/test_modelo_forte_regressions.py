@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from contos.llm import cliente as llm_cliente
 from contos.llm.cliente import ClienteLLM
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -37,6 +39,8 @@ RAIZ = Path(__file__).resolve().parents[1]
 
 def _cliente(respostas):
     """Um cliente com `_tentar_modelo` roteirizado, uma resposta por volta."""
+    # a falha recente e de MODULO (HIS-11): cada teste comeca sem ela
+    llm_cliente._FALHA_DE_MODELO.clear()
     cli = ClienteLLM.__new__(ClienteLLM)
     cli.provedor = "gemini"
     cli.sel = {"modelo_preferido": ["pro", "flash"], "modelo_botao": ["#m"]}
@@ -106,6 +110,106 @@ class RastroTests(unittest.TestCase):
         trecho = fonte[fonte.index("def _tentar_modelo("):]
         alvo = trecho[trecho.index("nenhum modelo de"):]
         self.assertIn("return atual, True", alvo[:200])
+
+
+class _BotaoQueEstoura:
+    """O botao do menu de modelo que nunca responde: cada clique conta."""
+
+    def __init__(self):
+        self.cliques = 0
+
+    def is_visible(self):
+        return True
+
+    def inner_text(self, timeout=None):
+        return "3.5 Flash"
+
+    def click(self, timeout=None):
+        self.cliques += 1
+        raise TimeoutError("o menu nao abriu")
+
+
+class FalhaRecenteNaoERefeitaTests(unittest.TestCase):
+    """HIS-11 (auditoria de 11/10/2026): a troca de modelo era refeita por
+    inteiro em todo chat novo — 3 tentativas, `sleep(2.5*volta)` e os
+    timeouts —, ~32 s por chat e ~1,9 h em 06-08/10, quase tudo no carteiro
+    de imagens. Falhou ha menos de 600 s: uma tentativa so, sem espera."""
+
+    def setUp(self):
+        llm_cliente._FALHA_DE_MODELO.clear()
+        self.addCleanup(llm_cliente._FALHA_DE_MODELO.clear)
+        self.botao = _BotaoQueEstoura()
+        self.sonos = []
+        for alvo in (
+                mock.patch.object(llm_cliente.time, "sleep", self.sonos.append),
+                mock.patch.object(llm_cliente.sel, "encontrar",
+                                  lambda page, cand, timeout=0: self.botao),
+                mock.patch.object(llm_cliente, "_pausa", lambda *a, **k: None)):
+            alvo.start()
+            self.addCleanup(alvo.stop)
+
+    def _gemini(self):
+        cli = ClienteLLM.__new__(ClienteLLM)
+        cli.provedor = "gemini"
+        cli.sel = {"modelo_preferido": ["pro", "flash"], "modelo_botao": ["#m"],
+                   "modelo_opcao": ["#o"]}
+        cli.page = object()
+        cli.log = lambda *_a: None
+        cli._preferido_do_config = lambda: None
+        return cli
+
+    def test_duas_chamadas_somam_3_mais_1_cliques_e_um_ciclo_de_espera(self):
+        self._gemini().escolher_modelo()
+        self.assertEqual(3, self.botao.cliques)
+        self.assertEqual([2.5, 5.0], self.sonos)
+        self._gemini().escolher_modelo()
+        self.assertEqual(4, self.botao.cliques)          # 3 + 1
+        self.assertEqual([2.5, 5.0], self.sonos)         # nenhuma espera nova
+
+    def test_sucesso_apaga_a_falha(self):
+        self._gemini().escolher_modelo()
+        self.assertIn("gemini", llm_cliente._FALHA_DE_MODELO)
+        cli = self._gemini()
+        cli._tentar_modelo = lambda ordem: ("3.1 Pro", True)
+        self.assertEqual("3.1 Pro", cli.escolher_modelo())
+        self.assertNotIn("gemini", llm_cliente._FALHA_DE_MODELO)
+        self.assertTrue(cli.modelo_forte)
+
+    def test_falha_velha_volta_a_ter_tres_tentativas(self):
+        llm_cliente._FALHA_DE_MODELO["gemini"] = (
+            llm_cliente.time.monotonic()
+            - llm_cliente.JANELA_DA_FALHA_DE_MODELO_S - 1)
+        self._gemini().escolher_modelo()
+        self.assertEqual(3, self.botao.cliques)
+
+    def test_preferido_false_nao_clica_em_nada(self):
+        cli = self._gemini()
+        self.assertEqual("3.5 Flash", cli.escolher_modelo(preferido=False))
+        self.assertEqual(0, self.botao.cliques)
+        self.assertEqual([], self.sonos)
+        self.assertFalse(cli.modelo_forte)
+        self.assertNotIn("gemini", llm_cliente._FALHA_DE_MODELO)
+
+    def test_abrir_sem_trocar_modelo_nao_exige_o_forte(self):
+        """O chat de imagem do carteiro (papel conversa/roteiro, tanto faz):
+        sem troca de modelo, sem `ModeloFraco` e sem diario."""
+        cli = self._gemini()
+        cli.sel.update(url="https://x", url_novo_chat="https://x")
+        cli.ajustes, cli.papel, cli.diario = {}, "roteiro", True
+
+        class _Pagina:
+            def goto(self, *_a, **_k):
+                pass
+
+        cli.page = _Pagina()
+        cli._esperar_montar = lambda *a, **k: None
+        cli.conferir_sessao = lambda: "logado"
+        diario = []
+        with mock.patch.object(llm_cliente._rb_atividade, "registrar",
+                               lambda *a, **k: diario.append(k)):
+            cli.abrir(trocar_modelo=False)
+        self.assertEqual(0, self.botao.cliques)
+        self.assertEqual([], diario)
 
 
 if __name__ == "__main__":

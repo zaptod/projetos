@@ -41,6 +41,15 @@ FALHAS_PARA_ERRO = 3
 # Onde fica a tela da pagina que nao montou (`ClienteLLM.conferir_sessao`).
 PASTA_EM_BRANCO = RAIZ / "outputs" / "_logs" / "llm_em_branco"
 
+# A TROCA DE MODELO QUE ACABOU DE FALHAR NAO E REFEITA POR INTEIRO (HIS-11,
+# auditoria de 11/10/2026). Cada chat novo pagava 3 tentativas, os
+# `sleep(2.5 * volta)` e os timeouts do menu — medido em 06-08/10: 210 casos,
+# mediana de 32 s por chat, ~1,9 h somadas, quase tudo no carteiro de imagens
+# (um chat por imagem). Falhou ha menos de `JANELA_DA_FALHA_DE_MODELO_S`: uma
+# tentativa so, sem espera. O instante e por provedor e some no sucesso.
+JANELA_DA_FALHA_DE_MODELO_S = 600.0
+_FALHA_DE_MODELO: dict = {}
+
 
 class LLMFalhou(RuntimeError):
     """Erro humano: o que se tentou, e o que fazer."""
@@ -84,6 +93,21 @@ class SiteIndisponivel(LLMFalhou):
 
     categoria = "indisponivel"
     pausa_rodizio = True
+
+
+class ModeloFraco(LLMFalhou):
+    """O provedor abriu o chat FORA do modelo forte, e o papel e o roteiro.
+
+    Decisao do Adrian no Grimorio (`historias/gemini-sem-pro-escreve`, opcao
+    "cair", 13/10/2026, commit b339bbb): "Pular para o proximo provedor
+    (DeepSeek/ChatGPT) e avisar no Telegram. Nunca escreve no Flash; se nenhum
+    provedor forte estiver disponivel, a rodada espera." Ate entao o Gemini
+    que nao entrava no Pro escrevia a historia inteira no Flash, calado: 224
+    vezes de 06 a 08/10.
+
+    E `LLMFalhou` de proposito: `gerar.escrever_serie` ja trata qualquer
+    excecao como queda para o proximo da ordem.
+    """
 
 
 def perfil_de(provedor: str, canal: str = "geral") -> Path:
@@ -130,9 +154,19 @@ class ClienteLLM:
         # Comeca em False de proposito: enquanto ninguem confirmou o modelo
         # forte, a resposta honesta e "nao sei", e nao "esta tudo certo".
         self.modelo_confirmado = False
+        # O MODELO EM USO E O PRIMEIRO DA PREFERENCIA? (HIS-2). Diferente de
+        # `modelo_confirmado`, que so diz "a escolha terminou": cair no 2o da
+        # lista ("flash") ou numa conta sem o Pro tambem termina a escolha.
+        self.modelo_forte = False
+        # A CONTAGEM DE TURNOS NOSSOS ANTES DO ENVIO (HIS-3). `None` = ninguem
+        # enviou por este cliente desde o chat novo: a espera nao confere.
+        self._turnos_usuario_antes = None
+        self._prompt_anterior = ""
 
     # ----------------------------------------------------------- navegacao
-    def abrir(self, novo_chat: bool = True) -> None:
+    def abrir(self, novo_chat: bool = True, trocar_modelo: bool = True) -> None:
+        """Abre o chat. `trocar_modelo=False` nao mexe no menu de modelo
+        (HIS-11: o pedido de imagem do carteiro nao precisa do Pro)."""
         url = self.sel["url_novo_chat"] if novo_chat else self.sel["url"]
         timeout = float(self.ajustes.get("navigation_timeout", 90))
         self.page.goto(url, wait_until="domcontentloaded",
@@ -141,8 +175,52 @@ class ClienteLLM:
         self.conferir_sessao()
         self.turnos = 0
         self._ultima_resposta = ""
-        self.modelo_atual = self.escolher_modelo()
+        self._turnos_usuario_antes = None
+        if trocar_modelo:
+            self.modelo_atual = self.escolher_modelo()
+        else:
+            self.modelo_atual = self.escolher_modelo(preferido=False)
         self.log(f"[{self.provedor}] chat novo aberto.")
+        if trocar_modelo:
+            self._exigir_modelo_forte()
+
+    def _exigir_modelo_forte(self) -> None:
+        """O roteiro NAO e escrito fora do modelo forte (HIS-2).
+
+        Decisao do Adrian (`historias/gemini-sem-pro-escreve` = "cair",
+        b339bbb): no papel `roteiro`, o chat fora do modelo forte vira um
+        `erro` no diario (etapa `llm.modelo_fraco`; o bot o leva ao Telegram) e
+        levanta `ModeloFraco` — a ordem de queda passa ao proximo provedor.
+        Nos outros papeis (parecer, conserto) so um `aviso` no diario: eles
+        tem reserva propria e nao gravam texto que vira video.
+        """
+        if getattr(self, "modelo_forte", False):
+            return
+        papel = str(getattr(self, "papel", "") or "")
+        nome = getattr(self, "modelo_atual", "") or "modelo desconhecido"
+        if papel == "roteiro":
+            texto = (f"o {self.provedor} nao entrou no modelo forte ({nome}); "
+                     "passo ao proximo provedor")
+            self.log(f"[{self.provedor}] {texto} (decisao "
+                     "historias/gemini-sem-pro-escreve).")
+            self._registrar_modelo_fraco("erro", f"roteiro: {texto}")
+            raise ModeloFraco(texto + ".")
+        self._registrar_modelo_fraco(
+            "aviso", f"{papel or 'turno'}: o {self.provedor} segue fora do "
+            f"modelo forte ({nome})")
+
+    def _registrar_modelo_fraco(self, status: str, detalhe: str) -> None:
+        """No diario, so de cliente aberto de verdade. Nunca levanta."""
+        if not getattr(self, "diario", False):
+            return
+        try:
+            _rb_atividade.registrar(
+                self.provedor, status, detalhe,
+                getattr(self, "canal", "") or "historias",
+                etapa="llm.modelo_fraco",
+                ref=str(getattr(self, "ref", "") or ""))
+        except Exception:                                      # noqa: BLE001
+            pass
 
     # ------------------------------------------------------------- modelo
     TENTATIVAS_DE_MODELO = 3
@@ -167,36 +245,97 @@ class ClienteLLM:
         agora ela deixa RASTRO — `self.modelo_confirmado` diz se o alvo foi
         mesmo alcancado, e quem grava o roteiro registra isso em vez de
         gravar vazio.
+
+        `self.modelo_forte` (HIS-2, 11/10/2026) diz se o modelo em uso e o
+        PRIMEIRO da preferencia. `modelo_confirmado` so diz que a escolha
+        terminou — e terminava "confirmada" tambem quando caia no 2o da lista
+        ("flash") ou quando a conta nao tinha o Pro: o Flash passava como
+        confirmado justo no caso da cota do Pro esgotada. Site de um modelo so
+        (DeepSeek) ou sem menu de modelo (ChatGPT) = forte: nao ha para onde
+        cair.
+
+        `preferido=False` NAO MEXE no modelo (HIS-11): devolve o texto do
+        botao (ou "") sem clicar, com `modelo_forte` False. E o caminho do
+        pedido de imagem do carteiro, que nao precisa do Pro.
+
+        Falhou ha menos de `JANELA_DA_FALHA_DE_MODELO_S`: uma tentativa so,
+        sem espera (HIS-11).
         """
         self.modelo_confirmado = False
+        self.modelo_forte = False
+        if preferido is False:
+            return self._modelo_sem_mexer()
         if self.sel.get("modelo_fixo"):
             # Site sem menu de modelo (DeepSeek): o que se escolhe e so o
             # raciocinio, e ele entra no nome para o roteiro dizer qual foi.
             pensa = self._ajustar_raciocinio()
             self.modelo_confirmado = pensa is not None
+            self.modelo_forte = True
             nome = str(self.sel["modelo_fixo"])
             if pensa == self.RACIOCINIO_DA_CONTA:
                 return nome + " (DeepThink como a conta estiver)"
             return nome + (" + DeepThink" if pensa else "")
         ordem = preferido or self._preferido_do_config() or self.sel.get("modelo_preferido")
         if not ordem or not self.sel.get("modelo_botao"):
+            # Sem menu de modelo (o ChatGPT): o modelo e o da conta, e nao ha
+            # um mais forte para escolher.
+            self.modelo_forte = True
             return ""
+        tentativas = self.TENTATIVAS_DE_MODELO
+        falhou_em = _FALHA_DE_MODELO.get(self.provedor)
+        if (falhou_em is not None
+                and time.monotonic() - falhou_em < JANELA_DA_FALHA_DE_MODELO_S):
+            tentativas = 1
+            self.log(f"[{self.provedor}] a troca de modelo falhou ha "
+                     f"{time.monotonic() - falhou_em:.0f}s; tento uma vez so.")
         ultimo = ""
-        for volta in range(1, self.TENTATIVAS_DE_MODELO + 1):
+        for volta in range(1, tentativas + 1):
+            self._alvo_casado = None
             nome, confirmado = self._tentar_modelo(ordem)
             if confirmado:
                 self.modelo_confirmado = True
+                self.modelo_forte = self._e_o_primeiro(nome, ordem)
+                _FALHA_DE_MODELO.pop(self.provedor, None)
                 return nome
             ultimo = nome or ultimo
-            if volta < self.TENTATIVAS_DE_MODELO:
+            if volta < tentativas:
                 self.log(f"[{self.provedor}] a troca de modelo nao pegou "
-                         f"(tentativa {volta}/{self.TENTATIVAS_DE_MODELO}); "
+                         f"(tentativa {volta}/{tentativas}); "
                          "esperando a pagina e tentando de novo.")
                 time.sleep(2.5 * volta)
+        _FALHA_DE_MODELO[self.provedor] = time.monotonic()
         self.log(f"[{self.provedor}] ATENCAO: nao consegui por no modelo "
-                 f"forte depois de {self.TENTATIVAS_DE_MODELO} tentativas; "
-                 f"a historia vai sair em {ultimo or 'modelo desconhecido'}.")
+                 f"forte depois de {tentativas} tentativa(s); "
+                 f"o chat fica em {ultimo or 'modelo desconhecido'}.")
         return ultimo
+
+    def _e_o_primeiro(self, nome: str, ordem) -> bool:
+        """O modelo escolhido e o 1o da preferencia?
+
+        Pelo indice que `_tentar_modelo` anotou (`_alvo_casado`: 0 = o 1o, -1
+        = nenhum), e nao pelo nome: o texto da opcao traz a descricao, e
+        "pro" casaria com "aprofundada" ou "problemas" num Flash. So sem o
+        indice (um `_tentar_modelo` dublado) compara o nome.
+        """
+        indice = getattr(self, "_alvo_casado", None)
+        if indice is not None:
+            return indice == 0
+        primeiro = str((list(ordem) or [""])[0]).lower()
+        return bool(primeiro) and primeiro in str(nome or "").lower()
+
+    def _modelo_sem_mexer(self) -> str:
+        """O texto do botao de modelo, sem clicar. "" se nao der. Nunca levanta."""
+        if self.sel.get("modelo_fixo"):
+            return str(self.sel["modelo_fixo"])
+        if not self.sel.get("modelo_botao"):
+            return ""
+        try:
+            botao = sel.encontrar(self.page, self.sel["modelo_botao"], timeout=3.0)
+            if botao is None:
+                return ""
+            return " ".join((botao.inner_text(timeout=3000) or "").split())[:40]
+        except Exception:                                      # noqa: BLE001
+            return ""
 
     def _preferido_do_config(self):
         """A ordem de modelos que o Adrian escolheu pelo app (01/10/2026).
@@ -277,6 +416,7 @@ class ClienteLLM:
             atual = (botao.inner_text(timeout=3000) or "").strip()
             if any(a.lower() in atual.lower() for a in ordem[:1]):
                 self.log(f"[{self.provedor}] modelo: {atual} (ja era o alvo).")
+                self._alvo_casado = 0
                 return atual, True
             botao.click(timeout=8000)
             _pausa(self.rng, 0.8, 1.4)
@@ -292,7 +432,7 @@ class ClienteLLM:
                 return atual, False
             # Procura na ORDEM da preferencia: o primeiro alvo que existir
             # ganha, e "pro" antes de "flash" e o que faz o forte vencer.
-            for alvo in ordem:
+            for indice, alvo in enumerate(ordem):
                 for i in range(opcoes.count()):
                     texto = (opcoes.nth(i).inner_text(timeout=1500) or "")
                     if alvo.lower() in texto.lower():
@@ -300,8 +440,12 @@ class ClienteLLM:
                         _pausa(self.rng, 1.0, 1.8)
                         nome = " ".join(texto.split())[:40]
                         self.log(f"[{self.provedor}] modelo: {atual} -> {nome}")
+                        # 0 = o forte; o 2o da lista termina a escolha, mas
+                        # nao e o forte (HIS-2).
+                        self._alvo_casado = indice
                         return nome, True
             self.page.keyboard.press("Escape")
+            self._alvo_casado = -1
             # A conta nao TEM o modelo forte: tentar de novo nao muda isso.
             self.log(f"[{self.provedor}] nenhum modelo de {ordem} nesta conta; "
                      f"fico em {atual!r}.")
@@ -450,6 +594,10 @@ class ClienteLLM:
         # tem de ser nova (d228c94f, 29/09/2026). `None` = sem foto.
         self._srcs_antes_do_envio = (self._foto_das_imagens()
                                      if self.olha_imagem() else None)
+        # quantos turnos NOSSOS a conversa tem antes deste (HIS-3): a resposta
+        # so vale se a conversa ganhou um turno — ver `_turno_novo`
+        self._turnos_usuario_antes = self._contar_turnos_usuario()
+        anterior = getattr(self, "_ultimo_prompt", "") or ""
         campo = sel.resolver(self.page, self.sel["campo"], "o campo de prompt")
         campo.click()
         _pausa(self.rng, 0.2, 0.5)
@@ -482,8 +630,73 @@ class ClienteLLM:
                 "cliquei em enviar mas nada mudou na tela: o campo continua "
                 "com o texto e nenhuma resposta comecou. Pode ser limite de "
                 "uso da conta ou um desafio na tela - abra a janela e olhe.")
+        self._prompt_anterior = anterior
         self._ultimo_prompt = prompt
         self.turnos += 1
+
+    def _contar_turnos_usuario(self) -> int:
+        """Quantos turnos do usuario a conversa mostra. -1 se nao souber.
+
+        O maior numero entre os seletores de `turno_usuario` (sao alternativas
+        de DOM; cada um casa uma vez por turno). Nunca levanta.
+        """
+        maior = -1
+        for seletor in self.sel.get("turno_usuario") or []:
+            try:
+                maior = max(maior, int(self.page.locator(seletor).count()))
+            except Exception:                                  # noqa: BLE001
+                continue
+        return maior
+
+    def _turno_e_o_prompt_atual(self):
+        """O ULTIMO turno do usuario na tela e o prompt que acabou de ir?
+
+        True/False; None quando nao da para provar: prompt curto, turno
+        ilegivel, ou o prompt anterior comeca igual (ai o texto nao distingue
+        um do outro). Compara os 40 primeiros caracteres, sem espacos
+        repetidos. Nunca levanta.
+        """
+        prompt = " ".join(str(getattr(self, "_ultimo_prompt", "") or "").split())
+        if len(prompt) < 40:
+            return None
+        try:
+            turno = " ".join(self._texto_do_turno_usuario().split())
+        except Exception:                                      # noqa: BLE001
+            return None
+        if not turno:
+            return None
+        cabeca = prompt[:40]
+        if cabeca not in turno:
+            return False
+        anterior = " ".join(str(getattr(self, "_prompt_anterior", "") or "").split())
+        if anterior[:40] == cabeca:
+            return None
+        return True
+
+    def _turno_novo(self):
+        """O envio criou um turno NOSSO na conversa? True/False/None (nao sei).
+
+        Auditoria de 11/10/2026 (HIS-3): `_envio_devolvido` desistia se havia
+        QUALQUER turno do usuario na tela, e `_resposta_nova` aceitava o texto
+        ancorado depois do ULTIMO turno do usuario sem conferir que ele era o
+        prompt de agora. Num chat com turnos, o site que devolvia a pergunta
+        para a caixa SEM criar turno fazia a resposta da parte N voltar como a
+        da parte N+1 — e a parte duplicada virava video.
+
+        A prova e a contagem: mais turnos do que antes do envio. Contagem
+        igual so passa se o texto do ultimo turno for, sem duvida, o prompt
+        de agora (pagina que descarrega turnos velhos). Sem contagem, vale o
+        texto. Sem nenhum dos dois (`None`), a espera segue como antes.
+        """
+        antes = getattr(self, "_turnos_usuario_antes", None)
+        if antes is None or not self.sel.get("turno_usuario"):
+            return None
+        atual = self._contar_turnos_usuario()
+        if antes >= 0 and atual >= 0:
+            if atual > antes:
+                return True
+            return self._turno_e_o_prompt_atual() is True
+        return self._turno_e_o_prompt_atual()
 
     def _envio_devolvido(self) -> bool:
         """A pergunta VOLTOU para a caixa de texto, sem resposta comecando?
@@ -1078,9 +1291,22 @@ class ClienteLLM:
         avisou_pagina = False
         from .texto import e_recusa_enlatada
         recusa_vista = ("", 0.0)
+        # O NOSSO TURNO TEM DE ESTAR NA CONVERSA antes de qualquer resposta
+        # valer (HIS-3, ver `_turno_novo`). Sem envio por este cliente (quem
+        # chama a espera direto) ou sem como contar, nao se confere.
+        turno_visto = (getattr(self, "_turnos_usuario_antes", None) is None
+                       or not self.sel.get("turno_usuario"))
 
         while time.monotonic() < fim:
             texto = self._resposta_nova()
+            if not turno_visto:
+                prova = self._turno_novo()
+                if prova is False:
+                    # o que esta depois do ultimo turno do usuario e a
+                    # resposta do turno ANTERIOR: nao e desta pergunta
+                    texto = ""
+                else:
+                    turno_visto = True
             if olha_aviso:
                 aviso = self.aviso_do_site()
                 if aviso["texto"]:
@@ -1107,7 +1333,7 @@ class ClienteLLM:
             calado = len(texto.strip()) < 40
             prontas = []
             achado = {}
-            if procura_imagem:
+            if procura_imagem and turno_visto:
                 achado = self.imagens_da_resposta()
                 prontas = self.imagens_prontas(achado, ja_na_tela)
                 estado = self._estado_da_imagem(achado, prontas)
@@ -1147,6 +1373,18 @@ class ClienteLLM:
                     f"do prazo de {timeout:.0f}s.")
             escrevendo = sel.encontrar(self.page, self.sel["parar"],
                                        timeout=0.3) is not None
+            # DEVOLVIDO NUM CHAT COM TURNOS (HIS-3): a pergunta voltou para a
+            # caixa e a conversa nao ganhou turno. O `_envio_devolvido` abaixo
+            # so ve a pagina de inicio; aqui a conversa anterior esta na tela
+            # e a resposta dela seria lida como desta pergunta.
+            if (not turno_visto and not escrevendo
+                    and time.monotonic() - inicio >= devolvido_apos):
+                if not diagnosticado:
+                    self._diagnosticar_calado()
+                raise LLMFalhou(
+                    f"o envio voltou para a caixa: nenhum turno novo na "
+                    f"conversa do {self.provedor} (a resposta na tela e a do "
+                    "turno anterior); a pergunta nao foi recebida.")
             if (calado and not escrevendo
                     and time.monotonic() - inicio >= devolvido_apos
                     and self._envio_devolvido()):
@@ -1211,6 +1449,11 @@ class ClienteLLM:
             time.sleep(1.0)
 
         texto = self._resposta_nova()
+        if not turno_visto and self._turno_novo() is False:
+            # no estouro, a mesma regra: sem o nosso turno, nada e desta pergunta
+            texto = ""
+            procura_imagem = False
+            self.imagens_na_resposta = []
         if procura_imagem:
             # no estouro, a MESMA regua: so a imagem final, fora de geracao
             achado = self.imagens_da_resposta()

@@ -332,9 +332,9 @@ def gravar_roteiro(historia_id: str, roteiro: dict):
     reserva = caminho.with_name("roteiro.antes_do_reparo.json")
     if not reserva.exists():
         shutil.copy2(caminho, reserva)
-    with open(caminho, "w", encoding="utf-8") as fh:
-        json.dump(roteiro, fh, ensure_ascii=False, indent=2)
-    return caminho
+    # Temporario + `os.replace` (HIS-1, 11/10/2026): um corte no meio desta
+    # gravacao truncava a serie inteira, e a reserva so guarda o 1o conserto.
+    return R._gravar_json_atomico(caminho, roteiro)
 
 
 __all__ = ["classificar", "confiavel", "fixar_protagonista", "gravar_roteiro",

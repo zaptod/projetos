@@ -248,11 +248,56 @@ def _carimbar(veredito: dict) -> dict:
     return veredito
 
 
+_ILEGIVEL_AVISADO = False
+
+
+def pareceres_legiveis() -> bool:
+    """`_pareceres.json` le (ou nao existe)? False = existe e nao le. Nunca
+    levanta."""
+    try:
+        _lembretes()
+    except Exception:                                          # noqa: BLE001
+        return False
+    return True
+
+
+def _avisar_pareceres_ilegiveis(exc: BaseException) -> None:
+    """Uma vez por processo, no diario. Nunca levanta."""
+    global _ILEGIVEL_AVISADO
+    if _ILEGIVEL_AVISADO:
+        return
+    _ILEGIVEL_AVISADO = True
+    try:
+        from builds import atividade
+        atividade.registrar(
+            "parecer", "aviso",
+            f"{LEMBRETES.name} nao le ({type(exc).__name__}: {str(exc)[:120]}); "
+            "toda parte conta como REPROVADA (retida) ate o arquivo voltar",
+            "historias", etapa="parecer.ilegivel")
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
 def situacao_do_video(video) -> str:
     """A `situacao` do ultimo parecer deste VIDEO (pelo id, como
-    `veto_por_id`), ou `""` se ninguem deu parecer. Nunca levanta."""
+    `veto_por_id`), ou `""` se ninguem deu parecer. Nunca levanta.
+
+    ARQUIVO ILEGIVEL = "reprovado" (auditoria de 14/10/2026). Era `""`, "sem
+    parecer": com `_pareceres.json` corrompido ou trancado, a parte que a IA
+    REPROVOU saia como se ninguem a tivesse visto — o contrario da lista "a
+    conferir", que falha fechada. Agora a valvula da publicacao
+    (`postar._retencao`, por `estado_do_video`) a segura como retida: so sai
+    se o horario fosse ficar vazio, e marcada "a conferir". Quem prefere o
+    outro lado (a agenda conta "a mais" para nao criar demais) pergunta antes
+    `pareceres_legiveis()`.
+    """
     try:
-        return situacao(_lembretes().get(str(getattr(video, "id", video))))
+        dados = _lembretes()
+    except Exception as exc:                                   # noqa: BLE001
+        _avisar_pareceres_ilegiveis(exc)
+        return SITUACAO_REPROVADO
+    try:
+        return situacao(dados.get(str(getattr(video, "id", video))))
     except Exception:                                          # noqa: BLE001
         return ""
 
@@ -1058,6 +1103,7 @@ def _pedir_em(provedor: str, video, roteiro: dict, parte: int, *,
 __all__ = ["pedir", "prompt", "ler_veredito", "folha_de_contato",
            "folha_por_cena", "situacao", "situacao_do_video", "nao_assistido",
            "marcar_nao_assistido", "consertado", "estado_do_video",
+           "pareceres_legiveis",
            "conserto_depois_do_parecer", "limpar_motivos_gravados",
            "REOLHAR_DEPOIS_DO_CONSERTO", "ESTADO_CONSERTADO",
            "SemParecer", "RecusaDoModelo", "APROVADO", "REPROVADO",

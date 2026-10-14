@@ -654,6 +654,39 @@ def _registrar_erro(resultado: dict) -> None:
         pass
 
 
+# NENHUM ESCRITOR NO MODELO FORTE (HIS-2). Decisao do Adrian no Grimorio
+# (`historias/gemini-sem-pro-escreve` = "cair", 13/10/2026): o roteiro nunca
+# sai do Flash; se o ultimo da ordem de queda tambem caiu por modelo fraco, a
+# rodada ESPERA (o proximo disparo tenta de novo) e o Telegram ouve uma vez
+# por dia — cada chat que abriu fraco ja e um `erro` no diario
+# (`llm.modelo_fraco`, pelo cliente).
+SEM_MODELO_FORTE = "sem modelo forte"
+
+
+def _e_modelo_fraco(exc: BaseException) -> bool:
+    """A excecao e `llm.cliente.ModeloFraco`? Pelo nome, sem importar o
+    cliente (ele puxa o navegador) dentro de um `except`."""
+    return any(c.__name__ == "ModeloFraco" for c in type(exc).__mro__)
+
+
+def _sem_modelo_forte(exc: BaseException, config: dict, log,
+                      historia_id: str | None = None) -> dict:
+    """A rodada que nao escreve porque ninguem esta no modelo forte."""
+    log(f"[auto] nenhum escritor no modelo forte ({exc}); nao escrevo no "
+        "modelo fraco — o proximo disparo tenta de novo.")
+    if config.get("avisar_telegram", True):
+        _avisar_uma_vez_por_dia(
+            "modelo-fraco",
+            "⚠️ *historias: roteiro em espera*\nnenhum escritor entrou no "
+            f"modelo forte ({str(exc)[:200]}). Nao escrevo no Flash; a "
+            "proxima rodada tenta de novo.", _relogio(), log)
+    resultado = {"feito": "nada", "motivo": SEM_MODELO_FORTE,
+                 "erro": str(exc)[:300]}
+    if historia_id:
+        resultado["historia_id"] = historia_id
+    return resultado
+
+
 def _cronometrar(resultado: dict, gasto: float) -> None:
     """Grava quanto a rodada levou. Nunca levanta.
 
@@ -665,7 +698,8 @@ def _cronometrar(resultado: dict, gasto: float) -> None:
         if resultado.get("motivo") in ("ja rodando", "pausado",
                                        "agenda desligada", "fora da janela",
                                        "sem tempo na janela", "estoque cheio",
-                                       "impedido", "sem escritor livre"):
+                                       "impedido", "sem escritor livre",
+                                       SEM_MODELO_FORTE):
             return
         from builds import atividade
         atividade.registrar(
@@ -695,7 +729,7 @@ def mensagem(resultado: dict, segundos: float) -> str | None:
         if motivo in ("ja rodando", "pausado", "agenda desligada",
                       "fora da janela", "sem tempo na janela",
                       "so consertar", "estoque cheio", "impedido",
-                      "sem escritor livre"):
+                      "sem escritor livre", SEM_MODELO_FORTE):
             return None
         return (f"❌ *a criacao automatica falhou*\n{motivo}\n"
                 f"{(resultado.get('erro') or '')[:300]}")
@@ -877,10 +911,14 @@ def _retida(video) -> bool:
 
     A MESMA leitura do `postar._retencao`: `parecer.situacao_do_video`, pelo
     id. A parte consertada que ninguem olhou continua "reprovado" ali.
-    Sem conseguir ler, NAO e retida (conta a mais, cria de menos).
+    Sem conseguir ler, NAO e retida (conta a mais, cria de menos). Desde
+    14/10/2026 `situacao_do_video` responde "reprovado" ao arquivo ilegivel
+    (a publicacao falha fechada); aqui a escolha continua a de antes.
     """
     try:
         from ..publicar import parecer
+        if not parecer.pareceres_legiveis():
+            return False
         return parecer.situacao_do_video(video) in (
             parecer.SITUACAO_REPROVADO, parecer.NAO_ASSISTIDO)
     except Exception:                                          # noqa: BLE001
@@ -1525,7 +1563,8 @@ def _fechar_passo(resultado: dict, gasto: float, config: dict) -> None:
     if resultado.get("erros") or resultado.get("motivo") not in (
             None, "", "ja rodando", "pausado", "agenda desligada",
             "fora da janela", "sem tempo na janela", "so consertar",
-            "estoque cheio", "impedido", "sem escritor livre"):
+            "estoque cheio", "impedido", "sem escritor livre",
+            SEM_MODELO_FORTE):
         # TODO ERRO NO MESMO LUGAR. `atividade.jsonl` e o ledger de
         # onde o bot tira os alertas e onde a apuracao automatica
         # procura o que investigar. As etapas ja registravam (imagens,
@@ -1899,6 +1938,9 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
                 tema=(config.get("tema") or None),
                 headless=headless, log=log, **extra)
         except Exception as exc:                               # noqa: BLE001
+            if _e_modelo_fraco(exc):
+                return _sem_modelo_forte(
+                    exc, config, log, getattr(exc, "historia_id", None))
             log(f"[auto] o roteiro FALHOU: {type(exc).__name__}: {exc}")
             return {"feito": "nada", "motivo": "roteiro falhou",
                     "erro": str(exc)}
@@ -2194,6 +2236,8 @@ def _retomar_texto(pipeline, historia_id: str, faltam: list,
         G.escrever_serie(ordem, historia_id=historia_id,
                          headless=headless, log=log)
     except Exception as exc:                                   # noqa: BLE001
+        if _e_modelo_fraco(exc):
+            return _sem_modelo_forte(exc, config, log, historia_id)
         # A retomada falha pelo mesmo motivo que a escrita falhou (limite de
         # uso, rede). Ela nao pode derrubar a rodada: a proxima tenta de novo,
         # e ate la a historia continua fora da fila de publicacao.

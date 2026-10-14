@@ -163,6 +163,30 @@ def _perguntar_com_prazo(sessao, texto: str, prazo_s: float) -> str:
     return perguntar(texto, prazo_s=prazo_s) if aceita else perguntar(texto)
 
 
+def _aceita_imagem(funcao) -> bool:
+    try:
+        import inspect
+        return "imagem" in inspect.signature(funcao).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def _chat_de_imagem(novo) -> None:
+    """`novo_chat` para um pedido de IMAGEM: sem trocar o modelo, se a sessao
+    sabe (HIS-11, 11/10/2026: a troca refeita a cada imagem somou ~1,9 h em
+    06-08/10, mediana de 32 s por chat)."""
+    if _aceita_imagem(novo):
+        novo(imagem=True)
+    else:
+        novo()
+
+
+def _reabrir_conversa_de_imagem(sessao, url: str) -> bool:
+    """`abrir_casa` na conversa propria de uma imagem, sem trocar o modelo."""
+    abrir = sessao.abrir_casa
+    return bool(abrir(url, imagem=True) if _aceita_imagem(abrir) else abrir(url))
+
+
 def config() -> dict:
     base = dict(PADRAO_CONFIG)
     try:
@@ -208,11 +232,24 @@ class SessaoReal:
     def modelo(self) -> str:
         return getattr(self.cliente, "modelo_atual", "") or ""
 
+    @property
+    def modelo_confirmado(self) -> bool:
+        """O chat esta no modelo forte? (IAS-9). `modelo_forte` do cliente
+        (HIS-2: o 2o da lista ou a conta sem o Pro NAO e forte); cliente sem o
+        atributo = `modelo_confirmado`; sem nenhum dos dois, True."""
+        forte = getattr(self.cliente, "modelo_forte", None)
+        if forte is None:
+            forte = getattr(self.cliente, "modelo_confirmado", True)
+        return bool(forte)
+
     def _sem_query(self, url: str) -> str:
         return re.sub(r"[?#].*$", "", str(url or "")).rstrip("/")
 
-    def abrir_casa(self, url: str) -> bool:
-        """Reabre o chat da casa. True so com PROVA de que a conversa carregou."""
+    def abrir_casa(self, url: str, imagem: bool = False) -> bool:
+        """Reabre o chat da casa. True so com PROVA de que a conversa carregou.
+
+        `imagem=True` (a conversa propria de uma imagem, na recuperacao) nao
+        mexe no modelo (HIS-11)."""
         from contos.llm import seletores as sel
         c = self.cliente
         site = self._sem_query(c.sel["url"])
@@ -233,11 +270,13 @@ class SessaoReal:
             return False
         c.turnos = 0
         c._ultima_resposta = ""
-        c.modelo_atual = c.escolher_modelo()
+        c.modelo_atual = c.escolher_modelo(False if imagem else None)
         return True
 
-    def novo_chat(self) -> None:
-        self.cliente.abrir(novo_chat=True)
+    def novo_chat(self, imagem: bool = False) -> None:
+        """Chat novo. `imagem=True` nao troca o modelo (HIS-11): o pedido de
+        imagem nao precisa do Pro, e a troca custava ~32 s por chat."""
+        self.cliente.abrir(novo_chat=True, trocar_modelo=not imagem)
 
     def perguntar(self, texto: str, anexos=None, prazo_s: float | None = None) -> str:
         c = self.cliente
@@ -406,6 +445,7 @@ class SessaoDuble:
         # ate la `url()` e a raiz (05/10/2026)
         self._url_da_conversa = ""
         self.casas_novas = 0
+        self.chats_de_imagem = 0
         from .imagem import SessaoImagemDuble
         # a imagem na casa: o mesmo dublê do PicassoIA, sem navegador
         self._imagem = SessaoImagemDuble(ia, falhar=imagem_falhar,
@@ -433,14 +473,19 @@ class SessaoDuble:
             return None
         return self._imagem.gerar_imagem(prompt, "1:1")
 
-    def abrir_casa(self, url: str) -> bool:
+    def abrir_casa(self, url: str, imagem: bool = False) -> bool:
+        if imagem:
+            self.chats_de_imagem += 1
         if url and self.casa_abre:
             self._url = url
             self._url_da_conversa = ""
             return True
         return False
 
-    def novo_chat(self) -> None:
+    def novo_chat(self, imagem: bool = False) -> None:
+        # quantos chats foram abertos SEM trocar o modelo (HIS-11)
+        if imagem:
+            self.chats_de_imagem += 1
         self.casas_novas += 1
         self._url = "https://duble.local/"
         self._url_da_conversa = (f"https://duble.local/{self.ia}/c/"
@@ -895,7 +940,7 @@ class Carteiro:
         mid = str(mensagem["id"])
         url_img = str((correio.uma(caixa, mid) or {}).get("chat_imagem_url") or "")
         if url_img:
-            if sessao.abrir_casa(url_img):
+            if _reabrir_conversa_de_imagem(sessao, url_img):
                 return self._turno_imagem(caixa, ia, sessao, mensagem, None, recuperar=True)
             motivo = (f"o Chrome caiu baixando a imagem e a conversa dela não reabriu "
                       f"({url_img[:90]}); não pedi outra")
@@ -1086,7 +1131,7 @@ class Carteiro:
                              "em conversa nova")
                     correio.atualizar(caixa, mid, nota="recusou a imagem; tentando de novo "
                                                        "em conversa nova")
-                    novo()
+                    _chat_de_imagem(novo)
                     resultado = (sessao.gerar_imagem(
                         REFORCO_IMAGEM + prompt, proporcao, mid, anexos=anexos)
                         if anexos else sessao.gerar_imagem(REFORCO_IMAGEM + prompt,
@@ -1161,7 +1206,7 @@ class Carteiro:
             # consigo gerar imagens"). A casa fica so para texto.
             novo = getattr(sessao, "novo_chat", None)
             if callable(novo):
-                novo()
+                _chat_de_imagem(novo)
                 self._fora_da_casa = True
                 return self._turno_imagem(caixa or ia, ia, sessao, mensagem, None)
             if casa is None:
@@ -1248,6 +1293,14 @@ class Carteiro:
             casa["mensagens"] = int(casa.get("mensagens") or 0) + 1
             casa["falhas_seguidas"] = 0
             correio.gravar_casa(ia, casa)
+        # O MODELO QUE RESPONDEU FICA COM NOTA quando nao e o forte (IAS-9,
+        # 11/10/2026): antes a resposta era gravada com o modelo fraco ou
+        # vazio, e nada dizia que a troca de modelo nao tinha pegado.
+        if getattr(sessao, "modelo_confirmado", True) is False:
+            fraco = (f"modelo não confirmado (saiu em "
+                     f"{getattr(sessao, 'modelo', '') or 'desconhecido'})")
+            extra["nota"] = (f"{extra['nota']}; {fraco}" if extra.get("nota")
+                             else fraco)[:300]
         atualizada = correio.atualizar(
             ia, mid, situacao="respondida", resposta=resposta,
             respondida_em=correio.agora(), dur_s=round(dur, 1),
@@ -1313,6 +1366,10 @@ class Carteiro:
         rotulo = correio.ROTULOS.get(ia, ia)
         if mensagem["situacao"] == "respondida":
             texto = f"💬 {rotulo} respondeu:\n{str(mensagem.get('resposta') or '')[:1500]}"
+            nota = str(mensagem.get("nota") or "")
+            if mensagem.get("de") == "adrian" and "modelo não confirmado" in nota:
+                # a pergunta foi DELE: ele precisa saber em que modelo saiu (IAS-9)
+                texto += f"\n({nota[nota.index('modelo não confirmado'):][:120]})"
         else:
             texto = (f"⚠ {rotulo}: não consegui entregar sua mensagem — "
                      f"{mensagem.get('erro') or 'sem motivo'}")

@@ -15,15 +15,109 @@ de continuar). O CLI e o painel mostram os dois.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
+import threading
+import time
 import unicodedata
 from datetime import datetime
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
 OUTPUTS = RAIZ / "outputs"
+
+# QUANTAS VEZES A TROCA DO ARQUIVO E TENTADA quando o Windows a recusa
+# (`PermissionError`: o painel, o postar ou um antivirus com o arquivo aberto
+# para leitura). O mesmo numero do ledger (`metricas.reescrever_ledger`).
+TENTATIVAS_DE_TROCA = 3
+
+
+def _gravar_json_atomico(caminho, dados) -> Path:
+    """Grava `dados` em `caminho` SEM nunca deixar meio arquivo no lugar dele.
+
+    Auditoria de 11/10/2026 (HIS-1, critico): `roteiro.json` e `biblia.json`
+    eram gravados com `open(..., "w")` direto no arquivo final, e o
+    `roteiro.json` e regravado a CADA parte pronta. Um processo que morre no
+    meio (queda de luz, a tarefa do Windows encerrada, um `json.dump` que
+    levanta na metade) deixava o JSON truncado: `listar()` pulava a pasta
+    calado (some do rodizio, das incompletas e do painel), `carregar`
+    levantava e a queda de provedor tratava a historia como "nova" — e
+    escrevia OUTRA biblia na mesma pasta, por cima das cenas da antiga.
+
+    Agora: escreve num temporario ao lado (nome com pid e thread, para dois
+    gravadores nunca dividirem o mesmo), `flush` + `fsync`, e so entao troca
+    com `os.replace` — que no mesmo disco e atomico: quem le ve o arquivo
+    velho inteiro ou o novo inteiro. `PermissionError` na troca (leitor com o
+    arquivo aberto no Windows) espera um pouco e tenta de novo, ate
+    `TENTATIVAS_DE_TROCA`; depois levanta, e o arquivo de antes fica intacto.
+    O temporario nunca sobra.
+    """
+    caminho = Path(caminho)
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    temporario = caminho.with_name(
+        f"{caminho.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        with open(temporario, "w", encoding="utf-8") as fh:
+            json.dump(dados, fh, ensure_ascii=False, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        for tentativa in range(TENTATIVAS_DE_TROCA):
+            try:
+                os.replace(temporario, caminho)
+                break
+            except PermissionError:
+                if tentativa >= TENTATIVAS_DE_TROCA - 1:
+                    raise
+                time.sleep(0.2 * (tentativa + 1))
+    finally:
+        with contextlib.suppress(OSError):
+            if temporario.exists():
+                temporario.unlink()
+    return caminho
+
+
+# O ROTEIRO ILEGIVEL VAI AO DIARIO, uma vez por pasta e por dia (HIS-1). Sem
+# isso a historia sumia de `listar()` sem rastro nenhum. A marca do dia mora
+# em disco porque `listar()` roda em varios processos (agenda, postar,
+# painel); o conjunto em memoria so poupa reler a marca no mesmo processo.
+MARCA_DOS_ILEGIVEIS = "_roteiros_ilegiveis.json"
+_ILEGIVEIS_AVISADOS: set = set()
+
+
+def _avisar_ilegivel(pasta: Path, exc: BaseException) -> None:
+    """Um `aviso` no diario (etapa `roteiro.ilegivel`). Nunca levanta."""
+    try:
+        hoje = datetime.now().strftime("%Y-%m-%d")
+        chave = (str(pasta), hoje)
+        if chave in _ILEGIVEIS_AVISADOS:
+            return
+        _ILEGIVEIS_AVISADOS.add(chave)
+        marca = Path(pasta).parent / MARCA_DOS_ILEGIVEIS
+        try:
+            with open(marca, encoding="utf-8-sig") as fh:
+                vistos = json.load(fh)
+            if not isinstance(vistos, dict):
+                vistos = {}
+        except (OSError, ValueError):
+            vistos = {}
+        if vistos.get(Path(pasta).name) == hoje:
+            return
+        vistos = {k: v for k, v in vistos.items() if v == hoje}
+        vistos[Path(pasta).name] = hoje
+        with contextlib.suppress(Exception):
+            _gravar_json_atomico(marca, vistos)
+        from builds import atividade
+        atividade.registrar(
+            "estudio", "aviso",
+            f"{Path(pasta).name}: o roteiro.json nao le "
+            f"({type(exc).__name__}: {str(exc)[:120]}); a historia fica fora "
+            "do rodizio, das incompletas e do painel ate o arquivo ser "
+            "consertado", "historias", etapa="roteiro.ilegivel",
+            ref=Path(pasta).name)
+    except Exception:                                          # noqa: BLE001
+        pass
 
 # Rotulos aceitos para cada campo, sem acento e em caixa baixa.
 CHAVES = {
@@ -927,9 +1021,8 @@ def salvar_serie(biblia: dict, partes: list, historia_id: str | None = None, *,
         "quedas": [dict(q) for q in quedas],
     }
     normalizar(dados)
-    with open(pasta / "roteiro.json", "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
-    return pasta / "roteiro.json"
+    # Atomico (HIS-1): regravado a cada parte, um corte aqui truncava a serie.
+    return _gravar_json_atomico(pasta / "roteiro.json", dados)
 
 
 def registrar_queda(historia_id: str, queda: dict) -> None:
@@ -939,11 +1032,8 @@ def registrar_queda(historia_id: str, queda: dict) -> None:
         with open(caminho, encoding="utf-8-sig") as fh:
             dados = json.load(fh)
         dados["quedas"] = list(dados.get("quedas") or []) + [dict(queda)]
-        temporario = caminho.with_name("roteiro.json.tmp")
-        with open(temporario, "w", encoding="utf-8") as fh:
-            json.dump(dados, fh, ensure_ascii=False, indent=2)
-        os.replace(temporario, caminho)
-    except (OSError, ValueError, AttributeError):
+        _gravar_json_atomico(caminho, dados)
+    except (OSError, ValueError, TypeError, AttributeError):
         pass
 
 
@@ -1109,8 +1199,7 @@ def salvar(roteiro: dict, historia_id: str | None = None, *,
     }
     if not dados["titulo"] and dados["cenas"]:
         dados["titulo"] = dados["cenas"][0]["narracao"][:100]
-    with open(pasta / "roteiro.json", "w", encoding="utf-8") as fh:
-        json.dump(dados, fh, ensure_ascii=False, indent=2)
+    _gravar_json_atomico(pasta / "roteiro.json", dados)
     if bruto:
         (pasta / "roteiro_bruto.txt").write_text(bruto, encoding="utf-8")
     return pasta / "roteiro.json"
@@ -1134,7 +1223,12 @@ def listar():
         try:
             with open(caminho, encoding="utf-8-sig") as fh:
                 dados = json.load(fh)
-        except (OSError, ValueError):
+        except ValueError as exc:
+            # Truncado ou corrompido: continua fora da lista (nao ha o que
+            # mostrar), mas agora deixa rastro no diario (HIS-1).
+            _avisar_ilegivel(pasta, exc)
+            continue
+        except OSError:
             continue
         dados["pasta"] = str(pasta)
         saida.append(normalizar(dados))

@@ -249,8 +249,12 @@ class Pipeline:
                 config=self.roteiro_config, tipo=tipo, ao_tentar=ao_tentar,
                 ao_falhar=ao_falhar, ao_nascer=ao_nascer, log=log)
         except Exception as exc:
-            atividade.registrar(vez["provedor"], "erro", str(exc)[:200],
-                                "historias", etapa="roteiro",
+            # MODELO FRACO NAO E ERRO DE NOVO (HIS-2): o cliente ja pos o
+            # `erro` (etapa `llm.modelo_fraco`) quando abriu o chat, e a
+            # agenda avisa uma vez por dia. Aqui so fecha o `inicio`.
+            fraco = any(c.__name__ == "ModeloFraco" for c in type(exc).__mro__)
+            atividade.registrar(vez["provedor"], "aviso" if fraco else "erro",
+                                str(exc)[:200], "historias", etapa="roteiro",
                                 dur_s=_time.monotonic() - vez["comeco"])
             raise
         provedor, comeco = vez["provedor"], vez["comeco"]

@@ -289,7 +289,26 @@ imagem_prompt: chatgpt                         (reescreve prompt recusado)
 
 O Gemini é o último no roteiro **porque é o único que assiste vídeo**: prendê-lo numa
 geração de horas tiraria o juiz do ar. Conta ocupada passa ao próximo livre, sem
-esperar. O `provedor: gemini` de `agenda.json` é só o fallback de
+esperar.
+
+**Roteiro só no modelo forte** (14/10/2026, HIS-2; decisão `historias/gemini-sem-pro-escreve`
+= "cair", b339bbb). `cliente.modelo_forte` = o modelo em uso é o **1º** da preferência
+(`_alvo_casado == 0`); cair no 2º ("flash") ou numa conta sem o Pro termina a escolha
+(`modelo_confirmado`), mas **não** é forte — antes o Flash passava como "confirmado".
+DeepSeek (`modelo_fixo`) e site sem menu de modelo (ChatGPT) são fortes. No papel `roteiro`,
+`abrir()` fora do forte grava `erro` no diário (etapa `llm.modelo_fraco`, o bot leva ao
+Telegram) e levanta `ModeloFraco(LLMFalhou)`: `escrever_serie` passa ao próximo, e a queda de
+antes da bíblia entra no `quedas` de quem escreveu. Se o **último** cai assim, a agenda devolve
+`motivo: "sem modelo forte"` (sem "roteiro falhou", sem `_registrar_erro`) e avisa no Telegram
+**uma vez por dia** (`_avisar_uma_vez_por_dia("modelo-fraco")`): a rodada espera. Outros papéis
+(parecer, conserto) só ganham `aviso`. Testes: `tests/test_modelo_fraco_cai_regressions.py`.
+**Troca de modelo que falhou não é refeita inteira** (HIS-11): falhou há < 600 s
+(`_FALHA_DE_MODELO`, por provedor), 1 tentativa sem espera; e o chat de **imagem** do carteiro
+abre sem mexer no modelo (`abrir(trocar_modelo=False)`, `escolher_modelo(False)`,
+`SessaoReal.novo_chat(imagem=True)`) — medido em 06–08/10: 210 chats, mediana 32 s, ~1,9 h. A
+resposta de conversa do carteiro fora do forte leva a nota "modelo não confirmado (saiu em X)"
+(IAS-9), e o Telegram de pergunta do Adrian também. Testes: `tests/test_modelo_forte_regressions.py`,
+`ias/test_modelo_no_carteiro.py`. O `provedor: gemini` de `agenda.json` é só o fallback de
 `agenda.provedores_do_roteiro()` quando `llm.json` falta. Desde 29/09/2026 `seletores.py`
 também tem o **Grok** (`grok.com`, perfil `grok__principal`, login pessoal do Adrian) — ele
 **não** está em nenhum papel: entrou pela Vila das IAs (`ias/`, `docs/ias/fichas.md`), que
@@ -365,7 +384,25 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
 
 - **Resposta lida pela posição**: `.nth(total-1)` pegava a resposta *anterior* em chat
   com vários turnos. `cliente._resposta_atual()` faz scroll até o fim e usa âncora — a
-  resposta é a que vem **depois** do último turno do usuário.
+  resposta é a que vem **depois** do último turno do usuário. **A âncora não bastava**
+  (14/10/2026, HIS-3): se o site devolvia a pergunta à caixa **sem criar turno**, o "último
+  turno do usuário" era o da parte anterior e a resposta dela voltava como nova (~12 s; a
+  parte duplicada virava vídeo). `enviar` conta os turnos do usuário antes de colar
+  (`_turnos_usuario_antes`); a espera só aceita resposta depois que a contagem sobe
+  (`_turno_novo`; contagem igual só passa se o texto do último turno for, sem dúvida, o
+  prompt de agora — página que descarrega turno velho) e, passado `devolvido_apos_s` sem
+  turno novo, levanta "o envio voltou para a caixa: nenhum turno novo". Quem espera sem ter
+  enviado por aquele cliente não é conferido. Testes:
+  `tests/test_envio_devolvido_com_turnos_regressions.py`.
+- **roteiro.json/biblia.json pela metade** (14/10/2026, HIS-1): eram gravados com
+  `open("w")` direto, regravados a cada parte; um corte deixava o JSON truncado, `listar()`
+  pulava calado e a queda de provedor via "nova" e escrevia outra bíblia por cima das cenas.
+  Agora todo gravador (`salvar_serie`, `salvar`, `registrar_queda`, `gerar._gravar`,
+  `conserto_de_cena.gravar_roteiro`) passa por `roteiro._gravar_json_atomico` (temporário com
+  pid, `fsync`, `os.replace`, 3 tentativas em `PermissionError`); `gerar._situacao` responde
+  `"ilegivel"` para arquivo que existe e não lê, e `escrever_serie` levanta sem chamar
+  provedor nenhum; `listar()` registra `aviso` `roteiro.ilegivel` uma vez por pasta e por dia
+  (`outputs/_roteiros_ilegiveis.json`). Testes: `tests/test_roteiro_gravacao_atomica_regressions.py`.
 - **Botão de parar que casava com "Comparar"**: `aria-label*='Parar'` pegava o
   histórico da barra lateral ("Fixar **Comparar** defeitos…") e o parecer ficou 8 min
   com APROVADO na tela e o cliente dizendo "escrevendo". O rótulo tem de **começar**
@@ -694,7 +731,11 @@ de folha. **`aprovado` continua sendo a palavra do revisor** e não mudou de sen
 `postar.py` lê esse campo, e trocá-lo mudaria a escolha antes de a válvula existir. Para
 ler, use `parecer.situacao(ficha)` (nas fichas antigas, sem o campo, deduz de `aprovado`
 + `vista`), `parecer.situacao_do_video(video_ou_id)` (pelo id, como `veto_por_id`) ou
-`parecer.nao_assistido(video_ou_id)`. O estoque desta parte (`qualidade.liberado`,
+`parecer.nao_assistido(video_ou_id)`. **`_pareceres.json` ilegível** (14/10/2026):
+`situacao_do_video` responde `reprovado` (era `""`, e a parte reprovada saía livre), com um
+`aviso` `parecer.ilegivel` por processo; a válvula da publicação a segura como retida.
+`agenda._retida` mantém "sem ler, conta a mais" (pergunta antes `parecer.pareceres_legiveis()`).
+Testes: `tests/test_pareceres_ilegiveis_regressions.py`. O estoque desta parte (`qualidade.liberado`,
 `aprovados_no_estoque`) **ainda conta** `nao_assistido` como aprovado — mas desde 30/09 o
 número que **decide criar** é o da publicação (`agenda.estoque_publicavel`, §1a), que já
 tira as retidas.
