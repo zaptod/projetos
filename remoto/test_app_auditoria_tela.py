@@ -25,7 +25,7 @@ pytestmark = pytest.mark.skipif(not NAVEGADOR, reason="so com NF_TESTE_NAVEGADOR
 
 
 @contextlib.contextmanager
-def _pagina(servidor, parear=True, erros=None):
+def _pagina(servidor, parear=True, erros=None, tema="light", tamanho=(390, 844)):
     from patchright.sync_api import sync_playwright
 
     base = f"http://127.0.0.1:{servidor.server_address[1]}"
@@ -33,8 +33,9 @@ def _pagina(servidor, parear=True, erros=None):
     erros = [] if erros is None else erros
     with sync_playwright() as pw:
         nav = pw.chromium.launch(channel="chrome", headless=True)
-        ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True,
-                              has_touch=True, service_workers="block")
+        ctx = nav.new_context(viewport={"width": tamanho[0], "height": tamanho[1]},
+                              is_mobile=True, has_touch=True, service_workers="block",
+                              color_scheme=tema)
         ctx.set_default_timeout(8000)
         page = ctx.new_page()
         page.on("pageerror", lambda erro: erros.append(str(erro)))
@@ -301,3 +302,108 @@ def test_continuar_espera_a_lista_de_builds(tela_isolada, monkeypatch):  # noqa:
         page.locator("#dialogo-campos button[value='cancelar']").click()
         page.locator("#dialogo-campos:not([open])").wait_for(state="attached")
     assert not acoes, acoes
+
+
+# ===================================== achados do conferente (14/10, casca v70)
+TELAS = [("light", (390, 844)), ("dark", (390, 844)), ("light", (844, 390))]
+
+
+def _nome(tema, tamanho):
+    return f"{'claro' if tema == 'light' else 'escuro'}-{tamanho[0]}x{tamanho[1]}"
+
+
+def _estilo(locator):
+    return locator.evaluate(
+        "e => { const s = getComputedStyle(e); return {espaco: s.letterSpacing, "
+        "alinhado: s.textAlign, fonte: s.fontSize, largura: e.getBoundingClientRect().width}; }")
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS)
+def test_busca_e_fps_do_atelie_sem_o_estilo_do_codigo(tela_isolada, tema, tamanho):  # noqa: F811
+    """A regra `input {24px; letter-spacing .3em; centro}` era do código de
+    pareamento e valia para todo campo: a busca do Ateliê saía
+    "n o m e  d a  p e ç a" e o FPS "12", "1 2"."""
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "arena", "arena")
+        _abrir_aba(page, "arena", "atelie")
+        page.locator("#anim-grupos button").first.wait_for(state="visible")
+        page.locator("#anim-faltam").click()
+        busca = page.locator("#anim-busca")
+        busca.wait_for(state="visible")
+        busca.fill("nome da peça")
+        estilo = _estilo(busca)
+        assert estilo["espaco"] == "normal" and estilo["alinhado"] in ("left", "start"), estilo
+        assert estilo["fonte"] == "15px", estilo
+        page.screenshot(path=str(CAPTURAS / f"v70-atelie-busca-{_nome(tema, tamanho)}.png"))
+        # o FPS mora no editor de uma animação
+        busca.fill("")
+        page.locator("#anim-grupos button").first.click()
+        page.locator("#anim-lista .anim-peca").first.click()
+        page.locator("#anim-lista button").first.click()
+        page.locator("#anim-lista .anim-cartao-abrir").first.click()
+        fps = page.locator("#anim-fps-numero")
+        fps.wait_for(state="visible")
+        estilo = _estilo(fps)
+        assert estilo["espaco"] == "normal" and estilo["alinhado"] in ("left", "start"), estilo
+        fps.scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v70-atelie-fps-{_nome(tema, tamanho)}.png"))
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS)
+def test_o_campo_do_codigo_de_pareamento_continua_igual(tela_isolada, tema, tamanho):  # noqa: F811
+    with _pagina(tela_isolada, parear=False, tema=tema, tamanho=tamanho) as page:
+        codigo = page.locator("#codigo")
+        codigo.wait_for(state="visible")
+        codigo.fill("123456")
+        estilo = _estilo(codigo)
+        assert estilo["fonte"] == "24px" and estilo["alinhado"] == "center", estilo
+        assert abs(float(estilo["espaco"].rstrip("px")) - 24 * 0.3) < 0.1, estilo   # .3em
+        page.screenshot(path=str(CAPTURAS / f"v70-parear-{_nome(tema, tamanho)}.png"))
+
+
+def test_faixa_sem_pc_tem_o_mesmo_vao_em_pe_e_deitado(tela_isolada, monkeypatch):  # noqa: F811
+    """Conferente, 14/10: deitado (844x390) a faixa terminava em y=118 e as
+    abas começavam em y=121 (3 px); em pé o vão era 10 px."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    vaos = {}
+    for tamanho in ((390, 844), (844, 390)):
+        fora["sim"] = False
+        with _pagina(tela_isolada, tamanho=tamanho) as page:
+            page.wait_for_timeout(3000)                     # a carga da Vila assenta
+            fora["sim"] = True
+            _abrir_objeto(page, "agora", "agora")
+            _abrir_aba(page, "agora", "coordenador")
+            page.locator("#aviso:not(.oculto)").wait_for(state="visible")
+            page.wait_for_timeout(500)
+            faixa = page.locator("#aviso").bounding_box()
+            abas = page.locator("#tela-coordenador .abas-objeto").bounding_box()
+            vaos[tamanho] = abas["y"] - (faixa["y"] + faixa["height"])
+            page.screenshot(path=str(CAPTURAS / f"v70-faixa-vao-{tamanho[0]}x{tamanho[1]}.png"))
+    em_pe, deitado = vaos[(390, 844)], vaos[(844, 390)]
+    assert 8 <= em_pe <= 12 and abs(em_pe - deitado) <= 1, vaos
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS)
+def test_coordenador_com_o_pc_fora_diz_que_os_dados_estao_indisponiveis(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Conferente, 14/10: com o PC fora, TRABALHO, SERVIÇOS e O QUE ACONTECEU
+    ficavam em branco, como se não houvesse nada."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        page.wait_for_timeout(3000)
+        fora["sim"] = True
+        _abrir_objeto(page, "agora", "agora")
+        _abrir_aba(page, "agora", "coordenador")
+        page.wait_for_function("() => document.querySelector('#coord-topo')"
+                               ".innerText.includes('SEM DADOS')", timeout=8000)
+        for cartao in ("#coord-trabalho", "#coord-servicos", "#coord-eventos"):
+            texto = page.locator(cartao).inner_text()
+            assert texto.startswith("Dados indisponíveis:") and "servidor do app" in texto, texto
+        page.screenshot(path=str(CAPTURAS / f"v70-coordenador-sem-pc-{_nome(tema, tamanho)}.png"),
+                        full_page=True)
+        # o PC volta: o retrato de verdade substitui o aviso
+        fora["sim"] = False
+        page.locator("#btn-tentar").click(timeout=3000)
+        page.wait_for_function("() => !document.querySelector('#coord-topo')"
+                               ".innerText.includes('SEM DADOS')", timeout=8000)
+        assert "servidor do app" not in page.locator("#coord-servicos").inner_text()

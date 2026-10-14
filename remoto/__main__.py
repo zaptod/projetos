@@ -130,6 +130,9 @@ def main(argv=None) -> int:
     return ligar()
 
 
+LIGAR_ESPERA_S = 15.0
+
+
 def ligar() -> int:
     """Liga o bot, se ja nao houver um no ar.
 
@@ -144,9 +147,14 @@ def ligar() -> int:
         _limpar_consertos_orfaos()
         Bot().rodar()
         return 0
-    with travas.trava("remoto__bot", esperar=0.0) as minha:
+    # Espera ate LIGAR_ESPERA_S: numa religada (coordenador ou Agendador) o
+    # bot antigo ainda esta soltando o arquivo da trava. Com esperar=0 o novo
+    # saia na hora, e o coordenador contava "caiu: processo ausente" (APP-8).
+    with travas.trava("remoto__bot", esperar=LIGAR_ESPERA_S) as minha:
         if not minha:
-            print("[remoto] ja tem um bot no ar; este sai sem fazer nada.")
+            from .bot import carimbar
+            print(carimbar("[remoto] ja tem um bot no ar; este sai sem fazer nada."),
+                  flush=True)
             return 0
         _limpar_consertos_orfaos()
         Bot().rodar()

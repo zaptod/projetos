@@ -1105,9 +1105,14 @@ def situacao_da_filha(item: dict) -> dict:
     pasta = Path(item.get("pasta") or "")
     terminou = bool(item.get("pasta")) and (pasta / "fim.json").is_file()
     filha = vivo_de_verdade(item.get("pid"), item.get("criado"))
-    # O filho.json e escrito logo depois do main.py nascer. Ausente COM fim:
-    # o main.py nem chegou a nascer (o fim traz o erro). Ausente SEM fim, ou
-    # ilegivel: nao sei — e "nao sei" nao solta.
+    # A filha grava `filho.json = {pid: null}` ANTES de abrir o main.py, e o
+    # pid logo depois. O fim.json so sai depois do main.py acabar (ou do
+    # Popen falhar). Entao:
+    #   - ausente COM fim, ou SEM fim e com a filha morta de verdade: o
+    #     main.py nunca foi aberto;
+    #   - pid null COM fim: o Popen falhou, ou o wait() ja voltou;
+    #   - pid null SEM fim, ausente com a filha viva/sem resposta, ou
+    #     ilegivel: nao sei — e "nao sei" nao solta (so o --forcar).
     filho = None
     if item.get("pasta"):
         try:
@@ -1115,9 +1120,12 @@ def situacao_da_filha(item: dict) -> dict:
         except ValueError:
             filho_json = {}
         if filho_json is None:
-            filho = False if terminou else None
+            filho = False if (terminou or filha is False) else None
         elif isinstance(filho_json, dict) and filho_json.get("pid"):
             filho = vivo_de_verdade(filho_json.get("pid"), filho_json.get("criado"))
+        elif (isinstance(filho_json, dict) and "pid" in filho_json
+              and filho_json["pid"] is None and terminou):
+            filho = False
     return {"terminou": terminou, "filha": filha, "filho": filho}
 
 
@@ -1175,38 +1183,58 @@ def conciliar() -> list[str]:
     return chaves
 
 
-def _pode_soltar(item: dict) -> str:
+def _pode_soltar(item: dict, forcar: bool = False) -> str:
     """"" se o item pode sair do em-voo; senao, o motivo.
 
     Enquanto a publicacao PODE estar rodando, soltar libera um segundo
     publicar do mesmo video (no YouTube em rascunho, uma duplicata).
     Pode estar rodando = sem fim.json e com a filha ou o main.py vivos (ou
     sem dar para saber), ou com fim.json mas o main.py ainda vivo.
+
+    `forcar` passa por cima do "nao sei" (None), nunca de um processo que
+    esta VIVO de verdade: e para o caso em que a pasta nao conta a historia
+    toda e o Adrian conferiu no canal.
     """
     estado = situacao_da_filha(item)
-    if estado["filho"] is not False:
+    if estado["filho"] is True or (estado["filho"] is None and not forcar):
         return "o main.py dessa publicação ainda pode estar rodando"
-    if not estado["terminou"] and estado["filha"] is not False:
-        return "essa publicação ainda não terminou"
+    if not estado["terminou"]:
+        if estado["filha"] is True or (estado["filha"] is None and not forcar):
+            return "essa publicação ainda não terminou"
     return ""
 
 
-def liberar(video_id: str) -> int:
+def liberar(video_id: str, forcar: bool = False) -> int:
     """Tira do "em voo" as publicacoes daquele video. A marca do TikTok fica.
 
     Recusa (levanta `Recusa`) se alguma delas ainda puder estar rodando.
+    Com `forcar` (CLI `--liberar X --confirmo --forcar`, depois de conferir
+    no canal), solta o que e "nao sei", recusa o que esta vivo, e deixa uma
+    linha no diario.
     """
     with trava_de_acoes():
         dados = em_voo()
         fora = [k for k, v in dados.items() if mesmo_video(v.get("id"), video_id)]
+        forcados = []
         for chave in fora:
-            motivo = _pode_soltar(dados[chave])
+            motivo = _pode_soltar(dados[chave], forcar=forcar)
             if motivo:
                 raise Recusa(f"não solto {video_id}: {motivo}")
+            if forcar and _pode_soltar(dados[chave]):
+                forcados.append(chave)
         for chave in fora:
             del dados[chave]
         if fora:
             _gravar_json(caminho_em_voo(), dados)
+    if forcados:
+        # LOG, nao ERRO: e um registro do que o Adrian fez, nao algo a apurar.
+        with contextlib.suppress(Exception):
+            from builds import atividade
+            atividade.registrar(
+                "publicacao", atividade.LOG,
+                f"{video_id}: solto do em-voo à força (--forcar), sem prova de que "
+                f"a publicação acabou ({len(forcados)} item(ns)); conferido no "
+                "canal pelo Adrian.", "builds", etapa="app.liberar", ref=video_id)
     return len(fora)
 
 

@@ -41,6 +41,7 @@ import argparse
 import base64
 import binascii
 import contextlib
+import copy
 import errno
 import hashlib
 import hmac
@@ -56,6 +57,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -251,6 +253,10 @@ FALHAS_JANELA_S = 10 * 60
 # Uma conexao lenta (ou um POST que promete corpo e nao manda) nao pode
 # prender uma thread para sempre, nem abrir threads sem fim.
 TIMEOUT_S = 15
+# O corpo que a rota recusou sem ler (401, 403...) e lido e jogado fora ate
+# este tamanho, com este prazo (ver `Manipulador._drenar_corpo`).
+DRENAR_MAX = 1024 * 1024
+DRENAR_PRAZO_S = 0.5
 CONEXOES_MAX = 32
 VENCIDOS_MAX = 1000                      # bilhetes vencidos que ainda lembramos
 # O celular que fecha a conexao no meio da resposta (trocou de tela, perdeu a
@@ -632,12 +638,83 @@ def _trava_config():
     return trava_arquivo(caminho().with_suffix(".lock"))
 
 
-def ler_config() -> dict:
+class ConfigIlegivel(OSError):
+    """O `app_celular.json` existe, mas nao deu para ler agora (Windows)."""
+
+
+# APP-3 (14/10): no Windows, o `os.replace` de quem grava (`--parear`,
+# `--esquecer`) falha com PermissionError enquanto o servidor tem o arquivo
+# aberto para ler (todo pedido le), e a leitura que cai no meio da troca
+# tambem. Antes a leitura que falhava virava `{}` -> o token valido virava
+# 401 -> o celular apagava o token e pedia pareamento de novo.
+CONFIG_TENTATIVAS_LER = 3
+CONFIG_TENTATIVAS_GRAVAR = 40          # ate ~2 s: so o `--parear`/`--esquecer` espera
+CONFIG_ESPERA_S = 0.05
+# caminho -> ((st_mtime_ns, st_size), dados): a ultima leitura que deu certo
+_CONFIG_LIDA: dict[str, tuple] = {}
+_CONFIG_LIDA_GUARDA = threading.Lock()
+
+
+def _assinatura(alvo: Path):
     try:
-        with open(caminho(), encoding="utf-8") as fh:
-            dados = json.load(fh)
-    except (OSError, ValueError):
-        dados = {}
+        info = alvo.stat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return False
+    return (info.st_mtime_ns, info.st_size)
+
+
+def _ler_config_do_disco(alvo: Path):
+    """O JSON do disco; None se o arquivo nao existe. PermissionError tenta de
+    novo e, esgotado, levanta `ConfigIlegivel`. Conteudo invalido -> {}."""
+    for tentativa in range(CONFIG_TENTATIVAS_LER + 1):
+        try:
+            with open(alvo, encoding="utf-8") as fh:
+                dados = json.load(fh)
+            return dados if isinstance(dados, dict) else {}
+        except FileNotFoundError:
+            return None
+        except ValueError:
+            return {}
+        except OSError as exc:
+            if tentativa >= CONFIG_TENTATIVAS_LER:
+                raise ConfigIlegivel(f"não consegui ler {alvo.name}: {exc}") from exc
+            time.sleep(CONFIG_ESPERA_S)
+    return None                                              # pragma: no cover
+
+
+def ler_config(estrito: bool = False) -> dict:
+    """A config, com os padroes. Nunca "nao consegui ler" vira "sem aparelhos".
+
+    Arquivo inalterado (mesmo mtime e tamanho) vem da memoria, sem abrir:
+    menos leituras = menos `os.replace` recusado para quem grava. Leitura
+    que falha com o arquivo existindo usa a ultima que deu certo; sem ela
+    (ou com `estrito`, que quem vai GRAVAR usa), levanta `ConfigIlegivel`.
+    """
+    alvo = caminho()
+    chave = os.path.normcase(str(alvo))
+    assinatura = _assinatura(alvo)
+    with _CONFIG_LIDA_GUARDA:
+        guardada = _CONFIG_LIDA.get(chave)
+    if assinatura and guardada and guardada[0] == assinatura:
+        dados = copy.deepcopy(guardada[1])
+    else:
+        try:
+            dados = _ler_config_do_disco(alvo)
+        except ConfigIlegivel:
+            if estrito or guardada is None:
+                raise
+            dados = copy.deepcopy(guardada[1])
+        else:
+            if dados is None:
+                dados = {}
+            else:
+                depois = _assinatura(alvo)
+                # so guarda se nada mudou entre o stat e a leitura
+                if assinatura and depois == assinatura:
+                    with _CONFIG_LIDA_GUARDA:
+                        _CONFIG_LIDA[chave] = (assinatura, copy.deepcopy(dados))
     dados.setdefault("porta", PORTA_PADRAO)
     dados.setdefault("aparelhos", [])
     dados.setdefault("pareamento", None)
@@ -650,7 +727,16 @@ def gravar_config(dados: dict) -> None:
     temporario = alvo.with_suffix(".tmp")
     with open(temporario, "w", encoding="utf-8") as fh:
         json.dump(dados, fh, ensure_ascii=False, indent=2)
-    os.replace(temporario, alvo)
+    for tentativa in range(CONFIG_TENTATIVAS_GRAVAR):
+        try:
+            os.replace(temporario, alvo)
+            return
+        except PermissionError:
+            if tentativa == CONFIG_TENTATIVAS_GRAVAR - 1:
+                with contextlib.suppress(OSError):
+                    temporario.unlink()
+                raise
+            time.sleep(CONFIG_ESPERA_S)
 
 
 def _hash(texto: str) -> str:
@@ -662,7 +748,7 @@ def novo_codigo(agora: float | None = None) -> str:
     codigo = f"{secrets.randbelow(10**6):06d}"
     agora = time.time() if agora is None else agora
     with _trava_config():
-        dados = ler_config()
+        dados = ler_config(estrito=True)
         dados["pareamento"] = {"hash": _hash(codigo),
                                "expira": agora + CODIGO_VALE_S,
                                "tentativas": 0}
@@ -675,7 +761,7 @@ def trocar_codigo(codigo: str, nome: str, agora: float | None = None) -> str | N
     agora = time.time() if agora is None else agora
     codigo = re.sub(r"\D", "", str(codigo or ""))
     with _trava_config():
-        dados = ler_config()
+        dados = ler_config(estrito=True)
         pedido = dados.get("pareamento")
         if not pedido or agora > float(pedido.get("expira", 0)):
             return None
@@ -711,7 +797,7 @@ def esquecer(id_curto: str) -> int:
     if len(id_curto) < 8:
         return 0
     with _trava_config():
-        dados = ler_config()
+        dados = ler_config(estrito=True)
         antes = len(dados["aparelhos"])
         dados["aparelhos"] = [a for a in dados["aparelhos"]
                               if id_do_aparelho(a) != id_curto]
@@ -833,6 +919,14 @@ class Estado:
         self.vencidos: dict[str, float] = {}
         self.vencidos_paginas: dict[str, float] = {}
         self.falhas: dict[str, list] = {}        # ip -> [instantes]
+        # O parear tem balde PROPRIO, alimentado so por codigo errado (APP-2,
+        # 14/10): atras do `tailscale serve` tudo chega de 127.0.0.1, e os
+        # 401 de um token velho e os bilhetes de antes de uma religada enchiam
+        # o balde comum — o celular novo, com o codigo CERTO, levava 429.
+        self.falhas_parear: dict[str, list] = {}
+        # Bilhetes vivem so na memoria: um `/v/` de antes da subida e de um
+        # celular que ainda tinha o video aberto, nao chute.
+        self.subiu_em = time.time()
 
     def _podar(self, agora: float) -> None:
         for chave, (_, expira, _dono) in list(self.bilhetes.items()):
@@ -884,8 +978,11 @@ class Estado:
             vencido = chave in self.vencidos
         if achado is None:
             return (None, "vencido" if vencido else "inventado")
-        if not aparelho_existe(achado[2]):
-            return (None, "revogado")
+        try:
+            if not aparelho_existe(achado[2]):
+                return (None, "revogado")
+        except ConfigIlegivel:
+            return (None, "ilegivel")
         return (achado[0], "ok")
 
     def bilhete_pagina(self, pagina: str, dono: str) -> str:
@@ -904,21 +1001,32 @@ class Estado:
             vencido = chave in self.vencidos_paginas
         if achado is None:
             return (None, "vencido" if vencido else "inventado")
-        if not aparelho_existe(achado[2]):
-            return (None, "revogado")
+        try:
+            if not aparelho_existe(achado[2]):
+                return (None, "revogado")
+        except ConfigIlegivel:
+            return (None, "ilegivel")
         return (achado[0], "ok")
 
-    def bloqueado(self, ip: str) -> bool:
+    def _balde(self, parear: bool) -> dict:
+        return self.falhas_parear if parear else self.falhas
+
+    def bloqueado(self, ip: str, parear: bool = False) -> bool:
         agora = time.time()
+        balde = self._balde(parear)
         with self.trava:
-            recentes = [t for t in self.falhas.get(ip, [])
+            recentes = [t for t in balde.get(ip, [])
                         if agora - t < FALHAS_JANELA_S]
-            self.falhas[ip] = recentes
+            balde[ip] = recentes
             return len(recentes) >= FALHAS_MAX
 
-    def falhou(self, ip: str) -> None:
+    def falhou(self, ip: str, parear: bool = False) -> None:
         with self.trava:
-            self.falhas.setdefault(ip, []).append(time.time())
+            self._balde(parear).setdefault(ip, []).append(time.time())
+
+    def recem_subido(self) -> bool:
+        """Ainda dentro do prazo de um bilhete emitido pelo servidor anterior."""
+        return time.time() - self.subiu_em < BILHETE_VALE_S
 
 
 def _inteiro(consulta: dict, chave: str, padrao: int) -> int:
@@ -1046,23 +1154,18 @@ class Manipulador(BaseHTTPRequestHandler):
         self.estado.falhou(ip)
         return False
 
+    def _token_ilegivel(self) -> None:
+        # nao e 401: o 401 faz o celular APAGAR o token (APP-3)
+        self._dono, self._id = "", ""
+        self._erro(503, "o PC está ocupado lendo os aparelhos; tente de novo")
+
     def _aparelho(self) -> str | None:
         bruto = self.headers.get("Authorization", "")
         token = bruto[7:].strip() if bruto.lower().startswith("bearer ") else ""
-        aparelho = aparelho_do_token(token)
-        if aparelho is None and not self._barrar_chute():
-            self._erro(401, "nao pareado")
-        self._dono = _hash(token) if aparelho is not None else ""
-        self._id = self._dono[:8]
-        return aparelho
-
-    def _aparelho_do_video_da_arena(self, consulta: dict) -> str | None:
-        """`video src` nao envia Authorization; esta e a unica rota com `?t`."""
-        bruto = self.headers.get("Authorization", "")
-        token = bruto[7:].strip() if bruto.lower().startswith("bearer ") else ""
-        if not token:
-            token = str((consulta.get("t") or [""])[0])
-        aparelho = aparelho_do_token(token)
+        try:
+            aparelho = aparelho_do_token(token)
+        except ConfigIlegivel:
+            return self._token_ilegivel()
         if aparelho is None and not self._barrar_chute():
             self._erro(401, "nao pareado")
         self._dono = _hash(token) if aparelho is not None else ""
@@ -1079,11 +1182,63 @@ class Manipulador(BaseHTTPRequestHandler):
         except CLIENTE_SAIU:
             self._cliente_saiu()
 
+    # Ja mandou a linha de status desta resposta? (um 500 depois disso
+    # escreveria uma segunda resposta no meio da primeira)
+    _respondeu = False
+    _corpo_lido = False
+
+    def send_response(self, code, message=None):
+        self._respondeu = True
+        super().send_response(code, message)
+
     def do_POST(self):
+        self._respondeu = self._corpo_lido = False
         try:
             self._post()
         except CLIENTE_SAIU:
             self._cliente_saiu()
+        except Exception as exc:                             # noqa: BLE001
+            # APP-14: como o `_get`, nunca uma conexao fechada sem status. Uma
+            # linha no log (tipo e onde, sem a mensagem: ela pode trazer o
+            # que o cliente mandou), nao o traceback da biblioteca.
+            quadro = traceback.extract_tb(exc.__traceback__)[-1:]
+            onde = f"{Path(quadro[0].filename).name}:{quadro[0].lineno}" if quadro else "?"
+            self._log(f"500 {type(exc).__name__} em {onde}")
+            if self._respondeu:
+                self.close_connection = True
+            else:
+                self._erro(500, type(exc).__name__)
+        finally:
+            self._drenar_corpo()
+
+    def _drenar_corpo(self) -> None:
+        """Le (e joga fora) o corpo que a rota recusou sem ler.
+
+        No Windows, fechar o socket com bytes nao lidos manda RST, e o
+        cliente pode perder a resposta que ja estava a caminho (o 401 de um
+        POST virava ConnectionAbortedError no teste da Arena, 1 em 5).
+        Prazo curto: quem prometeu corpo e nao mandou nao prende a thread.
+        """
+        if self._corpo_lido or self._saiu:
+            return
+        try:
+            tamanho = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            return
+        if not 0 < tamanho <= DRENAR_MAX:
+            if tamanho > 0:
+                self.close_connection = True
+            return
+        antes = self.connection.gettimeout()
+        try:
+            self.connection.settimeout(DRENAR_PRAZO_S)
+            self.rfile.read(tamanho)
+        except (OSError, ValueError):
+            self.close_connection = True
+        finally:
+            self._corpo_lido = True
+            with contextlib.suppress(OSError):
+                self.connection.settimeout(antes)
 
     # ------------------------------------------------------------- GET
     def _get(self):
@@ -1107,9 +1262,6 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._video_por_bilhete(rota[3:])
         if rota.startswith("/p/"):
             return self._pagina_por_bilhete(rota[3:])
-        achado = re.fullmatch(r"/api/arena/video/(" + ID_DE_LUTA.pattern + r")\.mp4", rota)
-        if achado:
-            return self._video_da_arena(achado.group(1), consulta)
         if not rota.startswith("/api/"):
             return self._erro(404, "nao existe")
         if self._aparelho() is None:
@@ -1121,11 +1273,16 @@ class Manipulador(BaseHTTPRequestHandler):
             if rota == "/api/arena/opcoes":
                 return self._json(opcoes_da_arena())
             if rota == "/api/arena/lutas":
+                # O video vai por bilhete `/v/`, como o resto (APP-5, 14/10):
+                # ate entao a URL levava `?t=<token>`, o token PERMANENTE que
+                # vale para a API inteira. O bilhete e reaproveitado enquanto
+                # vale: a lista relida nao troca o `src` do <video> tocando.
                 lutas = lutas_da_arena()
-                token = self.headers.get("Authorization", "")[7:].strip()
                 for luta in lutas:
                     if luta.pop("video"):
-                        luta["video_url"] = f"/api/arena/video/{luta['id']}.mp4?t={token}"
+                        arquivo = pasta_da_arena() / luta["id"] / "luta.mp4"
+                        luta["video_url"] = "/v/" + self.estado.bilhete_reusado(
+                            arquivo, self._dono)
                 return self._json({"lutas": lutas})
             if rota == "/api/animacoes/arvore":
                 return self._json({"grupos": atelie_animacoes.arvore()})
@@ -1368,7 +1525,9 @@ class Manipulador(BaseHTTPRequestHandler):
             self._erro(413, "corpo invalido")
             return None
         try:
-            corpo = json.loads(self.rfile.read(tamanho).decode("utf-8"))
+            self._corpo_lido = True          # lido ou tentado: nada a drenar
+            bruto = self.rfile.read(tamanho)
+            corpo = json.loads(bruto.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             corpo = None
         if not isinstance(corpo, dict):
@@ -1439,14 +1598,15 @@ class Manipulador(BaseHTTPRequestHandler):
             return self._correio_post(achado.group(1), False)
         if rota != "/api/parear":
             return self._erro(404, "nao existe")
-        if self.estado.bloqueado(self.client_address[0]):
+        # balde proprio: so codigo errado conta aqui (ver Estado.falhas_parear)
+        if self.estado.bloqueado(self.client_address[0], parear=True):
             return self._erro(429, "tentativas demais; espere alguns minutos")
         corpo = self._corpo()
         if corpo is None:
             return
         token = trocar_codigo(corpo.get("codigo", ""), corpo.get("nome", ""))
         if token is None:
-            self.estado.falhou(self.client_address[0])
+            self.estado.falhou(self.client_address[0], parear=True)
             return self._erro(403, "codigo errado ou vencido")
         return self._json({"token": token})
 
@@ -1620,14 +1780,17 @@ class Manipulador(BaseHTTPRequestHandler):
 
         if rota == "/api/acao":
             nome = str(corpo.get("acao") or "")[:20]
+            args = corpo.get("args") or {}
+            if not isinstance(args, dict):
+                return self._erro(400, "args invalido")
             if nome == "publicar" and not self.estado.com_publicar:
                 return self._erro(403, "publicar está desligado neste servidor")
             if (not self.estado.com_perigosas
-                    and comandos_app.e_perigosa(nome, corpo.get("args") or {})):
+                    and comandos_app.e_perigosa(nome, args)):
                 return self._erro(403, "a zona de perigo está desligada "
                                        "neste servidor")
             try:
-                pedido = acoes.preparar(nome, corpo.get("args") or {}, self._id)
+                pedido = acoes.preparar(nome, args, self._id)
             except acoes.Recusa as exc:
                 return self._erro(409, str(exc))
             if pedido["dois_passos"]:
@@ -2171,6 +2334,8 @@ class Manipulador(BaseHTTPRequestHandler):
         if corpo is None:
             return
         texto = str(corpo.get("texto") or "")
+        if not isinstance(corpo.get("anexos") or [], list):
+            return self._erro(400, "anexos invalidos")
         anexos = []
         try:
             for item in (corpo.get("anexos") or [])[:4]:
@@ -2290,11 +2455,16 @@ class Manipulador(BaseHTTPRequestHandler):
 
     def _video_por_bilhete(self, chave: str):
         arquivo, motivo = self.estado.arquivo_do_bilhete(chave)
+        if motivo == "ilegivel":
+            return self._erro(503, "o PC está ocupado lendo os aparelhos; tente de novo")
         if motivo == "vencido":
             return self._erro(410, "bilhete vencido; abra o video de novo")
         if motivo == "revogado":
             return self._erro(403, "aparelho esquecido")
         if arquivo is None:
+            if self.estado.recem_subido():
+                # bilhete do servidor de antes da religada: nao e chute
+                return self._erro(404, "bilhete desconhecido")
             if not self._barrar_chute():
                 self._erro(404, "bilhete desconhecido")
             return
@@ -2349,49 +2519,18 @@ class Manipulador(BaseHTTPRequestHandler):
         except (ConnectionError, OSError):
             pass          # o celular fechou o video no meio: normal
 
-    def _video_da_arena(self, luta_id: str, consulta: dict):
-        """MP4 da Arena pelo id conhecido e token da URL, com Range para avancar."""
-        if self._aparelho_do_video_da_arena(consulta) is None:
-            return
-        arquivo = pasta_da_arena() / luta_id / "luta.mp4"
-        if not arquivo.is_file():
-            return self._erro(404, "video nao encontrado")
-        try:
-            total = arquivo.stat().st_size
-        except OSError:
-            return self._erro(404, "arquivo sumiu")
-        inicio, fim = intervalo(self.headers.get("Range", ""), total)
-        if inicio is None:
-            self.send_response(416)
-            self.send_header("Content-Range", f"bytes */{total}")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-            return
-        tamanho = fim - inicio + 1
-        self.send_response(206)
-        self._cabecalhos_comuns("video/mp4", tamanho)
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Content-Range", f"bytes {inicio}-{fim}/{total}")
-        self.end_headers()
-        try:
-            with open(arquivo, "rb") as fh:
-                fh.seek(inicio)
-                while tamanho > 0:
-                    pedaco = fh.read(min(65536, tamanho))
-                    if not pedaco:
-                        break
-                    self.wfile.write(pedaco)
-                    tamanho -= len(pedaco)
-        except (ConnectionError, OSError):
-            pass
-
     def _pagina_por_bilhete(self, chave: str):
         pagina, motivo = self.estado.pagina_do_bilhete(chave)
+        if motivo == "ilegivel":
+            return self._erro(503, "o PC está ocupado lendo os aparelhos; tente de novo")
         if motivo == "vencido":
             return self._erro(404, "bilhete vencido; abra a pagina de novo")
         if motivo == "revogado":
             return self._erro(403, "aparelho esquecido")
         if pagina is None:
+            if self.estado.recem_subido():
+                # bilhete do servidor de antes da religada: nao e chute
+                return self._erro(404, "bilhete desconhecido")
             if not self._barrar_chute():
                 self._erro(404, "bilhete desconhecido")
             return
@@ -2566,6 +2705,10 @@ def main(argv=None) -> int:
                              "regenerar, mexer em conta)")
     parser.add_argument("--confirmo", action="store_true",
                         help="com --liberar: solta de verdade (sem ele, so mostra)")
+    parser.add_argument("--forcar", action="store_true",
+                        help="com --liberar --confirmo: solta mesmo sem dar para "
+                             "saber se a publicacao acabou (nunca um processo vivo). "
+                             "So depois de conferir no canal")
     parser.add_argument("--acoes", action="store_true",
                         help="liga a fase 2 (pausar, parar, gerar, publicar)")
     parser.add_argument("--local", action="store_true",
@@ -2625,12 +2768,15 @@ def main(argv=None) -> int:
                   "NÃO sai por aqui.")
             return 0
         try:
-            saiu = acoes.liberar(args.liberar)
+            saiu = acoes.liberar(args.liberar, forcar=args.forcar)
         except OSError as exc:
             print(f"não consegui soltar agora: {exc}. Tente de novo em instantes.")
             return 3
         except acoes.Recusa as exc:
             print(str(exc))
+            if not args.forcar:
+                print("Se você conferiu no canal e nada roda (veja o Gerenciador "
+                      "de Tarefas), repita com --forcar.")
             return 1
         print(f"liberados: {saiu}" if saiu else "esse vídeo não está em voo")
         return 0 if saiu else 1

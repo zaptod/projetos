@@ -20,4 +20,8 @@ def _claude_isolado(tmp_path, monkeypatch):
     monkeypatch.setattr(avisos, "REGISTRO", tmp_path / "avisos" / "avisos_enviados.jsonl")
     # e a fila de pendentes: o bot de verdade mandaria ao Adrian o aviso de teste
     monkeypatch.setattr(avisos, "PENDENTES", tmp_path / "avisos" / "avisos_pendentes.jsonl")
+    # e a marca-d'agua dos alertas do bot (APP-11): um Bot() de teste nao pode
+    # avancar a do bot de verdade e calar um erro real
+    from remoto import bot
+    monkeypatch.setattr(bot, "BOT_VISTO", tmp_path / "bot" / "bot_visto.json")
     yield

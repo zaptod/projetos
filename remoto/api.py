@@ -131,14 +131,27 @@ class Telegram:
             return {"ok": False, "description": str(exc)}
 
     # -------------------------------------------------------------- receber
-    def novidades(self, desde: int | None = None, timeout: int = 30) -> list:
-        """As mensagens novas. Lista vazia quando nao ha (ou a rede caiu)."""
+    def novidades(self, desde: int | None = None, timeout: int = 30) -> list | None:
+        """As mensagens novas: lista (vazia quando nao ha nada), ou None quando
+        a rede caiu (o `chamar` devolveu `{}`).
+
+        A diferenca importa (APP-9, 14/10): sem rede o `chamar` volta NA HORA,
+        e o laco do bot, sem saber, girava ~2.700 voltas por segundo
+        remontando o relatorio vencido a cada uma.
+        """
         resposta = self.chamar("getUpdates", offset=desde, timeout=timeout,
                                allowed_updates='["message"]')
+        if not resposta:
+            return None
         return resposta.get("result") or []
 
+    def eu_bruto(self) -> dict:
+        """A resposta inteira do `getMe`: `{}` = sem rede; `error_code` 401/404
+        = token errado de verdade."""
+        return self.chamar("getMe") or {}
+
     def eu(self) -> dict:
-        return (self.chamar("getMe") or {}).get("result") or {}
+        return self.eu_bruto().get("result") or {}
 
 
 def _multipart(campos: dict, nome_arquivo: str, caminho: Path) -> tuple:

@@ -208,6 +208,9 @@ function faixasMedir() {
   for (const f of document.querySelectorAll("body > .aviso:not(.oculto)"))
     alto = Math.max(alto, f.getBoundingClientRect().height);
   document.body.style.setProperty("--faixa-alto", alto ? `${Math.ceil(alto + 8)}px` : "0px");
+  // deitado, a folha começa 8 px mais alto (56 e não 64): com a faixa à vista
+  // o vão entre ela e as abas caía de 10 para 3 px (conferente, 14/10)
+  document.body.classList.toggle("com-faixa", alto > 0);
 }
 const faixasVigia = new MutationObserver(faixasMedir);
 for (const f of document.querySelectorAll("body > .aviso"))

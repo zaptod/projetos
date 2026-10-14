@@ -285,6 +285,7 @@ python -m remoto.api_http --local --porta 8934 --acoes                # instânc
 python -m remoto.api_http --parear      # código de 6 dígitos (5 min, uma vez)
 python -m remoto.api_http --aparelhos   # id, nome, desde
 python -m remoto.api_http --em-voo      # publicações sem desfecho
+python -m remoto.api_http --liberar ID [--confirmo [--forcar]]   # --forcar: só o "não sei", depois de conferir no canal
 python -m remoto.tarefas                # tarefas recentes e como terminaram
 python -m remoto.decisoes arvore [--projeto P]      # a árvore em texto
 python -m remoto.decisoes listar [--projeto P] [--situacao pendente]
@@ -419,9 +420,12 @@ DOM e clicando.
     está parado e a bandeja fechada; depois espera até 30 s e diz o que fez.
     Desde 05/10 ela abre **pelo `explorer.exe`** (§20): aberta direto, a
     bandeja era filha do bot e morria no `taskkill /t /f` de cada religada;
-  - `status` que não responde **não é "fora"**: ela pergunta de novo na hora
-    e só avisa "❔ não sei se o app está no tailnet" depois de 3 olhadas
-    seguidas sem resposta (§20);
+  - `status` que não responde **não é "fora"** e **não vai ao Telegram**
+    (desde 14/10, APP-15: o "❔ não sei" de 05/10 deu 12 mensagens vazias
+    em 12/10): vai ao log do bot. Depois de 3 olhadas seguidas sem resposta
+    ela abre a URL do app no tailnet (`https://<maquina>.ts.net/`, do último
+    `status`) e só avisa se ela não responder 200. Uma sonda por olhada (a
+    segunda, 5 s depois, saiu), cada comando com prazo de 10 s;
   - só roda `status --json`, `serve status --json` e `tasklist`, e há teste
     que varre o fonte atrás de `funnel`, `set`, `up` e `--bg`;
   - desliga com `"vigiar_tailnet": false` no `remoto.json`.
@@ -2420,6 +2424,8 @@ tailnet: não consegui perguntar o estado" entre 23:00 e 00:06 eram o
   ainda é consertada).
 
 Testes em `test_vigia_tailnet.py` (+11; 10 falham contra o código de antes).
+**Mudou em 14/10 (APP-15):** o "não sei" não vai mais ao Telegram; ver §4 e
+"Consertos da auditoria profunda: API e bot" no fim.
 A outra metade do item 13 (o supervisor religando sem esperar a edição, e o
 `_parar` poupando a bandeja) é do coordenador.
 
@@ -2507,9 +2513,11 @@ timeline do manual e renderiza o MP4 no palco. Só um render da Arena roda por
 vez, para não dividir a GPU do Godot.
 
 As lutas ficam em `random_builds/outputs/_palco/arena/<id>/`. A tela mostra as
-20 mais recentes, incluindo falhas e vencedor; o MP4 toca inline por Range. O
-token vai em `?t=` somente nessa URL de vídeo, porque `<video>` não envia o
-cabeçalho Authorization.
+20 mais recentes, incluindo falhas e vencedor; o MP4 toca inline por Range.
+Desde 14/10 (APP-5) o vídeo vai por **bilhete** `/v/<bilhete>` (10 min,
+reaproveitado enquanto vale: a lista relida não troca o `src`), como o
+Cinema. Até então a URL levava `?t=<token>`, o token permanente do aparelho;
+a rota `/api/arena/video/<id>.mp4` saiu.
 ## Painel de partes de sprite (06/10/2026)
 
 No topo do Ateliê há **Montar sprites**. Ele separa Lutador, Armas,
@@ -2978,3 +2986,110 @@ e7ea729 e 3 deles falhavam ainda na entrega do Codex.
 - **Continuar do diálogo** (item 10): desligado até a lista de Geração/História
   chegar e ter um id; a lista de um diálogo anterior não libera o atual.
 - **Prova de tela antiga** (item 11): espera `#anim-grupos button`.
+
+# Consertos da auditoria profunda: API e bot (14/10/2026, casca v70)
+
+Os itens de `docs/auditoria/2026-10-11-profunda/consertos/app-e-bot.md` vindos
+de `remoto-api.md` e `remoto-bot.md` (APP-1 a 5 e 8 a 16), mais três achados
+do conferente na v69. Nada aqui muda o que o app pode disparar.
+
+**Publicação e tarefas**
+- **Em-voo preso (APP-1).** A `publicacao_filha` grava `filho.json = {pid:
+  null, fase: abrindo}` ANTES do Popen e o pid num `try` próprio depois; o
+  `fim.json` só sai depois do `wait()` (antes, uma falha ao gravar o pid
+  pulava o `wait` e o fim saía em 0,02 s com o `main.py` publicando). A
+  `situacao_da_filha`: sem `filho.json`, sem fim e com a filha morta de
+  verdade = o `main.py` nunca abriu (`filho False`; a vigia conclui como "a
+  conferir" em vez de esperar 6 h); `pid null` com fim = acabou; `pid null`
+  sem fim = não sei. Para o "não sei" que ninguém resolve:
+  `--liberar ID --confirmo --forcar` (nunca solta processo VIVO; deixa uma
+  linha `log` no diário, etapa `app.liberar`).
+- **Tarefas (APP-4).** `rodando()` olha TODAS as pastas sem `fim.json` (não
+  só as 40 mais novas); a filha que não sobe grava `fim.json` com "não
+  subiu: …"; ficha sem pid e sem `filho.json` há mais de 60 s vira "sumiu";
+  o estado usa a mesma regra do em-voo; `limpar_velhas` alcança todas.
+
+**Servidor do app**
+- **Parear (APP-2).** Balde de falhas PRÓPRIO (`Estado.falhas_parear`), só
+  com código errado: os 401 de token velho e os bilhetes de antes de uma
+  religada (todos chegam como 127.0.0.1) não bloqueiam mais o celular novo.
+  Nos primeiros `BILHETE_VALE_S` depois da subida, `/v/` e `/p/` inventados
+  dão 404 sem contar como chute.
+- **`--parear`/`--esquecer` com o app aberto (APP-3).** Medido no código de
+  antes, 4 leitores do token contra 200 gravações: 199 gravações com
+  PermissionError e 3 tokens válidos lidos como "não pareado"; depois, 0 e 0.
+  `gravar_config` tenta o `os.replace` até 40 vezes (50 ms; com 10, o teste
+  ainda falhava 3 em 5 dentro do pytest) e apaga o `.tmp` se desistir;
+  `ler_config` relê em PermissionError, serve da memória o arquivo que não
+  mudou (mtime e tamanho: menos aberturas, menos `replace` recusado) e, se
+  não abrir, usa a última leitura boa. Sem nenhuma, `ConfigIlegivel` → o
+  pedido leva **503**, nunca 401 (o 401 faz o celular apagar o token). Quem
+  grava lê com `estrito=True` (nunca a cópia).
+- **POST (APP-14).** `do_POST` tem o `except → 500` do GET (uma linha no log
+  com tipo e arquivo:linha, sem a mensagem); `args` que não é objeto dá 400,
+  `anexos` que não é lista dá 400, texto de campo que começa com "-" é
+  recusado ("não comece com hífen"). O corpo que a rota recusou sem ler
+  (401, 403) é drenado: sem isso o Windows mandava RST e o cliente perdia a
+  resposta (o teste da Arena falhava 1 em 5).
+- **Arena (APP-5).** Vídeo por bilhete, sem token na URL (ver "Arena").
+
+**Bot do Telegram**
+- **Religada (APP-8).** O bot novo espera a trava `remoto__bot` até 15 s
+  (`LIGAR_ESPERA_S`) e a linha "já tem um bot no ar" sai com hora. A
+  assinatura do serviço em `coordenador/servicos.json` já estava trocada
+  (não casa `--avisar`/`--apurar`; teste em `coordenador/test_um_gerente_so.py`).
+- **Sem rede (APP-9, APP-10).** `Telegram.novidades` devolve `None` quando a
+  rede caiu (e `[]` quando não há nada); a volta sem rede dorme 10 s. O
+  relatório vencido montado é reaproveitado por até 1 h enquanto não sai (o
+  `montar` consulta Agendador e OAuth). O `getMe` sem rede espera, tentando
+  a cada 30 s, com uma linha só no log; o bot só sai com 401/404 (token
+  errado de verdade). `Bot(dormir=...)` para os testes.
+- **Alertas perdidos (APP-11).** A marca-d'água sobrevive à religada:
+  `bot_visto.json` (ao lado do `remoto.json`; `bot.BOT_VISTO` nos testes,
+  isolado no `conftest`) guarda o ts do último erro tratado e as marcas
+  daquele segundo. A primeira subida (sem o arquivo) continua sem despejar o
+  histórico. Os 5 erros novos mais novos saem um a um; os demais vão juntos
+  em "❗ e mais N erro(s): …" (porteiro e fila como os outros).
+- **Porteiro e fila entre processos (APP-12, APP-13).** `avisos.liberar`,
+  `confirmar`, `desfazer`, `guardar_pendentes` e `enfileirar` rodam sob a
+  trava `avisos.lock` (ao lado do `avisos_estado.json`; entre processos e
+  reentrante; sem a trava em 10 s, segue sem ela). `enfileirar` acrescenta
+  uma linha; `pendentes()` lê linha a linha (linha ruim é pulada e contada
+  em `ULTIMA_LEITURA_RUIM`); o bot tira da fila só o que entregou, calou ou
+  descartou (`retirar_pendentes`, relendo-a sob a trava).
+- **Miúdos (APP-16).** `funcionamento(agora)` corta pelo `agora` recebido
+  (com teto nele); autorizado não numérico no `remoto.json` é ignorado em
+  vez de derrubar o bot; `salvar` mantém chave fora do `PADRAO`; o aviso
+  agrupado da fila leva só o que o porteiro liberou.
+- **Vigia do tailnet (APP-15).** Ver §4: sem resposta vai ao log; aviso só
+  com a URL do app sem 200.
+
+**Casca v70 (achados do conferente na v69)**
+- **Campo de pareamento vazando.** A regra `input {24px; letter-spacing .3em;
+  centro}` virou `input#codigo`; o `input` comum tem 15 px, espaçamento
+  normal e texto à esquerda (a busca do Ateliê saía "n o m e  d a  p e ç a" e
+  o FPS "12" virava "1 2"). O campo do código continua igual (24 px, .3em,
+  centro).
+- **Faixa deitada.** Deitado o `.livro` começa em 56 px (em pé, 64): com a
+  faixa "sem conexão" o vão até as abas caía para 3 px. O `faixasMedir` põe
+  `body.com-faixa`, e deitado com faixa usa a base de 64 px: 10 px nos dois.
+- **Coordenador com o PC fora.** Trabalho, Serviços e O que aconteceu dizem
+  "Dados indisponíveis: <por quê>" (sem rede; servidor do app parado com
+  502/503/504; erro N; ou o coordenador fora do ar) e o topo diz "SEM
+  DADOS"; o retrato velho sai, e a próxima leitura boa redesenha.
+
+**Provas:** `remoto/test_acoes.py` (em-voo e `--forcar`),
+`remoto/test_tarefas.py` (novo), `remoto/test_api_http.py` (parear, config
+concorrente com 4 leitores e 200 gravações reais, POST 400/500, corpo
+drenado), `remoto/test_arena.py`, `remoto/test_comandos_app.py` (hífen),
+`remoto/test_remoto.py` (trava da religada, `getMe` sem rede, APP-16),
+`remoto/test_avisos.py` (300 `liberar` em dois processos, fila durante a
+entrega, linha ruim, religada, 7 erros), `remoto/test_telegram_entrega.py`
+(volta sem rede, relatório uma vez), `remoto/test_vigia_tailnet.py`. Tela:
+`remoto/test_app_auditoria_tela.py` (`NF_TESTE_NAVEGADOR=1`; capturas
+`<TEMP>/tela_app/v70-*.png`, claro, escuro e 844x390).
+
+**Fica para quem reinicia:** o app (casca v70 e `api_http`) e o bot (laço,
+avisos, vigia) só valem depois de `python -m coordenador reiniciar app` e
+`... reiniciar bot`, fora de :25–:55. Na primeira subida o bot novo cria o
+`bot_visto.json`.

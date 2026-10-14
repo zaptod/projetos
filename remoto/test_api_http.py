@@ -259,10 +259,42 @@ def test_chutes_demais_bloqueiam_o_ip(servidor, monkeypatch):
         _pedir(servidor, "GET", "/api/estado", token="chute")
     resp, _ = _pedir(servidor, "GET", "/api/estado", token="chute")
     assert resp.status == 429
-    resp, _ = _pedir(servidor, "POST", "/api/parear", {"codigo": "000000"})
-    assert resp.status == 429
+    # passado o prazo dos bilhetes do servidor anterior, bilhete inventado e
+    # chute e leva o 429 do balde comum
+    servidor.RequestHandlerClass.estado.subiu_em -= api_http.BILHETE_VALE_S + 1
     resp, _ = _pedir(servidor, "GET", "/v/bilhete-inventado")
     assert resp.status == 429
+    # o parear tem balde proprio (APP-2): so codigo errado o enche
+    resp, _ = _pedir(servidor, "POST", "/api/parear", {"codigo": "000000"})
+    assert resp.status == 403
+    for _ in range(2):
+        _pedir(servidor, "POST", "/api/parear", {"codigo": "000000"})
+    resp, _ = _pedir(servidor, "POST", "/api/parear", {"codigo": "000000"})
+    assert resp.status == 429
+
+
+def test_parear_nao_bloqueia_por_token_velho(servidor):
+    """APP-2: 20 pedidos com o token de antes (401) enchiam o balde do IP, e
+    todo pedido chega como 127.0.0.1: o celular novo, com o codigo certo,
+    levava 429 por 10 min."""
+    for _ in range(api_http.FALHAS_MAX):
+        assert _pedir(servidor, "GET", "/api/estado", token="velho")[0].status == 401
+    assert _pedir(servidor, "GET", "/api/estado", token="velho")[0].status == 429
+    codigo = api_http.novo_codigo()
+    resp, dados = _pedir(servidor, "POST", "/api/parear", {"codigo": codigo, "nome": "moto"})
+    assert resp.status == 200 and json.loads(dados)["token"]
+
+
+def test_bilhete_de_antes_da_subida_nao_conta_chute(servidor):
+    """APP-2: o celular com o video aberto pede bilhetes do servidor anterior
+    logo depois da religada. Nao e chute: 404, e o parear segue livre."""
+    for _ in range(25):
+        assert _pedir(servidor, "GET", "/v/bilhete-de-antes")[0].status == 404
+        assert _pedir(servidor, "GET", "/p/pagina-de-antes")[0].status == 404
+    assert servidor.RequestHandlerClass.estado.falhas == {}
+    codigo = api_http.novo_codigo()
+    resp, dados = _pedir(servidor, "POST", "/api/parear", {"codigo": codigo, "nome": "moto"})
+    assert resp.status == 200 and json.loads(dados)["token"]
 
 
 def test_chute_alheio_nao_trava_o_celular_pareado(servidor, monkeypatch):
@@ -578,6 +610,52 @@ def test_cliente_que_saiu_numa_rota_post_nao_vira_traceback(servidor, monkeypatc
     assert any(x.split()[3:6] == ["POST", "/api/parear", "saiu"] for x in log.splitlines())
 
 
+def test_post_com_args_texto_responde_400(servidor):
+    """APP-14: `args` que nao e objeto chegava ao `e_perigosa` e explodia; o
+    POST nao tinha o `except -> 500` do GET e a conexao fechava sem status
+    (RemoteDisconnected)."""
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    resp, dados = _pedir(servidor, "POST", "/api/acao",
+                         {"acao": "curar_ledger", "args": "gravar"}, token=token)
+    assert resp.status == 400 and json.loads(dados)["erro"] == "args invalido"
+
+
+def test_post_que_explode_responde_500_sem_traceback(servidor, monkeypatch, capsys):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+
+    def explode(*a, **k):
+        raise RuntimeError("segredo-do-corpo")
+    monkeypatch.setattr(api_http.acoes, "preparar", explode)
+    capsys.readouterr()
+    resp, dados = _pedir(servidor, "POST", "/api/acao", {"acao": "gerar"}, token=token)
+    assert resp.status == 500 and json.loads(dados)["erro"] == "RuntimeError"
+    time.sleep(0.1)
+    log = capsys.readouterr().err
+    assert "Traceback" not in log and "segredo-do-corpo" not in log
+    assert "POST /api/acao 500 RuntimeError em test_api_http.py:" in log
+
+
+def test_post_recusado_sem_ler_o_corpo_entrega_a_resposta(servidor, monkeypatch):
+    """O 401 de um POST com corpo: o servidor respondia sem ler o corpo e o
+    Windows mandava RST ao fechar — o cliente perdia a resposta (1 em 5 no
+    teste da Arena). Agora o corpo e drenado."""
+    monkeypatch.setattr(api_http, "FALHAS_MAX", 1000)
+    corpo = {"p1": "Ana", "p2": "Beto", "mapa": "Arena", "x": "y" * 3000}
+    for _ in range(40):
+        resp, _ = _pedir(servidor, "POST", "/api/arena/luta", corpo)
+        assert resp.status == 401
+
+
+def test_correio_com_anexos_que_nao_sao_lista_responde_400(servidor):
+    token = _parear(servidor)
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    resp, dados = _pedir(servidor, "POST", "/api/correio/deepseek",
+                         {"texto": "oi", "anexos": {"nome": "a.png"}}, token=token)
+    assert resp.status == 400 and json.loads(dados)["erro"] == "anexos invalidos"
+
+
 def test_handle_error_cala_so_o_cliente_que_saiu(capsys):
     """O reset que chega ANTES do `do_GET` (na leitura da linha do pedido)
     para no `handle_error` do servidor: uma linha; o resto segue com o
@@ -634,6 +712,88 @@ def test_esquecer_pelo_id_e_nao_pelo_nome(mundo):
     assert api_http.aparelho_do_token(primeiro) is None
     assert api_http.aparelho_do_token(segundo) == "moto"
     assert api_http.main(["--esquecer", "00000000"]) == 1
+
+
+def test_token_valido_sobrevive_a_gravacao_concorrente(mundo):
+    """APP-3: o `--parear`/`--esquecer` (outro processo) grava enquanto o
+    servidor le a cada pedido. No Windows o `os.replace` caia com
+    PermissionError e a leitura no meio virava `{}` (token valido -> None ->
+    401 -> o celular apagava o token). Medido antes do conserto: dezenas de
+    None e PermissionError no escritor."""
+    token = api_http.trocar_codigo(api_http.novo_codigo(), "moto")
+    base = api_http.ler_config(estrito=True)
+    nones, erros, parar = [], [], threading.Event()
+
+    def ler():
+        while not parar.is_set():
+            try:
+                if api_http.aparelho_do_token(token) is None:
+                    nones.append(1)
+            except Exception as exc:                     # noqa: BLE001
+                erros.append(("leitor", repr(exc)))
+
+    leitores = [threading.Thread(target=ler) for _ in range(4)]
+    for fio in leitores:
+        fio.start()
+    try:
+        for n in range(200):
+            dados = dict(base, extra=n)                  # muda o arquivo a cada vez
+            try:
+                api_http.gravar_config(dados)
+            except Exception as exc:                     # noqa: BLE001
+                erros.append(("escritor", repr(exc)))
+    finally:
+        parar.set()
+        for fio in leitores:
+            fio.join(10)
+    assert erros == [] and nones == []
+
+
+def test_config_que_nao_abre_usa_a_ultima_lida_e_nunca_vira_sem_aparelhos(
+        servidor, monkeypatch):
+    token = _parear(servidor)
+    assert _pedir(servidor, "GET", "/api/estado", token=token)[0].status == 200
+    real = open
+
+    def trancado(arquivo, *a, **k):
+        if str(arquivo).endswith("app_celular.json"):
+            raise PermissionError(13, "sendo trocado")
+        return real(arquivo, *a, **k)
+    import builtins
+    monkeypatch.setattr(builtins, "open", trancado)
+    monkeypatch.setattr(api_http, "CONFIG_ESPERA_S", 0.001)
+    # o arquivo muda (outra assinatura) e nao abre: vale a ultima leitura
+    alvo = api_http.caminho()
+    os.utime(alvo, ns=(alvo.stat().st_atime_ns, alvo.stat().st_mtime_ns + 10**9))
+    assert api_http.aparelho_do_token(token) == "moto"
+    assert _pedir(servidor, "GET", "/api/estado", token=token)[0].status == 200
+    # quem vai GRAVAR nao aceita a copia: levanta
+    with pytest.raises(api_http.ConfigIlegivel):
+        api_http.ler_config(estrito=True)
+    # sem leitura nenhuma guardada: 503, nunca 401 (que apaga o token)
+    api_http._CONFIG_LIDA.clear()
+    resp, _ = _pedir(servidor, "GET", "/api/estado", token=token)
+    assert resp.status == 503
+
+
+def test_gravar_config_tenta_de_novo_e_limpa_o_tmp(mundo, monkeypatch):
+    real = os.replace
+    vezes = {"n": 0}
+
+    def recusa(origem, destino):
+        vezes["n"] += 1
+        if vezes["n"] <= 3:
+            raise PermissionError(13, "aberto por outro")
+        return real(origem, destino)
+    monkeypatch.setattr(api_http.os, "replace", recusa)
+    monkeypatch.setattr(api_http, "CONFIG_ESPERA_S", 0.001)
+    api_http.gravar_config({"aparelhos": [], "x": 1})
+    assert vezes["n"] == 4 and api_http.ler_config(estrito=True)["x"] == 1
+    vezes["n"] = -100                                # recusa sempre
+    with pytest.raises(PermissionError):
+        api_http.gravar_config({"aparelhos": [], "x": 2})
+    assert not api_http.caminho().with_suffix(".tmp").exists()
+    assert api_http.ler_config(estrito=True)["x"] == 1
 
 
 def test_trava_do_json_vale_entre_processos(mundo):

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import io
 import json
+import types
 import unittest
 import urllib.error
 
@@ -139,6 +140,62 @@ class RelatoriosCabemNoTelegramTests(unittest.TestCase):
         api.Telegram("t", abrir=espiao).mensagem(1, "Z" * 9000, markdown=True)
         for corpo in espiao.chamadas:
             self.assertLessEqual(corpo.count("Z"), 4000)
+
+
+# ------------------------------------------------ APP-9: o laco sem rede
+def _bot_sem_rede(tmp_path, monkeypatch):
+    """Um Bot cujo Telegram de verdade nunca alcanca a rede (`chamar` -> {})."""
+    from remoto import bot as bot_mod
+    from remoto import comandos, config
+
+    def cair(*_a, **_k):
+        raise OSError("sem rede")
+    monkeypatch.setattr(config, "ARQUIVO", str(tmp_path / "remoto.json"))
+    monkeypatch.setattr(comandos.atividade, "_arquivo", lambda: tmp_path / "atividade.jsonl")
+    config.autorizar(42)
+    dormidas = []
+    robo = bot_mod.Bot(telegram=api.Telegram("t", abrir=cair), log=lambda *_a: None,
+                       dormir=dormidas.append)
+    return robo, dormidas
+
+
+def test_sem_rede_uma_volta_dorme(tmp_path, monkeypatch):
+    """Sem rede o `getUpdates` volta na hora; o laco girava ~2.700 voltas
+    por segundo, sem dormir."""
+    robo, dormidas = _bot_sem_rede(tmp_path, monkeypatch)
+    monkeypatch.setattr(type(robo), "_relatorios", lambda _s: None)
+    robo.uma_volta(timeout=0)
+    assert dormidas and dormidas[0] >= 5
+
+
+def test_relatorio_vencido_monta_uma_vez_sem_rede(tmp_path, monkeypatch):
+    from remoto import relatorios
+    robo, _dormidas = _bot_sem_rede(tmp_path, monkeypatch)
+    montados = []
+    monkeypatch.setattr(relatorios, "devidos", lambda horarios: ["metas"])
+    monkeypatch.setattr(relatorios, "montar", lambda nome: montados.append(nome) or "texto")
+    marcados = []
+    monkeypatch.setattr(relatorios, "marcar", lambda nome, dia: marcados.append(nome))
+    for _ in range(20):
+        robo.uma_volta(timeout=0)
+    assert montados == ["metas"] and marcados == []
+
+
+def test_relatorio_entregue_depois_da_rede_voltar_sai_uma_vez(tmp_path, monkeypatch):
+    from remoto import relatorios
+    robo, _dormidas = _bot_sem_rede(tmp_path, monkeypatch)
+    vencidos = ["metas"]
+    monkeypatch.setattr(relatorios, "devidos", lambda horarios: list(vencidos))
+    monkeypatch.setattr(relatorios, "montar", lambda nome: "texto do relatorio")
+    monkeypatch.setattr(relatorios, "marcar", lambda nome, dia: vencidos.clear())
+    robo.uma_volta(timeout=0)
+    enviados = []
+    robo.tg = types.SimpleNamespace(
+        novidades=lambda *a, **k: [],
+        mensagem=lambda chat, texto, markdown=False: enviados.append(texto) or {"ok": True})
+    robo.uma_volta(timeout=0)
+    robo.uma_volta(timeout=0)
+    assert enviados == ["texto do relatorio"]
 
 
 if __name__ == "__main__":

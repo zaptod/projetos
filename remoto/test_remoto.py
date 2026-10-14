@@ -348,13 +348,52 @@ class ResistenciaTests(BaseTemp):
         robo = bot_mod.Bot(telegram=tg, log=lambda *_a: None)
         robo.uma_volta(timeout=0)          # nao pode levantar
 
-    def test_rede_caida_devolve_vazio(self):
+    def _rodar_com_getme(self, respostas):
+        """Roda `Bot.rodar` com um Telegram cujo getMe devolve `respostas` em
+        ordem; a primeira volta do laco interrompe (KeyboardInterrupt)."""
+        dormidas, linhas, voltas = [], [], []
+
+        class Tg(TelegramFalso):
+            def eu_bruto(self_):
+                return respostas.pop(0)
+
+        robo = bot_mod.Bot(telegram=Tg(), log=linhas.append, dormir=dormidas.append)
+
+        def volta(*_a, **_k):
+            voltas.append(1)
+            raise KeyboardInterrupt
+        robo.uma_volta = volta
+        robo._ligar_vigia_tailnet = lambda: None
+        robo.rodar()
+        return dormidas, linhas, voltas
+
+    def test_rodar_espera_a_rede_no_getme(self):
+        """APP-10: getMe sem resposta (rede/DNS) era tratado como token errado
+        e o processo saia."""
+        dormidas, linhas, voltas = self._rodar_com_getme(
+            [{}, {}, {"ok": True, "result": {"username": "x"}}])
+        self.assertEqual(voltas, [1])
+        self.assertEqual(len(dormidas), 2)
+        self.assertEqual(1, sum("sem rede" in l for l in linhas))      # uma linha so
+        self.assertTrue(any("@x no ar" in l for l in linhas))
+
+    def test_rodar_sai_so_com_token_errado_de_verdade(self):
+        dormidas, linhas, voltas = self._rodar_com_getme(
+            [{"ok": False, "error_code": 401, "description": "Unauthorized"}])
+        self.assertEqual((voltas, dormidas), ([], []))
+        self.assertTrue(any("token" in l for l in linhas))
+
+    def test_rede_caida_devolve_none_e_nao_levanta(self):
+        # None (e nao []) desde 14/10 (APP-9): o laco precisa saber que foi a
+        # rede, para dormir em vez de girar
         def cair(*_a, **_k):
             raise OSError("sem rede")
 
         tg = Telegram("token-falso", abrir=cair)
-        self.assertEqual([], tg.novidades())
+        self.assertIsNone(tg.novidades())
         self.assertEqual({}, tg.chamar("getMe"))
+        self.assertEqual({}, tg.eu_bruto())
+        self.assertEqual({}, tg.eu())
 
     def test_arquivo_grande_demais_e_recusado_com_motivo(self):
         grande = self.pasta / "grande.mp4"
@@ -514,6 +553,97 @@ class InstanciaUnicaTests(BaseTemp):
         self.addCleanup(setattr, travas, "trava", original_trava)
         self.assertEqual(principal.ligar(), 0)
         self.assertEqual(ligou, [], "nao podia ter ligado um segundo bot")
+
+    def _bot_dublado(self):
+        from remoto import __main__ as principal
+        ligou = []
+        original_bot = principal.Bot
+        principal.Bot = lambda *a, **k: type(
+            "B", (), {"rodar": lambda _s: ligou.append(1)})()
+        self.addCleanup(setattr, principal, "Bot", original_bot)
+        original_limpar = principal._limpar_consertos_orfaos
+        principal._limpar_consertos_orfaos = lambda: None
+        self.addCleanup(setattr, principal, "_limpar_consertos_orfaos", original_limpar)
+        return principal, ligou
+
+    def _travas_no_temporario(self):
+        from builds import travas
+        original = travas._pasta
+        (self.pasta / "locks").mkdir(exist_ok=True)
+        travas._pasta = lambda: self.pasta / "locks"
+        self.addCleanup(setattr, travas, "_pasta", original)
+        return travas
+
+    def test_ligar_espera_a_trava_do_antigo(self):
+        """APP-8: na religada o bot antigo ainda solta a trava; com esperar=0
+        o novo saia na hora e o coordenador contava 'caiu: processo ausente'."""
+        import threading
+        import time as _time
+        travas = self._travas_no_temporario()
+        principal, ligou = self._bot_dublado()
+        pegou, soltar = threading.Event(), threading.Event()
+
+        def antigo():
+            with travas.trava("remoto__bot") as minha:
+                self.assertTrue(minha)
+                pegou.set()
+                soltar.wait(5)
+
+        fio = threading.Thread(target=antigo)
+        fio.start()
+        self.assertTrue(pegou.wait(5))
+        threading.Timer(2.0, soltar.set).start()
+        comeco = _time.monotonic()
+        self.assertEqual(principal.ligar(), 0)
+        fio.join(5)
+        self.assertEqual(ligou, [1], "o bot novo devia ter ligado depois do antigo")
+        self.assertGreaterEqual(_time.monotonic() - comeco, 1.5)
+
+    def test_bot_que_desiste_escreve_linha_com_hora(self):
+        import contextlib
+        import io
+        from builds import travas
+        principal, ligou = self._bot_dublado()
+        original_trava = travas.trava
+
+        @contextlib.contextmanager
+        def _ocupada(nome, esperar=0.0):
+            self.assertGreaterEqual(esperar, 10.0)
+            yield False
+
+        travas.trava = _ocupada
+        self.addCleanup(setattr, travas, "trava", original_trava)
+        saida = io.StringIO()
+        with contextlib.redirect_stdout(saida):
+            self.assertEqual(principal.ligar(), 0)
+        self.assertRegex(saida.getvalue(), r"^\d\d/\d\d \d\d:\d\d:\d\d .*ja tem um bot")
+        self.assertEqual(ligou, [])
+
+
+class PequenosDoBotTests(BaseTemp):
+    """APP-16 da auditoria profunda de 11/10."""
+
+    def test_funcionamento_corta_pelo_agora_recebido(self):
+        # o Agendador e as credenciais de verdade levam minutos e nao sao o assunto
+        for nome in ("_linhas_do_agendador", "_linhas_das_credenciais"):
+            dublado = mock.patch.object(relatorios, nome, lambda: [])
+            dublado.start()
+            self.addCleanup(dublado.stop)
+        comandos.atividade.registrar("estudio", "erro", "erro de hoje xyz", "builds")
+        self.assertIn("erro de hoje xyz", relatorios.funcionamento(datetime.now()))
+        antigo = relatorios.funcionamento(datetime(2020, 1, 1))
+        self.assertNotIn("erro de hoje xyz", antigo)
+
+    def test_autorizado_que_nao_e_numero_nao_derruba_o_carregar(self):
+        config.caminho().write_text(json.dumps({"token": "t", "autorizados": [1, "abc", None, "7"]}),
+                                    encoding="utf-8")
+        self.assertEqual(config.carregar()["autorizados"], [1, 7])
+
+    def test_salvar_mantem_chave_fora_do_padrao(self):
+        config.salvar({"token": "t", "autorizados": [1], "minha_chave": 1})
+        dados = json.loads(config.caminho().read_text(encoding="utf-8"))
+        self.assertEqual(dados["minha_chave"], 1)
+        self.assertIn("alertas", dados)                    # o padrao continua
 
 
 class TarefaDoBotTests(unittest.TestCase):

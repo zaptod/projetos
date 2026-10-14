@@ -235,6 +235,10 @@ def _validar_campo(campo: dict, bruto):
     texto = str(bruto).strip()
     if not _TEXTO_OK.match(texto):
         raise _erro(f"{rotulo}: use só letras, números e pontuação simples")
+    if texto.startswith("-"):
+        # vai solto depois de --tema/--p1/--p2: "-x" viraria OPCAO no argparse
+        # do main.py e derrubava o comando (APP-14)
+        raise _erro(f"{rotulo}: não comece com hífen")
     return texto
 
 

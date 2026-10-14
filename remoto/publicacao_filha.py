@@ -67,18 +67,43 @@ def _gravar(caminho: Path, dados: dict) -> None:
     os.replace(temporario, caminho)
 
 
+def _anotar(pasta: Path, texto: str) -> None:
+    """Uma linha no `saida.log` (o que a filha mesma tem a dizer). Nunca levanta."""
+    try:
+        with open(pasta / "saida.log", "a", encoding="utf-8") as saida:
+            saida.write(f"[publicacao_filha] {texto}\n")
+    except OSError:
+        pass
+
+
 def rodar(pasta: Path, cwd: str, comando: list) -> int:
+    """Abre o `main.py`, espera ele acabar e SO ENTAO grava o `fim.json`.
+
+    O `filho.json` nasce ANTES do Popen com `pid: null` ("abrindo"): quem le
+    a pasta sabe que a filha chegou ate aqui. Sem `filho.json` e com a filha
+    morta, o `main.py` nunca foi aberto (`acoes.situacao_da_filha`). Gravar o
+    pid depois do Popen tem `try` proprio: ate 14/10 uma falha ali pulava o
+    `wait()` e o `fim.json` saia com o `main.py` ainda publicando.
+    """
     pasta.mkdir(parents=True, exist_ok=True)
     ambiente = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
     codigo = None
     erro = ""
     try:
+        _gravar(pasta / "filho.json", {"pid": None, "fase": "abrindo"})
+    except Exception as exc:                                 # noqa: BLE001
+        _anotar(pasta, f"não gravei o filho.json de abertura: {type(exc).__name__}: {exc}")
+    try:
         with open(pasta / "saida.log", "a", encoding="utf-8") as saida:
             filho = subprocess.Popen(comando, cwd=cwd, stdin=subprocess.DEVNULL,
                                      stdout=saida, stderr=subprocess.STDOUT,
                                      creationflags=NO_WINDOW, env=ambiente)
-            _gravar(pasta / "filho.json", {"pid": filho.pid,
-                                           "criado": criado_em(filho.pid)})
+            try:
+                _gravar(pasta / "filho.json", {"pid": filho.pid,
+                                               "criado": criado_em(filho.pid)})
+            except Exception as exc:                         # noqa: BLE001
+                _anotar(pasta, f"não gravei o pid do main.py ({filho.pid}): "
+                               f"{type(exc).__name__}: {exc}")
             codigo = filho.wait()
     except Exception as exc:                                 # noqa: BLE001
         erro = f"{type(exc).__name__}: {exc}"

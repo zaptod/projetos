@@ -45,7 +45,8 @@ class Rodar:
             saida = self.serve
         elif args[1] == "status":
             saida = (None if self.estado is None
-                     else json.dumps({"BackendState": self.estado, "Health": []}))
+                     else json.dumps({"BackendState": self.estado, "Health": [],
+                                      "Self": {"DNSName": "pc.tail.ts.net."}}))
         else:
             raise AssertionError(f"comando que a vigia nao pode rodar: {args}")
         if saida is None:
@@ -70,6 +71,30 @@ def test_tudo_certo_e_so_dois_comandos_de_leitura():
     assert ficha["ok"] is True and ficha["serve"] is True and not ficha["funnel"]
     assert rodar.chamadas == [["tailscale.exe", "status", "--json"],
                               ["tailscale.exe", "serve", "status", "--json"]]
+    # a URL do app no tailnet sai do mesmo status (a prova da APP-15)
+    assert ficha["url"] == "https://pc.tail.ts.net/"
+
+
+def test_url_responde_so_com_200():
+    class Resposta:
+        def __init__(self, status):
+            self.status = status
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    pedidos = []
+    assert V.url_responde("https://pc.tail.ts.net/",
+                          lambda url, timeout: pedidos.append((url, timeout)) or Resposta(200))
+    assert pedidos == [("https://pc.tail.ts.net/", V.URL_PRAZO_S)]
+    assert not V.url_responde("https://x/", lambda url, timeout: Resposta(502))
+
+    def cai(url, timeout):
+        raise OSError("sem rota")
+    assert not V.url_responde("https://x/", cai)
 
 
 def test_backend_parado_sem_bandeja():
@@ -194,22 +219,30 @@ FUNNEL = {"ok": False, "estado": "Running", "serve": True, "funnel": True,
 
 
 class Mundo:
-    def __init__(self, fichas):
+    def __init__(self, fichas, url_abre=True):
         self.fichas = list(fichas)
         self.avisos, self.abertas, self.sonos = [], 0, []
         self.agora = 0.0
+        self.sondas, self.logs, self.provas = 0, [], []
+        self.url_abre = url_abre
 
     def sondar(self):
+        self.sondas += 1
         return self.fichas.pop(0) if len(self.fichas) > 1 else self.fichas[0]
 
     def abrir(self):
         self.abertas += 1
         return "abri o tailscale-ipn.exe"
 
+    def provar(self, url):
+        self.provas.append(url)
+        return self.url_abre
+
     def vigia(self):
         return V.Vigia(avisar=self.avisos.append, sondar=self.sondar,
                        abrir=self.abrir, dormir=self.sonos.append,
-                       relogio=lambda: self.agora, intervalo=120, primeira=60)
+                       relogio=lambda: self.agora, intervalo=120, primeira=60,
+                       log=self.logs.append, provar=self.provar)
 
 
 def test_tudo_certo_nao_fala_nada():
@@ -288,59 +321,74 @@ SEM_RESPOSTA = {"ok": False, "estado": None, "sem_resposta": True,
                 "motivo": "não consegui perguntar o estado ao Tailscale"}
 
 
-def test_sem_resposta_nao_e_fora_e_so_avisa_na_terceira_seguida():
-    """Item 13 da varredura de 05/10: 4 avisos "fora do tailnet: não consegui
-    perguntar o estado" entre 23:00 e 00:06, cada um depois de 2 olhadas. O
-    app podia estar no ar; o aviso afirmava que não."""
-    m = Mundo([SEM_RESPOSTA])
-    v = m.vigia()
-    assert v.uma_olhada() is None
-    assert v.uma_olhada() is None
-    aviso = v.uma_olhada()
-    assert aviso.startswith("❔") and "não sei" in aviso
-    assert "não consegui perguntar" in aviso and "3 olhadas seguidas" in aviso
-    assert "fora do tailnet" not in aviso and "Não mexi em nada" in aviso
-    assert m.abertas == 0
-    assert len(m.sonos) == 3                      # cada olhada perguntou de novo
-    for _ in range(3):
-        assert v.uma_olhada() is None             # um aviso por ocorrencia
-    assert m.avisos == [aviso]
+OK_COM_URL = {"ok": True, "url": "https://pc.tail.ts.net/"}
 
 
-def test_sem_resposta_que_responde_na_segunda_pergunta_nao_conta():
-    m = Mundo([SEM_RESPOSTA, OK, SEM_RESPOSTA, OK, SEM_RESPOSTA, OK, SEM_RESPOSTA, OK])
+def test_sem_resposta_nao_vai_ao_telegram():
+    """APP-15: 12 mensagens "❔ não sei" + "voltou" em 12/10, sem informação
+    nenhuma. Sem resposta do Tailscale agora vai SO ao log."""
+    m = Mundo([SEM_RESPOSTA] * 5 + [OK])
     v = m.vigia()
-    for _ in range(4):
+    for _ in range(6):
         assert v.uma_olhada() is None
-    assert v.sem_resposta == 0 and m.avisos == []
+    assert m.avisos == [] and m.abertas == 0
+    assert m.sondas == 6 and m.sonos == []          # uma sonda por olhada, sem cochilo
+    assert sum(l.startswith("tailnet: sem resposta") for l in m.logs) == 5
+    assert any("voltou a responder" in l for l in m.logs)
+
+
+def test_sem_resposta_com_a_url_do_app_no_ar_so_vai_ao_log():
+    m = Mundo([OK_COM_URL] + [SEM_RESPOSTA] * 5 + [OK], url_abre=True)
+    v = m.vigia()
+    for _ in range(7):
+        assert v.uma_olhada() is None
+    assert m.avisos == []
+    assert m.provas == ["https://pc.tail.ts.net/"] * 3     # da 3a olhada sem resposta em diante
+    assert any("respondeu 200" in l for l in m.logs)
+
+
+def test_sem_resposta_e_a_url_que_nao_abre_e_prova_de_queda():
+    """Aviso so com prova: a URL do app no tailnet sem 200."""
+    m = Mundo([OK_COM_URL] + [SEM_RESPOSTA] * 6 + [OK], url_abre=False)
+    v = m.vigia()
+    assert v.uma_olhada() is None                   # tudo certo, aprende a URL
+    assert v.uma_olhada() is None
+    assert v.uma_olhada() is None
+    aviso = v.uma_olhada()                          # 3a sem resposta: prova
+    assert aviso.startswith("⚠️") and "https://pc.tail.ts.net/" in aviso
+    assert "Não mexi em nada" in aviso and m.abertas == 0
+    for _ in range(3):
+        assert v.uma_olhada() is None               # um aviso por ocorrencia
+    volta = v.uma_olhada()
+    assert volta.startswith("✅") and "voltou a responder" in volta
+    assert m.avisos == [aviso, volta]
+
+
+def test_sem_resposta_sem_saber_a_url_nao_avisa():
+    m = Mundo([SEM_RESPOSTA], url_abre=False)
+    v = m.vigia()
+    for _ in range(5):
+        assert v.uma_olhada() is None
+    assert m.avisos == [] and m.provas == []
 
 
 def test_sem_resposta_e_tropeco_nao_se_somam():
     """Duas olhadas sem resposta e um tropeço (Starting) não viram aviso:
     cada um tem a sua conta."""
-    m = Mundo([SEM_RESPOSTA, SEM_RESPOSTA, SEM_RESPOSTA, SEM_RESPOSTA, CONECTANDO, OK])
+    m = Mundo([OK_COM_URL, SEM_RESPOSTA, SEM_RESPOSTA, CONECTANDO, OK], url_abre=False)
     v = m.vigia()
-    for _ in range(3):
+    for _ in range(5):
         assert v.uma_olhada() is None
-    assert m.avisos == []
+    assert m.avisos == [] and m.provas == []
 
 
-def test_depois_do_nao_sei_a_volta_diz_que_voltou_a_responder():
-    m = Mundo([SEM_RESPOSTA] * 6 + [OK])
+def test_depois_da_url_sem_resposta_a_bandeja_fechada_ainda_e_consertada():
+    """O aviso da URL não pode calar a ocorrência de verdade que vem depois."""
+    m = Mundo([OK_COM_URL] + [SEM_RESPOSTA] * 3 + [PARADO, OK], url_abre=False)
     v = m.vigia()
-    for _ in range(3):
+    for _ in range(4):
         v.uma_olhada()
-    volta = v.uma_olhada()
-    assert volta.startswith("✅") and "voltou a responder" in volta
-    assert len(m.avisos) == 2
-
-
-def test_depois_do_nao_sei_a_bandeja_fechada_ainda_e_consertada():
-    """O "não sei" não pode calar a ocorrência de verdade que vem depois."""
-    m = Mundo([SEM_RESPOSTA] * 6 + [PARADO, OK])
-    v = m.vigia()
-    for _ in range(3):
-        v.uma_olhada()
+    assert len(m.avisos) == 1
     aviso = v.uma_olhada()
     assert m.abertas == 1 and aviso.startswith("🔧")
     assert len(m.avisos) == 2

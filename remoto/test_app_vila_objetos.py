@@ -147,7 +147,10 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v67 = props animados do Atelie (08/10).
     # v69 = consertos da auditoria profunda de 11/10 (14/10): a faixa sem PC
     # empurra o objeto, o cache só guarda a casca, Cinema "carregando", etc.
-    assert "painel-casca-v69" in sw
+    # v70 = (14/10) o estilo do código de pareamento só no #codigo, o vão da
+    # faixa deitado igual ao de em pé, e o Coordenador diz "dados
+    # indisponíveis" com o PC fora.
+    assert "painel-casca-v70" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

@@ -72,7 +72,16 @@ def iniciar(acao: str, rotulo: str, comando: list, cwd, aparelho: str = "",
              "inicio": datetime.now().isoformat(timespec="seconds")}
     (pasta / "tarefa.json").write_text(json.dumps(ficha, ensure_ascii=False),
                                        encoding="utf-8")
-    pid = acoes._iniciar_filha(pasta, comando, cwd)
+    try:
+        pid = acoes._iniciar_filha(pasta, comando, cwd)
+    except Exception as exc:
+        # Sem isto a ficha ficava sem pid e "rodando" para sempre: barrava o
+        # mesmo comando, aparecia no resumo e nunca era limpa (APP-4).
+        (pasta / "fim.json").write_text(json.dumps({
+            "codigo": None, "erro": f"não subiu: {exc}",
+            "fim": datetime.now().isoformat(timespec="seconds")}, ensure_ascii=False),
+            encoding="utf-8")
+        raise
     ficha["pid"] = pid
     ficha["criado"] = acoes._criado_em(pid)
     (pasta / "tarefa.json").write_text(json.dumps(ficha, ensure_ascii=False),
@@ -80,19 +89,24 @@ def iniciar(acao: str, rotulo: str, comando: list, cwd, aparelho: str = "",
     return chave
 
 
+SEM_PID_SUMIU_S = 60.0             # ficha sem pid ha mais que isto: a filha nao subiu
+
+
 def _estado(pasta: Path, ficha: dict) -> dict:
     from . import acoes
 
     fim = _ler_json(pasta / "fim.json")
-    filho = _ler_json(pasta / "filho.json") or {}
-    vivo = acoes.vivo_de_verdade(ficha.get("pid"), ficha.get("criado"))
     if fim is not None:
         situacao = "terminou"
-    elif vivo is False and acoes.vivo_de_verdade(filho.get("pid"),
-                                                filho.get("criado")) is False:
-        situacao = "sumiu"          # morreu sem escrever o fim
+    elif (not ficha.get("pid") and not (pasta / "filho.json").exists()
+          and _idade(ficha) > SEM_PID_SUMIU_S):
+        situacao = "sumiu"          # a filha nunca subiu (e ninguem gravou o fim)
     else:
-        situacao = "rodando"
+        # a mesma regra do em-voo da publicacao (filho.json "abrindo" etc.)
+        estado = acoes.situacao_da_filha({"pasta": str(pasta), "pid": ficha.get("pid"),
+                                          "criado": ficha.get("criado")})
+        sumiu = estado["filha"] is False and estado["filho"] is False
+        situacao = "sumiu" if sumiu else "rodando"   # sumiu: morreu sem o fim
     return {"situacao": situacao, "codigo": (fim or {}).get("codigo"),
             "erro": (fim or {}).get("erro") or "", "fim": (fim or {}).get("fim") or ""}
 
@@ -125,10 +139,30 @@ def listar(n: int = 20) -> list[dict]:
     return saida
 
 
+def _todas_as_pastas() -> list[Path]:
+    try:
+        return sorted((p for p in pasta_das_tarefas().iterdir() if p.is_dir()),
+                      reverse=True)
+    except OSError:
+        return []
+
+
 def rodando(acao: str | None = None) -> list[dict]:
-    """O que ainda esta de pe (opcionalmente so de uma acao)."""
-    return [t for t in listar(40)
-            if t["situacao"] == "rodando" and (acao is None or t["acao"] == acao)]
+    """O que ainda esta de pe (opcionalmente so de uma acao).
+
+    Olha TODAS as pastas sem `fim.json`, nao so as 40 mais novas: ate 14/10
+    uma tarefa viva atras de 40 pastas novas sumia daqui, e o mesmo comando
+    subia em paralelo (APP-4).
+    """
+    saida = []
+    for pasta in _todas_as_pastas():
+        if (pasta / "fim.json").exists():
+            continue
+        ficha = uma(pasta.name)
+        if ficha and ficha["situacao"] == "rodando" and (acao is None
+                                                         or ficha["acao"] == acao):
+            saida.append(ficha)
+    return saida
 
 
 def log(chave: str, desde: int = 0) -> dict:
@@ -161,8 +195,9 @@ def limpar_velhas(dias: int = GUARDAR_DIAS) -> int:
     """Apaga pastas de tarefas velhas E terminadas. Nunca as que rodam."""
     limite = datetime.now() - timedelta(days=dias)
     apagadas = 0
-    for ficha in listar(100):
-        if ficha["situacao"] == "rodando":
+    for pasta in _todas_as_pastas():       # todas: as velhas sao as do fim da lista
+        ficha = uma(pasta.name)
+        if not ficha or ficha["situacao"] == "rodando":
             continue
         try:
             quando = datetime.fromisoformat(ficha.get("inicio", ""))

@@ -72,11 +72,11 @@ function coordDesenhar(dados) {
     topo.replaceChildren(el("h2", {}, "Coordenador"),
       el("div", {class: "grande coord-fora"}, "FORA DO AR"),
       el("div", {class: "fraco"}, dados.motivo || "sem pulso recente"));
-    $("coord-servicos").replaceChildren(); $("coord-eventos").replaceChildren();
+    // cartão vazio parece "nada a mostrar"; é "não há como saber" (14/10)
+    coordSemDados("o coordenador está fora do ar, então não há retrato do PC.");
     // em Mandar o cartão não pode ficar vazio sem dizer por quê
     $("coord-acoes").replaceChildren(el("span", {class: "fraco"},
       "O coordenador está fora do ar: nada a controlar agora."));
-    coordTrabalho(null);
     return;
   }
   coordTrabalho(dados.trabalho);
@@ -144,8 +144,33 @@ async function coordenadorMesa() {
   if (typeof pedidosCarregar === "function") pedidosCarregar();
 }
 
+// Os três cartões do painel sem dado: diz POR QUÊ, em vez de ficarem vazios
+// (o conferente, 14/10: com o PC fora, TRABALHO, SERVIÇOS e O QUE ACONTECEU
+// apareciam em branco, como se não houvesse nada). Nunca o retrato velho como
+// se fosse de agora: ele sai, e a próxima leitura boa redesenha.
+function coordSemDados(porque) {
+  const linha = () => el("div", {class: "fraco coord-sem-dados"}, `Dados indisponíveis: ${porque}`);
+  $("coord-trabalho").replaceChildren(linha());
+  $("coord-servicos").replaceChildren(linha());
+  $("coord-eventos").replaceChildren(linha());
+}
+
 async function coordCarregar() {
-  try { coordDesenhar(await api("/api/coordenador")); conexao(true); } catch (err) { conexao(false, err); }
+  try { coordDesenhar(await api("/api/coordenador")); conexao(true); } catch (err) {
+    conexao(false, err);
+    if (err && err.status === 401) return;          // o pareamento já trata
+    // erro do próprio JavaScript não é "PC fora": vai ao console (conexao)
+    if (err && !(err instanceof ErroApi)) return;
+    const contato = localStorage.getItem(CONTATO);
+    const desde = contato ? ` (último contato ${quandoCurto(contato)})` : "";
+    const porque = !err.status ? `não consegui falar com o PC${desde}.`
+      : [502, 503, 504].includes(err.status) ? `o servidor do app está parado no PC${desde}.`
+      : `o PC respondeu com erro ${err.status}${desde}.`;
+    $("coord-topo").replaceChildren(el("h2", {}, "Coordenador"),
+      el("div", {class: "grande coord-fora"}, "SEM DADOS"),
+      el("div", {class: "fraco"}, porque.charAt(0).toUpperCase() + porque.slice(1)));
+    coordSemDados(porque);
+  }
 }
 
 // ------------------------------------------------ o vigia de trabalho (02/10)

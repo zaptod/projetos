@@ -19,11 +19,13 @@ O QUE ELA FAZ. Um aviso no Telegram por ocorrencia, e outro quando volta.
 O UNICO conserto automatico e o de 28/09: abrir o cliente da bandeja quando
 o backend esta parado e ele nao esta aberto (pelo `explorer.exe`, para ela
 nao morrer junto com o bot; 05/10). Quando o Tailscale nao responde, ela nao
-diz "fora": pergunta de novo e, depois de 3 olhadas seguidas sem resposta,
-avisa "nao sei". Ela NUNCA roda `tailscale
+diz "fora" nem "nao sei": anota no log e, depois de 3 olhadas seguidas sem
+resposta, abre a URL do app no tailnet; so avisa se ela nao responder 200
+(APP-15, 14/10). Ela NUNCA roda `tailscale
 funnel`, nunca mexe na configuracao do `serve` e nunca liga o modo
 "unattended" (essa decisao e do Adrian). Os comandos que ela roda sao dois,
-os dois de leitura: `status --json` e `serve status --json`.
+os dois de leitura: `status --json` e `serve status --json` (mais o GET da
+pagina do app, quando precisa de prova).
 """
 from __future__ import annotations
 
@@ -52,10 +54,15 @@ REFAZER_SERVE = "tailscale serve --bg --https=443 http://127.0.0.1:8931"
 # "Nao consegui perguntar" (o `tailscale status` falhou ou travou) NAO e "fora
 # do tailnet": o app pode estar no ar. Varredura de 05/10/2026 (item 13): 4
 # avisos "fora do tailnet: nao consegui perguntar o estado" entre 23:00 e
-# 00:06 de 04/10, cada um depois de 2 olhadas. Agora a olhada sem resposta
-# pergunta de novo na hora, e so vira aviso (com o texto "nao sei") depois de
-# 3 olhadas seguidas sem resposta.
+# 00:06 de 04/10. Em 05/10 virou um "nao sei" depois de 3 olhadas — e foram 12
+# mensagens assim em 12/10, cada uma seguida de um "voltou", sem informacao
+# nenhuma (APP-15, 14/10). Agora a olhada sem resposta vai SO ao log; depois
+# de 3 seguidas a vigia procura PROVA: a URL do app no tailnet (o
+# `https://<maquina>.ts.net/` que o ultimo `status` disse) tem de responder
+# 200. Nao respondeu = aviso; respondeu (ou nao sei a URL) = so o log.
 SEM_RESPOSTA_SEGUIDAS = 3
+COMANDO_PRAZO_S = 10           # cada comando de leitura (era 20; olhada = ate 2)
+URL_PRAZO_S = 10
 
 
 def _pasta_do_tailscale() -> Path:
@@ -85,7 +92,7 @@ def _rodar(rodar, argumentos: list) -> str | None:
     """A saida do comando, ou None se ele nao rodou ou falhou."""
     try:
         feito = rodar(argumentos, capture_output=True, text=True,
-                      encoding="utf-8", errors="replace", timeout=20,
+                      encoding="utf-8", errors="replace", timeout=COMANDO_PRAZO_S,
                       creationflags=NO_WINDOW)
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
@@ -94,15 +101,40 @@ def _rodar(rodar, argumentos: list) -> str | None:
     return feito.stdout or ""
 
 
-def _estado(exe: str, rodar) -> str | None:
-    """`Running`, `NoState`, `Starting`... ou None se nao deu para perguntar."""
+def _status(exe: str, rodar) -> dict | None:
+    """O `status --json` inteiro, ou None se nao deu para perguntar."""
     saida = _rodar(rodar, [exe, "status", "--json"])
     if saida is None:
         return None
     try:
-        return str(json.loads(saida).get("BackendState") or "") or None
-    except (ValueError, AttributeError):
+        dados = json.loads(saida)
+    except ValueError:
         return None
+    return dados if isinstance(dados, dict) else None
+
+
+def _estado(exe: str, rodar) -> str | None:
+    """`Running`, `NoState`, `Starting`... ou None se nao deu para perguntar."""
+    dados = _status(exe, rodar)
+    return (str(dados.get("BackendState") or "") or None) if dados else None
+
+
+def _url_do_app(status: dict) -> str | None:
+    """`https://<maquina>.<tailnet>.ts.net/`, pelo `Self.DNSName` do status."""
+    nome = str(((status or {}).get("Self") or {}).get("DNSName") or "").rstrip(".")
+    return f"https://{nome}/" if nome.endswith(".ts.net") else None
+
+
+def url_responde(url: str, abrir=None) -> bool:
+    """O GET na URL do app pelo tailnet voltou 200? (So leitura: a casca.)"""
+    import urllib.error
+    import urllib.request
+    abrir = abrir or urllib.request.urlopen
+    try:
+        with abrir(url, timeout=URL_PRAZO_S) as resposta:
+            return getattr(resposta, "status", 200) == 200
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
 
 
 def _serve(exe: str, rodar) -> dict | None:
@@ -150,11 +182,14 @@ def sondar(rodar=subprocess.run) -> dict:
     if not exe:
         ficha["motivo"] = "não achei o tailscale.exe"
         return ficha
-    ficha["estado"] = estado = _estado(exe, rodar)
+    status = _status(exe, rodar)
+    ficha["estado"] = estado = (str(status.get("BackendState") or "") or None
+                                if status else None)
     if estado is None:
         ficha["motivo"] = "não consegui perguntar o estado ao Tailscale"
         ficha["sem_resposta"] = True
         return ficha
+    ficha["url"] = _url_do_app(status)
     if estado != "Running":
         ficha["bandeja"] = aberta = bandeja_aberta(rodar)
         ficha["motivo"] = (f"o Tailscale está em {estado}"
@@ -229,18 +264,22 @@ class Vigia:
     def __init__(self, *, avisar, sondar=sondar, abrir=abrir_bandeja,
                  dormir=time.sleep, relogio=time.monotonic,
                  intervalo: float = INTERVALO_S,
-                 primeira: float = PRIMEIRA_OLHADA_S):
+                 primeira: float = PRIMEIRA_OLHADA_S,
+                 log=None, provar=url_responde):
         self._avisar = avisar
         self._sondar = sondar
         self._abrir = abrir
         self._dormir = dormir
         self._relogio = relogio
+        self._log = log or (lambda _texto: None)
+        self._provar = provar
         self.intervalo = intervalo
         self.proxima = relogio() + primeira
         self.fora = False          # ja avisei desta ocorrencia
-        self.fora_sem_resposta = False   # ...e o aviso foi o de "nao sei"
+        self.fora_sem_resposta = False   # ...e o aviso foi o da URL sem resposta
         self.falhas = 0
         self.sem_resposta = 0      # olhadas seguidas sem resposta do Tailscale
+        self.url = None            # a URL do app no tailnet (do ultimo status)
 
     def talvez(self) -> str | None:
         """Chamada a cada volta do laco; so olha quando venceu o intervalo."""
@@ -252,20 +291,22 @@ class Vigia:
 
     def uma_olhada(self) -> str | None:
         """Olha uma vez. Devolve o aviso mandado, se mandou algum."""
+        # UMA sonda por olhada (APP-15): a segunda, 5 s depois, segurava o
+        # laco do bot por ate 45 s; a proxima olhada ja e a nova pergunta.
         ficha = self._sondar()
-        if ficha.get("sem_resposta"):
-            # o `tailscale status` falha por um instante (o servico ocupado):
-            # pergunta de novo antes de contar a olhada como sem resposta
-            self._dormir(PASSO_DA_ESPERA_S)
-            ficha = self._sondar()
+        if ficha.get("url"):
+            self.url = ficha["url"]
         if ficha.get("ok"):
+            if self.sem_resposta:
+                self._log(f"tailnet: o Tailscale voltou a responder depois de "
+                          f"{self.sem_resposta} olhada(s) sem resposta")
             self.falhas = self.sem_resposta = 0
             if self.fora:
                 self.fora = False
                 if self.fora_sem_resposta:
                     self.fora_sem_resposta = False
-                    return self._mandar("✅ o Tailscale voltou a responder: o app do "
-                                        "celular está no tailnet (serve só no tailnet).")
+                    return self._mandar("✅ o app do celular voltou a responder no "
+                                        "tailnet (Tailscale rodando, serve só no tailnet).")
                 return self._mandar("✅ o app do celular voltou para o tailnet "
                                     "(Tailscale rodando, serve só no tailnet).")
             return None
@@ -282,7 +323,15 @@ class Vigia:
         if self.fora:
             return None                  # um aviso por ocorrencia
         if sem_resposta:
-            if self.sem_resposta < SEM_RESPOSTA_SEGUIDAS:
+            # "nao consegui perguntar" nao e informacao: vai ao log. Aviso so
+            # com prova de queda (a URL do app sem 200).
+            self._log(f"tailnet: sem resposta ({ficha.get('motivo') or '?'}), "
+                      f"{self.sem_resposta} olhada(s) seguida(s)")
+            if self.sem_resposta < SEM_RESPOSTA_SEGUIDAS or not self.url:
+                return None
+            if self._provar(self.url):
+                self._log(f"tailnet: a URL do app respondeu 200 ({self.url}); "
+                          "o app está no ar, só o comando do Tailscale não responde")
                 return None
             self.fora = self.fora_sem_resposta = True
             return self._mandar(self._texto_sem_resposta(ficha, self.sem_resposta))
@@ -319,11 +368,10 @@ class Vigia:
 
     def _texto_sem_resposta(self, ficha: dict, vezes: int) -> str:
         minutos = round(vezes * self.intervalo / 60)
-        return (f"❔ não sei se o app do celular está no tailnet: "
-                f"{ficha.get('motivo') or 'o Tailscale não respondeu'} "
-                f"({vezes} olhadas seguidas, ~{minutos} min). Pode ser só o "
-                "comando do Tailscale travado, e o app pode estar no ar. "
-                "Não mexi em nada.")
+        return (f"⚠️ o app do celular não responde pelo tailnet: o endereço "
+                f"dele ({self.url}) não abriu, e o Tailscale não responde há "
+                f"{vezes} olhadas (~{minutos} min; "
+                f"{ficha.get('motivo') or 'sem resposta'}). Não mexi em nada.")
 
     @staticmethod
     def _texto_da_falha(ficha: dict, feito: str) -> str:

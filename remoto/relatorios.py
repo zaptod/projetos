@@ -410,9 +410,12 @@ def _tempo(segundos: float) -> str:
 def funcionamento(agora: datetime | None = None, *, horas: int = 24) -> str:
     """Como a maquina passou: o que rodou, quanto demorou, o que falhou."""
     agora = agora or datetime.now()
-    corte = datetime.now(timezone.utc) - timedelta(hours=horas)
+    # o corte conta do `agora` recebido, nao do relogio (APP-16, 14/10); hora
+    # sem fuso e a local, como o `datetime.now()` acima
+    ate = agora.astimezone(timezone.utc) if agora.tzinfo else agora.astimezone()
+    corte = ate - timedelta(hours=horas)
     eventos = [e for e in atividade.recentes(4000)
-               if (_hora(e.get("ts")) or corte) >= corte]
+               if corte <= (_hora(e.get("ts")) or corte) <= ate]
 
     linhas = [f"🩺 *Funcionamento* — últimas {horas}h", ""]
 

@@ -31,10 +31,13 @@ do que um aviso perdido).
 """
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import re
+import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -44,6 +47,16 @@ REGISTRO = None
 PENDENTES = None
 _GUARDA_DIAS = 3
 _REGISTRO_MAX = 2000
+
+# A TRAVA (APP-12, 14/10). Bot, carteiro, coordenador e cada `remoto
+# --avisar` leem, mudam e regravam o estado e a fila INTEIROS. Sem trava,
+# medido: de 300 `liberar()` em dois processos sobravam 116 fichas, e o que
+# outro processo enfileirava durante uma entrega do bot sumia. A trava e um
+# byte de `avisos.lock` (ao lado do estado: cada teste tem a sua), entre
+# processos, e reentrante na mesma thread.
+TRAVA_PRAZO_S = 10.0
+_TRAVA_THREADS = threading.RLock()
+_TRAVA_LOCAL = threading.local()
 
 _VOLATEIS = (
     re.compile(r"\d{4}-\d{2}-\d{2}[t ]\d{2}:\d{2}(:\d{2})?(\.\d+)?([+-]\d{2}:\d{2}|z)?"),
@@ -93,9 +106,105 @@ def chave_de(texto: str, chave: str | None = None) -> str:
     return str(chave or ("texto:" + _assinatura(texto)))
 
 
+@contextlib.contextmanager
+def _travado():
+    """Segura `avisos.lock` (entre processos) durante ler-mudar-gravar.
+
+    Nunca levanta e nunca prende para sempre: passado `TRAVA_PRAZO_S` sem
+    conseguir, segue sem trava (o porteiro deixa passar, como sempre).
+    """
+    if not _TRAVA_THREADS.acquire(timeout=TRAVA_PRAZO_S):
+        yield
+        return
+    try:
+        profundidade = getattr(_TRAVA_LOCAL, "n", 0)
+        _TRAVA_LOCAL.n = profundidade + 1
+        try:
+            if profundidade:
+                yield
+                return
+            with _trava_de_arquivo():
+                yield
+        finally:
+            _TRAVA_LOCAL.n = profundidade
+    finally:
+        _TRAVA_THREADS.release()
+
+
+@contextlib.contextmanager
+def _trava_de_arquivo():
+    fh = None
+    pegou = False
+    try:
+        alvo = _arquivo().with_name("avisos.lock")
+        alvo.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(alvo, "a+b")
+        limite = time.monotonic() + TRAVA_PRAZO_S
+        while True:
+            fh.seek(0)
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                else:                                        # pragma: no cover
+                    import fcntl
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                pegou = True
+                break
+            except OSError:
+                if time.monotonic() >= limite:
+                    break
+                time.sleep(0.01)
+    except OSError:
+        pass
+    try:
+        yield
+    finally:
+        if fh is not None:
+            if pegou:
+                with contextlib.suppress(OSError):
+                    fh.seek(0)
+                    if os.name == "nt":
+                        import msvcrt
+                        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:                                    # pragma: no cover
+                        import fcntl
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            fh.close()
+
+
+def _ler_texto(caminho: Path) -> str | None:
+    """O texto do arquivo; None se nao existe. PermissionError (o `os.replace`
+    de outro processo no meio) tenta de novo antes de desistir."""
+    for tentativa in range(5):
+        try:
+            return caminho.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return None
+        except OSError:
+            if tentativa == 4:
+                raise
+            time.sleep(0.02)
+    return None                                              # pragma: no cover
+
+
+def _trocar(tmp: Path, destino: Path) -> None:
+    for tentativa in range(10):
+        try:
+            os.replace(tmp, destino)
+            return
+        except PermissionError:
+            if tentativa == 9:
+                with contextlib.suppress(OSError):
+                    tmp.unlink()
+                raise
+            time.sleep(0.02)
+
+
 def _ler() -> dict:
     try:
-        dados = json.loads(_arquivo().read_text(encoding="utf-8"))
+        texto = _ler_texto(_arquivo())
+        dados = json.loads(texto) if texto else {}
     except (OSError, ValueError):
         return {}
     return dados if isinstance(dados, dict) else {}
@@ -106,7 +215,7 @@ def _gravar(dados: dict) -> None:
     destino.parent.mkdir(parents=True, exist_ok=True)
     tmp = destino.with_name(f".{destino.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, destino)
+    _trocar(tmp, destino)
 
 
 def _data(iso) -> datetime | None:
@@ -127,21 +236,22 @@ def liberar(texto: str, *, chave: str | None = None, origem: str = "",
     estado = _assinatura(texto)
     chave = chave_de(texto, chave)
     try:
-        dados = _ler()
-        ficha = dados.get(chave) if isinstance(dados.get(chave), dict) else None
-        ultimo = _data((ficha or {}).get("em"))
-        if (ficha and ficha.get("estado") == estado and ultimo is not None
-                and (agora - ultimo).total_seconds() < janela_s):
-            ficha["calados"] = int(ficha.get("calados") or 0) + 1
-            ficha["calado_em"] = agora.isoformat(timespec="seconds")
-            dados[chave] = ficha
+        with _travado():
+            dados = _ler()
+            ficha = dados.get(chave) if isinstance(dados.get(chave), dict) else None
+            ultimo = _data((ficha or {}).get("em"))
+            if (ficha and ficha.get("estado") == estado and ultimo is not None
+                    and (agora - ultimo).total_seconds() < janela_s):
+                ficha["calados"] = int(ficha.get("calados") or 0) + 1
+                ficha["calado_em"] = agora.isoformat(timespec="seconds")
+                dados[chave] = ficha
+                _gravar(_podar(dados, agora))
+                return False
+            dados[chave] = {"estado": estado, "em": agora.isoformat(timespec="seconds"),
+                            "calados": 0, "origem": origem,
+                            "texto": " ".join(str(texto).split())[:160],
+                            "_antes": ficha}
             _gravar(_podar(dados, agora))
-            return False
-        dados[chave] = {"estado": estado, "em": agora.isoformat(timespec="seconds"),
-                        "calados": 0, "origem": origem,
-                        "texto": " ".join(str(texto).split())[:160],
-                        "_antes": ficha}
-        _gravar(_podar(dados, agora))
     except Exception:                                          # noqa: BLE001
         return True
     return True
@@ -153,12 +263,13 @@ def confirmar(texto: str, *, chave: str | None = None, origem: str = "",
     agora = agora or datetime.now()
     chave = chave_de(texto, chave)
     try:
-        dados = _ler()
-        ficha = dados.get(chave)
-        if isinstance(ficha, dict):
-            ficha.pop("_antes", None)
-            dados[chave] = ficha
-            _gravar(_podar(dados, agora))
+        with _travado():
+            dados = _ler()
+            ficha = dados.get(chave)
+            if isinstance(ficha, dict):
+                ficha.pop("_antes", None)
+                dados[chave] = ficha
+                _gravar(_podar(dados, agora))
     except Exception:                                          # noqa: BLE001
         pass
     _anotar(texto, chave, origem, agora)
@@ -168,48 +279,107 @@ def desfazer(texto: str, *, chave: str | None = None) -> None:
     """Desfaz a reserva de um aviso que nao conseguiu sair."""
     chave = chave_de(texto, chave)
     try:
-        dados = _ler()
-        ficha = dados.get(chave)
-        if not isinstance(ficha, dict):
-            return
-        antes = ficha.get("_antes")
-        if antes is None:
-            dados.pop(chave, None)
-        else:
-            dados[chave] = antes
-        _gravar(dados)
+        with _travado():
+            dados = _ler()
+            ficha = dados.get(chave)
+            if not isinstance(ficha, dict):
+                return
+            antes = ficha.get("_antes")
+            if antes is None:
+                dados.pop(chave, None)
+            else:
+                dados[chave] = antes
+            _gravar(dados)
     except Exception:                                          # noqa: BLE001
         pass
 
 
+ULTIMA_LEITURA_RUIM = {"linhas": 0}
+
+
 def pendentes() -> list[dict]:
-    """Avisos aguardando rede, na ordem em que falharam."""
+    """Avisos aguardando rede, na ordem em que falharam.
+
+    Linha a linha (APP-13, 14/10): ate entao UMA linha invalida fazia a lista
+    inteira virar `[]`, e o proximo `enfileirar` regravava o arquivo so com o
+    item novo — a fila sumia. A linha ruim e pulada e contada.
+    """
     try:
-        return [json.loads(linha) for linha in _pendentes().read_text(
-            encoding="utf-8").splitlines() if isinstance(json.loads(linha), dict)]
-    except (OSError, ValueError):
+        texto = _ler_texto(_pendentes())
+    except OSError:
         return []
+    itens, ruins = [], 0
+    for linha in (texto or "").splitlines():
+        if not linha.strip():
+            continue
+        try:
+            item = json.loads(linha)
+        except ValueError:
+            ruins += 1
+            continue
+        if isinstance(item, dict):
+            itens.append(item)
+        else:
+            ruins += 1
+    ULTIMA_LEITURA_RUIM["linhas"] = ruins
+    return itens
 
 
 def guardar_pendentes(itens: list[dict]) -> None:
     try:
-        destino = _pendentes()
-        destino.parent.mkdir(parents=True, exist_ok=True)
-        tmp = destino.with_name(f".{destino.name}.{os.getpid()}.tmp")
-        tmp.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n"
-                               for item in itens), encoding="utf-8")
-        os.replace(tmp, destino)
+        with _travado():
+            destino = _pendentes()
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            tmp = destino.with_name(f".{destino.name}.{os.getpid()}.tmp")
+            tmp.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n"
+                                   for item in itens), encoding="utf-8")
+            _trocar(tmp, destino)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def _mesmo_item(a: dict, b: dict) -> bool:
+    return (a.get("chave"), a.get("em"), a.get("texto")) == (
+        b.get("chave"), b.get("em"), b.get("texto"))
+
+
+def retirar_pendentes(saidos: list[dict]) -> None:
+    """Tira da fila SO os itens dados (entregues ou descartados), relendo-a
+    dentro da trava: o que outro processo enfileirou no meio fica."""
+    if not saidos:
+        return
+    try:
+        with _travado():
+            atuais = pendentes()
+            sobra = [i for i in atuais if not any(_mesmo_item(i, s) for s in saidos)]
+            if len(sobra) != len(atuais):
+                guardar_pendentes(sobra)
     except Exception:                                          # noqa: BLE001
         pass
 
 
 def enfileirar(texto: str, *, chave: str | None = None, origem: str = "",
               agora: datetime | None = None) -> None:
-    itens = pendentes()
-    itens.append({"texto": str(texto), "chave": chave_de(texto, chave),
-                  "origem": origem, "em": (agora or datetime.now()).isoformat(
-                      timespec="seconds")})
-    guardar_pendentes(itens)
+    # ACRESCENTA uma linha (nao relê e regrava a fila): uma leitura que falhe
+    # nunca vira "fila vazia + o item novo".
+    linha = json.dumps({"texto": str(texto), "chave": chave_de(texto, chave),
+                        "origem": origem, "em": (agora or datetime.now()).isoformat(
+                            timespec="seconds")}, ensure_ascii=False)
+    try:
+        with _travado():
+            destino = _pendentes()
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            with destino.open("ab") as fh:
+                fh.seek(0, os.SEEK_END)
+                inicio = b""
+                if fh.tell() > 0:
+                    with destino.open("rb") as leitura:
+                        leitura.seek(-1, os.SEEK_END)
+                        if leitura.read(1) != b"\n":
+                            inicio = b"\n"
+                fh.write(inicio + linha.encode("utf-8") + b"\n")
+    except Exception:                                          # noqa: BLE001
+        pass
 
 
 def _podar(dados: dict, agora: datetime) -> dict:

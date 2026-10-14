@@ -975,6 +975,25 @@ def test_filha_com_comando_que_nao_existe_grava_fim(tmp_path):
                                   "--", str(tmp_path / "nao_existe.exe")]) == 1
     fim = json.loads((pasta / "fim.json").read_text(encoding="utf-8"))
     assert fim["codigo"] is None and fim["erro"]
+    # o Popen falhou: filho.json com pid null + fim = o main.py nunca rodou
+    assert json.loads((pasta / "filho.json").read_text(encoding="utf-8"))["pid"] is None
+    estado = acoes.situacao_da_filha({"pasta": str(pasta), "pid": None})
+    assert estado["terminou"] is True and estado["filho"] is False
+
+
+def test_filho_json_que_falha_nao_escreve_fim_antes_do_wait(tmp_path):
+    """APP-1 (a): gravar o filho.json falha (o .tmp e uma pasta). Antes o
+    except pulava o wait() e o fim.json saia em ~0,02 s com codigo None,
+    com o main.py ainda rodando."""
+    pasta = tmp_path / "pub"
+    (pasta / "filho.tmp").mkdir(parents=True)
+    comeco = time.monotonic()
+    assert publicacao_filha.rodar(pasta, str(tmp_path),
+                                  [sys.executable, "-c", "import time; time.sleep(2)"]) == 0
+    assert time.monotonic() - comeco >= 1.8
+    fim = json.loads((pasta / "fim.json").read_text(encoding="utf-8"))
+    assert fim["codigo"] == 0 and fim["erro"] == ""
+    assert "não gravei o pid do main.py" in (pasta / "saida.log").read_text(encoding="utf-8")
 
 
 # ============================================================ servidor
@@ -1321,6 +1340,9 @@ def _item_preso(mundo, *, fim, filha, filho="ausente"):
         (pasta / "fim.json").write_text('{"codigo": 0}', encoding="utf-8")
     if filho == "ilegivel":
         (pasta / "filho.json").write_text('{"pid": 7', encoding="utf-8")
+    elif filho == "abrindo":
+        (pasta / "filho.json").write_text('{"pid": null, "fase": "abrindo"}',
+                                          encoding="utf-8")
     elif filho != "ausente":
         (pasta / "filho.json").write_text(json.dumps({"pid": 77, "criado": None}),
                                           encoding="utf-8")
@@ -1338,7 +1360,13 @@ def _item_preso(mundo, *, fim, filha, filho="ausente"):
     (True, False, "ausente", True),      # o main.py nem nasceu (o fim diz)
     (False, False, False, True),         # morreram sem fim: ja nao roda nada
     (True, True, False, True),           # fim gravado; o que resta e o fim da filha
-    (False, False, "ausente", False),    # sem fim e sem filho.json: nao sei
+    # Sem fim e sem filho.json, com a filha MORTA: ela grava o filho.json
+    # ("abrindo") antes do Popen, entao nunca abriu o main.py (APP-1, 14/10;
+    # antes era "nao sei" e o destino ficava preso para sempre).
+    (False, False, "ausente", True),
+    (False, None, "ausente", False),     # filha sem resposta: nao sei
+    (False, False, "abrindo", False),    # pid null sem fim: o Popen pode ter saido
+    (True, False, "abrindo", True),      # pid null COM fim: Popen falhou ou wait voltou
     (True, False, "ilegivel", False),    # filho.json cortado: nao sei
     (True, False, None, False),          # PID do main.py sem resposta: nao sei
 ])
@@ -1356,6 +1384,63 @@ def test_liberar_recusado_pelo_cli(mundo, capsys):
     _item_preso(mundo, fim=False, filha=True, filho=False)
     assert api_http.main(["--liberar", A, "--confirmo"]) == 1
     assert "ainda não terminou" in capsys.readouterr().out
+
+
+def test_filha_morta_sem_filho_json_solta(mundo):
+    """APP-1 (b): a filha morreu antes de abrir o main.py. Sem filho.json e sem
+    fim.json, com a filha morta DE VERDADE, o main.py nunca existiu."""
+    _item_preso(mundo, fim=False, filha=False, filho="ausente")
+    (item,) = acoes.em_voo().values()
+    assert acoes.situacao_da_filha(item)["filho"] is False
+    assert acoes._pode_soltar(item) == ""
+
+
+def test_vigia_conclui_a_filha_que_morreu_antes_do_main(mundo):
+    """Antes a vigia esperava 6 h (filho None nunca virava 'sumiu')."""
+    pasta = mundo.tmp / "publicacoes" / "morta"
+    pasta.mkdir(parents=True)
+    mundo.filha.vivos[66] = False
+    acoes._mexer_no_voo("morta", {"id": A, "onde": "tiktok", "estado": "em_andamento",
+                                  "pasta": str(pasta), "pid": 66})
+    fio = acoes.vigiar("morta")
+    fio.join(5)
+    assert not fio.is_alive()
+    assert acoes.em_voo()["morta"]["estado"] == "a_conferir"
+
+
+@pytest.mark.parametrize("filha,filho,solta", [
+    (None, "ausente", True),       # nao sei: o --forcar solta
+    (False, "abrindo", True),      # pid null sem fim: nao sei, o --forcar solta
+    (False, None, True),           # pid sem resposta: nao sei
+    (False, True, False),          # main.py VIVO: nem o --forcar solta
+    (True, False, False),          # filha VIVA sem fim: nem o --forcar solta
+])
+def test_liberar_forcar_so_passa_por_cima_do_nao_sei(mundo, monkeypatch, capsys,
+                                                     filha, filho, solta):
+    from builds import atividade
+    linhas = []
+    monkeypatch.setattr(atividade, "registrar",
+                        lambda *a, **k: linhas.append((a, k)))
+    _item_preso(mundo, fim=False, filha=filha, filho=filho)
+    assert api_http.main(["--liberar", A, "--confirmo"]) == 1     # sem --forcar
+    assert "--forcar" in capsys.readouterr().out
+    codigo = api_http.main(["--liberar", A, "--confirmo", "--forcar"])
+    if solta:
+        assert codigo == 0 and acoes.em_voo() == {}
+        ((args, kw),) = linhas
+        assert args[1] == atividade.LOG and "--forcar" in args[2]
+        assert kw["ref"] == A
+    else:
+        assert codigo == 1 and len(acoes.em_voo()) == 1 and linhas == []
+
+
+def test_liberar_forcar_nao_escreve_no_diario_quando_nao_precisava(mundo, monkeypatch):
+    from builds import atividade
+    linhas = []
+    monkeypatch.setattr(atividade, "registrar", lambda *a, **k: linhas.append(a))
+    _item_preso(mundo, fim=True, filha=False, filho=False)
+    assert acoes.liberar(A, forcar=True) == 1
+    assert linhas == []
 
 
 def test_pid_reaproveitado_conta_como_morto(mundo, monkeypatch):

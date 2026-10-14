@@ -81,8 +81,32 @@ def test_arena_recusa_segundo_render_e_video_tem_range(servidor, mundo, monkeypa
     luta = json.loads(dados)["lutas"][0]
     assert luta["situacao"] == "pronta" and luta["video_url"]
     url = urllib.parse.urlsplit(luta["video_url"])
-    resp, corpo = _pedir(servidor, "GET", url.path + "?" + url.query, cabecalhos={"Range": "bytes=2-5"})
+    resp, corpo = _pedir(servidor, "GET", url.path, cabecalhos={"Range": "bytes=2-5"})
     assert resp.status == 206 and corpo == b"2345"
+
+
+def test_video_da_arena_sem_token_na_url(servidor, mundo, monkeypatch):
+    """APP-5: o `video_url` levava `?t=<token>`, e esse token vale para a API
+    inteira (contra a tranca 3: o token nunca aparece em URL)."""
+    pasta = mundo.tmp / "arena" / "luta-2"
+    pasta.mkdir(parents=True)
+    (pasta / "luta.mp4").write_bytes(b"0123456789")
+    (pasta / "luta.json").write_text(json.dumps({"tarefa": "luta-2", "p1": "Ana"}),
+                                     encoding="utf-8")
+    monkeypatch.setattr(api_http, "PASTA_ARENA", pasta.parent)
+    monkeypatch.setattr(tarefas, "uma", lambda chave: {"situacao": "terminou"})
+    token = _parear(servidor)
+    resp, dados = _pedir(servidor, "GET", "/api/arena/lutas", token=token)
+    luta = json.loads(dados)["lutas"][0]
+    assert token not in luta["video_url"] and luta["video_url"].startswith("/v/")
+    # a lista relida devolve o MESMO bilhete (o <video> tocando nao recarrega)
+    de_novo = json.loads(_pedir(servidor, "GET", "/api/arena/lutas", token=token)[1])
+    assert de_novo["lutas"][0]["video_url"] == luta["video_url"]
+    resp, corpo = _pedir(servidor, "GET", luta["video_url"], cabecalhos={"Range": "bytes=0-3"})
+    assert resp.status == 206 and corpo == b"0123"
+    # o caminho antigo com o token na URL nao serve mais nada
+    resp, _ = _pedir(servidor, "GET", f"/api/arena/video/luta-2.mp4?t={token}")
+    assert resp.status in (401, 404)
 
 
 def test_arena_lista_falhou(servidor, mundo, monkeypatch):

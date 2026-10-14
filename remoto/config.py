@@ -81,14 +81,24 @@ def carregar() -> dict:
             dados = {}
     config = dict(PADRAO)
     config.update(dados if isinstance(dados, dict) else {})
-    config["autorizados"] = [int(c) for c in (config.get("autorizados") or [])]
+    # Um autorizado nao numerico (edicao a mao) derrubava o `carregar` — e,
+    # com ele, o bot inteiro. O invalido e ignorado (APP-16, 14/10).
+    autorizados = config.get("autorizados") or []
+    validos = []
+    for chat in autorizados if isinstance(autorizados, list) else []:
+        try:
+            validos.append(int(chat))
+        except (TypeError, ValueError):
+            continue
+    config["autorizados"] = validos
     return config
 
 
 def salvar(config: dict) -> Path:
     alvo = caminho()
     alvo.parent.mkdir(parents=True, exist_ok=True)
-    limpo = {k: config.get(k, v) for k, v in PADRAO.items()}
+    # Chave fora do PADRAO fica (antes ela sumia na primeira gravacao).
+    limpo = {**PADRAO, **config}
     alvo.write_text(json.dumps(limpo, ensure_ascii=False, indent=2) + "\n",
                     encoding="utf-8")
     return alvo

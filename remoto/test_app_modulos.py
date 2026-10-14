@@ -222,3 +222,39 @@ def test_navegador_502_que_nao_passa_mostra_a_faixa_sem_laco(pagina):
     faixa = page.locator("#modulo-faltando")
     assert faixa.is_visible()
     assert "conversa.js" in faixa.inner_text() and "conversar" in faixa.inner_text()
+
+
+# ------------------------------------- achados do conferente (14/10, casca v70)
+CSS = (APP / "app.css").read_text(encoding="utf-8")
+
+
+def _bloco(seletor: str) -> str:
+    achado = re.search(r"(?m)^" + re.escape(seletor) + r"\s*\{([^}]*)\}", CSS)
+    assert achado, f"app.css perdeu a regra {seletor}"
+    return achado.group(1)
+
+
+def test_o_estilo_do_codigo_de_pareamento_so_vale_no_codigo():
+    """A busca do Ateliê saía "n o m e  d a  p e ç a" e o FPS "1 2": a regra
+    `input` (24px, .3em, centro) era do código de pareamento."""
+    comum = _bloco("input")
+    assert "letter-spacing: normal" in comum and "text-align: left" in comum
+    assert ".3em" not in comum and "24px" not in comum
+    codigo = _bloco("input#codigo")
+    assert "letter-spacing: .3em" in codigo and "text-align: center" in codigo
+    assert 'id="codigo"' in HTML
+
+
+def test_deitado_com_a_faixa_usa_a_base_de_em_pe():
+    assert "classList.toggle(\"com-faixa\"" in APP_JS
+    assert "calc(64px + env(safe-area-inset-top) + var(--faixa-alto" in _bloco(
+        "body.deitado.com-faixa .livro")
+
+
+def test_coordenador_sem_dados_diz_por_que():
+    js = (APP / "coordenador.js").read_text(encoding="utf-8")
+    assert "Dados indisponíveis" in js and "function coordSemDados" in js
+    # os tres cartoes do painel
+    corpo = js.split("function coordSemDados", 1)[1].split("\n}\n", 1)[0]
+    for alvo in ("coord-trabalho", "coord-servicos", "coord-eventos"):
+        assert alvo in corpo

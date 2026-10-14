@@ -111,6 +111,23 @@ def test_campo_nenhum_entra_cru(mundo, args, trecho):
         comandos_app.validar("gerar_historia", args)
 
 
+@pytest.mark.parametrize("nome,args", [
+    ("duelo", {"p1": "-x", "p2": ""}),
+    ("duelo", {"p1": "Ana", "p2": "--help"}),
+    ("gerar_historia", {"provedor": "gemini", "partes": 6, "cenas": 14,
+                        "tema": "-h"}),
+])
+def test_texto_com_hifen_recusado(mundo, nome, args):
+    """APP-14: o texto vai solto depois de --p1/--tema; "-x" virava opcao no
+    argparse do main.py e o comando morria na subida."""
+    with pytest.raises(acoes.Recusa, match="não comece com hífen"):
+        comandos_app.validar(nome, args)
+
+
+def test_hifen_no_meio_do_texto_continua_valendo(mundo):
+    assert comandos_app.validar("duelo", {"p1": "Ana-Maria", "p2": ""})["p1"] == "Ana-Maria"
+
+
 def test_id_tem_que_existir(mundo):
     with pytest.raises(acoes.Recusa, match="não achei"):
         comandos_app.validar("rerender", {"geracao": "generation_09999"})
