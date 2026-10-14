@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:39.292342",
+  "depende_de": [],
+  "historico": [],
+  "id": "imagem-de-referencia",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "apagar",
+      "pede_comentario": false,
+      "rotulo": "Apagar o módulo morto (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "voltar",
+      "pede_comentario": false,
+      "rotulo": "Fazer voltar a funcionar"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Existe um módulo morto que passava a imagem de referência de um gerador para outro. Volta ou apaga?",
+  "projeto": "historias",
+  "situacao": "pendente",
+  "titulo": "Imagem de referência entre geradores",
+  "vigente": null
+}
