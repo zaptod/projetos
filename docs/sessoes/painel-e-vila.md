@@ -54,7 +54,7 @@ Fonte: `decisoes/painel-e-vila/` e `decisoes/geral/`. **Decisão vigente do Adri
 - ✅ **Reiniciar serviços sozinho quando o código muda?** — Só quando pedido: entrega aplicada ou comando reiniciar (recomendado) (13/10/2026) `reinicio-por-codigo-velho`
 - ✅ **O ramo main está 945 commits atrás** — main recebe o ramo refactor/arquitetura (recomendado) (13/10/2026) `main-recebe-o-ramo`
 - ✅ **Enviar o ramo ao GitHub (push)?** — Enviar main e refactor/arquitetura (recomendado) (13/10/2026) `enviar-ao-github`
-- ⏳ **Quando o PC religa** — Depois de religar, nada sobe (nem o bot que avisaria) até alguém entrar no Windows. O que fazer? `pc-religado`
+- ✅ **Quando o PC religa** — Só um aviso 'o PC religou' quando você entrar (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `pc-religado`
 
 **Painel e Vila**
 - ✅ **Tarefa da Vila acorda o PC** — Tirar o acordar da tarefa da Vila (recomendado) (28/09/2026) `tarefa-da-vila-acorda-o-pc`
