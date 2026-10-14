@@ -81,6 +81,77 @@ def _resolver_caminho_estado(filename=None):
     return os.path.abspath(caminho)
 
 
+# --------------------------------------------------- catalogo so do torneio
+# Decisao do Adrian de 14/10/2026 (Grimorio `builds/gerar-roster-do-torneio`,
+# "Gravar num catalogo so do torneio"): o botao "Gerar Roster" gravava os 64
+# gerados POR CIMA do banco de personagens e armas, sem confirmacao, que e
+# exatamente o que matou os personagens de agosto em 02/09. Agora o roster
+# vai para uma pasta propria e o banco dele nunca e tocado por esse botao.
+PASTA_CATALOGO_TORNEIO = "torneio"
+
+
+def caminhos_catalogo_torneio() -> tuple[str, str]:
+    """(armas.json, personagens.json) do catalogo do torneio, no runtime."""
+    pasta = os.path.join(database.resolver_runtime_data_dir(), PASTA_CATALOGO_TORNEIO)
+    return (
+        os.path.join(pasta, "armas.json"),
+        os.path.join(pasta, "personagens.json"),
+    )
+
+
+def catalogo_do_torneio() -> dict | None:
+    """Os caminhos do catalogo do torneio, se ele ja foi gerado.
+
+    Formato pronto para ``carregar_personagens(**catalogo)``. ``None`` quer
+    dizer "nunca apertaram Gerar Roster": o torneio le o banco principal, so
+    para LER, como sempre fez.
+    """
+    armas, personagens = caminhos_catalogo_torneio()
+    if os.path.isfile(armas) and os.path.isfile(personagens):
+        return {"arquivo_armas": armas, "arquivo_personagens": personagens}
+    return None
+
+
+def gerar_roster_do_torneio(num_personagens: int = 64, estrategia: str = "balanceada") -> int:
+    """Gera o roster e grava SO no catalogo do torneio; devolve quantos.
+
+    O banco principal (personagens/armas do launcher e da roleta) nao e lido
+    nem gravado aqui. O catalogo do torneio e trocado inteiro a cada geracao
+    (a copia do estado anterior sai em ``torneio/_backup-*``).
+    """
+    from neural_fights.tools.gerador_database import (
+        gerar_database_completa,
+        salvar_database,
+    )
+
+    armas, personagens = gerar_database_completa(num_personagens, estrategia)
+    arquivo_armas, arquivo_personagens = caminhos_catalogo_torneio()
+    os.makedirs(os.path.dirname(arquivo_armas), exist_ok=True)
+    salvar_database(
+        armas,
+        personagens,
+        substituir=True,
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
+    return len(personagens)
+
+
+def _roster_do_catalogo(catalogo: dict):
+    """``roster_provider`` (nome -> Personagem com arma) do catalogo dado."""
+    todos = {p.nome: p for p in carregar_personagens(**catalogo)}
+    armas = {a.nome: a for a in database.carregar_armas(**catalogo)}
+
+    def montar(nome):
+        personagem = todos.get(nome)
+        if personagem is None:
+            raise ValueError(f"Personagem não encontrado no catálogo do torneio: {nome}")
+        personagem.arma_obj = armas.get(personagem.nome_arma) if personagem.nome_arma else None
+        return personagem
+
+    return montar
+
+
 class TournamentState(Enum):
     WAITING = "waiting"
     IN_PROGRESS = "in_progress"
@@ -149,9 +220,10 @@ class Tournament:
         }
     
     def load_participants_from_database(self, max_participants: int = 64) -> int:
-        """Carrega participantes do banco de dados"""
+        """Carrega participantes do catalogo do torneio (ou do banco, so lendo)."""
         try:
-            personagens = carregar_personagens()
+            catalogo = catalogo_do_torneio()
+            personagens = carregar_personagens(**catalogo) if catalogo else carregar_personagens()
             
             if not personagens:
                 _console_print("ERRO: Nenhum personagem encontrado no banco de dados!")
@@ -1308,15 +1380,24 @@ class TournamentRunner:
             }
 
         initial_seed = int(self.simulation_config.get("seed", 0)) + int(match.match_id)
+        # Lutadores do "Gerar Roster" moram no catalogo do torneio, nao no
+        # banco: o motor recebe quem montar cada um. Sem catalogo, a chamada
+        # fica identica a de sempre (o motor le o banco).
+        catalogo = catalogo_do_torneio()
         engine_results = []
         result = None
         for attempt in range(retry_limit + 1):
             attempt_seed = initial_seed + attempt
+            extras = {}
+            if catalogo:
+                # um provedor por tentativa: lutador novo, como o banco faria
+                extras["roster_provider"] = _roster_do_catalogo(catalogo)
             result = run_headless_match(
                 config,
                 fixed_dt=float(self.simulation_config.get("fixed_dt", 1.0 / 60.0)),
                 max_duration=float(self.simulation_config.get("max_duration", 120.0)),
                 seed=attempt_seed,
+                **extras,
             )
             engine_results.append(result.to_dict())
 

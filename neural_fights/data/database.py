@@ -81,18 +81,47 @@ _INTERPROCESS_STATE = threading.local()
 _INTERPROCESS_LOCK_TIMEOUT = 30.0
 
 
+_NOME_DA_TRAVA = ".persistence.lock"
+
+
+def _caminho_da_trava() -> str:
+    """O arquivo de trava mora AO LADO do banco que ele protege.
+
+    Ate 14/10/2026 ficava em ``tempfile.gettempdir()``: cada processo com um
+    TEMP diferente (o CLAUDE.md manda ``TEMP=E:\\tmp_pytest``; a producao usa
+    o do usuario no C:) travava um arquivo DIFERENTE e os dois gravavam o
+    banco ao mesmo tempo (BLD-2/BLD-7 da auditoria). O diretorio runtime e o
+    que todos os processos que mexem no MESMO banco tem em comum. Le o
+    ambiente a cada chamada: quem troca ``NEURAL_FIGHTS_RUNTIME_DIR`` depois
+    do import (testes, scripts isolados) trava a pasta que vai gravar.
+
+    Se o runtime nao puder ser criado, volta ao TEMP, como antes: melhor uma
+    trava parcial que nenhuma.
+    """
+    try:
+        pasta = resolver_runtime_data_dir()
+        os.makedirs(pasta, exist_ok=True)
+        return os.path.join(pasta, _NOME_DA_TRAVA)
+    except OSError:
+        return os.path.join(tempfile.gettempdir(), "neural-fights.persistence.lock")
+
+
 @contextmanager
 def _bloqueio_persistencia_interprocesso():
     """Serializa snapshots e read-modify-write tambem entre processos.
 
-    O arquivo de lock fica no diretorio temporario do usuario, que e gravavel
-    mesmo quando a wheel esta instalada em modo somente leitura. Ele e mantido
-    depois do uso: remover um lock desbloqueado abriria uma corrida entre um
-    processo que ainda segura o inode antigo e outro que criasse um novo.
+    O arquivo de lock fica no diretorio runtime (ver ``_caminho_da_trava``).
+    Ele e mantido depois do uso: remover um lock desbloqueado abriria uma
+    corrida entre um processo que ainda segura o inode antigo e outro que
+    criasse um novo.
     """
 
-    caminho = os.path.join(tempfile.gettempdir(), "neural-fights.persistence.lock")
-    arquivo = open(caminho, "a+b")
+    caminho = _caminho_da_trava()
+    try:
+        arquivo = open(caminho, "a+b")
+    except OSError:
+        caminho = os.path.join(tempfile.gettempdir(), "neural-fights.persistence.lock")
+        arquivo = open(caminho, "a+b")
     adquirido = False
     try:
         arquivo.seek(0, os.SEEK_END)
@@ -860,10 +889,51 @@ logger = logging.getLogger(__name__)
 COPIAS_GUARDADAS = 5
 
 
+def _nomes_perdidos(caminho: str, novos: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Nomes que estao no arquivo e nao estao em ``novos`` (ilegivel = nenhum)."""
+    try:
+        antigos = carregar_json(caminho)
+    except Exception:
+        return []
+    if not isinstance(antigos, list):
+        return []
+    nomes_novos = {str(item.get("nome")) for item in novos}
+    return [str(item.get("nome")) for item in antigos
+            if isinstance(item, Mapping) and str(item.get("nome")) not in nomes_novos]
+
+
+def _carimbo_da_copia() -> str:
+    from datetime import datetime
+
+    return datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+
+
+def _pasta_de_copia_unica(pasta: str) -> str:
+    """Cria ``_backup-<carimbo com microssegundo>`` sem nunca reaproveitar.
+
+    Com carimbo de segundo e ``exist_ok=True``, duas perdas no mesmo segundo
+    caiam na MESMA pasta e a segunda copia apagava o estado de antes da
+    primeira (BLD-3, 14/10/2026). ``os.makedirs`` sem ``exist_ok`` e atomico:
+    quem chega depois ganha ``-2``, ``-3``...
+    """
+    base = os.path.join(pasta, "_backup-" + _carimbo_da_copia())
+    destino, sufixo = base, 2
+    while True:
+        try:
+            os.makedirs(destino)
+            return destino
+        except FileExistsError:
+            destino = f"{base}-{sufixo}"
+            sufixo += 1
+
+
 def _copia_antes_de_perder(
-    armas_path: str, chars_path: str, chars_novos: Sequence[Mapping[str, Any]]
+    armas_path: str,
+    chars_path: str,
+    armas_novas: Sequence[Mapping[str, Any]],
+    chars_novos: Sequence[Mapping[str, Any]],
 ) -> str | None:
-    """Guarda o banco atual quando a gravacao vai APAGAR personagens.
+    """Guarda o banco atual quando a gravacao vai APAGAR personagem ou arma.
 
     `gerador_database.py` grava com `substituir=True` — o banco inteiro e
     trocado, sem aviso e sem volta. Em 02/09/2026 isso levou junto todos os
@@ -877,32 +947,24 @@ def _copia_antes_de_perder(
     inserindo o personagem novo, que e o caso comum) nao gera arquivo nenhum.
     Falhar ao copiar nunca impede a gravacao: isto e rede de seguranca, nao
     portao.
-    """
-    from datetime import datetime
 
-    try:
-        antigos = carregar_json(chars_path)
-    except Exception:
-        return None
-    if not antigos:
-        return None
-    nomes_novos = {str(p.get("nome")) for p in chars_novos}
-    perdidos = [str(p.get("nome")) for p in antigos
-                if str(p.get("nome")) not in nomes_novos]
+    Desde 14/10/2026 (BLD-3) arma que some tambem copia: o "Deletar" da aba
+    Armas (``remover_arma``) apagava sem deixar nada. Arma renomeada sai pelo
+    nome antigo e tambem gera copia; e barato e aceitavel.
+    """
+    perdidos = (_nomes_perdidos(chars_path, chars_novos)
+                + _nomes_perdidos(armas_path, armas_novas))
     if not perdidos:
         return None
 
     try:
-        carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
-        destino = os.path.join(os.path.dirname(chars_path),
-                               f"_backup-{carimbo}")
-        os.makedirs(destino, exist_ok=True)
+        destino = _pasta_de_copia_unica(os.path.dirname(chars_path))
         for origem in (armas_path, chars_path):
             if os.path.isfile(origem):
                 shutil.copy2(origem, os.path.join(destino,
                                                   os.path.basename(origem)))
         logger.warning(
-            "banco: %d personagem(ns) sairam nesta gravacao (%s%s); "
+            "banco: %d registro(s) sairam nesta gravacao (%s%s); "
             "copia do estado anterior em %s",
             len(perdidos), ", ".join(perdidos[:3]),
             "..." if len(perdidos) > 3 else "", destino,
@@ -914,10 +976,15 @@ def _copia_antes_de_perder(
 
 
 def _podar_copias(pasta: str) -> None:
-    """So as ultimas `COPIAS_GUARDADAS`: rede de seguranca nao vira deposito."""
+    """So as ultimas `COPIAS_GUARDADAS`: rede de seguranca nao vira deposito.
+
+    Copia feita a mao (``_backup-manual-*``) nao conta nem e podada: ela
+    ocupava uma das 5 vagas das automaticas no runtime real.
+    """
     try:
         copias = sorted(d for d in os.listdir(pasta)
                         if d.startswith("_backup-")
+                        and not d.startswith("_backup-manual-")
                         and os.path.isdir(os.path.join(pasta, d)))
         for velha in copias[:-COPIAS_GUARDADAS]:
             shutil.rmtree(os.path.join(pasta, velha), ignore_errors=True)
@@ -945,7 +1012,7 @@ def salvar_database(
     )
     os.makedirs(os.path.dirname(armas_path), exist_ok=True)
     os.makedirs(os.path.dirname(chars_path), exist_ok=True)
-    _copia_antes_de_perder(armas_path, chars_path, chars_json)
+    _copia_antes_de_perder(armas_path, chars_path, armas_json, chars_json)
     salvar_jsons_coerentes(
         {
             armas_path: armas_json,
@@ -967,7 +1034,8 @@ def atualizar_arma(
     nome_atual = nome_atual.strip()
     if not nome_atual:
         raise DataValidationError("o nome atual deve ser nao vazio")
-    if isinstance(arma_atualizada, Mapping):
+    veio_do_modelo = not isinstance(arma_atualizada, Mapping)
+    if not veio_do_modelo:
         nova_arma = dict(arma_atualizada)
     else:
         converter = getattr(arma_atualizada, "to_dict", None)
@@ -996,7 +1064,17 @@ def atualizar_arma(
         for indice, arma in enumerate(armas_novas)
         if arma["nome"] == nome_atual
     )
-    armas_novas[indice] = nova_arma
+    # BLD-1 (14/10/2026): o registro do disco recebe a edicao por cima, em vez
+    # de ser trocado pelo dict do modelo. Campo que o modelo nao conhece
+    # (``tipo_projetil``, ``tipo_orbital``...) fica; e, vindo do launcher (um
+    # ``Arma``), so muda o campo que a edicao mudou, sem ruido de float.
+    disco = armas_novas[indice]
+    if veio_do_modelo:
+        armas_novas[indice] = _mesclar_registro(
+            disco, Arma(**disco).to_dict(), nova_arma
+        )
+    else:
+        armas_novas[indice] = {**disco, **nova_arma}
     personagens_novos = [dict(personagem) for personagem in personagens]
     afetados = 0
     if novo_nome != nome_atual:
@@ -1180,41 +1258,248 @@ def carregar_personagens(
         for item in raw_armas
     }
 
-    lista = []
-    for item in raw_chars:
-        nome_arma = item["nome_arma"]
-        personagem = Personagem(
-            item["nome"],
-            item["tamanho"],
-            item["forca"],
-            item["mana"],
-            nome_arma,
-            pesos_por_nome[nome_arma],
-            item.get("cor_r", 200),
-            item.get("cor_g", 50),
-            item.get("cor_b", 50),
-            item.get("classe", "Guerreiro (Força Bruta)"),
-            item.get("personalidade", "Aleatório"),
+    return [_personagem_do_registro(item, pesos_por_nome) for item in raw_chars]
+
+
+def _pesos_por_nome(raw_armas: Sequence[Mapping[str, Any]]) -> dict[str, float]:
+    return {
+        item["nome"]: float(item.get("peso", 0))
+        * get_raridade_data(item.get("raridade", "Comum"))["mod_peso"]
+        for item in raw_armas
+    }
+
+
+def _personagem_do_registro(
+    item: Mapping[str, Any], pesos_por_nome: Mapping[str, float]
+) -> Personagem:
+    """O ``Personagem`` que o launcher veria para este registro do disco."""
+    nome_arma = item["nome_arma"]
+    personagem = Personagem(
+        item["nome"],
+        item["tamanho"],
+        item["forca"],
+        item["mana"],
+        nome_arma,
+        pesos_por_nome.get(nome_arma, 0.0),
+        item.get("cor_r", 200),
+        item.get("cor_g", 50),
+        item.get("cor_b", 50),
+        item.get("classe", "Guerreiro (Força Bruta)"),
+        item.get("personalidade", "Aleatório"),
+    )
+    # Onda 11C: o kit sorteado na criação viaja com o personagem
+    # (ausente em registros antigos => o Lutador usa o kit da classe).
+    personagem.kit_skills = item.get("kit_skills")
+    return personagem
+
+
+class ListaDesatualizada(DataValidationError):
+    """O banco no disco mudou depois que a lista em memoria foi lida.
+
+    Quem recebe deve reler o banco, reaplicar a sua edicao e gravar de novo.
+    Nada foi gravado.
+    """
+
+
+def _mesclar_registro(
+    disco: Mapping[str, Any], visto: Mapping[str, Any], novo: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Aplica ao registro do disco SO os campos que a edicao mudou.
+
+    ``visto`` e o registro do disco passado pelo modelo (``to_dict`` do que o
+    launcher carregou) e ``novo`` e o ``to_dict`` depois da edicao. Campo igual
+    nos dois nao foi tocado e fica como esta no disco, byte a byte: nada de
+    ruido de ponto flutuante do modelo (``critico``, ``velocidade_ataque``,
+    ``tamanho``) nem perda de campo que o modelo nao conhece (``genero``,
+    ``tipo_projetil``, ``tipo_orbital``).
+    """
+    if visto == novo:
+        return dict(disco)
+    saida = dict(disco)
+    for chave, valor in novo.items():
+        if chave not in visto or visto[chave] != valor:
+            saida[chave] = valor
+    for chave in visto:
+        if chave not in novo:
+            # o modelo deixou de emitir (ex.: kit_skills esvaziado na edicao)
+            saida.pop(chave, None)
+    return saida
+
+
+def _gravar_lista_sobre_o_disco(
+    lista_dicts: Sequence[dict[str, Any]],
+    disco: Sequence[Mapping[str, Any]],
+    modelo_do_disco,
+    *,
+    apagar: Iterable[str],
+    novos: Iterable[str],
+    rotulo: str,
+) -> list[dict[str, Any]]:
+    """Le-mescla: o resultado parte do DISCO, nao da lista em memoria.
+
+    - nome no disco que nao esta na lista nem em ``apagar``: a lista e velha
+      (a roleta inseriu depois que o launcher abriu) e ``ListaDesatualizada``
+      sai SEM gravar; antes, o launcher apagava esse personagem;
+    - nome em ``novos`` que ja existe no disco: alguem criou o mesmo nome
+      depois que a lista foi lida, e a "criacao" viraria edicao por cima dele.
+    """
+    apagar = {str(nome) for nome in apagar}
+    novos = {str(nome) for nome in novos}
+    nomes_lista = [str(item.get("nome")) for item in lista_dicts]
+    if len(set(nomes_lista)) != len(nomes_lista):
+        repetidos = sorted({n for n in nomes_lista if nomes_lista.count(n) > 1})
+        raise DataValidationError(f"{rotulo} com nome repetido: {repetidos[:5]}")
+    por_nome = {str(item.get("nome")): item for item in disco}
+    faltando = set(por_nome) - set(nomes_lista) - apagar
+    if faltando:
+        raise ListaDesatualizada(
+            f"o banco mudou desde que o launcher abriu ({rotulo}): "
+            f"{sorted(faltando)[:5]}"
         )
-        # Onda 11C: o kit sorteado na criação viaja com o personagem
-        # (ausente em registros antigos => o Lutador usa o kit da classe).
-        personagem.kit_skills = item.get("kit_skills")
-        lista.append(personagem)
-    return lista
+    ja_existem = sorted(novos & set(por_nome))
+    if ja_existem:
+        raise ListaDesatualizada(
+            f"o banco mudou desde que o launcher abriu ({rotulo}): "
+            f"ja existe {ja_existem[:5]}"
+        )
+
+    saida = []
+    for item in lista_dicts:
+        registro = por_nome.get(str(item.get("nome")))
+        if registro is None:
+            saida.append(dict(item))
+            continue
+        saida.append(_mesclar_registro(registro, modelo_do_disco(registro), item))
+    return saida
 
 
 @_serializar_persistencia
-def salvar_lista_armas(lista: Sequence[Arma]) -> None:
-    armas = [arma.to_dict() for arma in lista]
-    _, personagens = carregar_database()
+def salvar_lista_armas(
+    lista: Sequence[Arma],
+    *,
+    apagar: Iterable[str] = (),
+    novos: Iterable[str] = (),
+) -> None:
+    """Grava a lista do launcher SEM apagar o que o disco ganhou depois.
+
+    Leitura, mescla e gravacao na MESMA trava (BLD-1, 14/10/2026). Antes, a
+    lista inteira ia ao disco pelo ``to_dict``: sumiam as armas criadas por
+    outro processo e os campos que o modelo nao conhece (``tipo_projetil``,
+    ``velocidade_projetil``, ``tipo_orbital``).
+    """
+    armas_disco, personagens = carregar_database()
+    armas = _gravar_lista_sobre_o_disco(
+        [arma.to_dict() for arma in lista],
+        armas_disco,
+        lambda registro: Arma(**registro).to_dict(),
+        apagar=apagar,
+        novos=novos,
+        rotulo="armas",
+    )
+    if armas == list(armas_disco):
+        return
     salvar_database(armas, personagens)
 
 
 @_serializar_persistencia
-def salvar_lista_chars(lista: Sequence[Personagem]) -> None:
-    armas, _ = carregar_database()
-    personagens = [personagem.to_dict() for personagem in lista]
+def salvar_lista_chars(
+    lista: Sequence[Personagem],
+    *,
+    apagar: Iterable[str] = (),
+    novos: Iterable[str] = (),
+) -> None:
+    """Grava a lista do launcher SEM apagar o que o disco ganhou depois.
+
+    O mesmo contrato de ``salvar_lista_armas``. O caso que custou caro: o
+    launcher aberto, a roleta insere o personagem novo, alguem salva um
+    campeao no launcher e o personagem da roleta some (143 -> 144 -> 143 na
+    prova da auditoria), junto com o ``genero`` de todos os personagens.
+    ``apagar`` diz quem o launcher QUER tirar (Deletar, ou o nome antigo de
+    um campeao renomeado); ``novos``, quem ele esta criando agora.
+    """
+    armas, chars_disco = carregar_database()
+    pesos = _pesos_por_nome(armas)
+    personagens = _gravar_lista_sobre_o_disco(
+        [personagem.to_dict() for personagem in lista],
+        chars_disco,
+        lambda registro: _personagem_do_registro(registro, pesos).to_dict(),
+        apagar=apagar,
+        novos=novos,
+        rotulo="personagens",
+    )
+    if personagens == list(chars_disco):
+        return
     salvar_database(armas, personagens)
+
+
+def nome_unico(base: str, usados: set[str] | frozenset[str]) -> str:
+    """``base``, ou ``base #2``, ``base #3``... o primeiro que nao esta em uso."""
+    nome, sufixo = base, 2
+    while nome in usados:
+        nome = f"{base} #{sufixo}"
+        sufixo += 1
+    return nome
+
+
+@_serializar_persistencia
+def inserir_no_banco(
+    armas: Sequence[Mapping[str, Any]],
+    personagens: Sequence[Mapping[str, Any]],
+    *,
+    renomear_em_conflito: bool = False,
+    arquivo_armas: str | None = None,
+    arquivo_personagens: str | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Acrescenta ao banco SEM tirar nada; devolve (armas, personagens) com o nome FINAL.
+
+    Ler, conferir nomes e gravar acontecem dentro da MESMA trava (processo e
+    arquivo). Antes (BLD-2, 14/10/2026) a roleta lia numa trava e gravava em
+    outra: duas builds em paralelo liam N, cada uma gravava N+1, e o
+    personagem de uma delas sumia com as duas dizendo "inserido".
+
+    Com ``renomear_em_conflito`` o nome repetido ganha ``#2``, ``#3``... e o
+    ``nome_arma`` dos personagens do lote acompanha a arma renomeada; sem ele,
+    nome repetido e erro, como sempre foi.
+    """
+    armas_existentes, chars_existentes = carregar_database(
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
+    armas_novas = [dict(arma) for arma in armas]
+    chars_novos = [dict(personagem) for personagem in personagens]
+    nomes_armas = {str(arma["nome"]) for arma in armas_existentes}
+    nomes_chars = {str(personagem["nome"]) for personagem in chars_existentes}
+
+    if renomear_em_conflito:
+        renomeadas: dict[str, str] = {}
+        for arma in armas_novas:
+            antigo = str(arma.get("nome"))
+            arma["nome"] = nome_unico(antigo, nomes_armas)
+            nomes_armas.add(arma["nome"])
+            renomeadas.setdefault(antigo, arma["nome"])
+        for personagem in chars_novos:
+            arma_do_lote = renomeadas.get(str(personagem.get("nome_arma")))
+            if arma_do_lote is not None:
+                personagem["nome_arma"] = arma_do_lote
+            personagem["nome"] = nome_unico(str(personagem.get("nome")), nomes_chars)
+            nomes_chars.add(personagem["nome"])
+    else:
+        conflitos = sorted(
+            (nomes_armas & {arma.get("nome") for arma in armas_novas})
+            | (nomes_chars & {personagem.get("nome") for personagem in chars_novos})
+        )
+        if conflitos:
+            raise DataValidationError(
+                "nomes ja existentes no banco: " + ", ".join(conflitos)
+            )
+
+    salvar_database(
+        [*armas_existentes, *armas_novas],
+        [*chars_existentes, *chars_novos],
+        arquivo_armas=arquivo_armas,
+        arquivo_personagens=arquivo_personagens,
+    )
+    return armas_novas, chars_novos
 
 
 @_serializar_persistencia

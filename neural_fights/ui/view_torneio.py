@@ -301,7 +301,9 @@ class TournamentWindow(ctk.CTkToplevel):
             try:
                 exportar_palco_selecao(match.fighter1_name, match.fighter2_name, "Arena", "janela")
             except Exception as error:
-                self.after(0, lambda: messagebox.showerror("Godot", str(error)))
+                # o Python apaga `error` ao sair do except; o lambda roda depois
+                mensagem = str(error)
+                self.after(0, lambda: messagebox.showerror("Godot", mensagem))
             finally:
                 self.after(0, lambda: self.btn_palco.configure(state="normal"))
         threading.Thread(target=abrir, daemon=True).start()
@@ -359,15 +361,16 @@ class TournamentWindow(ctk.CTkToplevel):
         self.update()
         
         try:
-            from neural_fights.tools.gerador_database import (
-                gerar_database_completa,
-                salvar_database,
+            # Decisao do Adrian (14/10/2026, `builds/gerar-roster-do-torneio`):
+            # o roster vai para o catalogo SO do torneio. Antes, os 64 eram
+            # gravados por cima do banco de personagens e armas, sem pergunta.
+            from neural_fights.tournament.tournament_mode import gerar_roster_do_torneio
+
+            quantos = gerar_roster_do_torneio(64, "balanceada")
+
+            self.status_label.configure(
+                text=f"✅ Gerados {quantos} personagens (catálogo do torneio)!"
             )
-            
-            armas, personagens = gerar_database_completa(64, "balanceada")
-            salvar_database(armas, personagens)
-            
-            self.status_label.configure(text=f"✅ Gerados {len(personagens)} personagens!")
             
             # Recarrega
             self.new_tournament()

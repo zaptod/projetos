@@ -776,9 +776,26 @@ gatilhos no Ateliê):
   (`final_<perfil>.mp4`, `capa.png`, os JSONs); a publicação manda no que faz
   com eles. Os textos vêm de `config/publicacao.json`, não de código.
 - **Banco de personagens e armas** — `%LOCALAPPDATA%\neural-fights\{personagens,
-  armas}.json`. Escritor único: `builds/nf_bridge/exporter.py` via
-  `salvar_database(substituir=False)`, disparado só por `generate-video`.
-  Todo o resto (duelo, fight, torneio, catálogo) apenas LÊ.
+  armas}.json`. Escritor único do lado das builds: `builds/nf_bridge/exporter.py`
+  via `database.inserir_no_banco(..., renomear_em_conflito=True)`, disparado
+  só por `generate-video`. Todo o resto (duelo, fight, torneio, catálogo)
+  apenas LÊ. Desde 14/10/2026 (auditoria profunda, BLD-1/2/3 e MOT-101):
+  - ler, escolher o nome livre ("#2") e gravar acontecem numa trava só, e a
+    trava mora no runtime (`<runtime>\.persistence.lock`), não no TEMP de cada
+    processo: duas builds em paralelo entram as duas;
+  - o launcher grava partindo do disco (`salvar_lista_chars/armas(lista,
+    apagar=, novos=)`): registro intocado fica byte a byte, campo que o modelo
+    não conhece (`genero`, `tipo_projetil`, `tipo_orbital`) fica, e lista
+    velha (a roleta inseriu depois que a aba abriu) é recusada com
+    `ListaDesatualizada` — a tela relê e tenta de novo;
+  - toda gravação que tira personagem OU arma deixa `<runtime>\_backup-<carimbo
+    com microssegundo>` (5 guardadas; `_backup-manual-*` não conta);
+  - o "Gerar Roster" do torneio no launcher grava só em
+    `<runtime>\torneio\{armas,personagens}.json` (decisão
+    `builds/gerar-roster-do-torneio`); o torneio lê esse catálogo quando ele
+    existe e o banco, só lendo, quando não. "Abrir no Godot" do torneio ainda
+    procura o lutador no banco: com roster próprio, ele falha com erro na
+    tela (a simulação do torneio funciona).
 - **Títulos editados** — `outputs/_publicar/_textos/<id>.json`
   (`catalogo.salvar_texto`): valem sobre o título gerado, para o painel e para
   a grade. É onde moram os títulos próprios das variantes B (27/09/2026).

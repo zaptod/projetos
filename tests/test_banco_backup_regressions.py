@@ -28,7 +28,8 @@ from neural_fights.data import database
 
 def _personagem(nome: str) -> dict:
     return {"nome": nome, "classe": "Guerreiro", "hp": 100, "ataque": 10,
-            "defesa": 10, "velocidade": 10, "personalidade": "Bruto"}
+            "defesa": 10, "velocidade": 10, "personalidade": "Bruto",
+            "nome_arma": "Espada"}
 
 
 def _arma(nome: str) -> dict:
@@ -104,6 +105,60 @@ class BackupDoBancoTests(unittest.TestCase):
         """Sem arquivo anterior nao ha o que perder."""
         self._gravar(["Ylva Brumalok"])
         self.assertEqual([], self._copias())
+
+    # ---- BLD-3 (auditoria profunda, 14/10/2026) ----
+
+    def test_remover_arma_deixa_copia(self):
+        """O "Deletar" da aba Armas apagava sem copia nenhuma."""
+        self._gravar(["Ylva Brumalok"], nomes_armas=("Espada", "Arma Sem Dono"))
+        with patch.object(database, "validar_database", return_value=None):
+            database.remover_arma(
+                "Arma Sem Dono",
+                arquivo_armas=self.armas,
+                arquivo_personagens=self.chars,
+            )
+        copias = self._copias()
+        self.assertEqual(1, len(copias), "a arma apagada tinha de copiar")
+        salvas = json.loads(
+            (self.dir / copias[0] / "armas.json").read_text("utf-8"))
+        self.assertIn("Arma Sem Dono", {a["nome"] for a in salvas})
+        atuais = json.loads(Path(self.armas).read_text("utf-8"))
+        self.assertNotIn("Arma Sem Dono", {a["nome"] for a in atuais})
+
+    def test_duas_perdas_no_mesmo_instante_nao_se_sobrescrevem(self):
+        """Carimbo de segundo + exist_ok: a 2a copia apagava a 1a."""
+        self._gravar(["a", "b", "c"])
+        with patch.object(database, "_carimbo_da_copia",
+                          return_value="20261014-101010-000000"):
+            self._gravar(["b", "c"])
+            self._gravar(["c"])
+        copias = self._copias()
+        self.assertEqual(["_backup-20261014-101010-000000",
+                          "_backup-20261014-101010-000000-2"], copias)
+        primeira = json.loads(
+            (self.dir / copias[0] / "personagens.json").read_text("utf-8"))
+        segunda = json.loads(
+            (self.dir / copias[1] / "personagens.json").read_text("utf-8"))
+        self.assertEqual({"a", "b", "c"}, {p["nome"] for p in primeira})
+        self.assertEqual({"b", "c"}, {p["nome"] for p in segunda})
+
+    def test_duas_perdas_seguidas_de_verdade_deixam_duas_copias(self):
+        self._gravar(["a", "b", "c"])
+        self._gravar(["b", "c"])
+        self._gravar(["c"])
+        self.assertEqual(2, len(self._copias()))
+
+    def test_copia_manual_nao_ocupa_vaga_nem_e_podada(self):
+        manual = self.dir / "_backup-manual-x"
+        manual.mkdir()
+        nomes = ["a", "b", "c", "d", "e", "f", "g"]
+        self._gravar(nomes)
+        for i in range(1, 7):  # 6 perdas
+            self._gravar(nomes[i:])
+        copias = self._copias()
+        self.assertIn("_backup-manual-x", copias)
+        automaticas = [c for c in copias if not c.startswith("_backup-manual-")]
+        self.assertEqual(database.COPIAS_GUARDADAS, len(automaticas))
 
 
 if __name__ == "__main__":

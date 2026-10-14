@@ -12,6 +12,7 @@ from neural_fights.models import (
 )
 from neural_fights.data import (
     DataValidationError,
+    ListaDesatualizada,
     atualizar_arma,
     carregar_personagens,
     remover_arma,
@@ -1131,9 +1132,20 @@ class TelaArmas(tk.Frame):
                 self.indice_em_edicao = None
                 self.nome_original_edicao = None
             else:
-                lista_nova = [*self.controller.lista_armas, nova]
-                salvar_lista_armas(lista_nova)
-                self.controller.lista_armas.append(nova)
+                # BLD-1 (14/10/2026): a lista desta tela pode estar velha (a
+                # roleta inseriu arma depois que ela abriu). O banco recusa
+                # com ListaDesatualizada em vez de apagar a arma nova; aqui
+                # relemos e tentamos de novo uma vez.
+                try:
+                    salvar_lista_armas(
+                        [*self.controller.lista_armas, nova], novos=[nova.nome]
+                    )
+                except ListaDesatualizada:
+                    self.controller.recarregar_dados()
+                    salvar_lista_armas(
+                        [*self.controller.lista_armas, nova], novos=[nova.nome]
+                    )
+                self.controller.recarregar_dados()
             try:
                 catalogo_animacoes.gravar()
             except Exception as erro:

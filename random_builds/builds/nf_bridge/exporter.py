@@ -130,26 +130,25 @@ def build_records(char_entity: dict, weapon_entity: dict,
 
 
 def _nome_unico(base: str, usados: set[str]) -> str:
-    nome, sufixo = base, 2
-    while nome in usados:
-        nome = f"{base} #{sufixo}"
-        sufixo += 1
-    return nome
+    """Mantido para quem ja importava daqui; a regra mora no banco."""
+    return nf.database.nome_unico(base, usados)
 
 
 def insert_into_database(arma: dict, personagem: dict) -> dict:
-    """Anexa arma+personagem ao banco vivo do neural_fights."""
-    armas_existentes, personagens_existentes = nf.database.carregar_database()
-    nomes_armas = {a["nome"] for a in armas_existentes}
-    nomes_pers = {p["nome"] for p in personagens_existentes}
+    """Anexa arma+personagem ao banco vivo do neural_fights.
 
+    Desde 14/10/2026 (BLD-2) o desempate de nome ("#2") e a gravacao saem
+    juntos de ``inserir_no_banco``, dentro da trava do banco. Antes o exporter
+    lia o banco, escolhia o nome e so depois gravava: duas builds em paralelo
+    perdiam uma, ou a segunda morria com "nomes ja existentes".
+    """
     arma = dict(arma)
     personagem = dict(personagem)
-    arma["nome"] = _nome_unico(arma["nome"], nomes_armas)
-    personagem["nome"] = _nome_unico(personagem["nome"], nomes_pers)
     personagem["nome_arma"] = arma["nome"]
-
-    nf.salvar_database([arma], [personagem], substituir=False)
+    armas, personagens = nf.database.inserir_no_banco(
+        [arma], [personagem], renomear_em_conflito=True
+    )
+    arma, personagem = armas[0], personagens[0]
     caminho_armas, caminho_pers = nf.database.resolver_database_paths(para_escrita=False)
     return {
         "arma": arma["nome"],

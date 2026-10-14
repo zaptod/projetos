@@ -442,6 +442,25 @@ class NomePedido(unittest.TestCase):
         self.assertFalse(proc["requested_accepted"])
         self.assertTrue(proc["requested_reason"])
 
+    def test_hifen_apostrofo_e_espaco_nao_furam_a_moderacao(self):
+        """BLD-4 (auditoria 14/10/2026): "Pu-ta" e "Fu-ck" iam para a placa.
+
+        O `normalizar` troca hifen/apostrofo por espaco e a passada de
+        palavra inteira olhava um pedaco por vez: nenhum era xingamento.
+        """
+        for ofensa in ["Pu-ta", "Pu'ta", "Me-rda", "Cor-no", "Vi-ado",
+                       "Ba-ba-ca", "Fu-ck", "Bi-tch", "Pu ta", "Pu-ta Mae"]:
+            nome, motivo = nomes.sanitizar_nome_pedido(ofensa)
+            self.assertIsNone(nome, ofensa)
+            self.assertEqual(motivo, "conteudo ofensivo", ofensa)
+
+    def test_nome_legitimo_com_hifen_apostrofo_ou_inicial_passa(self):
+        for nome_bom in ["Jean-Luc", "D'Artagnan", "Ana B Silva",
+                         "Escurinho", "Anna"]:
+            nome, motivo = nomes.sanitizar_nome_pedido(nome_bom)
+            self.assertIsNotNone(nome, f"{nome_bom}: {motivo}")
+            self.assertIsNone(motivo, nome_bom)
+
     def test_pedido_nao_muda_o_nome_gerado(self):
         """O gerado tem que sair igual com e sem pedido: mesma seed, mesma build."""
         base = dict(classe="Mago (Arcano)", personalidade="Tático",

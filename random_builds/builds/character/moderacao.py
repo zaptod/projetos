@@ -102,6 +102,18 @@ def ofensivo(texto: str) -> str | None:
         for palavra in forma.split():
             if palavra in inteiras:
                 return palavra
+    # Palavra partida ao meio: "Pu-ta", "Pu'ta", "Me-rda", "Ba-ba-ca" e "Pu ta"
+    # chegam aqui como "pu ta", "me rda", "ba ba ca" (o `normalizar` troca hifen
+    # e apostrofo por espaco), e nenhum pedaco sozinho e xingamento. Junta 2 ou
+    # 3 pedacos VIZINHOS e compara a palavra INTEIRA: "Escurinho" continua
+    # passando (substring nao conta) e "Jean-Luc"/"D'Artagnan" tambem, porque
+    # "jeanluc" e "dartagnan" nao estao na lista. 14/10/2026, BLD-4.
+    tokens = plano.split()
+    for tamanho in (2, 3):
+        for i in range(len(tokens) - tamanho + 1):
+            junto = "".join(tokens[i:i + tamanho])
+            if junto in inteiras:
+                return junto
     # Sem espaco nenhum: pega "c a r a l h o" e "vai tomar no cu" grudados.
     grudado = plano.replace(" ", "")
     for trecho in trechos:

@@ -681,36 +681,23 @@ def salvar_database(
     if substituir:
         armas_final = armas_novas
         personagens_final = personagens_novos
+        database.salvar_database(
+            armas_final,
+            personagens_final,
+            arquivo_armas=armas_file,
+            arquivo_personagens=personagens_file,
+        )
     else:
-        if arquivo_armas is None and arquivo_personagens is None:
-            armas_existentes, personagens_existentes = database.carregar_database()
-        else:
-            armas_existentes, personagens_existentes = database.carregar_database(
-                arquivo_armas=armas_file,
-                arquivo_personagens=personagens_file,
-            )
-
-        nomes_armas = {arma["nome"] for arma in armas_existentes}
-        nomes_personagens = {personagem["nome"] for personagem in personagens_existentes}
-        conflitos_armas = nomes_armas & {arma.get("nome") for arma in armas_novas}
-        conflitos_personagens = nomes_personagens & {
-            personagem.get("nome") for personagem in personagens_novos
-        }
-        conflitos = sorted(conflitos_armas | conflitos_personagens)
-        if conflitos:
-            raise database.DataValidationError(
-                "nomes ja existentes no banco: " + ", ".join(conflitos)
-            )
-
-        armas_final = [*armas_existentes, *armas_novas]
-        personagens_final = [*personagens_existentes, *personagens_novos]
-
-    database.salvar_database(
-        armas_final,
-        personagens_final,
-        arquivo_armas=armas_file,
-        arquivo_personagens=personagens_file,
-    )
+        # Ler, conferir e gravar numa trava so (BLD-2, 14/10/2026): em duas
+        # travas, duas insercoes em paralelo perdiam uma.
+        explicito = {}
+        if arquivo_armas is not None or arquivo_personagens is not None:
+            explicito = {
+                "arquivo_armas": armas_file,
+                "arquivo_personagens": personagens_file,
+            }
+        database.inserir_no_banco(armas_novas, personagens_novos, **explicito)
+        armas_final, personagens_final = database.carregar_database(**explicito)
 
     logger.info(
         "Database salva: %d armas em %s; %d personagens em %s",

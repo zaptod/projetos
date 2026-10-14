@@ -10,7 +10,7 @@ from tkinter import ttk, messagebox
 from neural_fights.models import Personagem, get_class_data
 from neural_fights.models.constants import KIT_PAPEIS, sortear_kit
 from neural_fights.core.skills import get_skill_data
-from neural_fights.data import salvar_lista_chars
+from neural_fights.data import ListaDesatualizada, salvar_lista_chars
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS, 
     COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_DANGER, CORES_CLASSE, CATEGORIAS_CLASSE,
@@ -1277,13 +1277,33 @@ class TelaPersonagens(tk.Frame):
             )
 
             if self.indice_em_edicao is None:
-                self.controller.lista_personagens.append(p)
+                nome_antigo = None
                 msg = f"Campeão '{nome}' criado com sucesso!"
             else:
-                self.controller.lista_personagens[self.indice_em_edicao] = p
+                nome_antigo = self.controller.lista_personagens[self.indice_em_edicao].nome
                 msg = f"Campeão '{nome}' atualizado!"
-            
-            salvar_lista_chars(self.controller.lista_personagens)
+
+            def aplicar(lista):
+                # Pelo NOME, nao pelo indice: depois de reler o banco o indice
+                # do campeao em edicao pode ter mudado.
+                alvo = nome_antigo if nome_antigo is not None else nome
+                for i, existente in enumerate(lista):
+                    if existente.nome == alvo:
+                        if nome_antigo is None:
+                            return None  # alguem criou o mesmo nome nesse meio tempo
+                        lista[i] = p
+                        return lista
+                if nome_antigo is not None:
+                    return None  # o campeao em edicao saiu do banco
+                lista.append(p)
+                return lista
+
+            apagar = [nome_antigo] if nome_antigo and nome_antigo != nome else []
+            # nome que esta tela cria (novo ou renomeado) nao pode cair por
+            # cima de um registro que outro processo gravou com o mesmo nome
+            novos = [nome] if nome_antigo != nome else []
+            if not self._gravar_lista(aplicar, apagar=apagar, novos=novos):
+                return
             try:
                 catalogo_animacoes.gravar()
             except Exception as erro:
@@ -1306,10 +1326,45 @@ class TelaPersonagens(tk.Frame):
         nome = self.controller.lista_personagens[idx].nome
         
         if messagebox.askyesno("Confirmar", f"Deletar o campeão '{nome}'?\n\nEsta ação não pode ser desfeita!"):
-            del self.controller.lista_personagens[idx]
-            salvar_lista_chars(self.controller.lista_personagens)
+            def aplicar(lista):
+                return [existente for existente in lista if existente.nome != nome]
+
+            if not self._gravar_lista(aplicar, apagar=[nome]):
+                return
             self.atualizar_dados()
             self.novo_personagem()
+
+    def _gravar_lista(self, aplicar, *, apagar=(), novos=()):
+        """Grava a edicao sem apagar o que o banco ganhou depois (BLD-1).
+
+        ``aplicar(lista)`` devolve a lista com a edicao (ou ``None`` se ela
+        nao cabe mais). Se a roleta inseriu alguem desde que esta tela leu o
+        banco, ``salvar_lista_chars`` recusa com ``ListaDesatualizada``: aqui
+        o banco e relido, a edicao e reaplicada pelo nome e a gravacao tenta
+        de novo. Antes, a lista velha ia ao disco e o personagem da roleta
+        sumia. Devolve True se gravou.
+        """
+        for tentativa in range(2):
+            if tentativa:
+                self.controller.recarregar_dados()
+            lista = aplicar(list(self.controller.lista_personagens))
+            if lista is None:
+                break
+            try:
+                salvar_lista_chars(lista, apagar=apagar, novos=novos)
+            except ListaDesatualizada:
+                continue
+            self.controller.recarregar_dados()
+            return True
+        self.controller.recarregar_dados()
+        self.atualizar_dados()
+        messagebox.showwarning(
+            "O banco mudou",
+            "O banco de personagens mudou enquanto esta tela estava aberta "
+            "(a roleta pode ter inserido alguém, ou o nome já existe).\n\n"
+            "A lista foi recarregada. Confira e salve de novo.",
+        )
+        return False
 
     def selecionar_personagem(self, event=None):
         """Callback quando um personagem é selecionado na lista"""
