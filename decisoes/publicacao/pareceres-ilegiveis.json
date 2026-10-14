@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Conserto do veto que falhava aberto (auditoria 11/10).",
+  "criado": "2026-10-14T03:21:03.193992",
+  "depende_de": [],
+  "historico": [],
+  "id": "pareceres-ilegiveis",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O canal não fica sem vídeo",
+      "id": "sai-marcada",
+      "pede_comentario": false,
+      "rotulo": "Sai uma parte marcada 'a conferir' (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "nada-sai",
+      "pede_comentario": false,
+      "rotulo": "Nada sai até o arquivo voltar"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Se o arquivo com os pareceres das histórias estiver corrompido ou trancado, toda parte fica 'retida'. Hoje, para o horário não ficar vazio, sai uma parte marcada 'a conferir'. Prefere que nesse caso nada saia?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Quando o arquivo de pareceres não abre",
+  "vigente": null
+}
