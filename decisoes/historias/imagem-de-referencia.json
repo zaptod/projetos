@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:47:45",
+      "evento": "2026-10-14T08:47:41",
+      "linha": 183,
+      "nota": "resposta sem pedido de origem: historias/imagem-de-referencia = Apagar o módulo morto (recomendado)",
+      "opcao": "apagar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:39.292342",
   "depende_de": [],
