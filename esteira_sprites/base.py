@@ -27,7 +27,8 @@ De onde vem o desenho do base de uma folha (`referencia`), nesta ordem:
 1. o Atelie: qualquer folha que o Adrian subiu para a mesma peca (o primeiro
    quadro dela) -- o que ele fez manda;
 2. o que o Adrian aprovou: o base aprovado, ou uma folha irma (mesmo
-   personagem) aprovada -- o primeiro quadro;
+   personagem) aprovada -- o primeiro quadro; ou a peca do objeto que ja
+   esta na biblioteca sem ficha;
 3. o base que o JUIZ aprovou (`juiz_aprovou`): ficha em `a_conferir` com a
    ultima tentativa do fluxo novo, veredito sem defeito grave e portao limpo.
    Nao espera o Adrian: ele aprova o base e as folhas juntos na conferencia.
@@ -50,6 +51,7 @@ APROVADO_PELO_ADRIAN = ("aprovado", "na_biblioteca")
 ORIGEM_TXT = {"atelie": "1º quadro do que o Adrian fez no Ateliê",
               "aprovado_pelo_adrian": "aprovado pelo Adrian",
               "folha_aprovada_pelo_adrian": "1º quadro da folha aprovada pelo Adrian",
+              "biblioteca": "a peça já na biblioteca",
               "juiz": "aprovado pelo juiz"}
 
 
@@ -243,9 +245,32 @@ def referencia(folha: dict, itens: list[dict] | None = None) -> dict | None:
         if d and d.get("estado") in APROVADO_PELO_ADRIAN and _limpo(d):
             return {"base_id": bid, "origem": "folha_aprovada_pelo_adrian", "de": irma["id"],
                     "fonte": str(_limpo(d)), "recorte": "grade", "grade": _grade(irma)}
+    # a peca do objeto ja esta na biblioteca sem ficha (arte que ele pos la): o
+    # `lote` nunca a pede (`ja_feito`), entao sem isto as folhas dela esperariam
+    # para sempre
+    na_biblioteca = _na_biblioteca(base_item)
+    if na_biblioteca:
+        return {"base_id": bid, "origem": "biblioteca", "fonte": str(na_biblioteca), "recorte": "inteiro"}
     # 3. o base que o juiz aprovou
     if juiz_aprovou(dados_base):
         return {"base_id": bid, "origem": "juiz", "fonte": str(_limpo(dados_base)), "recorte": "inteiro"}
+    return None
+
+
+IMAGENS = (".png", ".webp")
+
+
+def _na_biblioteca(base_item: dict | None) -> Path | None:
+    """A imagem do base que ja esta na biblioteca (so imagem: a cena .tscn nao serve)."""
+    if not base_item:
+        return None
+    from . import ja_feito
+    try:
+        ocupado = ja_feito.destino_ocupado(base_item)
+    except (OSError, ValueError, ImportError):
+        return None
+    if ocupado and ocupado.suffix.lower() in IMAGENS and ocupado.is_file():
+        return ocupado
     return None
 
 

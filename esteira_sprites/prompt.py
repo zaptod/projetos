@@ -12,7 +12,7 @@ from . import config
 # O estilo escolhido pelo Adrian no Grimorio (builds/imagem-mestra-v2 = "2 Anime",
 # 02/10/2026): o mesmo texto que gerou a imagem-mestra, para o palco e a Vila.
 # Desde 14/10/2026 a mestra vai ANEXADA (imagem 1) e o texto continua junto.
-ESTILO =("Estilo anime cel-shading de jogo de luta moderno: formas dinâmicas, brilhos marcados, "
+ESTILO = ("Estilo anime cel-shading de jogo de luta moderno: formas dinâmicas, brilhos marcados, "
           "contorno preto forte de tinta com espessura variada, contraste de cor dramático, "
           "luz do alto à esquerda, legível pequeno. Nada de pixel art, nada de 3D.")
 

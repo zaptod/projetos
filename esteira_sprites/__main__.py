@@ -17,7 +17,7 @@ from .colher import colher
 from .juiz import colher as colher_juiz
 from .juiz import perguntar
 from .limpar import limpar
-from .pedir import GERADOR, pedir
+from .pedir import GERADOR, SemMestra, pedir
 from .portao import passar, validar
 
 
@@ -101,10 +101,27 @@ def _pedivel(item: dict) -> bool:
     return not ja_feito.motivo(item)
 
 
+def _folha_espera_base(folha: dict) -> bool:
+    """A folha vai precisar de um base: vai ser pedida, ou esta parada esperando
+    um (do fluxo antigo, ou em `refazer` sem nenhum base anexado antes)."""
+    if _pedivel(folha):
+        return True
+    dados = ficha.ler(folha["id"])
+    if not dados:
+        return False
+    if _fora_do_fluxo(dados):
+        return True
+    return (dados.get("estado") == "refazer"
+            and not any(t.get("base") for t in dados.get("tentativas") or []))
+
+
 def _base_tem_demanda(item: dict, folhas: list[dict], itens: list[dict]) -> bool:
-    """Um base derivado so e pedido se alguma folha dele ainda vai ser pedida e
-    nao tem outro desenho de referencia (o Atelie ou o que o Adrian aprovou)."""
-    return any(_pedivel(f) and base.referencia(f, itens) is None for f in folhas)
+    """Um base derivado so e pedido se alguma folha dele ainda vai precisar dele
+    e nao tem outro desenho de referencia (o Atelie ou o que o Adrian aprovou).
+
+    Conta tambem a folha parada esperando base (fluxo antigo, `refazer`): sem
+    isso o base nunca era pedido e ela esperava para sempre."""
+    return any(_folha_espera_base(f) and base.referencia(f, itens) is None for f in folhas)
 
 
 # O que o `lote --seco` mostra ao lado de cada id (14/10/2026: bases primeiro)
@@ -131,6 +148,12 @@ def lote(prioridade: str, n: int, seco: bool = False) -> list[str]:
     itens = sorted(todos, key=lambda i: (str(i.get("id")) not in dependentes,
                                          i.get("ordem") is None, i.get("ordem") or 999999))
     for item in itens:
+        if len(escolhidos) >= n and (not seco or item.get("tipo") != "folha"):
+            # cheio. O seco continua so para contar as folhas que esperam o base
+            # (com --n 2 ele dizia "0 esperam" e eram 19)
+            if not seco:
+                break
+            continue
         if item.get("prioridade") != prioridade or not _pedivel(item):
             continue
         folhas = [por_id[f] for f in dependentes.get(str(item["id"]), []) if f in por_id]
@@ -141,6 +164,8 @@ def lote(prioridade: str, n: int, seco: bool = False) -> list[str]:
             if ref is None:
                 ESPERAM_BASE.append(item["id"])
                 continue                    # espera o sprite-base
+            if len(escolhidos) >= n:
+                continue                    # o seco cheio so conta as que esperam
             de = f" {ref['de']}" if ref.get("de") else ""
             EXPLICACAO[item["id"]] = (f"folha; base {ref['base_id']}: "
                                       f"{base.ORIGEM_TXT.get(ref['origem'], ref['origem'])}{de}")
@@ -149,6 +174,7 @@ def lote(prioridade: str, n: int, seco: bool = False) -> list[str]:
         else:
             EXPLICACAO[item["id"]] = "peça"
         if not seco:
+            existente = ficha.ler(item["id"])
             if existente and existente.get("tentativas"):
                 # volta da parada: as tentativas de antes nao gastam o teto de agora
                 existente["contar_desde"] = len(existente["tentativas"])
@@ -156,8 +182,6 @@ def lote(prioridade: str, n: int, seco: bool = False) -> list[str]:
                 ficha.gravar(existente)
             pedir(item["id"])
         escolhidos.append(item["id"])
-        if len(escolhidos) >= n:
-            break
     return escolhidos
 
 
@@ -265,8 +289,8 @@ def _repedir(item_id: str, dados: dict) -> bool:
             pedir(item_id, motivo, prompt_pronto=ultima["prompt"])
         else:
             pedir(item_id, motivo)
-    except base.BaseFaltando:
-        return False                        # folha sem base: espera em `refazer`
+    except (base.BaseFaltando, SemMestra):
+        return False                        # sem base (folha) ou sem mestra: espera em `refazer`
     return True
 
 

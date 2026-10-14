@@ -202,8 +202,24 @@ def _inventario_vila(caminho: Path, mestra_externa=True) -> Path:
     return caminho
 
 
+def _mestra_e_base_prontos(perfil_limpo: Path, perfil: str, inventario: Path) -> None:
+    """14/10/2026 (fluxo base -> folhas): a folha so e pedida com a imagem-mestra
+    aprovada e o sprite-base dela aprovado pelo juiz."""
+    from esteira_sprites import base
+    config.usar(perfil, inventario)
+    config.mestra().parent.mkdir(parents=True, exist_ok=True)
+    salvar(boneco(), config.mestra())
+    limpo = salvar(boneco(), perfil_limpo / f"base_{perfil}.png")
+    dados = ficha.nova(config.item("hab_teste_base"))
+    dados["estado"] = "a_conferir"
+    dados["tentativas"] = [{"fluxo": base.FLUXO, "caixa": "chatgpt", "caminhos": {"limpo": str(limpo)},
+                            "veredito": {"defeitos": [], "notas": {}}}]
+    ficha.gravar(dados)
+
+
 def test_perfil_vila_usa_a_biblia_e_a_pasta_da_vila(perfil_limpo, monkeypatch):
     inventario = _inventario_vila(perfil_limpo / "inv_vila.json")
+    _mestra_e_base_prontos(perfil_limpo, "vila", inventario)
     pedidos = []
     monkeypatch.setattr(pedir.correio, "pedir_imagem",
                         lambda caixa, texto, **k: pedidos.append(texto) or {"id": "img1"})
@@ -220,6 +236,7 @@ def test_perfil_vila_usa_a_biblia_e_a_pasta_da_vila(perfil_limpo, monkeypatch):
 
 def test_perfil_padrao_continua_o_palco(perfil_limpo, monkeypatch):
     inventario = _inventario_vila(perfil_limpo / "inv.json")
+    _mestra_e_base_prontos(perfil_limpo, "palco", inventario)
     pedidos = []
     monkeypatch.setattr(pedir.correio, "pedir_imagem",
                         lambda caixa, texto, **k: pedidos.append(texto) or {"id": "img1"})
@@ -238,7 +255,9 @@ def test_lote_da_vila_espera_a_mestra_e_pula_a_externa(perfil_limpo, monkeypatch
     assert cli.lote("P1", 5) == [] and pedidos == []
     config.mestra().parent.mkdir(parents=True)
     salvar(boneco(), config.mestra())
-    assert cli.lote("P1", 5) == ["hab_teste"]
+    # 14/10/2026: o sprite-base da folha vem primeiro; a folha espera por ele
+    assert cli.lote("P1", 5) == ["hab_teste_base"] and pedidos == ["hab_teste_base"]
+    assert cli.ESPERAM_BASE == ["hab_teste"]
     with pytest.raises(ValueError, match="mestra do Neural"):
         cli.mestra()
     with pytest.raises(ValueError, match="vem de fora"):

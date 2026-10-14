@@ -391,8 +391,8 @@ def test_habitante_da_vila_feito_no_atelie_nao_e_pedido(ambiente, monkeypatch):
     monkeypatch.setattr(config, "PERFIL", "vila")
     monkeypatch.setitem(config.PERFIS, "vila", config.Perfil(
         "vila", config.INVENTARIO, "vila", biblioteca, None, exige_mestra=True))
-    config.mestra().parent.mkdir(parents=True)
-    imagem(config.mestra())
+    # a mestra ja vem do `ambiente` (14/10/2026: sem ela nada e pedido)
+    assert config.mestra().is_file()
     # a mesma chave que o Atelie e a Vila usam
     peca, estado = catalogo_vila.chave_do_item(itens[0])
     assert (peca, estado) == ("vila.habitantes.bot", "andar")
@@ -540,3 +540,225 @@ def test_pedir_atualiza_o_item_da_ficha(ambiente, monkeypatch):
     monkeypatch.setattr(pedir, "marcar", lambda *_: None)
     pedir.pedir("fogo_teste")
     assert ficha.ler("fogo_teste")["item"] == config.item("fogo_teste")
+
+
+# ------------------------------------------------- fluxo sprite-base -> folhas
+# 14/10/2026, o Adrian: "um sprite base para pegar o estilo certo e a partir
+# desse sprite base fazer as variacoes em sprite sheet das animacoes".
+
+def _correio_de_imagem(monkeypatch) -> list[dict]:
+    """O que a esteira deixaria na caixa do gerador (nenhum carteiro le isto)."""
+    pedidos: list[dict] = []
+
+    def pedir_imagem(caixa, texto, **k):
+        pedidos.append({"caixa": caixa, "texto": texto, **k})
+        return {"id": f"m{len(pedidos)}"}
+    monkeypatch.setattr(pedir.correio, "pedir_imagem", pedir_imagem)
+    return pedidos
+
+
+def test_folha_sem_base_pronto_nao_e_pedida(ambiente, monkeypatch):
+    from esteira_sprites import __main__ as cli, base
+    pedidos = _correio_de_imagem(monkeypatch)
+    assert base.id_do_base(config.item("folha_teste"), config.itens()) == "folha_teste_base"
+    assert config.item("folha_teste_base")["derivado"] is True
+    with pytest.raises(base.BaseFaltando):
+        pedir.pedir("folha_teste")
+    assert pedidos == [] and ficha.ler("folha_teste") is None
+    # o seco cheio (--n 1) ainda conta a folha que espera (antes dizia 0)
+    assert cli.lote("P1", 1, seco=True) == ["folha_teste_base"] and cli.ESPERAM_BASE == ["folha_teste"]
+    # o lote pede o base e deixa a folha esperando por ele
+    monkeypatch.setattr(cli, "pedir", lambda item: pedidos.append({"item": item}))
+    assert cli.lote("P1", 9) == ["folha_teste_base", "fogo_teste", "trevas_teste"]
+    assert cli.ESPERAM_BASE == ["folha_teste"]
+    assert "folha_teste" not in [p.get("item") for p in pedidos]
+    # o base em producao (pedido, ainda sem juiz) tambem nao libera a folha
+    dados = ficha.nova(config.item("folha_teste_base"))
+    dados["tentativas"] = [{"fluxo": base.FLUXO, "caixa": "chatgpt", "correio_id": "m1", "caminhos": {}}]
+    ficha.gravar(dados)
+    assert "folha_teste" not in cli.lote("P1", 9, seco=True)
+    # e o `refazer` de uma folha sem base espera, sem pedir nem quebrar o avancar
+    folha = ficha.nova(config.item("folha_teste"))
+    folha["estado"] = "refazer"
+    folha["tentativas"] = [{"fluxo": base.FLUXO, "caixa": "chatgpt", "caminhos": {}, "erro": "x"}]
+    ficha.gravar(folha)
+    monkeypatch.setattr(cli, "pedir", pedir.pedir)
+    monkeypatch.setattr(cli, "colher", lambda *_: False)
+    assert cli.avancar() == 0 and ficha.ler("folha_teste")["estado"] == "refazer"
+    assert len(pedidos) == 3                                  # so os do lote acima
+
+
+def test_pedido_de_base_e_de_peca_anexa_so_a_mestra(ambiente, monkeypatch):
+    from esteira_sprites import base
+    pedidos = _correio_de_imagem(monkeypatch)
+    for item_id in ("folha_teste_base", "fogo_teste"):
+        dados = pedir.pedir(item_id)
+        t = dados["tentativas"][-1]
+        assert t["fluxo"] == base.FLUXO and t["base"] is None
+        assert t["anexos"] == [str(config.mestra())]
+    for p in pedidos:
+        assert p["caixa"] == "chatgpt" and p["anexos"] == [str(config.mestra())]
+        cabecalho, corpo = p["texto"].split("\n\n", 1)
+        assert cabecalho == f"ANEXOS (leia antes de desenhar):\nimagem 1: {prompt.ANEXO_ESTILO}."
+        assert "imagem 2" not in p["texto"] and corpo.strip()
+    # o pedido do base diz que e o desenho parado de referencia das folhas
+    assert "SPRITE-BASE de: impacto" in pedidos[0]["texto"]
+
+
+def test_pedido_de_folha_anexa_mestra_e_base_com_cabecalho(ambiente, monkeypatch):
+    from PIL import ImageColor
+
+    from esteira_sprites import base
+    pedidos = _correio_de_imagem(monkeypatch)
+    base_aprovado_pelo_juiz("folha_teste_base", imagem(ambiente / "base.png"))
+    dados = pedir.pedir("folha_teste")
+    t = dados["tentativas"][-1]
+    sprite_base = t["base"]
+    assert sprite_base["origem"] == "juiz" and sprite_base["base_id"] == "folha_teste_base"
+    assert Path(sprite_base["caminho"]).is_file() and Path(sprite_base["anexo"]).is_file()
+    assert pedidos[0]["anexos"] == [str(config.mestra()), sprite_base["anexo"]] == t["anexos"]
+    # o anexo do gerador e o base sobre o chroma da folha (o fundo que a limpeza tira)
+    with Image.open(sprite_base["anexo"]) as anexo:
+        assert anexo.mode == "RGB"
+        assert anexo.getpixel((0, 0)) == ImageColor.getrgb(prompt.fundo_do(config.item("folha_teste")))
+    linhas = pedidos[0]["texto"].split("\n\n", 1)[0].splitlines()
+    assert linhas == ["ANEXOS (leia antes de desenhar):", f"imagem 1: {prompt.ANEXO_ESTILO}.",
+                      f"imagem 2: {prompt.ANEXO_BASE}."]
+    # o mesmo prompt de novo (falha do gerador) troca o cabecalho, nao empilha
+    pedir.pedir("folha_teste", "estourou", prompt_pronto=pedidos[0]["texto"])
+    assert pedidos[1]["texto"].count("ANEXOS (") == 1
+    assert pedidos[1]["texto"].split("\n\n", 1)[1] == pedidos[0]["texto"].split("\n\n", 1)[1]
+    assert ficha.ler("folha_teste")["tentativas"][-1]["base"]["anexo"].endswith("base_2_chroma.png")
+    assert t["fluxo"] == base.FLUXO
+
+
+def test_juiz_da_folha_recebe_o_base_e_pergunta_se_e_o_mesmo(ambiente, monkeypatch):
+    from esteira_sprites import base
+    _correio_de_imagem(monkeypatch)
+    base_aprovado_pelo_juiz("folha_teste_base", imagem(ambiente / "base.png"))
+    dados = pedir.pedir("folha_teste")
+    dados["estado"] = "medido"
+    dados["tentativas"][-1]["caminhos"] = {"limpo": str(imagem(ambiente / "folha.png", folha=True))}
+    ficha.gravar(dados)
+    enviados = []
+    monkeypatch.setattr(juiz, "_controle", lambda _d: False)
+    monkeypatch.setattr(juiz.correio, "enviar", lambda *a, **k: enviados.append((a, k)) or {"id": "j1"})
+    assert juiz.perguntar("folha_teste")
+    texto, anexos = enviados[0][0][1], enviados[0][1]["anexos"]
+    pasta = ficha.caminho("folha_teste").parent
+    assert str(pasta / "base_para_juiz.png") in anexos and (pasta / "base_para_juiz.png").is_file()
+    assert juiz.PERGUNTA_DO_BASE in texto and '"mesmo_do_base":0-3' in texto
+    assert "o SPRITE-BASE aprovado do personagem" in texto
+    # a peca (sem base) nao leva a pergunta nem o anexo
+    peca = ficha.nova(config.item("fogo_teste"))
+    peca["estado"] = "medido"
+    peca["tentativas"] = [{"fluxo": base.FLUXO, "caminhos": {"limpo": str(imagem(ambiente / "p.png"))}}]
+    ficha.gravar(peca)
+    assert juiz.perguntar("fogo_teste")
+    assert juiz.PERGUNTA_DO_BASE not in enviados[1][0][1] and "mesmo_do_base" not in enviados[1][0][1]
+
+
+def test_base_so_vira_aceito_com_o_juiz_aprovando(ambiente, monkeypatch):
+    from esteira_sprites import base
+    limpo = str(imagem(ambiente / "base.png"))
+    folha = config.item("folha_teste")
+
+    def com(estado="a_conferir", **t):
+        tentativa = {"fluxo": base.FLUXO, "caminhos": {"limpo": limpo},
+                     "veredito": {"defeitos": [{"o_que": "x", "gravidade": "leve"}]}}
+        tentativa.update(t)
+        return {"estado": estado, "tentativas": [tentativa]}
+    grave = {"defeitos": [{"o_que": "outro bicho", "gravidade": "grave"}]}
+    assert base.juiz_aprovou(com()) is True
+    for nao in (com(estado="julgado"), com(estado="medido"),
+                com(veredito=grave),                 # tentativas esgotadas: a_conferir com grave
+                com(veredito=None),                  # o juiz falhou 3x: a_conferir sem veredito
+                com(portao_reprovou=["grade: 3"]),
+                com(controle=True),                  # o controle estragado nao e o base
+                com(fluxo=None),                     # pedido sem a mestra anexada
+                com(caminhos={}), None, {"estado": "a_conferir", "tentativas": []}):
+        assert base.juiz_aprovou(nao) is False, nao
+    # pelo caminho real: o juiz responde sem grave e so entao a folha tem base
+    dados = ficha.nova(config.item("folha_teste_base"))
+    dados["estado"] = "julgado"
+    dados["tentativas"] = [{"fluxo": base.FLUXO, "caixa": "chatgpt", "juiz_id": "j1",
+                            "juiz_caixa": "chatgpt", "caminhos": {"limpo": limpo}}]
+    ficha.gravar(dados)
+    assert base.referencia(folha) is None
+    monkeypatch.setattr(juiz.correio, "uma", lambda *_: {"situacao": "respondida",
+                                                          "resposta": json.dumps(grave)})
+    monkeypatch.setattr(pedir, "pedir", lambda *a, **k: None)
+    assert juiz.colher("folha_teste_base") and base.referencia(folha) is None   # grave: refaz
+    d = ficha.ler("folha_teste_base")
+    d["estado"] = "julgado"
+    ficha.gravar(d)
+    monkeypatch.setattr(juiz.correio, "uma", lambda *_: {"situacao": "respondida",
+                                                          "resposta": '{"defeitos":[],"notas":{}}'})
+    assert juiz.colher("folha_teste_base") and ficha.ler("folha_teste_base")["estado"] == "a_conferir"
+    assert base.referencia(folha)["origem"] == "juiz"
+
+
+def test_o_que_o_adrian_fez_ou_aprovou_vale_mais_que_o_juiz(ambiente):
+    from esteira_sprites import base
+    folha = config.item("folha_teste")
+    base_aprovado_pelo_juiz("folha_teste_base", imagem(ambiente / "juiz.png"))
+    assert base.referencia(folha)["origem"] == "juiz"
+    d = ficha.ler("folha_teste_base")
+    d["estado"] = "na_biblioteca"
+    ficha.gravar(d)
+    assert base.referencia(folha)["origem"] == "aprovado_pelo_adrian"
+    # a peca do objeto ja na biblioteca, sem ficha, tambem serve (senao a folha esperava sempre)
+    ficha.caminho("folha_teste_base").unlink()
+    alvo = config.BIBLIOTECA_PALCO / config.item("folha_teste_base")["nome_arquivo"]
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    imagem(alvo)
+    ref = base.referencia(folha)
+    assert ref["origem"] == "biblioteca" and ref["fonte"] == str(alvo)
+
+
+def test_folha_do_fluxo_antigo_sem_base_faz_o_base_ser_pedido(ambiente, monkeypatch):
+    """Sem isto o base nunca tinha demanda (a folha ja tem ficha) e ela esperava para sempre."""
+    from esteira_sprites import __main__ as cli
+    d = ficha.nova(config.item("folha_teste"))
+    d["estado"] = "pedido"
+    d["tentativas"] = [{"caixa": "chatgpt", "correio_id": "velho", "caminhos": {}}]   # sem `fluxo`
+    ficha.gravar(d)
+    assert cli._fora_do_fluxo(d) == "sem_anexo"
+    monkeypatch.setattr(cli, "pedir", lambda *a, **k: pytest.fail("seco"))
+    assert cli.lote("P1", 9, seco=True)[0] == "folha_teste_base"
+
+
+def test_caso_zero_nada_a_pedir_nao_finge_sucesso(ambiente, monkeypatch, capsys):
+    """Memoria relatorio-verde-que-mente: o caso ZERO."""
+    from esteira_sprites import __main__ as cli, base
+    pedidos = _correio_de_imagem(monkeypatch)
+    monkeypatch.setattr(cli, "pedir", pedir.pedir)
+    monkeypatch.setattr(cli, "ESTEIRA_LIGADA", True)
+    # 1. inventario vazio: nenhuma ficha, nenhum base, nada pedido
+    config.INVENTARIO.write_text(json.dumps({"itens": []}), encoding="utf-8")
+    assert config.itens() == [] and base.derivar([]) == [] and base.mapa([]) == {}
+    assert cli.lote("P1", 9) == [] and cli.lote("P1", 9, seco=True) == []
+    assert cli.ciclo() == {"perfil": "palco", "andou": 0, "em_voo": 0, "novos": []}
+    assert cli.main(["--inventario", str(config.INVENTARIO), "lote", "--prioridade", "P1", "--seco"]) == 0
+    saida = capsys.readouterr().out.splitlines()
+    assert saida == ["# fora do fluxo (o ciclo refaz PRIMEIRO, sem gastar tentativa): nenhuma",
+                     "# folhas P1 que esperam o sprite-base: 0"]
+    assert pedidos == [] and not list(config.RAIZ.rglob("ficha.json"))
+    # 2. so folhas, e o base delas ainda no juiz: a folha nao e pedida e o ciclo nao conta ela
+    config.INVENTARIO.write_text(json.dumps({"itens": [
+        {"id": "so_folha", "nome_arquivo": "efeitos/folhas/so.png", "descricao": "faisca",
+         "tipo": "folha", "prioridade": "P1", "ordem": 1}]}), encoding="utf-8")
+    d = ficha.nova(config.item("so_folha_base"))
+    d["estado"] = "julgado"
+    d["tentativas"] = [{"fluxo": base.FLUXO, "caixa": "chatgpt", "juiz_id": "j", "caminhos": {}}]
+    ficha.gravar(d)
+    monkeypatch.setattr(cli, "colher_juiz", lambda *_: False)
+    assert cli.lote("P1", 9) == [] and cli.ESPERAM_BASE == ["so_folha"]
+    assert cli.ciclo()["novos"] == [] and pedidos == [] and ficha.ler("so_folha") is None
+    # 3. sem a imagem-mestra: nada e pedido, nem pelo `pedir` direto
+    config.mestra().unlink()
+    ficha.caminho("so_folha_base").unlink()
+    assert cli.lote("P1", 9) == []
+    with pytest.raises(pedir.SemMestra):
+        pedir.pedir("so_folha_base")
+    assert pedidos == []

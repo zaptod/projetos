@@ -8,13 +8,91 @@ O portão técnico vem antes do juiz (hoje o ChatGPT; antes o Grok). O juiz apen
 lista defeitos, recebe controles estragados de propósito e nunca publica arte: a
 aprovação final é do Adrian pela tela de conferência ou pelo comando `aprovar`.
 
+## Fluxo sprite-base → folhas (14/10/2026, tarde) — esteira PAUSADA
+
+Pausada às 11:4x (`ESTEIRA_LIGADA = False`): o pedido ao ChatGPT ia **sem
+anexo** (nem a imagem-mestra, nem um desenho do personagem), e cada folha saía
+com outra forma. O Adrian: "gerar um sprite base para pegar o estilo certo e a
+partir desse sprite base fazer as variações em sprite sheet das animações". O
+fluxo novo está no código (`esteira_sprites/base.py`); a esteira **continua
+desligada** até a ordem dele.
+
+1. **Todo pedido anexa a imagem-mestra** (`pedir.py`), nos dois perfis. Sem
+   ela: `lote` não pede nada e `pedir` levanta `SemMestra` (o palco agora
+   também tem `exige_mestra=True`).
+2. **Toda folha tem um sprite-base** (`base.id_do_base`), nesta ordem: campo
+   `base` no item; habitante da Vila → `habitante_<subgrupo>_base` (as 7 folhas
+   de cada IA); a peça parada do mesmo objeto (`cenario/arvore_vento.png` →
+   `cenario/arvore.png`); senão `<id da folha>_base` (no palco, o quadro-chave
+   do efeito). Os bases derivados (`derivado: true`) **não vão ao JSON** do
+   inventário (o Ateliê e a Vila leem o JSON): `config.itens()` os acrescenta.
+3. **De onde vem o desenho do base** (`base.referencia`): (1) o Ateliê, o 1º
+   quadro de qualquer folha que o Adrian fez para a peça, o base ou uma irmã;
+   (2) o que ele aprovou: a ficha do base em `aprovado`/`na_biblioteca`, o 1º
+   quadro de uma folha irmã aprovada, ou a peça já na biblioteca sem ficha;
+   (3) o base que o **juiz aprovou** (`base.juiz_aprovou`: `a_conferir`, fluxo
+   novo, veredito sem grave, portão limpo, não é o controle). `a_conferir`
+   sozinho não basta: tentativas esgotadas e juiz que falhou 3x também caem lá.
+4. **A folha só é pedida com o base pronto.** O `pedir` grava na ficha
+   `base_<n>.png` (transparente, para o juiz) e `base_<n>_chroma.png` (sobre o
+   chroma da folha, para o gerador) e anexa: imagem 1 = a mestra, imagem 2 = o
+   base. O texto começa com o cabeçalho `ANEXOS (leia antes de desenhar):`
+   dizendo o que é cada uma (`prompt.ANEXO_ESTILO`, `prompt.ANEXO_BASE`); um
+   prompt repetido (falha do gerador) ou reescrito pelo juiz troca o cabeçalho,
+   não empilha. Folha sem base: `base.BaseFaltando`; o `refazer` dela espera.
+5. **O juiz da folha recebe o base** (`base_para_juiz.png`, sobre a mesma cor
+   lisa) e a pergunta `juiz.PERGUNTA_DO_BASE` ("o personagem dos quadros é o
+   mesmo do sprite-base?"), com a nota `mesmo_do_base` no JSON.
+6. **`lote`: na mesma prioridade, os bases vêm PRIMEIRO**; base derivado só é
+   pedido se alguma folha dele vai precisar (a pedir, do fluxo antigo, ou em
+   `refazer` sem base) e não tem outra referência. O Adrian aprova o base e as
+   folhas juntos na conferência (o base aparece lá como qualquer `a_conferir`).
+7. **Fichas fora do fluxo** (`_fora_do_fluxo`): `outro_gerador` (Gemini, antes
+   de 14/10) e `sem_anexo` (pedidas sem `fluxo: base_v1`). Não andam; o
+   `avancar` cancela no correio o que estiver pendente e o `ciclo` as refaz no
+   fluxo novo PRIMEIRO, dentro do teto, sem gastar tentativa
+   (`contar_desde` anda uma casa).
+
+`lote --seco` agora explica cada linha e conta as folhas que esperam o base
+mesmo com `--n` pequeno. Medido em 14/10 (código da worktree, fichas reais,
+Ateliê e bibliotecas da árvore principal, só leitura):
+
+```
+=== --perfil palco lote --prioridade P1 --n 2 --seco ===
+acerto_light_base	sprite-base de 1 folha(s): acerto_light
+acerto_medium_base	sprite-base de 1 folha(s): acerto_medium
+# fora do fluxo (o ciclo refaz PRIMEIRO, sem gastar tentativa): arma_runas_flutuantes, orbe_default, rastro_corte, skill_ritual_carmesim
+# folhas P1 que esperam o sprite-base: 19
+=== --perfil vila lote --prioridade P1 --n 2 --seco ===
+habitante_deepseek_base	sprite-base de 7 folha(s): habitante_deepseek_parado, habitante_deepseek_andar, ...
+habitante_gemini_base	sprite-base de 7 folha(s): habitante_gemini_parado, habitante_gemini_andar, ...
+# fora do fluxo (o ciclo refaz PRIMEIRO, sem gastar tentativa): predio_digen, predio_estudio, predio_arena, predio_youtube
+# folhas P1 que esperam o sprite-base: 12
+```
+
+A fila inteira (`--n 999`): palco P1 30 (19 bases, 11 peças), P2 70 (16
+bases), P3 281 (16 bases); nenhuma folha do palco entra antes do base. Vila P1
+17 (6 bases de habitante, 5 folhas que já têm base, 6 peças), P2 22, P3 22.
+As 5 folhas da Vila P1 com base pronto: `habitante_chatgpt_parado`,
+`habitante_grok_parado`, `habitante_picasso_andar` (1º quadro da folha irmã
+que o Adrian aprovou) e `habitante_arena_parado`, `habitante_bot_parado` (1º
+quadro do que ele fez no Ateliê).
+
+Ainda em aberto:
+- O `aprovar` de um base derivado exporta como qualquer peça (palco:
+  `efeitos/folhas/<id>.png` + cena; Vila: `habitantes/<ia>/base.png`). Ninguém
+  carrega esse arquivo; se o Adrian não quiser o base na biblioteca, a
+  conferência precisa de um "aprovar só como referência".
+- Se o Adrian descartar ou mandar refazer um base depois que folhas saíram dele,
+  as folhas já pedidas continuam com o base velho.
+
 ## Religada com o ChatGPT gerando tudo (14/10/2026)
 
 Ordem do Adrian no chat: "Agora que tudo já está mais limpo e organizado quero
 que você volte a utilizar o ChatGPT para os sprites." Ele não quis decidir
 detalhes; o que ficou:
 
-- **Ligada:** `ESTEIRA_LIGADA = True` e `FOLHAS_POR_IA = True` em
+- **Ligada** (até 11:4x; depois PAUSADA, ver a seção acima): `ESTEIRA_LIGADA = True` e `FOLHAS_POR_IA = True` em
   `esteira_sprites/__main__.py` (peças paradas E folhas animadas). O coordenador
   já chamava `python -m esteira_sprites --perfil <palco|vila> ciclo` a cada 5 min
   (`coordenador/supervisor.py::ciclo_das_esteiras`); nada mudou lá.
@@ -159,9 +237,12 @@ arte grande da IA.
 
 ## Armadilhas
 
-- O pedido de imagem do correio (`ias.correio.pedir_imagem`) **não leva anexo**:
-  a mestra não vai junto com o pedido ao ChatGPT, só ao Grok. O prompt do palco
-  diz "anexada"; o da Vila só cita o estilo.
+- Até 14/10 (manhã) o pedido de imagem da esteira **não levava anexo**. Desde o
+  fluxo sprite-base, `pedir` passa `anexos=` ao `ias.correio.pedir_imagem`, e o
+  carteiro só entrega pedido com anexo a quem recebe anexo no chat
+  (`correio.CHATS`); o ChatGPT recebe.
+- Ficha sem `fluxo: base_v1` na última tentativa é do fluxo antigo: não anda
+  e é refeita. Teste que monta ficha à mão em produção precisa desse campo.
 - No inventário do palco, 28 itens têm o campo `fundo` diferente do fundo que o
   prompt e a limpeza usam (a regra por palavra-chave manda). A Vila evita isso
   com `chroma` explícito.

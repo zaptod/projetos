@@ -381,6 +381,11 @@ def test_ciclo_de_verdade_da_vila_anda_e_pede_ao_chatgpt(tmp_path, monkeypatch):
                (correio / "chatgpt" / "correio.jsonl").read_text(encoding="utf-8").splitlines()]
     assert len(pedidos) == 2 and {p["tipo"] for p in pedidos} == {"imagem"}
     assert not (correio / "gemini").exists()
+    # fluxo base -> folhas (14/10/2026): todo pedido anexa a imagem-mestra (o estilo)
+    # como imagem 1 e o texto comeca dizendo o que e cada anexo
+    for p in pedidos:
+        assert p["anexos"][0] == str(esteira / "_mestra" / "aprovada.png")
+        assert p["texto"].startswith("ANEXOS (leia antes de desenhar):\nimagem 1:")
     for item_id in saida["novos"]:
         ficha_vila = json.loads((esteira / "vila" / item_id / "ficha.json").read_text(encoding="utf-8"))
         assert ficha_vila["estado"] == "pedido" and ficha_vila["tentativas"][-1]["caixa"] == "chatgpt"
