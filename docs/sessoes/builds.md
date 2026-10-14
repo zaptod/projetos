@@ -945,6 +945,57 @@ d=0,3); **-2,3 dBTP**, -17,7 LUFS, LRA 5,0, 1 tentativa de pico (já dentro);
 (22,2), `cauda_3_perdedor_caido.png` (23,5), `cauda_4_ultimo.png` (24,25).
 Gravação: 37 s.
 
+**Reprovado pelo conferente (eb2444a) e consertado** — os números de áudio e
+de cauda batiam; os defeitos eram de imagem (só desenho e câmera, nada da
+luta):
+1. **o confete cobria o rosto do vencedor** (18% do disco no último quadro,
+   em toda luta): nascia no centro do rosto e era desenhado por cima. Agora
+   nasce num anel FORA do rosto (`FESTA_BOCA_RAIOS` = 1,3 raio), abre num
+   leque para cima e para os lados e nenhum pedaço é desenhado dentro do
+   disco do rosto (nem sobre o nome); o alcance caiu de 6 para 3,5 raios
+   (`FESTA_ALCANCE_RAIOS`, com piso/teto 24–34% do lado menor da tela) para
+   caber no quadro com o vencedor a 15%+. O gravador e a timeline dizem ao
+   desenho quanto a festa dura (`anunciar_fim_da_festa` → `_festa_dura_s`) e
+   nenhuma rajada nasce a menos de 0,6 s do fim: o último quadro mostra a
+   rajada de 0,7 s já aberta, não a de 1,40 s recém-nascida. A geometria
+   mora em `utils/config.py` (`FESTA_*`), lida pelo desenho e pela câmera.
+2. **o "ACABAR" depois do K.O.**: o rótulo do plano sob o corpo
+   (`Simulador._desenhar_rotulo_do_plano`) some com `round_finalizado`, e a
+   `serie_plano` do gravador ganha uma amostra vazia no quadro do K.O. (o HUD
+   do renderer também mostrava "ACABAR" sob as barras a cauda inteira).
+3. **câmera DIRETOR na cauda** (`Câmera._enquadrar_pos_ko`): com um morto,
+   enquadra os dois se o vencedor ainda ocupa ≥ 15% da largura
+   (`diretor_pos_ko_fracao_min`), senão só o vencedor; a caixa leva o pulo
+   (`FESTA_ALTURA_PULO`), o nome e o alcance do confete, e cabe nos 70% de
+   cima da tela (`diretor_pos_ko_area`). Transição exponencial
+   (`diretor_pos_ko_lerp` = 3,5/s), sem salto. Para o rosto não ficar sob o
+   nome do vencedor, **o veredito do duelo desceu para o terço de baixo**
+   (`renderer.VEREDITO_ALTURA` = 0,80; era o meio da tela).
+4. **projétil/orbe/invocação parado no ar**: vivos no K.O., somem em fade em
+   0,3 s de tempo real (`FADE_OBJETOS_POS_KO_S`; a tela antes deles é
+   guardada e devolvida com opacidade 1 − fade).
+
+Luta igual até o K.O.: 48 lutas headless (8 arenas) iguais às do eb2444a;
+6 lutas pelo gravador (Torre, Vulcão ×2, Duto, Poço, Arena Pequena;
+540×960, DIRETOR do duelo) com vencedor, motivo, duração, K.O., HP, dano,
+sons, narrativa e série de HP até o K.O. **iguais à base `3e5e2a4`** (com e
+sem a lava nova). Prova pelo caminho real do duelo (`main.py duelo --p1
+"Gunnar Vexevok" --p2 "Aurelia Argalacern" --seed 4242 --arena Torre|Vulcao`,
+na worktree, runtime numa cópia do banco), vídeo final do renderer
+(loudnorm), 1080×1920, em `E:\tmp_pytest\prova_fim_luta2\{torre,vulcao}\`
+com quadros da cauda a cada 0,25 s (`cauda_NN_<t>s.png`) e as folhas
+`folha_torre.png`/`folha_vulcao.png`:
+
+| | Torre | Vulcão |
+|---|---|---|
+| K.O. no clipe / vídeo | 25,20 / 27,93 s | 15,84 / 18,57 s |
+| cauda | 2,73 s | 2,73 s |
+| pico / integrado | -1,6 dBTP / -15,5 LUFS | -1,8 dBTP / -15,6 LUFS |
+| silêncio (-40 dB, 0,1 s) e congelado (0,001, 0,3 s) na cauda | nenhum | nenhum |
+| quadro | os dois | só o vencedor |
+| vencedor (diâmetro / largura) no fim | 17,4% | 17,2% (9,1% no início da cauda) |
+| plano no HUD depois do K.O. | vazio (11 amostras) | vazio (11 amostras) |
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

@@ -17,6 +17,7 @@ da mistura e — este sim na simulacao — o contador da lava.
 """
 from __future__ import annotations
 
+import math
 import os
 import unittest
 from types import SimpleNamespace
@@ -294,6 +295,218 @@ class LavaAcumulaTests(unittest.TestCase):
         self._andar(sim, poca, 2.0, False)
         self.assertEqual(sim.p1.vida, sim.p1.vida_max)
         self.assertEqual(sim.p2.vida, sim.p2.vida_max)
+
+
+def _cobertura_do_rosto(tela, fundo, centro, raio):
+    """Fracao do disco do rosto (centro, raio) que nao e mais o fundo."""
+    cx, cy = centro
+    total = cobertos = 0
+    for y in range(int(cy - raio), int(cy + raio) + 1):
+        for x in range(int(cx - raio), int(cx + raio) + 1):
+            if (x - cx) ** 2 + (y - cy) ** 2 > raio * raio:
+                continue
+            if not (0 <= x < tela.get_width() and 0 <= y < tela.get_height()):
+                continue
+            total += 1
+            if tuple(tela.get_at((x, y))[:3]) != tuple(fundo):
+                cobertos += 1
+    return cobertos / max(1, total)
+
+
+class ConfeteForaDoRostoTests(unittest.TestCase):
+    """Achado do conferente (14/10): o confete cobria 18% do rosto do
+    vencedor no ultimo quadro, em TODA luta (nascia no centro do rosto)."""
+
+    DURA = 1.51          # fanfarra 1,41 + 0,1 s: a festa medida na seed 4242
+    FESTA_DESDE = 1.2
+
+    @classmethod
+    def setUpClass(cls):
+        pygame.init()
+
+    def _quadro(self, fase):
+        sim = _sim_pos_ko(self.FESTA_DESDE + fase, festa_desde=self.FESTA_DESDE,
+                          largura=600, altura=600)
+        sim._festa_dura_s = self.DURA
+        simulacao.Simulador._desenhar_festa_da_vitoria(sim)
+        sx, sy = sim.cam.converter(sim.p2.pos[0] * PPM, sim.p2.pos[1] * PPM)
+        raio = max(4, sim.cam.converter_tam((sim.p2.dados.tamanho / 2) * PPM))
+        salto = simulacao.Simulador._salto_da_comemoracao(sim, sim.p2, raio) or 0
+        return sim.tela, (sx, sy - salto), raio
+
+    def test_o_medidor_acusa_confete_no_rosto(self):
+        # caso ZERO: o medidor nao pode passar vazio
+        tela = pygame.Surface((100, 100))
+        tela.fill(COR_FUNDO)
+        pygame.draw.rect(tela, (255, 0, 0), (40, 40, 20, 10))
+        self.assertGreater(_cobertura_do_rosto(tela, COR_FUNDO, (50, 50), 20), 0.05)
+
+    def test_nenhum_quadro_da_cauda_cobre_o_rosto(self):
+        quadros_com_confete = 0
+        pior = 0.0
+        for k in range(int(self.DURA * 30) + 1):
+            tela, centro, raio = self._quadro(k / 30)
+            pior = max(pior, _cobertura_do_rosto(tela, COR_FUNDO, centro, raio))
+            fora = sum(1 for x in range(0, 600, 3) for y in range(0, 600, 3)
+                       if tuple(tela.get_at((x, y))[:3]) != tuple(COR_FUNDO))
+            quadros_com_confete += fora > 0
+        self.assertLess(pior, 0.05)
+        # e o confete existe (o teste nao passa porque nada foi desenhado)
+        self.assertGreater(quadros_com_confete, int(self.DURA * 30) - 2)
+
+    def test_ultimo_quadro_nao_cai_numa_rajada_recem_nascida(self):
+        sim = _sim_pos_ko(self.FESTA_DESDE + self.DURA, festa_desde=self.FESTA_DESDE)
+        sim._festa_dura_s = self.DURA
+        vivas = simulacao.Simulador._rajadas_vivas(sim, self.DURA)
+        self.assertTrue(vivas)
+        self.assertGreaterEqual(min(tau for _r, tau in vivas),
+                                simulacao.Simulador.FESTA_RAJADA_ANTES_DO_FIM_S - 1e-9)
+        # sem saber o fim (jogo ao vivo), as rajadas seguem a cada 0,7 s
+        sim._festa_dura_s = None
+        self.assertIn(2, [r for r, _tau in simulacao.Simulador._rajadas_vivas(sim, 1.45)])
+
+    def test_gravador_anuncia_quanto_a_festa_dura(self):
+        sim = SimpleNamespace(slow_mo_timer=1.2)
+        fight_recorder.anunciar_fim_da_festa(sim, 2.71)
+        self.assertAlmostEqual(sim._festa_dura_s, 1.51, places=6)
+
+
+class RotuloDoPlanoTests(unittest.TestCase):
+    """O "ACABAR" (Onda 10C) ficava sob o vencedor depois do K.O."""
+
+    @classmethod
+    def setUpClass(cls):
+        pygame.init()
+
+    def _sim_com_plano(self, finalizado):
+        sim = _sim_pos_ko(2.0)
+        sim.round_finalizado = finalizado
+        sim.p2.brain = SimpleNamespace(plano=SimpleNamespace(rotulo="ACABAR", progresso=0.5),
+                                       _plano_trocado_em=0.0, tempo_combate=5.0)
+        return sim
+
+    def test_rotulo_aparece_na_luta_e_some_no_ko(self):
+        for finalizado, esperado in ((False, True), (True, False)):
+            sim = self._sim_com_plano(finalizado)
+            sim.tela.fill(COR_FUNDO)
+            desenhou = simulacao.Simulador._desenhar_rotulo_do_plano(
+                sim, sim.p2, (200, 200), 25, (255, 0, 0))
+            self.assertEqual(desenhou, esperado)
+            sujo = pygame.image.tobytes(sim.tela, "RGB") != bytes(COR_FUNDO) * (400 * 400)
+            self.assertEqual(sujo, esperado)
+
+
+class ObjetosSomemNoKoTests(unittest.TestCase):
+    """Projetil/orbe/invocacao vivo no K.O. ficava parado no ar a festa toda."""
+
+    @classmethod
+    def setUpClass(cls):
+        pygame.init()
+
+    def test_fade_em_ate_0_3_s_de_tempo_real(self):
+        fade = simulacao.Simulador._fade_objetos_pos_ko
+        self.assertEqual(fade(_sim_pos_ko(0.0)), 1.0)
+        self.assertAlmostEqual(fade(_sim_pos_ko(0.15)), 0.5, places=6)
+        self.assertEqual(fade(_sim_pos_ko(0.3)), 0.0)
+        self.assertEqual(fade(_sim_pos_ko(2.0)), 0.0)
+        antes = _sim_pos_ko(0.0)
+        antes.round_finalizado = False
+        self.assertEqual(fade(antes), 1.0)            # na luta, nada muda
+        self.assertLessEqual(simulacao.Simulador.FADE_OBJETOS_POS_KO_S, 0.3)
+
+    def _desenhar_objeto(self, t, ha=True):
+        sim = _sim_pos_ko(t)
+        guardado = simulacao.Simulador._abrir_fade_pos_ko(sim, ha)
+        pygame.draw.circle(sim.tela, (255, 255, 255), (100, 100), 20)
+        simulacao.Simulador._fechar_fade_pos_ko(sim, guardado)
+        return tuple(sim.tela.get_at((100, 100))[:3])
+
+    def test_o_objeto_some_e_antes_do_ko_fica_inteiro(self):
+        self.assertEqual(self._desenhar_objeto(0.0), (255, 255, 255))   # quadro do K.O.
+        meio = self._desenhar_objeto(0.15)
+        self.assertTrue(all(abs(m - (c + 255) / 2) <= 2 for m, c in zip(meio, COR_FUNDO)), meio)
+        self.assertEqual(self._desenhar_objeto(0.31), tuple(COR_FUNDO))
+        # nada para apagar: nao copia a tela
+        sim = _sim_pos_ko(1.0)
+        self.assertIsNone(simulacao.Simulador._abrir_fade_pos_ko(sim, False))
+
+
+def _lutador_cam(x, y, morto=False, tamanho=1.0):
+    return SimpleNamespace(pos=[x, y], z=0.0, morto=morto, raio_fisico=tamanho / 4.0,
+                           dados=SimpleNamespace(tamanho=tamanho))
+
+
+class CameraPosKoTests(unittest.TestCase):
+    """A camera DIRETOR na cauda: vencedor com 7% da largura, nome no topo e
+    confete cortado (os dois em cantos opostos)."""
+
+    def _cauda(self, vencedor, perdedor, largura=1080, altura=1920):
+        from neural_fights.effects.camera import Câmera
+
+        cam = Câmera(largura, altura)
+        cam.modo = "DIRETOR"
+        cam.diretor_largura_min_m = 5.5
+        # quadro de antes do K.O.: os dois enquadrados
+        cam.zoom = cam._calcular_zoom_necessario(vencedor, perdedor,
+                                                  zoom_max=cam._diretor_teto_zoom())
+        cam.x, cam.y = cam._calcular_centro_ideal(vencedor, perdedor)
+        historico = []
+        # slow-mo (1,2 s de parede a 0,25x) e a festa (1,51 s), passos de 60 Hz
+        for dt in [0.25 / 60] * 72 + [1 / 60] * 91:
+            cam.atualizar(dt, vencedor, perdedor)
+            historico.append((cam.zoom, cam.x, cam.y))
+        return cam, historico
+
+    def _caixa_na_tela(self, cam, caixa):
+        x0, y0 = cam.converter(caixa[0], caixa[1])
+        x1, y1 = cam.converter(caixa[2], caixa[3])
+        return x0, y0, x1, y1
+
+    def _sem_salto(self, cam, historico):
+        for (z0, x0, y0), (z1, x1, y1) in zip(historico, historico[1:]):
+            self.assertLess(abs(z1 - z0) / z0, 0.08)
+            self.assertLess(math.hypot((x1 - x0) * z1, (y1 - y0) * z1), 0.05 * cam.screen_width)
+
+    def test_longe_um_do_outro_enquadra_o_vencedor_inteiro(self):
+        vencedor = _lutador_cam(3.0, 3.0)
+        perdedor = _lutador_cam(14.0, 24.0, morto=True)
+        cam, historico = self._cauda(vencedor, perdedor)
+        self.assertEqual(cam._pos_ko_modo, "vencedor")
+        fracao = 2 * cam._raio_desenhado(vencedor) * cam.zoom / cam.screen_width
+        self.assertGreaterEqual(fracao, 0.15)
+        x0, y0, x1, y1 = self._caixa_na_tela(cam, cam._caixa_da_festa(vencedor, cam.zoom))
+        self.assertGreaterEqual(x0, -2)
+        self.assertGreaterEqual(y0, -2)          # o nome no alto do pulo cabe
+        self.assertLessEqual(x1, cam.screen_width + 2)
+        self.assertLessEqual(y1, cam.diretor_pos_ko_area[3] * cam.screen_height + 2)
+        self._sem_salto(cam, historico)
+        # antes: o vencedor ficava com ~7% da largura
+        self.assertLess(2 * cam._raio_desenhado(vencedor) * historico[0][0] / cam.screen_width,
+                        0.15)
+
+    def test_perto_enquadra_os_dois(self):
+        vencedor = _lutador_cam(8.0, 10.0)
+        perdedor = _lutador_cam(9.3, 10.2, morto=True)
+        cam, historico = self._cauda(vencedor, perdedor)
+        self.assertEqual(cam._pos_ko_modo, "dois")
+        fracao = 2 * cam._raio_desenhado(vencedor) * cam.zoom / cam.screen_width
+        self.assertGreaterEqual(fracao, 0.149)
+        for caixa in (cam._caixa_da_festa(vencedor, cam.zoom),
+                      cam._caixa_do_caido(perdedor, cam.zoom)):
+            x0, y0, x1, y1 = self._caixa_na_tela(cam, caixa)
+            self.assertGreaterEqual(min(x0, y0), -2)
+            self.assertLessEqual(x1, cam.screen_width + 2)
+            self.assertLessEqual(y1, cam.diretor_pos_ko_area[3] * cam.screen_height + 2)
+        self._sem_salto(cam, historico)
+
+    def test_antes_do_ko_o_diretor_nao_muda(self):
+        from neural_fights.effects.camera import Câmera
+
+        a, b = _lutador_cam(3.0, 3.0), _lutador_cam(8.0, 9.0)
+        cam = Câmera(1080, 1920)
+        cam.modo = "DIRETOR"
+        cam.atualizar(1 / 60, a, b)
+        self.assertFalse(hasattr(cam, "_pos_ko_modo"))
 
 
 if __name__ == "__main__":

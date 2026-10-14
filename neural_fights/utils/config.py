@@ -27,6 +27,17 @@ PERIGO_CHAO_TICK_S = 0.5
 # Com o contador zerando na saida, quem so atravessava (0,1-0,45 s por
 # passagem) nunca levava dano: 0 de vida nas sementes 101 e 103 do Vulcao.
 PERIGO_CHAO_ESQUECE_S = 1.0
+# Festa da vitoria (so DESENHO e camera, 14/10/2026): geometria que o
+# confete do vencedor (``Simulador._desenhar_festa_da_vitoria``) e a camera
+# DIRETOR pos-K.O. (``Camera._enquadrar_pos_ko``) dividem. Em raios do
+# vencedor; o alcance do confete tem piso/teto em fracao do lado MENOR da
+# tela (na ARENA o lutador e pequeno e o confete sumiria).
+FESTA_ALTURA_PULO = 0.9
+FESTA_ALCANCE_RAIOS = 3.5
+FESTA_ALCANCE_TELA_MIN = 0.24
+FESTA_ALCANCE_TELA_MAX = 0.34
+FESTA_BOCA_RAIOS = 1.3        # o confete nasce num anel FORA do rosto
+FESTA_QUEDA_RAIOS = 1.2       # quanto o confete cai (x tau^2)
 CUSTO_ESTAMINA_PARRY = 10.0
 COOLDOWN_DASH_S = 1.6
 # Bloqueio direcional: só cobre o arco frontal; parry é o bloqueio

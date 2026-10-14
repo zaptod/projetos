@@ -142,6 +142,11 @@ class GravacaoDeLutaTests(unittest.TestCase):
         esperado = fr.cauda_pos_ko_de(SimpleNamespace(slow_mo_timer=1.2))
         self.assertLessEqual(cauda, esperado + 2 / 30,
                              "sobrou silencio depois da fanfarra")
+        # depois do K.O. o HUD nao mostra plano ("ACABAR" a cauda inteira)
+        pos_ko = [a for a in gravado.get("serie_plano") or []
+                  if a[0] >= gravado["ko_em_video"] - 1e-6]
+        self.assertTrue(pos_ko, "a serie do plano precisa de uma amostra no K.O.")
+        self.assertTrue(all(a[1] == "" and a[3] == "" for a in pos_ko), pos_ko[:3])
 
     @unittest.skipIf(GATE_PESADO, "gate pesado; ligue com NF_RECORDING_GATE=1")
     def test_camera_diretor_e_resolucao_nativa_nao_alteram_a_luta(self) -> None:

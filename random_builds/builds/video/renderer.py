@@ -23,6 +23,9 @@ from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
 
 # nao abrir janelas de console para os processos ffmpeg no Windows
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# Altura (fracao da tela) do nome do vencedor no veredito do DUELO. Era 0,5:
+# cobria o rosto do vencedor, que a camera pos-K.O. poe nos 70% de cima.
+VEREDITO_ALTURA = 0.80
 
 
 def _entrada_de_som(som: Path | None, taxa: int) -> list[str]:
@@ -714,7 +717,10 @@ class VideoRenderer:
         alfa = min(1.0, (t - ver["de"]) / 0.25)
         camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(camada)
-        cy = int(self.height * 0.5)
+        # Terco de baixo (14/10/2026): no meio da tela o nome passava por
+        # cima do rosto do vencedor, que a camera DIRETOR pos-K.O. enquadra
+        # nos 70% de cima (``Camera.diretor_pos_ko_area``).
+        cy = int(self.height * VEREDITO_ALTURA)
         draw.text((self.width // 2, cy), ver["nome"], font=ver["fonte"],
                   fill=(255, 255, 255), anchor="mm",
                   stroke_width=max(4, int(self.ref * 0.008)), stroke_fill=(12, 10, 24))

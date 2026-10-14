@@ -13,6 +13,14 @@ Como funciona:
 import random
 import math
 from neural_fights.utils.config import LARGURA, ALTURA, PPM
+from neural_fights.utils.config import (
+    FESTA_ALCANCE_RAIOS,
+    FESTA_ALCANCE_TELA_MAX,
+    FESTA_ALCANCE_TELA_MIN,
+    FESTA_ALTURA_PULO,
+    FESTA_BOCA_RAIOS,
+    FESTA_QUEDA_RAIOS,
+)
 
 
 class Câmera:
@@ -76,6 +84,15 @@ class Câmera:
         self.diretor_zoom_max = 4.0
         self.diretor_push_ko = 1.25           # push-in no nocaute
         self.diretor_fora_arena = 0.35        # fração da janela que pode sair da arena
+        # Pós-K.O. (14/10/2026, ``_enquadrar_pos_ko``): enquadra os dois se o
+        # vencedor ainda ocupa esta fração da largura; senão, só o vencedor.
+        # A caixa inclui o pulo e o alcance do confete da festa.
+        self.diretor_pos_ko_fracao_min = 0.15
+        self.diretor_pos_ko_lerp = 3.5        # lerp/s (exponencial: sem salto)
+        self.diretor_pos_ko_margem = 0.04     # fração do lado menor, por borda
+        # Área da tela (x0, y0, x1, y1, em frações) onde a festa cabe: o terço
+        # de baixo fica para o veredito do vídeo (renderer VEREDITO_ALTURA).
+        self.diretor_pos_ko_area = (0.0, 0.0, 1.0, 0.70)
         self._diretor_t = 0.0
         self._diretor_estavel_desde = None
         self.shake_timer = 0.0
@@ -525,6 +542,14 @@ class Câmera:
             return
         self._diretor_t += dt
 
+        # --- 0. pós-K.O.: a festa do vencedor manda no quadro ---
+        p1_morto = bool(getattr(p1, "morto", False))
+        p2_morto = bool(getattr(p2, "morto", False))
+        if p1_morto != p2_morto:
+            vencedor, perdedor = (p2, p1) if p1_morto else (p1, p2)
+            self._enquadrar_pos_ko(dt, vencedor, perdedor)
+            return
+
         # --- 1. zoom ---
         teto = self._diretor_teto_zoom()
         necessario = self._calcular_zoom_necessario(p1, p2, zoom_max=teto)
@@ -600,6 +625,94 @@ class Câmera:
                 self.y -= (margem - sy) / self.zoom
             elif sy > self.screen_height - margem:
                 self.y += (sy - (self.screen_height - margem)) / self.zoom
+
+    # ------------------------------------------------------- pós-K.O.
+
+    @staticmethod
+    def _raio_desenhado(lutador) -> float:
+        """Raio do corpo na tela, em px do mundo (o desenho usa tamanho/2)."""
+        dados = getattr(lutador, "dados", None)
+        tamanho = getattr(dados, "tamanho", None)
+        if tamanho:
+            return float(tamanho) / 2.0 * PPM
+        return float(getattr(lutador, "raio_fisico", 0.5)) * 2.0 * PPM
+
+    def _caixa_da_festa(self, vencedor, zoom: float) -> tuple:
+        """Caixa (px do mundo) do vencedor comemorando: corpo no alto do pulo,
+        nome sobre a cabeça e o confete inteiro (a mesma conta do desenho:
+        anel fora do rosto + alcance com piso/teto pelo lado menor da tela)."""
+        zoom = max(zoom, 1e-6)
+        r = self._raio_desenhado(vencedor)
+        x = vencedor.pos[0] * PPM
+        y = vencedor.pos[1] * PPM - float(getattr(vencedor, "z", 0.0) or 0.0) * PPM
+        menor = min(self.screen_width, self.screen_height)
+        alcance_px = min(max(r * zoom * FESTA_ALCANCE_RAIOS, menor * FESTA_ALCANCE_TELA_MIN),
+                         menor * FESTA_ALCANCE_TELA_MAX)
+        voo = r * FESTA_BOCA_RAIOS + alcance_px / zoom
+        nome = 40.0 / zoom                       # rótulo do nome: ~40 px na tela
+        cima = max(0.75 * voo, (1.0 + FESTA_ALTURA_PULO) * r + nome)
+        # o confete cai ``FESTA_QUEDA_RAIOS * tau^2`` (tau até 1,4 s)
+        baixo = max(1.3 * r, FESTA_QUEDA_RAIOS * 1.96 * r)
+        return x - voo, y - cima, x + voo, y + baixo
+
+    def _caixa_do_caido(self, perdedor, zoom: float) -> tuple:
+        r = self._raio_desenhado(perdedor)
+        x = perdedor.pos[0] * PPM
+        y = perdedor.pos[1] * PPM
+        estrelas = 30.0 / max(zoom, 1e-6)
+        return x - 1.3 * r, y - r - estrelas, x + 1.3 * r, y + r
+
+    def _zoom_que_cabe(self, caixa_de_zoom) -> float:
+        """Ponto fixo de ``zoom -> caixa(zoom) -> zoom que a enquadra``
+        (o confete tem piso em px, então a caixa depende do zoom)."""
+        margem = self.diretor_pos_ko_margem * min(self.screen_width, self.screen_height)
+        ax0, ay0, ax1, ay1 = self.diretor_pos_ko_area
+        livre_w = max(1.0, (ax1 - ax0) * self.screen_width - 2 * margem)
+        livre_h = max(1.0, (ay1 - ay0) * self.screen_height - 2 * margem)
+        zoom = max(self.zoom, self.zoom_min)
+        for _ in range(8):
+            x0, y0, x1, y1 = caixa_de_zoom(zoom)
+            zoom = min(livre_w / max(x1 - x0, 1e-6), livre_h / max(y1 - y0, 1e-6))
+            zoom = max(self.zoom_min, min(self._diretor_teto_zoom(), zoom))
+        return zoom
+
+    def alvo_pos_ko(self, vencedor, perdedor) -> tuple:
+        """(cx, cy, zoom, modo) do quadro pós-K.O. no DIRETOR.
+
+        Os dois cabem com o vencedor ocupando pelo menos
+        ``diretor_pos_ko_fracao_min`` da largura → enquadra os dois; senão,
+        só o vencedor. Nos dois casos a caixa leva o pulo e o confete.
+        """
+        def caixa_par(zoom):
+            a = self._caixa_da_festa(vencedor, zoom)
+            b = self._caixa_do_caido(perdedor, zoom)
+            return min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])
+
+        zoom_par = self._zoom_que_cabe(caixa_par)
+        fracao = 2.0 * self._raio_desenhado(vencedor) * zoom_par / self.screen_width
+        if fracao >= self.diretor_pos_ko_fracao_min:
+            caixa, zoom, modo = caixa_par(zoom_par), zoom_par, "dois"
+        else:
+            zoom = self._zoom_que_cabe(lambda z: self._caixa_da_festa(vencedor, z))
+            caixa, modo = self._caixa_da_festa(vencedor, zoom), "vencedor"
+        # o centro da caixa vai ao centro da ÁREA (não da tela)
+        ax0, ay0, ax1, ay1 = self.diretor_pos_ko_area
+        desvio_x = ((ax0 + ax1) / 2.0 - 0.5) * self.screen_width / zoom
+        desvio_y = ((ay0 + ay1) / 2.0 - 0.5) * self.screen_height / zoom
+        return ((caixa[0] + caixa[2]) / 2.0 - desvio_x,
+                (caixa[1] + caixa[3]) / 2.0 - desvio_y, zoom, modo)
+
+    def _enquadrar_pos_ko(self, dt, vencedor, perdedor):
+        """Vai suave (exponencial, nunca salta) ao quadro de ``alvo_pos_ko``.
+
+        Só lê posições; depois do K.O. a luta acabou e nada a muda."""
+        cx, cy, zoom, modo = self.alvo_pos_ko(vencedor, perdedor)
+        self._pos_ko_modo = modo
+        passo = 1.0 - math.exp(-self.diretor_pos_ko_lerp * dt)
+        self.zoom += (zoom - self.zoom) * passo
+        self.x += (cx - self.x) * passo
+        self.y += (cy - self.y) * passo
+        self.zoom = max(self.zoom_min, min(self._diretor_teto_zoom(), self.zoom))
 
     def _aplicar_punch(self, dt):
         # Transiente de <=0,15s; decai linearmente e não realimenta o lerp

@@ -2497,7 +2497,11 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
         raise ValueError("desenhar exige headless=False (o headless nao tem display)")
     # MOT-121: o mesmo laco do gravador, a mesma guarda (so divisores de 60;
     # 24 fps saia a 0,8x e com ``passos_por_quadro`` errado na timeline).
-    from neural_fights.recording.fight_recorder import cauda_pos_ko_de, validar_fps_e_duracao
+    from neural_fights.recording.fight_recorder import (
+        anunciar_fim_da_festa,
+        cauda_pos_ko_de,
+        validar_fps_e_duracao,
+    )
 
     validar_fps_e_duracao(fps_video, max_duracao)
     import pygame
@@ -2581,6 +2585,7 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
                     duracao_luta = t_jogo
                     cauda = (cauda_pos_ko_de(sim) if cauda_pos_ko is None
                              else float(cauda_pos_ko))
+                    anunciar_fim_da_festa(sim, cauda)
                 elif t_video - t_ko_video >= cauda:
                     break
 

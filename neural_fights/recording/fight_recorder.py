@@ -432,6 +432,21 @@ def cauda_pos_ko_de(sim, *, padrao: float = CAUDA_POS_KO) -> float:
     return round(max(CAUDA_MIN_POS_KO, espera + fanfarra + FOLGA_POS_FANFARRA), 3)
 
 
+def anunciar_fim_da_festa(sim, cauda: float) -> None:
+    """Diz ao desenho quanto a festa da vitoria vai durar no video.
+
+    Chamada no quadro do K.O., junto com a conta da cauda: a festa comeca
+    quando o slow-mo acaba e o video termina ``cauda`` s depois do K.O. O
+    desenho usa isto para nao soltar uma rajada de confete recem-nascida no
+    ultimo quadro (``Simulador._rajadas_vivas``). So desenho: nada da luta le.
+    """
+    espera = max(0.0, float(getattr(sim, "slow_mo_timer", 0.0) or 0.0))
+    try:
+        sim._festa_dura_s = max(0.0, float(cauda) - espera)
+    except (AttributeError, TypeError, ValueError):
+        pass
+
+
 def validar_fps_e_duracao(fps: int, max_duracao: float) -> None:
     """Recusa o que gravaria errado (MOT-121, auditoria de 11/10/2026).
 
@@ -798,6 +813,10 @@ def gravar_luta(
         proxima_amostra_hp = 0.0
 
         def _plano(lutador):
+            # Depois do K.O. nao ha plano: o HUD do video mostrava "ACABAR"
+            # sob as barras a cauda inteira (conferente, 14/10/2026).
+            if getattr(sim, "round_finalizado", False):
+                return "", 0.0
             brain = getattr(lutador, "brain", None)
             plano = getattr(brain, "plano", None) if brain is not None else None
             if plano is None:
@@ -865,6 +884,11 @@ def gravar_luta(
                     duracao_luta = t_jogo
                     cauda = (cauda_pos_ko_de(sim) if cauda_pos_ko is None
                              else float(cauda_pos_ko))
+                    anunciar_fim_da_festa(sim, cauda)
+                    # o plano some do HUD no quadro do K.O., nao na proxima
+                    # amostra da serie
+                    if serie_plano:
+                        serie_plano.append((round(t_video, 3), "", 0.0, "", 0.0))
                 elif t_video - t_ko_video >= cauda:
                     break
 

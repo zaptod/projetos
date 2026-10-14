@@ -45,6 +45,14 @@ from neural_fights.core.arena import set_arena  # v9.0 Sistema de Arena
 from neural_fights.ai import CombatChoreographer  # Sistema de Coreografia v5.0
 from neural_fights.core.game_feel import GameFeelManager, HitStopManager  # Sistema de Game Feel v8.0
 from neural_fights.core.match_series import BestOfSeries
+from neural_fights.utils.config import (
+    FESTA_ALCANCE_RAIOS as _FESTA_ALCANCE_RAIOS,
+    FESTA_ALCANCE_TELA_MAX as _FESTA_ALCANCE_TELA_MAX,
+    FESTA_ALCANCE_TELA_MIN as _FESTA_ALCANCE_TELA_MIN,
+    FESTA_ALTURA_PULO as _FESTA_ALTURA_PULO,
+    FESTA_BOCA_RAIOS as _FESTA_BOCA_RAIOS,
+    FESTA_QUEDA_RAIOS as _FESTA_QUEDA_RAIOS,
+)
 
 
 DELETE_MATCH_CONFIG_ENV = "NEURAL_FIGHTS_DELETE_MATCH_CONFIG"
@@ -4765,6 +4773,8 @@ class Simulador:
                 pygame.draw.rect(self.tela, part.cor, (px, py, 2, 2))
 
         # === SUMMONS ===
+        # Pós-K.O.: invocações vivas somem em fade (o relógio da luta parou).
+        _fade_invocacoes = self._abrir_fade_pos_ko(bool(getattr(self, "summons", None)))
         if hasattr(self, 'summons'):
             tempo_s = self.tempo_visual
             for summon in self.summons:
@@ -4828,6 +4838,8 @@ class Simulador:
                     surf_nome = get_fonte(14).render(nome_s, True, (220, 220, 220))
                     self.tela.blit(surf_nome, (sx - surf_nome.get_width() // 2, sy - sr - 22))
 
+        self._fechar_fade_pos_ko(_fade_invocacoes)
+
         # === TRAPS ===
         if hasattr(self, 'traps'):
             for trap in self.traps:
@@ -4875,6 +4887,13 @@ class Simulador:
             pass
 
         # === PROJÉTEIS ===
+        # Pós-K.O.: projéteis e orbes vivos somem em fade em vez de ficarem
+        # parados no ar a festa inteira (achado do conferente, 14/10).
+        _fade_projeteis = self._abrir_fade_pos_ko(
+            bool(getattr(self, "projeteis", None))
+            or any(getattr(orbe, "ativo", False)
+                   for lut in (self.p1, self.p2)
+                   for orbe in (getattr(lut, "buffer_orbes", None) or ())))
         pulse_time = pygame.time.get_ticks() / 1000.0
         for proj in self.projeteis:
             if getattr(proj, "cone", False):
@@ -5049,6 +5068,8 @@ class Simulador:
                         carga_pct = orbe.tempo_carga / orbe.carga_max
                         ring_r = int(or_visual * (1.5 + carga_pct))
                         pygame.draw.circle(self.tela, orbe.cor, (int(ox), int(oy)), ring_r, 1)
+
+        self._fechar_fade_pos_ko(_fade_projeteis)
 
         # === EFEITOS v7.0 IMPACT EDITION ===
         for ef in self.dash_trails: ef.draw(self.tela, self.cam)
@@ -5259,24 +5280,7 @@ class Simulador:
         # Onda 10C: o PLANO é visível — rótulo curto sob o corpo (na cor do
         # lado), barrinha de progresso e um flash de 0,6 s na troca. Relógio
         # do combate, nunca pygame.time (headless == gravação).
-        brain_pl = getattr(l, "brain", None)
-        plano = getattr(brain_pl, "plano", None) if brain_pl is not None else None
-        rotulo_plano = getattr(plano, "rotulo", None) if plano is not None else None
-        if rotulo_plano and self.match_config.get("rotulo_plano", True):
-            t_troca = getattr(brain_pl, "_plano_trocado_em", -9.0)
-            flash = (getattr(brain_pl, "tempo_combate", 0.0) - t_troca) < 0.6
-            surf_pl = get_fonte(14 if flash else 11, negrito=True).render(
-                str(rotulo_plano), True, (255, 255, 255) if flash else cor_lado)
-            surf_pl.set_alpha(255 if flash else 185)
-            px_ = centro[0] - surf_pl.get_width() // 2
-            py_ = centro[1] + raio + 6
-            self.tela.blit(surf_pl, (px_, py_))
-            prog = max(0.0, min(1.0, float(getattr(plano, "progresso", 0.0) or 0.0)))
-            bx = centro[0] - 15
-            by = py_ + surf_pl.get_height() + 1
-            pygame.draw.rect(self.tela, (40, 40, 50), (bx, by, 30, 3))
-            if prog > 0.0:
-                pygame.draw.rect(self.tela, cor_lado, (bx, by, int(30 * prog), 3))
+        self._desenhar_rotulo_do_plano(l, centro, raio, cor_lado)
 
         # Rework Fase 3: a cunha de facing SAIU — a arma na mão (borda do
         # lado do olhar) e os olhos que miram já contam a direção 2x.
@@ -5393,11 +5397,20 @@ class Simulador:
     # ------------------------------------------------------------------
     FESTA_RAMPA_S = 0.2
     FESTA_PULOS_POR_S = 2.2
-    FESTA_ALTURA_PULO = 0.9       # fração do raio
+    FESTA_ALTURA_PULO = _FESTA_ALTURA_PULO   # fração do raio
     FESTA_RAJADA_S = 0.7          # um estouro de confete a cada ...
     FESTA_VIDA_CONFETE_S = 1.4
     FESTA_CONFETES = 40
-    FESTA_ALCANCE = 6.0           # raios que o confete voa
+    # Raios que o confete voa. Era 6,0: com o vencedor a 15% da largura,
+    # +-6 raios não cabem na tela (cortava na borda); 3,5 cabem até ~21%.
+    FESTA_ALCANCE = _FESTA_ALCANCE_RAIOS
+    # Nenhuma rajada nasce a menos disto do fim do vídeo (quando o gravador
+    # diz quanto a festa dura, ``_festa_dura_s``): o último quadro não cai
+    # num estouro recém-nascido, colado no vencedor.
+    FESTA_RAJADA_ANTES_DO_FIM_S = 0.6
+    # Projéteis, orbes e invocações vivos no K.O. somem em fade nisto de
+    # tempo real (o relógio da luta parou: ficavam parados no ar).
+    FADE_OBJETOS_POS_KO_S = 0.3
     COR_OURO = (255, 214, 90)
     COR_ESTRELA_KO = (255, 226, 92)
     COR_ONDA_KO = (255, 120, 90)
@@ -5410,6 +5423,62 @@ class Simulador:
         if not getattr(self, "round_finalizado", False):
             return None
         return max(0.0, float(getattr(self, "_ko_tempo_real", 0.0) or 0.0))
+
+    def _desenhar_rotulo_do_plano(self, l, centro, raio, cor_lado):
+        """Onda 10C: rótulo do plano da IA sob o corpo + barrinha. Devolve se
+        desenhou. Depois do K.O. não há plano: o "ACABAR" do último quadro
+        da luta ficava escrito sob o vencedor a festa inteira (14/10/2026)."""
+        if getattr(self, "round_finalizado", False):
+            return False
+        brain_pl = getattr(l, "brain", None)
+        plano = getattr(brain_pl, "plano", None) if brain_pl is not None else None
+        rotulo_plano = getattr(plano, "rotulo", None) if plano is not None else None
+        if not rotulo_plano or not self.match_config.get("rotulo_plano", True):
+            return False
+        t_troca = getattr(brain_pl, "_plano_trocado_em", -9.0)
+        flash = (getattr(brain_pl, "tempo_combate", 0.0) - t_troca) < 0.6
+        surf_pl = get_fonte(14 if flash else 11, negrito=True).render(
+            str(rotulo_plano), True, (255, 255, 255) if flash else cor_lado)
+        surf_pl.set_alpha(255 if flash else 185)
+        px_ = centro[0] - surf_pl.get_width() // 2
+        py_ = centro[1] + raio + 6
+        self.tela.blit(surf_pl, (px_, py_))
+        prog = max(0.0, min(1.0, float(getattr(plano, "progresso", 0.0) or 0.0)))
+        bx = centro[0] - 15
+        by = py_ + surf_pl.get_height() + 1
+        pygame.draw.rect(self.tela, (40, 40, 50), (bx, by, 30, 3))
+        if prog > 0.0:
+            pygame.draw.rect(self.tela, cor_lado, (bx, by, int(30 * prog), 3))
+        return True
+
+    def _fade_objetos_pos_ko(self):
+        """Opacidade de projéteis/orbes/invocações: 1 antes do K.O.; depois
+        cai linear a 0 em ``FADE_OBJETOS_POS_KO_S`` de tempo real."""
+        t = self._tempo_pos_ko()
+        if t is None:
+            return 1.0
+        if self.FADE_OBJETOS_POS_KO_S <= 0:
+            return 0.0
+        return max(0.0, 1.0 - t / self.FADE_OBJETOS_POS_KO_S)
+
+    def _abrir_fade_pos_ko(self, ha_objetos):
+        """Guarda a tela ANTES de desenhar os objetos que somem no pós-K.O.
+        (None = desenhar como sempre: antes do K.O. ou nada para apagar)."""
+        if not ha_objetos:
+            return None
+        fade = self._fade_objetos_pos_ko()
+        if fade >= 1.0:
+            return None
+        return self.tela.copy(), fade
+
+    def _fechar_fade_pos_ko(self, guardado):
+        """Devolve a tela guardada por cima com opacidade ``1 - fade``: o que
+        foi desenhado no meio fica com ``fade`` (0 = apagado)."""
+        if guardado is None:
+            return
+        antes, fade = guardado
+        antes.set_alpha(int(round(255 * (1.0 - fade))))
+        self.tela.blit(antes, (0, 0))
 
     def _fase_da_festa(self):
         """Segundos desde que a fanfarra tocou (None antes dela)."""
@@ -5580,27 +5649,75 @@ class Simulador:
         largura_tela = float(getattr(self, "screen_width", 0) or self.tela.get_width())
         tam = int(min(max(raio * 0.3, largura_tela * 0.010), largura_tela * 0.014))
         tam = max(4, tam)
-        alcance = max(raio * self.FESTA_ALCANCE, largura_tela * 0.24)
+        alcance = self._alcance_do_confete(raio)
         vida = self.FESTA_VIDA_CONFETE_S
-        ultima = int(fase // self.FESTA_RAJADA_S)
-        primeira = max(0, ultima - int(vida // self.FESTA_RAJADA_S) - 1)
-        for rajada in range(primeira, ultima + 1):
-            tau = fase - rajada * self.FESTA_RAJADA_S
-            if tau < 0.0 or tau > vida:
-                continue
+        # O rosto de verdade neste quadro (com a altura e o pulo) e a âncora
+        # do confete: o centro do corpo SEM o pulo, para a nuvem não pular
+        # junto com o vencedor.
+        off_z = self.cam.converter_tam(float(getattr(vencedor, "z", 0.0) or 0.0) * PPM)
+        salto = self._salto_da_comemoracao(vencedor, raio) or 0
+        ax, ay = float(sx), float(sy - off_z)
+        fx, fy = ax, ay - salto
+        boca = raio * _FESTA_BOCA_RAIOS
+        queda = raio * _FESTA_QUEDA_RAIOS
+        # Nenhum pedaço dentro do disco do rosto (achado do conferente: 18%
+        # do rosto coberto no último quadro). Folga de meio pedaço.
+        proibido = raio * 1.04 + tam * 0.5
+        for rajada, tau in self._rajadas_vivas(fase):
             encolhe = 1.0 - max(0.0, (tau - 0.8 * vida) / (0.2 * vida))
             # Sobe e desacelera (estouro), depois cai devagar.
             abre = 1.0 - (1.0 - tau / vida) ** 3
             for i in range(self.FESTA_CONFETES):
-                ang = i * 2.399963 + rajada * 0.9
+                # Leque para CIMA e para os lados (-172° a -8°): o confete
+                # nasce num anel fora do rosto e abre para fora dele.
+                u = ((i * 0.618034 + rajada * 0.37) % 1.0)
+                ang = math.radians(-172.0 + 164.0 * u)
                 forca = 0.55 + 0.45 * (((i * 7 + rajada * 3) % 5) / 4.0)
-                dist = alcance * forca * abre
-                cx = sx + math.cos(ang) * dist
-                cy = sy - raio * 0.6 + math.sin(ang) * dist * 0.75 + raio * 1.6 * tau * tau
+                dist = boca + alcance * forca * abre
+                cx = ax + math.cos(ang) * dist
+                cy = ay + math.sin(ang) * dist * 0.75 + queda * tau * tau
+                if math.hypot(cx - fx, cy - fy) < proibido:
+                    continue
+                # nem sobre o nome (rótulo 22 px acima da cabeça)
+                if (abs(cx - fx) < max(raio * 1.6, 70) + tam
+                        and fy - raio - 26 - tam < cy < fy - raio - 4 + tam):
+                    continue
                 larg = max(1, int(tam * (0.3 + 0.7 * abs(math.cos(tau * 10.0 + i))) * encolhe))
                 alt = max(1, int(tam * 0.6 * encolhe))
                 cor = cores[(i + rajada) % len(cores)]
                 pygame.draw.rect(self.tela, cor, (int(cx) - larg // 2, int(cy) - alt // 2, larg, alt))
+
+    def _alcance_do_confete(self, raio):
+        """Pixels que o confete voa: raios do vencedor, com piso e teto pelo
+        lado MENOR da tela (a câmera DIRETOR pós-K.O. usa a mesma conta)."""
+        largura = float(getattr(self, "screen_width", 0) or self.tela.get_width())
+        altura = float(getattr(self, "screen_height", 0) or self.tela.get_height())
+        menor = min(largura, altura)
+        return min(max(raio * self.FESTA_ALCANCE, menor * _FESTA_ALCANCE_TELA_MIN),
+                   menor * _FESTA_ALCANCE_TELA_MAX)
+
+    def _rajadas_vivas(self, fase):
+        """(índice, idade) das rajadas de confete vivas na fase ``fase``.
+
+        Uma rajada a cada ``FESTA_RAJADA_S``. Quando o gravador diz quanto a
+        festa dura (``_festa_dura_s``), nenhuma nasce a menos de
+        ``FESTA_RAJADA_ANTES_DO_FIM_S`` do fim: o último quadro mostra uma
+        rajada já aberta, nunca uma recém-nascida colada no vencedor."""
+        if fase is None:
+            return []
+        vida = self.FESTA_VIDA_CONFETE_S
+        ultima = int(fase // self.FESTA_RAJADA_S)
+        dura = getattr(self, "_festa_dura_s", None)
+        if dura is not None:
+            limite = float(dura) - self.FESTA_RAJADA_ANTES_DO_FIM_S
+            ultima = min(ultima, max(0, int(math.floor(limite / self.FESTA_RAJADA_S + 1e-9))))
+        primeira = max(0, ultima - int(vida // self.FESTA_RAJADA_S) - 1)
+        vivas = []
+        for rajada in range(primeira, ultima + 1):
+            tau = fase - rajada * self.FESTA_RAJADA_S
+            if 0.0 <= tau <= vida:
+                vivas.append((rajada, tau))
+        return vivas
 
     def _desenhar_slash_arc(self, lutador, centro, raio, anim_scale):
         """Desenha arco de corte visível durante ataques melee"""
