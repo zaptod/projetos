@@ -17,6 +17,6 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Pausa dos canais de histórias** — Pausar a publicação (13/10/2026) `pausa-dos-canais`
   - ✅ **Criar histórias durante a pausa?** — Continuar criando (estoque pronto para a volta) (13/10/2026) `criacao-durante-a-pausa`
 - ✅ **Gemini sem o modelo forte pode escrever roteiro?** — Pular para o próximo provedor (DeepSeek/ChatGPT) e avisar no Telegram (recomendado) (13/10/2026) `gemini-sem-pro-escreve`
-- ⏳ **Série que veio com menos partes** — Quando o plano da série volta do LLM com menos partes que o pedido, o que fazer? `plano-com-menos-partes`
+- ✅ **Série que veio com menos partes** — Sai mais curta (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `plano-com-menos-partes`
 - ⏳ **Imagem de referência entre geradores** — Existe um módulo morto que passava a imagem de referência de um gerador para outro. Volta ou apaga? `imagem-de-referencia`
 - ✅ **Prévia de meia resolução do Gemini** — Aceitar, marcada como 'prévia' (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `previa-do-gemini`
