@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:45:31",
+      "evento": "2026-10-14T08:45:23",
+      "linha": 167,
+      "nota": "resposta sem pedido de origem: builds/quirks-sem-efeito = Tirar do sorteio agora, implementar aos poucos (recomendado)",
+      "opcao": "tirar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:02.077600",
   "depende_de": [],
