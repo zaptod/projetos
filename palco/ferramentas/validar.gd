@@ -26,8 +26,10 @@ func _initialize() -> void:
 		var arena = tl.dados.get("arena")
 		if typeof(arena) == TYPE_DICTIONARY:
 			bib.arena(str(arena.get("nome", "")), str(arena.get("tema", "")))
+		var cab := {}
 		for slot in ["p1", "p2"]:
 			var c := tl.cabecalho_lutador(slot)
+			cab[slot] = c
 			bib.lutador(str(c.get("nome", "")), str(c.get("classe", "")))
 			var arma = c.get("arma")
 			if typeof(arma) == TYPE_DICTIONARY:
@@ -35,10 +37,17 @@ func _initialize() -> void:
 		for o in tl.trilhas().get("objetos", []):
 			bib.objeto(str(o.get("tipo", "")), str(o.get("elemento", "")), str(o.get("nome", "")))
 		# so o que vira efeito na tela pede peca (texto, movimento e
-		# projetil_fim da revisao 3 sao da edicao: nao caem no _padrao)
+		# projetil_fim da revisao 3 sao da edicao: nao caem no _padrao), com a
+		# MESMA cadeia do palco._evento: variante, elemento, skill e tipo_skill.
+		# Evento fora da lista com folha do Atelie tambem pede (como no palco).
 		for ev in tl.dados.get("eventos", []):
-			if Timeline.EVENTOS_COM_VFX.has(str(ev.get("tipo", ""))):
-				bib.evento(str(ev.get("tipo", "")), str(ev.get("tier", "")))
+			var tipo := str(ev.get("tipo", ""))
+			var variante := Biblioteca.variante_do_evento(ev, cab)
+			var elemento := str(ev.get("elemento", ""))
+			var nome_skill := str(ev.get("nome", ""))
+			var tipo_skill := str(ev.get("tipo_skill", ""))
+			if Timeline.EVENTOS_COM_VFX.has(tipo) or bib.tem_folha_evento(tipo, elemento, nome_skill, tipo_skill, str(ev.get("gatilho", ""))):
+				bib.evento(tipo, str(ev.get("tier", "")), elemento, variante, nome_skill, tipo_skill)
 	for e in erros:
 		printerr("validar: ", e)
 	# o plano de quadros que o render faria, com o hitstop do ESTILO GLOBAL:

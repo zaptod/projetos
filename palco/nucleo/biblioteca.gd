@@ -42,18 +42,6 @@ const SCRIPTS_PROVISORIOS := ["res://biblioteca/efeitos/objetos/objeto_cc0.gd"]
 ## O PNG por ELEMENTO do Atelie vence o Comum nas tres.
 const ORDEM_DO_COMUM := "seu-vence"
 
-## objeto da timeline -> parte do manifesto (grupo skill). Beam e portal nao
-## tem peca de um PNG so (o feixe estica de a ate b; o portal liga a e b).
-const PARTE_DO_OBJETO := {"projetil": "projetil", "area": "area_chao", "summon": "invocacao", "trap": "estrutura"}
-## objetos que NAO giram com o angulo (o chao da area, a estrutura da trap)
-const OBJETO_PARADO := {"area": true, "trap": true}
-## evento -> parte do manifesto no grupo efeito que fala do ELEMENTO
-const EVENTO_POR_ELEMENTO := {"skill": "conjuracao", "explosao": "impacto"}
-## tamanho (m) do estouro de um evento parado (o KO e maior)
-const TAMANHO_EVENTO := {"ko": 4.0, "acerto_light": 1.2, "acerto_medium": 1.5, "acerto_heavy": 1.9, "acerto_colossal": 2.4}
-## categoria de peca do lutador -> (parte, nivel) da camada_estado no manifesto
-const CAMADA := {"estados": ["estado", "comum"], "status": ["status", "comum"], "buffs": ["buffs", "skill"],
-	"canais": ["canais", "skill"], "transformacoes": ["transformacoes", "skill"]}
 
 var raiz := RAIZ          # os testes apontam para uma biblioteca de mentira
 var _cache := {}          # caminho -> PackedScene
@@ -182,12 +170,10 @@ func _achar(categoria: String, candidatos: Array) -> String:
 	return ""
 
 
-static func _id_slot(grupo: String, parte: String, nivel: String, chave: String, estado := "base") -> String:
-	# A assinatura fica para os candidatos antigos, mas PNG avulso nao entra.
-	return ""
-
-
 ## A ordem entre o Comum do Atelie e a cena por elemento (ORDEM_DO_COMUM).
+## Desde que o PNG avulso saiu (f5f8cd3) o Comum chega aqui vazio e a cena por
+## elemento vence nas tres ordens; a regra fica para quando o Comum voltar
+## pelo catalogo (Grimorio builds/comum-tingido-ordem).
 static func ordem_comum_e_elemento(ordem: String, png_comum: String, cena_elemento: String) -> Array:
 	if cena_elemento == "":
 		return [png_comum]
@@ -200,24 +186,7 @@ static func ordem_comum_e_elemento(ordem: String, png_comum: String, cena_elemen
 			return [PREFIXO_ARTE + cena_elemento, png_comum, cena_elemento]
 
 
-## O .json que o painel grava ao lado do PNG; {} quando nao ha (nunca exigido).
-static func opcoes_do_png(caminho_png: String) -> Dictionary:
-	var caminho_json := caminho_png.get_basename() + ".json"
-	if not FileAccess.file_exists(caminho_json):
-		return {}
-	var json := JSON.new()
-	if json.parse(FileAccess.get_file_as_string(caminho_json)) != OK or typeof(json.data) != TYPE_DICTIONARY:
-		return {}
-	return json.data
-
-
-static func _vetor(valor, padrao: Vector2) -> Vector2:
-	if typeof(valor) == TYPE_ARRAY and valor.size() >= 2:
-		return Vector2(float(valor[0]), float(valor[1]))
-	return padrao
-
-
-func _cena(categoria: String, pedido: String, candidatos: Array, ajustes_png := {}) -> PackedScene:
+func _cena(categoria: String, pedido: String, candidatos: Array) -> PackedScene:
 	var caminho := _achar(categoria, candidatos)
 	var chave := categoria + ":" + pedido
 	if caminho.is_empty():
@@ -261,16 +230,12 @@ func arma(tipo: String, estilo: String) -> PackedScene:
 	var catalogada := resolver_peca(["arma.estilo." + UtilPalco.slug(estilo), "arma.tipo." + UtilPalco.slug(tipo), "arma.generica"])
 	if not catalogada.is_empty() and _tem_folha_catalogo(catalogada):
 		return _cena_catalogo(catalogada)
-	# A Corrente nao entra pelo PNG da arma inteira: a peca dela e a corrente
-	# de Verlet (armas/tipos/corrente), e a arte dela sao elos e cabecas (F4).
-	var com_png := UtilPalco.slug(tipo) != "corrente"
+	# A Corrente cai em armas/tipos/corrente: a peca de Verlet (F3).
 	return _cena("armas", "%s/%s" % [tipo, estilo], [
-		_id_slot("arma", "arma", "estilo", UtilPalco.slug(estilo)) if com_png and estilo != "" else "",
 		"estilos/" + UtilPalco.slug(estilo) if estilo != "" else "",
-		_id_slot("arma", "arma", "tipo", UtilPalco.slug(tipo)) if com_png and tipo != "" else "",
 		"tipos/" + UtilPalco.slug(tipo) if tipo != "" else "",
 		"_padrao",
-	], {"modo": "arma"})
+	])
 
 
 func lutador(nome: String, classe: String) -> PackedScene:
@@ -294,44 +259,19 @@ func rostos() -> Array:
 	return cenas
 
 
-## O elemento como chave do manifesto ("" para sem elemento / DEFAULT).
-static func _chave_elemento(elemento: String) -> String:
-	var chave := UtilPalco.slug(elemento)
-	return "" if chave == "default" else chave
-
-
-static func candidatos_objeto_png(tipo: String, elemento: String, nome: String, forma := "") -> Array:
-	var el := _chave_elemento(elemento)
-	if tipo == "projetil_arma":
-		return [_id_slot("arma", "projetil_arma", "forma", UtilPalco.slug(forma)) if forma != "" else "", "", ""]
-	if tipo == "orbe":
-		return ["", "", _id_slot("arma", "orbe", "tipo", "magica", "orbitando")]
-	var parte := str(PARTE_DO_OBJETO.get(tipo, ""))
-	if parte == "":
-		return ["", "", ""]
-	return [
-		_id_slot("skill", parte, "skill", UtilPalco.slug(nome)) if nome != "" else "",
-		_id_slot("skill", parte, "elemento", el) if el != "" else "",
-		_id_slot("skill", parte, "comum", "_"),
-	]
-
-
-func objeto(tipo: String, elemento: String, nome: String, forma := "") -> PackedScene:
+func objeto(tipo: String, elemento: String, nome: String, _forma := "") -> PackedScene:
 	var catalogada := cena_catalogada([
 		"skill." + UtilPalco.slug(nome), "efeito." + UtilPalco.slug(tipo),
 		"elemento." + UtilPalco.slug(elemento), "efeito.generico"])
 	if catalogada != null:
 		return catalogada
-	var png := candidatos_objeto_png(tipo, elemento, nome, forma)
 	return _cena("efeitos", "%s/%s/%s" % [tipo, elemento, nome], [
-		png[0],
 		"skills/" + UtilPalco.slug(nome) if nome != "" else "",
-		png[1],
-	] + ordem_comum_e_elemento(ordem_do_comum, png[2],
+	] + ordem_comum_e_elemento(ordem_do_comum, "",
 		"objetos/%s/%s" % [tipo, UtilPalco.slug(elemento)] if elemento != "" else "") + [
 		"objetos/%s/_padrao" % tipo,
 		"objetos/_padrao",
-	], {"modo": "objeto", "girar": not OBJETO_PARADO.has(tipo)})
+	])
 
 
 static func candidatos_evento(tipo: String, tier := "", elemento := "", variante := "") -> Array:
@@ -345,24 +285,27 @@ static func candidatos_evento(tipo: String, tier := "", elemento := "", variante
 	]
 
 
-## A cadeia do evento com o PNG do Atelie antes de cada cena do mesmo nivel.
-static func candidatos_evento_com_png(tipo: String, tier := "", elemento := "", variante := "") -> Array:
-	var nome := UtilPalco.slug(tipo)
-	var cenas := candidatos_evento(tipo, tier, elemento, variante)
-	var por_elemento := str(EVENTO_POR_ELEMENTO.get(nome, ""))
-	var el := _chave_elemento(elemento)
-	return [
-		_id_slot("efeito", "evento", "variante", "%s_%s" % [nome, UtilPalco.slug(variante)]) if variante != "" else "",
-		cenas[0],
-		_id_slot("efeito", por_elemento, "elemento", el) if por_elemento != "" and el != "" else "",
-		cenas[1],
-		_id_slot("efeito", "evento", "variante", "%s_%s" % [nome, UtilPalco.slug(tier)]) if tier != "" else "",
-		cenas[2],
-		_id_slot("efeito", "evento", "tipo", nome),
-		_id_slot("efeito", por_elemento, "comum", "_") if por_elemento != "" else "",
-		cenas[3],
-		cenas[4],
-	]
+## A variante que escolhe a peca do evento. Uma conta so para o palco e o
+## `ferramentas/validar.gd` (antes o validador listava pecas sem variante, que
+## nao eram as do render). `cab` = slot -> cabecalho do lutador.
+static func variante_do_evento(ev: Dictionary, cab: Dictionary) -> String:
+	var tipo := str(ev.get("tipo", ""))
+	if tipo == "movimento":
+		return str(ev.get("gatilho", ""))
+	if tipo == "projetil_fim":
+		return str(ev.get("motivo", ""))
+	if tipo == "agarrao_desfecho":
+		return str(ev.get("modo", ""))
+	if tipo == "acerto":
+		if bool(ev.get("critico", false)):
+			return "critico"
+		# autor sem arma: o cabecalho traz `arma: null` (GOD-2)
+		var autor = cab.get(str(ev.get("autor", "")), {})
+		var arma_cab = autor.get("arma") if typeof(autor) == TYPE_DICTIONARY else null
+		var arma: Dictionary = arma_cab if typeof(arma_cab) == TYPE_DICTIONARY else {}
+		var tipo_arma := UtilPalco.slug(str(arma.get("tipo", "")))
+		return "projetil_arma" if tipo_arma in ["arremesso", "arco"] else str(arma.get("arquetipo_animacao", ""))
+	return ""
 
 
 func evento(tipo: String, tier := "", elemento := "", variante := "", skill := "", tipo_skill := "") -> PackedScene:
@@ -372,11 +315,8 @@ func evento(tipo: String, tier := "", elemento := "", variante := "", skill := "
 		"elemento." + UtilPalco.slug(elemento), "efeito.generico"])
 	if catalogada != null:
 		return catalogada
-	var nome := UtilPalco.slug(tipo)
-	var tamanho := float(TAMANHO_EVENTO.get("%s_%s" % [nome, UtilPalco.slug(tier)], TAMANHO_EVENTO.get(nome, 1.6)))
 	return _cena("efeitos", "evento/%s/%s/%s/%s" % [tipo, tier, elemento, variante],
-		candidatos_evento_com_png(tipo, tier, elemento, variante),
-		{"modo": "evento", "tamanho_m": tamanho, "duracao_s": 0.6 if nome == "ko" else 0.35})
+		candidatos_evento(tipo, tier, elemento, variante))
 
 
 static func candidatos_peca_lutador(categoria: String, nome: String) -> Array:
@@ -387,28 +327,12 @@ static func candidatos_peca_lutador(categoria: String, nome: String) -> Array:
 	]
 
 
-## O PNG do Atelie da camada em volta do lutador (Em volta do lutador:
-## estados e status por nome; buffs, canais e transformacoes por skill).
-static func candidato_camada_png(categoria: String, nome: String) -> String:
-	var pasta := UtilPalco.slug(categoria)
-	if not CAMADA.has(pasta) or nome == "":
-		return ""
-	var parte: String = CAMADA[pasta][0]
-	if CAMADA[pasta][1] == "comum":
-		return _id_slot("camada_estado", parte, "comum", "_", UtilPalco.slug(nome))
-	return _id_slot("camada_estado", parte, "skill", UtilPalco.slug(nome))
-
-
-func _candidatos_camada(categoria: String, nome: String) -> Array:
-	return [candidato_camada_png(categoria, nome)] + candidatos_peca_lutador(categoria, nome)
-
-
 func tem_peca_lutador(categoria: String, nome: String) -> bool:
-	return not _achar("lutadores", _candidatos_camada(categoria, nome)).is_empty()
+	return not _achar("lutadores", candidatos_peca_lutador(categoria, nome)).is_empty()
 
 
 func peca_lutador(categoria: String, nome: String) -> PackedScene:
-	return _cena("lutadores", "peca/%s/%s" % [categoria, nome], _candidatos_camada(categoria, nome), {"modo": "camada"})
+	return _cena("lutadores", "peca/%s/%s" % [categoria, nome], candidatos_peca_lutador(categoria, nome))
 
 
 ## Camadas persistentes gravadas em `trilhas.efeitos` (status e buff).

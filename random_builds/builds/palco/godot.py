@@ -162,7 +162,7 @@ def gravar_filme(job: Path | None, avi: Path, *, cfg: dict | None = None, posica
                  timeout: float | None = None, cena: str | None = None, argumentos: list | None = None) -> dict:
     """Grava o AVI (MJPEG + PCM 48 kHz). Devolve rc, saida e segundos; rc != 0
     vira ErroPalco em quem chama, com o motivo de MOTIVOS. `cena` troca a cena
-    principal (a vitrine: res://ferramentas/vitrine.tscn)."""
+    principal (padrao: a do project.godot, palco.tscn)."""
     cfg = config.carregar() if cfg is None else cfg
     garantir_importado(cfg)
     comando = [config.godot(cfg), "--path", config.projeto(cfg)]

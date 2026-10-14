@@ -746,6 +746,28 @@ ligada: `geracao.json → minutos_por_duelo_palco` = 8 (`noite.minutos_por_duelo
 **Sessão bloqueada: não testado** (o Adrian estava no PC); se quebrar, a guarda
 rc 4/quadro liso derruba o B e o celular sai pelo pygame.
 
+**Consertos do palco de 14/10** (auditoria `2026-10-11-profunda/consertos/godot.md`;
+todos latentes até a chave do duelo ou até haver folha de rosto/arma com esses
+gatilhos no Ateliê):
+- **Lutador sem arma** (`arma: null` no cabeçalho, quando a arma não resolve):
+  `_evento` lia `arm[slot]` e a variante do acerto lia a arma do autor como
+  Dictionary — SCRIPT ERROR e o render recusado (regressão do f5f8cd3). Teste
+  `test_evento_de_lutador_sem_arma_nao_derruba_o_render` (render real).
+- **Rosto do Ateliê** (`tocador_folha.gd`): os estados do catálogo são as 24
+  carinhas; o canal `expr` (índice em `tabelas.expressoes`) vira `estado(nome)`
+  e o palco manda UM gatilho por quadro (`golpe_fase` ou `expr`). Carinha não
+  desenhada usa a família, depois a neutra, depois qualquer uma
+  (`boca-de-uma-carinha`), e vai ao relatório em `rosto_herdado`. O tocador
+  repassa `avancar`/`ajustar_corpo`/`estado` ao rosto pendurado; com o lutador
+  marcador o palco repassa direto (`_repassar`). Teste `palco/testes/rosto_folha.gd`.
+- **Evento da arma toca até o fim**: `ocioso`/`golpe_fase`/`expr` (gatilhos de
+  quadro) não cortam uma animação de evento sem loop. Teste
+  `palco/testes/tocador_folha.gd`.
+- A variante do evento mora em `Biblioteca.variante_do_evento` (palco e
+  `ferramentas/validar.gd` com a mesma cadeia); saiu o resto da cadeia PNG
+  (`_id_slot`, `candidatos_*_png`, `opcoes_do_png`); a fonte do A/B vem de
+  `palco.json → ab.fonte` ou do `WINDIR`.
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

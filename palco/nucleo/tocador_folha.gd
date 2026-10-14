@@ -20,6 +20,29 @@ var gatilho_animacao := ""
 var _animacoes := {}
 var _ocioso := ""
 var _terminou := false
+## Gatilhos que o palco manda A CADA QUADRO (canais da amostra). Enquanto uma
+## animacao de EVENTO sem loop toca (`_travado`), eles nao a cortam: antes o
+## `ocioso`/`golpe_fase` da arma trocava o `projetil_fim` no quadro seguinte
+## e o evento durava 1 quadro de video (GOD-3).
+const GATILHOS_DE_QUADRO := ["ocioso", "golpe_fase", "expr"]
+var _travado := false
+## Animacoes por ESTADO do catalogo (o rosto: os 24 estados sao as 24
+## expressoes, todos com os mesmos gatilhos). `_animacoes` e a do estado ativo:
+## a base (todas as animacoes, como sempre) com as do estado por cima.
+var _base := {}
+var _por_estado := {}
+var estado_atual := ""
+## carinha pedida que nao esta desenhada -> a usada no lugar (vai ao relatorio)
+var herdado := {}
+## Expressao -> familia (docs/sprites/slots_exemplo.json `familias_expressao`).
+## Carinha que nao esta desenhada usa a mais parecida: a familia, depois a
+## neutra, depois qualquer uma desenhada (Grimorio builds/boca-de-uma-carinha).
+const FAMILIA_EXPRESSAO := {"neutro": "neutro", "focado": "neutro", "glacial": "neutro",
+	"concentrado": "neutro", "firmeza": "neutro", "tedio": "neutro", "furia": "furia",
+	"determinado": "furia", "berserk": "furia", "esforco": "furia", "limite": "furia",
+	"animado": "animado", "confiante": "animado", "euforico": "animado", "extase": "animado",
+	"panico": "panico", "nervoso": "panico", "desespero": "panico", "alerta": "panico",
+	"confuso": "panico", "dor": "dor", "tonto": "dor", "tristeza": "dor", "morto": "morto"}
 ## Tamanho no palco = regra do Atelie (`atelie_animacoes.montagem`): o maior
 ## lado do quadro vira `tamanho_padrao` corpos (1,0 = o diametro do lutador);
 ## a `escala` do animacao.json multiplica por cima. Sem corpo informado: 1:1.
@@ -36,25 +59,94 @@ func _ready() -> void:
 ## A configuracao e exportada antes de empacotar a cena. Assim, ao contrario
 ## do antigo `carregar` antes de `pack()`, ela continua no no instanciado.
 func _preparar_catalogo() -> void:
+	_base.clear()
+	_por_estado.clear()
 	for estado in catalogo_peca.get("estados", []):
+		var id_estado := str(estado.get("id", ""))
 		for animacao in estado.get("animacoes", []):
 			var chave := str(animacao.get("gatilho", ""))
 			if chave == "":
 				continue
 			var pasta := str(animacao.get("pasta", ""))
 			if pasta != "":
-				_animacoes[chave] = {"pasta": pasta, "loop": bool(animacao.get("loop", true)),
+				var dado := {"pasta": pasta, "loop": bool(animacao.get("loop", true)),
 					"tamanho": _tamanho_do_catalogo(animacao.get("tamanho_padrao", "1")),
 					"segue": str(animacao.get("segue", "lutador")), "camada": int(animacao.get("camada", 0))}
-	# A animacao de repouso e a `ocioso`; peca sem ela (ex. Cristais Flutuantes:
-	# so `orbitar`, gatilho orbe) repousa na 1a que tem folha — antes ela nunca
-	# tocava (08/10/2026).
+				_base[chave] = dado
+				if not _por_estado.has(id_estado):
+					_por_estado[id_estado] = {}
+				_por_estado[id_estado][chave] = dado
+	_animacoes = _base.duplicate()
+	# Peca de expressoes (o rosto) comeca no 1o estado desenhado pela ordem do
+	# catalogo (o `neutro`, quando ha); a base sozinha seria a ULTIMA carinha.
+	if _tem_expressoes():
+		_aplicar_estado(_resolver_estado("neutro"))
+	_definir_ocioso()
+	if _ocioso != "":
+		_trocar(_ocioso)
+
+
+## A animacao de repouso e a `ocioso`; peca sem ela (ex. Cristais Flutuantes:
+## so `orbitar`, gatilho orbe) repousa na 1a que tem folha — antes ela nunca
+## tocava (08/10/2026).
+func _definir_ocioso() -> void:
+	_ocioso = ""
 	if _animacoes.has("ocioso"):
 		_ocioso = "ocioso"
 	elif not _animacoes.is_empty():
 		_ocioso = str(_animacoes.keys()[0])
-	if _ocioso != "":
-		_trocar(_ocioso)
+
+
+func _tem_expressoes() -> bool:
+	for id_estado in _por_estado:
+		if FAMILIA_EXPRESSAO.has(id_estado):
+			return true
+	return false
+
+
+## O estado desenhado mais parecido com `nome`: ele, a familia, a neutra, a
+## 1a desenhada (nunca some, nunca mistura com a provisoria).
+func _resolver_estado(nome: String) -> String:
+	for candidato in [nome, str(FAMILIA_EXPRESSAO.get(nome, "")), "neutro"]:
+		if candidato != "" and _por_estado.has(candidato):
+			return candidato
+	for id_estado in catalogo_peca.get("estados", []):
+		if _por_estado.has(str(id_estado.get("id", ""))):
+			return str(id_estado.get("id", ""))
+	return ""
+
+
+func _aplicar_estado(id_estado: String) -> void:
+	estado_atual = id_estado
+	_animacoes = _base.duplicate()
+	_animacoes.merge(_por_estado.get(id_estado, {}), true)
+
+
+## Troca o estado (a expressao do rosto). So recomeca a animacao quando a
+## folha muda, e mesmo assim no MESMO quadro: a carinha troca sem o grito
+## voltar ao comeco. Peca sem estados de expressao ignora; repassa aos filhos.
+func estado(nome: String) -> void:
+	if _tem_expressoes():
+		var alvo := _resolver_estado(nome)
+		if nome != "" and alvo != "" and alvo != nome:
+			herdado[nome] = alvo
+		if alvo != "" and alvo != estado_atual:
+			var pasta_antes := str(_animacoes.get(gatilho_animacao, {}).get("pasta", ""))
+			_aplicar_estado(alvo)
+			_definir_ocioso()
+			var dado: Dictionary = _animacoes.get(gatilho_animacao, {})
+			if gatilho_animacao != "" and not dado.is_empty() and str(dado.get("pasta", "")) != pasta_antes:
+				var guardado := [indice, sentido, decorrido, _terminou]
+				_trocar(gatilho_animacao)
+				if gatilho_animacao != "" and not quadros.is_empty():
+					indice = mini(int(guardado[0]), quadros.size() - 1)
+					sentido = int(guardado[1])
+					decorrido = float(guardado[2])
+					_terminou = bool(guardado[3])
+				queue_redraw()
+	for filho in get_children():
+		if filho.has_method("estado"):
+			filho.estado(nome)
 
 
 func carregar(pasta: String) -> bool:
@@ -98,11 +190,15 @@ func carregar(pasta: String) -> bool:
 
 func tocar(novo_gatilho: String) -> void:
 	if not _animacoes.is_empty():
+		var de_quadro := novo_gatilho in GATILHOS_DE_QUADRO
+		if de_quadro and _travado:
+			return                       # o evento toca ate o fim (GOD-3)
 		if novo_gatilho == "ocioso" and not _animacoes.has("ocioso"):
 			novo_gatilho = _ocioso       # "voltar ao repouso" na peca sem ocioso
 		# chamado a cada quadro: so troca (e recomeca) quando muda de animacao
 		if _animacoes.has(novo_gatilho) and novo_gatilho != gatilho_animacao:
 			_trocar(novo_gatilho)
+			_travado = not de_quadro and gatilho_animacao == novo_gatilho and not loop
 			queue_redraw()
 		return
 	if gatilho_animacao != "" and novo_gatilho != gatilho_animacao:
@@ -121,6 +217,11 @@ func gatilho(novo_gatilho: String) -> void:
 
 
 func avancar(delta: float) -> void:
+	# os filhos (o rosto pendurado no lutador) andam junto: antes ficavam no
+	# quadro 0 (GOD-1)
+	for filho in get_children():
+		if filho.has_method("avancar"):
+			filho.avancar(delta)
 	if textura == null or quadros.is_empty():
 		return
 	decorrido += delta
@@ -140,6 +241,8 @@ func avancar(delta: float) -> void:
 		queue_redraw()
 		if _terminou:
 			break
+	if _terminou:
+		_travado = false                 # o evento acabou: o quadro volta a mandar
 	if _terminou and not loop and _ocioso != "" and gatilho_animacao != _ocioso:
 		_trocar(_ocioso)
 
@@ -169,6 +272,11 @@ func ajustar_corpo(diametro_px: float) -> void:
 	if not is_equal_approx(corpo_px, diametro_px):
 		corpo_px = diametro_px
 		queue_redraw()
+	# o rosto pendurado cresce com o corpo: antes ficava no tamanho nativo da
+	# folha (GOD-1)
+	for filho in get_children():
+		if filho.has_method("ajustar_corpo"):
+			filho.ajustar_corpo(diametro_px)
 
 
 func _duracao_atual() -> float:

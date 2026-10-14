@@ -11,13 +11,32 @@ Nada disto entra no catalogo: mora em outputs/_palco/.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
-from . import checagens
+from . import checagens, config
 from .config import ErroPalco
 
-FONTE = "C\\:/Windows/Fonts/arialbd.ttf"
+
+def _fonte() -> str:
+    """O `fontfile` do drawtext, ja escapado ('' = a fonte padrao do ffmpeg).
+
+    Vem de config/palco.json -> ab.fonte; sem ela, a Arial Bold da pasta do
+    Windows (WINDIR), sem a letra do disco escrita no codigo. Arquivo que nao
+    existe cai na fonte padrao em vez de derrubar o ffmpeg."""
+    try:
+        valor = (config.carregar().get("ab") or {}).get("fonte")
+    except ErroPalco:
+        valor = None
+    if not valor:
+        valor = str(Path(os.environ.get("WINDIR") or os.environ.get("SystemRoot") or "C:/Windows")
+                    / "Fonts" / "arialbd.ttf")
+    caminho = Path(valor)
+    if not caminho.is_file():
+        return ""
+    # no filtergraph ':' separa opcoes: "C:/x" vira "C\:/x"
+    return caminho.as_posix().replace(":", "\\:")
 
 
 def _duracao(caminho: Path) -> float:
@@ -43,8 +62,11 @@ def lado_a_lado(esquerda: Path, direita: Path, saida: Path, *, rotulos=("HOJE", 
         else:
             audios.append(f"anullsrc=r=48000:cl=stereo,atrim=0:{duracao:.3f}[a{k}]")
 
+    fonte = _fonte()
+    arquivo_fonte = f"fontfile='{fonte}':" if fonte else ""
+
     def texto(t: str, x: str, y: str, tam: int) -> str:
-        return (f"drawtext=fontfile='{FONTE}':text='{t}':x={x}:y={y}:fontsize={tam}:fontcolor=white:"
+        return (f"drawtext={arquivo_fonte}text='{t}':x={x}:y={y}:fontsize={tam}:fontcolor=white:"
                 "borderw=4:bordercolor=black")
 
     filtro = ";".join([

@@ -736,13 +736,18 @@ class RevisaoTresNaoMudaALutaTests(unittest.TestCase):
 
 
 def _sim_falso():
-    """Um Simulador de mentira com as listas que a revisao 3 le."""
+    """Um Simulador de mentira com as listas que a revisao 3 le.
+
+    Traz ``arena`` porque todo Simulador tem uma e a timeline sai com o
+    cabecalho ``arena`` desde a v1 (3097a37): o validador o exige desde
+    f5f8cd3, como o do Godot, que faz ``arena.get`` no evento ``obstaculo``."""
     def lutador(nome, x):
         return SimpleNamespace(pos=[x, 0.0], vida=100.0, vida_max=100.0, z=0.0,
                                raio_fisico=0.4, contadores_luta={"hits_sofridos": 0},
                                dados=SimpleNamespace(nome=nome, tamanho=1.6))
+    arena = SimpleNamespace(colisoes_recentes=[], obstaculos=[], largura=10.0, altura=10.0)
     return SimpleNamespace(
-        p1=lutador("A", 0.0), p2=lutador("B", 5.0), match_config={}, projeteis=[],
+        p1=lutador("A", 0.0), p2=lutador("B", 5.0), arena=arena, match_config={}, projeteis=[],
         impact_flashes=[], magic_clashes=[], block_effects=[], textos=[],
         magic_vfx=SimpleNamespace(explosions=[]),
         movement_anims=SimpleNamespace(afterimage_trails=[], dust_clouds=[], speed_lines=[],
@@ -926,6 +931,18 @@ class ValidadorRevisaoTresTests(unittest.TestCase):
         self.assertEqual(timeline_arquivo.validar(self._doc([], revisao=99)), [],
                          "revisao maior e aditiva: continua valida")
         self.assertTrue(timeline_arquivo.validar(self._doc([], revisao=0)))
+
+    def test_sem_arena_continua_recusada(self) -> None:
+        """"Antiga" e a REVISAO: o cabecalho arena existe desde a v1, e o palco
+        quebra sem ele (null.get no evento obstaculo)."""
+        doc = self._doc([])
+        self.assertIsInstance(doc["arena"], dict)
+        for arena in (None, "Arena Pequena"):
+            with self.subTest(arena=arena):
+                doc["arena"] = arena
+                self.assertIn("arena ausente ou nao e objeto", timeline_arquivo.validar(doc))
+        del doc["arena"]
+        self.assertIn("arena ausente ou nao e objeto", timeline_arquivo.validar(doc))
 
     def test_eventos_novos_malformados_sao_recusados(self) -> None:
         bons = [

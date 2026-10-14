@@ -115,6 +115,27 @@ def test_validador_recusa_tabelas_arena_e_slots_invalidos():
     assert any("exatamente os slots p1 e p2" in erro for erro in timeline_arquivo.validar(doc))
 
 
+def test_ab_fonte_vem_da_config(monkeypatch, tmp_path):
+    """GOD-5: a fonte do A/B era `C:/Windows/Fonts/arialbd.ttf` escrita no codigo."""
+    from builds.palco import ab
+
+    fonte = tmp_path / "minha fonte.ttf"
+    fonte.write_bytes(b"\0")
+    monkeypatch.setattr(ab.config, "carregar", lambda: {"ab": {"fonte": str(fonte)}})
+    assert ab._fonte() == fonte.as_posix().replace(":", "\\:")
+    # sem config: a pasta do Windows pela variavel, nunca a letra fixa
+    monkeypatch.setattr(ab.config, "carregar", lambda: {})
+    windir = tmp_path / "win"
+    (windir / "Fonts").mkdir(parents=True)
+    (windir / "Fonts" / "arialbd.ttf").write_bytes(b"\0")
+    monkeypatch.setenv("WINDIR", str(windir))
+    assert ab._fonte() == (windir / "Fonts" / "arialbd.ttf").as_posix().replace(":", "\\:")
+    # arquivo que nao existe: a fonte padrao do ffmpeg (sem fontfile)
+    monkeypatch.setattr(ab.config, "carregar", lambda: {"ab": {"fonte": str(tmp_path / "nao.ttf")}})
+    assert ab._fonte() == ""
+    assert "C\\\\:/Windows" not in Path(ab.__file__).read_text(encoding="utf-8")
+
+
 def test_saida_do_godot_com_erro_de_script_nao_e_aceita():
     from random_builds.builds.palco import render as render_local
 
@@ -288,3 +309,26 @@ def test_render_curto_conferido_e_sem_roubar_foco(pasta_e):
     assert any(s["codec_type"] == "audio" for s in info["streams"])
     assert not (pasta_e / "_sint2_trabalho").exists(), "o AVI intermediario tem de ser apagado"
     assert visto == [], f"a janela do Godot pegou o foco: {visto[:3]}"
+
+
+@precisa_godot
+@pode_renderizar
+@pytest.mark.skipif(not TEM_FFMPEG, reason="sem ffmpeg/ffprobe")
+def test_evento_de_lutador_sem_arma_nao_derruba_o_render(pasta_e):
+    """GOD-2 (regressao de f5f8cd3): `_evento` lia `arm[slot]` sem a chave.
+
+    O cabecalho sai com `arma: null` quando a arma nao resolve
+    (`timeline._cabecalho_arma`); o palco nao cria `arm[slot]` e cada evento
+    do dono dava SCRIPT ERROR, que o render (com razao) recusa."""
+    doc = sintetica.timeline_sintetica(2.0)
+    for lutador in doc["lutadores"]:
+        lutador["arma"] = None
+    tipos = {e["tipo"] for e in doc["eventos"]}
+    # o dono do gatilho (skill/dash do p2, alvo do acerto) e o AUTOR do acerto
+    # (a variante do acerto le a arma de quem bateu)
+    assert {"acerto", "skill"} <= tipos and any(e.get("autor") for e in doc["eventos"])
+    tl = pasta_e / "sem_arma.json"
+    tl.write_text(json.dumps(doc), encoding="utf-8")
+    resumo = render.renderizar(tl, pasta_e / "sem_arma.mp4")
+    assert resumo["ok"]
+    assert resumo["eventos"]["agendados"] == len(doc["eventos"]) > 0

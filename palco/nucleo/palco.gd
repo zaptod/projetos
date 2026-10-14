@@ -89,8 +89,9 @@ var eventos_no_corte := 0
 var vfx_criados := 0
 var _marcas_cache := {}
 ## Rosto do Atelie que mostrou OUTRA carinha no lugar da pedida (a pedida nao
-## esta desenhada): "<parte>/<nivel>/<alvo>/<vNN>" -> {pedida: usada}. O
-## lutador_padrao anota; vai para o relatorio, para dizer o que falta desenhar.
+## esta desenhada; Grimorio builds/boca-de-uma-carinha): "<peca>" ->
+## {pedida: usada}. O tocador anota (`herdado`); o relatorio junta no fim,
+## para dizer o que falta desenhar. Ficava sempre {} desde a cadeia PNG.
 var rosto_herdado := {}
 
 
@@ -350,19 +351,18 @@ func _desenhar_quadro(f: int) -> void:
 		no.position = Vector2(float(s["x"]), float(s["y"])) * PX
 		if no.has_method("atualizar"):
 			no.atualizar(s, ctx)
-		# Canais da amostra tambem sao gatilhos do catalogo (expressao e fase
-		# do golpe). O tocador ignora os que a peca nao declarou.
-		if no.has_method("gatilho"):
-			if str(s.get("expr", "")) != "":
-				no.gatilho("expr")
-			if int(s.get("golpe_fase", 0)) > 0:
-				no.gatilho("golpe_fase")
-		if no.has_method("ajustar_corpo"):
-			no.ajustar_corpo(2.0 * float(cab[slot].get("raio_corpo", 0.85)) * PX)
-		if no.has_method("avancar"):
-			no.avancar(dt_mundo)
-		else:
+		# Canais da amostra tambem sao gatilhos do catalogo: a expressao vira o
+		# ESTADO do rosto (as 24 carinhas) e o gatilho e UM por quadro — com
+		# `expr` e `golpe_fase` juntos a boca trocava duas vezes por quadro e o
+		# grito congelava no quadro 0 (GOD-1). O tocador ignora o que a peca
+		# nao declarou e repassa ao rosto pendurado.
+		var diametro := 2.0 * float(cab[slot].get("raio_corpo", 0.85)) * PX
+		if not no.has_method("avancar"):
 			no.scale = Vector2.ONE * float(cab[slot].get("raio_corpo", 0.85)) * PX / maxf(1.0, float(no.get("raio_ref") if no.get("raio_ref") != null else 100.0))
+		_repassar(no, "estado", [_nome_expr(s)])
+		_repassar(no, "gatilho", ["golpe_fase" if int(s.get("golpe_fase", 0)) > 0 else "expr"])
+		_repassar(no, "ajustar_corpo", [diametro], no.scale.x)
+		_repassar(no, "avancar", [dt_mundo])
 		_arma(slot, s, p, corte, ctx)
 	_objetos(p, i, ctx)
 	_atelie_efeitos(i, p, amostras, ctx)
@@ -406,6 +406,33 @@ func _desenhar_quadro(f: int) -> void:
 	barras[1].size = Vector2(tela.x, alto)
 	barras[1].position = Vector2(0, tela.y - alto)
 	clarao.color.a = clarao.color.a * 0.72
+
+
+## Chama `metodo` na peca do lutador e no rosto pendurado nela. O
+## TocadorFolha ja repassa aos filhos; o marcador (lutador_padrao, sem
+## gatilho/avancar) e peca de script proprio nao: aqui os filhos recebem
+## direto. `escala` = a escala do pai, que o tamanho do filho desconta.
+func _repassar(no: Node, metodo: String, args: Array, escala := 1.0) -> void:
+	if no.has_method(metodo):
+		no.callv(metodo, args)
+	if no is TocadorFolha:
+		return
+	var args_filho := args
+	if metodo == "ajustar_corpo" and absf(escala) > 0.0001:
+		args_filho = [float(args[0]) / absf(escala)]
+	for filho in no.get_children():
+		if filho.has_method(metodo):
+			filho.callv(metodo, args_filho)
+
+
+## O canal `expr` e o INDICE em `tabelas.expressoes`; o rosto quer o nome.
+func _nome_expr(s: Dictionary) -> String:
+	var tabelas = tl.dados.get("tabelas")
+	var nomes = tabelas.get("expressoes") if typeof(tabelas) == TYPE_DICTIONARY else null
+	var k := int(s.get("expr", 0))
+	if typeof(nomes) != TYPE_ARRAY or k < 0 or k >= nomes.size():
+		return ""
+	return str(nomes[k])
 
 
 func _arma(slot: String, s: Dictionary, p: float, corte: bool, ctx: Dictionary) -> void:
@@ -634,10 +661,14 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 			lut[slot].evento(tipo, ev, ctx)
 	var gatilho := GATILHOS_ANIMACAO.da_timeline(ev)
 	for slot in _donos_do_gatilho(ev):
-		if lut[slot].has_method("gatilho"):
-			lut[slot].gatilho(gatilho)
-		if arm[slot].has_method("gatilho"):
-			arm[slot].gatilho(gatilho)
+		# lutador sem arma (`arma: null` no cabecalho) nao tem `arm[slot]`:
+		# ler a chave direto dava SCRIPT ERROR e o render inteiro caia (GOD-2)
+		var dono_no = lut.get(slot)
+		if dono_no != null:
+			_repassar(dono_no, "gatilho", [gatilho])
+		var arma_no = arm.get(slot)
+		if arma_no != null and arma_no.has_method("gatilho"):
+			arma_no.gatilho(gatilho)
 	var nome_skill := str(ev.get("nome", ""))
 	var tipo_skill := str(ev.get("tipo_skill", ""))
 	if not EVENTOS_COM_VFX.has(tipo) and not bib.tem_folha_evento(tipo, str(ev.get("elemento", "")), nome_skill, tipo_skill, str(ev.get("gatilho", ""))):
@@ -667,20 +698,7 @@ func _evento(ev: Dictionary, amostras: Dictionary, ctx: Dictionary) -> void:
 	# O KO vai para o CHAO (abaixo dos lutadores): no A/B de 28/09 a explosao
 	# por cima cobria o corpo caido, que e o que o desfecho tem de mostrar.
 	var camada := camada_solo if tipo == "ko" else camada_efeitos
-	var variante := ""
-	if tipo == "movimento":
-		variante = str(ev.get("gatilho", ""))
-	elif tipo == "projetil_fim":
-		variante = str(ev.get("motivo", ""))
-	elif tipo == "agarrao_desfecho":
-		variante = str(ev.get("modo", ""))
-	elif tipo == "acerto":
-		if bool(ev.get("critico", false)):
-			variante = "critico"
-		else:
-			var arma: Dictionary = cab.get(str(ev.get("autor", "")), {}).get("arma", {})
-			var tipo_arma := UtilPalco.slug(str(arma.get("tipo", "")))
-			variante = "projetil_arma" if tipo_arma in ["arremesso", "arco"] else str(arma.get("arquetipo_animacao", ""))
+	var variante := Biblioteca.variante_do_evento(ev, cab)
 	var no = _instanciar(bib.evento(tipo, str(ev.get("tier", "")), str(ev.get("elemento", "")), variante,
 		nome_skill, tipo_skill), camada)
 	no.position = pos
@@ -764,6 +782,14 @@ func _escrever_relatorio(ok: bool, rc: int) -> void:
 	if plano != null:
 		for b in plano.parado:
 			parados += b
+	for slot in lut:
+		for peca in [lut[slot]] + Array(lut[slot].get_children()):
+			var herdado = peca.get("herdado")
+			if typeof(herdado) == TYPE_DICTIONARY and not herdado.is_empty():
+				var id := str(peca.get("catalogo_peca").get("id", peca.name))
+				if not rosto_herdado.has(id):
+					rosto_herdado[id] = {}
+				rosto_herdado[id].merge(herdado, true)
 	var d := {
 		"ok": ok,
 		"rc": rc,

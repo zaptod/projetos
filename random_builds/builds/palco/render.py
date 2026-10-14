@@ -169,7 +169,7 @@ def renderizar(timeline, saida, *, estilo: dict | None = None, hud: bool = False
         "reservas": rel.get("reservas"), "avisos_godot": rel.get("avisos"),
         "nomes_ate_quadro": rel.get("nomes_ate_quadro"),
         # rosto do Atelie que mostrou outra carinha no lugar da pedida (a pedida
-        # nao esta desenhada): "<parte>/<nivel>/<alvo>/<vNN>" -> {pedida: usada}
+        # nao esta desenhada): "<peca do catalogo>" -> {pedida: usada}
         "rosto_herdado": rel.get("rosto_herdado") or {},
         "tempo": {"godot_s": filme["segundos"], "laco_godot_ms": rel.get("laco_ms"), "encode_s": segundos_encode},
         "avi_mb": round(tamanho_avi / 2 ** 20, 1),
