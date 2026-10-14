@@ -653,8 +653,12 @@ class Supervisor:
         self.ausencias[nome] = 0
         if state_pid := achado.get("pid"):
             if estado["pid"] != state_pid:
-                estado.update(pid=state_pid, situacao="rodando",
+                # processo novo (religado por fora, ex.: `coordenador reiniciar`
+                # na linha de comando): a marca de codigo velho era do anterior;
+                # o `git` abaixo reavalia com o `desde` do novo (14/10/2026)
+                estado.update(pid=state_pid, situacao="rodando", codigo_velho=False,
                               desde=achado.get("inicio") or estado["desde"] or agora_iso(self.relogio()))
+                self.velho_desde.pop(nome, None)
         estado["saude"] = self._saude(nome, True)
         if estado["saude"] == "ruim":
             self.saudes_ruins[nome] += 1

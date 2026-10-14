@@ -94,6 +94,23 @@ def test_codigo_velho_so_marca_e_nunca_reinicia_sozinho():
     assert [e["tipo"] for e in s.eventos].count("codigo_velho") == 1
 
 
+def test_processo_religado_por_fora_perde_a_marca_de_codigo_velho():
+    # 14/10 03:11: `coordenador reiniciar app` pela linha de comando religou o
+    # app, o residente adotou o pid novo e seguia dizendo "codigo velho"
+    mundo = Mundo({"pid": 10, "comando": "app"})
+    velho = {"valor": True}
+    s, relogio = montar(mundo, git=lambda *_: velho["valor"])
+    s.pulso()
+    assert s.estado["app"]["codigo_velho"] is True
+    mundo.lista = [p for p in mundo.lista if p["pid"] != 10] + [{"pid": 77, "comando": "app"}]
+    velho["valor"] = False                       # o novo subiu depois do commit
+    relogio.andar(mod.PULSO_S)
+    s.pulso()
+    assert s.estado["app"]["pid"] == 77
+    assert s.estado["app"]["codigo_velho"] is False
+    assert mundo.iniciou == []
+
+
 def test_codigo_velho_reinicia_quando_a_entrega_e_aplicada():
     mundo = Mundo({"pid": 10, "comando": "app"})
     s, _ = montar(mundo, git=lambda *_: True)
