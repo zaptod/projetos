@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:55:57.707363",
+  "depende_de": [],
+  "historico": [],
+  "id": "nome-pedido-livre",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter a regra (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "livre",
+      "pede_comentario": false,
+      "rotulo": "Nome livre (só a moderação de palavrão vale)"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O nome que o público pede para o personagem tem uma regra 'não termina em qualidade' (ex.: não aceita 'João Forte'). Mantém a regra?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Nome pedido pelo comentarista",
+  "vigente": null
+}

@@ -140,6 +140,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Launcher: o 'Iniciar batalha' com o visual antigo** — Tirar o pygame do launcher (08/10/2026) `launcher-iniciar-batalha`
 - ⏳ **Botão 'Gerar Roster' do torneio** — O botão 'Gerar Roster' do torneio troca o banco inteiro de personagens e armas por 64 inventados, sem perguntar. Fica uma cópia, mas ninguém avisa. O que ele deve fazer? `gerar-roster-do-torneio`
 - ⏳ **Luta que termina empatada** — Hoje, quando a luta empata, o código inventa vitória do primeiro lutador. O que fazer no empate? `empate-persistente`
+- ⏳ **Nome pedido pelo comentarista** — O nome que o público pede para o personagem tem uma regra 'não termina em qualidade' (ex.: não aceita 'João Forte'). Mantém a regra? `nome-pedido-livre`
 
 <!-- decisoes:fim -->
 
