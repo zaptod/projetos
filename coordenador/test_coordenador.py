@@ -343,6 +343,13 @@ def test_ciclo_com_saida_que_nao_e_json_nao_derruba():
                               "saida": "Erro: x"}
 
 
+def _esteira_ligada():
+    from esteira_sprites import __main__ as cli
+    return cli.ESTEIRA_LIGADA
+
+
+@pytest.mark.skipif(not _esteira_ligada(),
+                    reason="esteira pausada em producao (14/10 11:4x): o subprocesso real nao anda")
 def test_ciclo_de_verdade_da_vila_anda_e_pede_ao_chatgpt(tmp_path, monkeypatch):
     """14/10/2026, esteira religada: o subprocesso REAL `esteira_sprites --perfil vila ciclo`
     pede ate o alvo, tudo na caixa do ChatGPT. Fichas e correio em pastas de teste: nenhum

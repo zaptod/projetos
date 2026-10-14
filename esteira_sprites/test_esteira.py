@@ -410,6 +410,7 @@ def test_chatgpt_ocupado_a_ficha_espera_e_nao_vai_ao_gemini(ambiente, monkeypatc
 def test_ficha_do_gemini_volta_ao_chatgpt_dentro_do_teto(ambiente, monkeypatch):
     """As fichas que o Gemini comecou antes de 14/10 sao refeitas no ChatGPT, sem gastar o teto."""
     cli = importlib.import_module("esteira_sprites.__main__")
+    monkeypatch.setattr(cli, "ESTEIRA_LIGADA", True)
     limpo = imagem(ambiente / "limpo.png")
     for item_id in ("fogo_teste", "trevas_teste", "folha_teste"):
         d = ficha.nova(config.item(item_id))
@@ -452,7 +453,8 @@ def test_ficha_do_gemini_com_pedido_pendente_e_cancelada(ambiente, monkeypatch):
 def test_ciclo_ligado_anda_e_enche_ate_o_alvo(ambiente, monkeypatch):
     """A esteira esta LIGADA (14/10/2026): o ciclo anda as fichas e pede ate ALVO_EM_VOO."""
     cli = importlib.import_module("esteira_sprites.__main__")
-    assert cli.ESTEIRA_LIGADA is True
+    # o interruptor de producao pode estar pausado; o teste prova o ciclo LIGADO
+    monkeypatch.setattr(cli, "ESTEIRA_LIGADA", True)
     origem = imagem(ambiente / "resposta.png")
     pedidas = []
     monkeypatch.setattr(pedir.correio, "pedir_imagem",

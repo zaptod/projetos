@@ -197,7 +197,10 @@ def _repedir(item_id: str, dados: dict) -> bool:
 # religar com o ChatGPT gerando todos os sprites (ordem no chat, ver o FOLHAS_POR_IA
 # acima). A aprovacao final continua dele: nada sai de `a_conferir` para a
 # biblioteca sem o `aprovar` (tela de conferencia do app ou comando).
-ESTEIRA_LIGADA = True
+# 14/10/2026 11:4x PAUSADA de novo: o pedido nao anexava a imagem-mestra nem um
+# sprite-base, e o Adrian quer "um sprite base para pegar o estilo e, a partir
+# dele, as variacoes em sprite sheet". Volta a True com isso feito.
+ESTEIRA_LIGADA = False
 
 
 def _em_voo_chatgpt() -> int:
