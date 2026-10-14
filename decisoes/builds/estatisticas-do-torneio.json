@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:47:01",
+      "evento": "2026-10-14T08:45:50",
+      "linha": 173,
+      "nota": "resposta sem pedido de origem: builds/estatisticas-do-torneio = Preencher (recomendado)",
+      "opcao": "preencher",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:25.527242",
   "depende_de": [],
