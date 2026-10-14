@@ -52,7 +52,7 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Os 29 traços sem efeito** — Tirar do sorteio agora, implementar aos poucos (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `quirks-sem-efeito`
 - ✅ **Atordoamento e relógio de ataque** — Manter como está (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `atordoamento-e-relogio`
 - ✅ **Lava do Vulcão e do Inferno** — Ligar o dano da lava (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `lava-do-vulcao`
-- ⏳ **Som da vitória** — Na vitória hoje toca a abertura da arena, quase muda. Que som deve tocar? `som-da-vitoria`
+- ✅ **Som da vitória** — Uma fanfarra curta de vitória (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `som-da-vitoria`
 - ⏳ **Volume dos golpes depois do conserto** — O som dos golpes estoura porque o pan soma os dois lados (até 1,8x). Consertando, os golpes ficam mais baixos. Você quer ouvir antes de valer nos vídeos? `volume-dos-golpes`
 - ⏳ **Live: !arena com dois pagantes** — Na live, se duas pessoas pagam !arena no mesmo round, qual vale? E o comando pago que cai em cooldown hoje some sem reembolso. `arena-dois-pagantes`
 - ⏳ **Estatísticas do torneio** — O arquivo salvo do torneio tem campos (KO mais rápido, luta mais longa, mais agressivo) que nunca são preenchidos. Preencher ou tirar? `estatisticas-do-torneio`
