@@ -469,7 +469,7 @@ def adicionar(projeto: str, titulo: str, pergunta: str, opcoes, midias=(), *,
         _sincronizar_arestas(itens)
         recalcular(itens)
         _gravar_itens(itens, sorted(itens))
-        gerar_textos(itens)
+        _gerar_textos_sem_cair(itens)
     return item
 
 
@@ -503,7 +503,7 @@ def acrescentar_midias(item_id: str, midias, *, copiar: bool = False) -> dict:
             raise Recusa("nenhuma mídia para acrescentar")
         item["midias"] = list(item.get("midias") or []) + novas
         _gravar_itens(itens, [item_id])
-        gerar_textos(itens)
+        _gerar_textos_sem_cair(itens)
     return item
 
 
@@ -526,7 +526,7 @@ def semear(item_id: str, opcao: str, em: str, comentario: str = "",
         item["situacao"] = "decidida"
         recalcular(itens)
         _gravar_itens(itens, sorted(itens))
-        gerar_textos(itens)
+        _gerar_textos_sem_cair(itens)
     return item
 
 
@@ -604,7 +604,9 @@ def responder(item_id: str, opcao: str, comentario: str = "", *,
             fh.write((json.dumps(evento, ensure_ascii=False) + "\n").encode("utf-8"))
             fh.flush()
             os.fsync(fh.fileno())
-        gerar_textos(itens)
+        nota = _gerar_textos_sem_cair(itens)
+        if nota:
+            evento["nota"] = nota
         evento["commit"] = "desligado"
         if commitar:
             mensagem = f"decisão({item['projeto']}): {item['titulo']} → {escolhida['rotulo']}"
@@ -649,7 +651,7 @@ def tirar_dependencia(item_id: str, decisao_id: str, nota: str, *,
             voltou = True
         recalcular(itens)
         _gravar_itens(itens, sorted(itens))
-        gerar_textos(itens)
+        _gerar_textos_sem_cair(itens)
         saida = {"id": item_id, "tirou": decisao_id, "situacao": item["situacao"],
                  "voltou": voltou, "commit": "desligado"}
         if commitar:
@@ -880,7 +882,7 @@ def marcar(ref: str, gerou, nota: str = "", *, origem: str = "leitor",
             recalcular(itens)
         item["consequencias"] = consequencias + novas
         _gravar_itens(itens, sorted(itens))
-        gerar_textos(itens)
+        _gerar_textos_sem_cair(itens)
         saida = {"evento": evento, "novas": novas, "ligados": ligados,
                  "commit": "desligado"}
         if commitar and (novas or ligados):
@@ -1078,13 +1080,29 @@ def gerar_textos(itens: dict | None = None) -> dict:
         alvo = pasta_sessoes() / f"{parte}.md"
         if parte == "geral" or not alvo.is_file():
             continue
-        bruto = alvo.read_bytes().decode("utf-8")
+        # COO-16 (auditoria 11/10): um doc de sessao fora de utf-8 fazia o
+        # UnicodeDecodeError sair DEPOIS de a resposta estar gravada (o app
+        # dava 500 e a segunda resposta duplicava o evento). Os bytes que nao
+        # sao utf-8 passam intactos (surrogateescape) na leitura e na escrita.
+        bruto = alvo.read_bytes().decode("utf-8", errors="surrogateescape")
         nl = "\r\n" if "\r\n" in bruto else "\n"
         novo = _trocar_bloco(bruto, bloco_da_sessao(itens, parte), nl)
         if novo != bruto:
-            _gravar_bytes(alvo, novo.encode("utf-8"))
+            _gravar_bytes(alvo, novo.encode("utf-8", errors="surrogateescape"))
             mudou["sessoes"].append(alvo)
     return mudou
+
+
+def _gerar_textos_sem_cair(itens: dict) -> str:
+    """`gerar_textos` depois de a decisao ja estar gravada: falhar aqui nao
+    pode desfazer nem esconder a gravacao. Devolve "" ou a nota do que falhou."""
+    try:
+        gerar_textos(itens)
+    except (OSError, UnicodeError) as exc:
+        nota = f"textos não regenerados: {exc}"
+        print(f"[decisoes] {nota}", file=sys.stderr)
+        return nota
+    return ""
 
 
 # ================================================================== git
@@ -1107,7 +1125,7 @@ def _so_o_bloco_mudou(caminho: Path) -> bool:
     """
     rel = _relativo(caminho)
     feito = _git("show", f"HEAD:{rel}")
-    atual = caminho.read_bytes().decode("utf-8").replace("\r\n", "\n")
+    atual = caminho.read_bytes().decode("utf-8", errors="surrogateescape").replace("\r\n", "\n")
     if feito.returncode != 0:
         return False
     no_head = feito.stdout.replace("\r\n", "\n")

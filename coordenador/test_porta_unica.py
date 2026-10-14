@@ -72,3 +72,16 @@ def test_fila_e_visao_do_pedido_e_migracao_e_idempotente(tmp_path, monkeypatch):
     assert len(primeira) == len(segunda) == 1
     pedido = pedidos.MESA.para_o_app()["pedidos"][0]
     assert pedido["origem"] == "fila" and pedido["contratos"] == 0
+
+
+def test_sem_conferente_morto():
+    # COO-20 (auditoria 11/10): ninguem ligava `conferir`; o conferente dos
+    # pedidos e o gerente que contratava eram codigo morto, e a mensagem
+    # prometia "o conferente olha"
+    from pathlib import Path
+    pasta = Path(pedidos.__file__).parent
+    fonte = (pasta / "pedidos.py").read_text(encoding="utf-8")
+    equipe = (pasta / "equipe.py").read_text(encoding="utf-8")
+    assert "conferente olha" not in fonte and 'pedido.get("conferir")' not in fonte
+    assert "def _conferir_aplicadas" not in equipe and "def _contratar" not in equipe
+    assert "prova automática" in pedidos._ROTULO["entregue"]

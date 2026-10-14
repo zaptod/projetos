@@ -853,6 +853,55 @@ def _pid_vivo(pid) -> bool | None:
         return None
 
 
+_KERNEL32_TEMPOS = None
+
+
+def hora_de_criacao(pid) -> float | None:
+    """Quando o processo `pid` nasceu, em segundos (FILETIME / 1e7 no
+    Windows); None quando nao da para saber.
+
+    COO-10/COO-14 (auditoria 11/10): o Windows reaproveita o numero do PID;
+    so a existencia do numero nao prova que e o MESMO processo."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return None
+    if pid <= 0:
+        return None
+    if os.name != "nt":                                     # pragma: no cover
+        try:
+            return os.stat(f"/proc/{pid}").st_ctime
+        except OSError:
+            return None
+    global _KERNEL32_TEMPOS
+    try:
+        import ctypes
+        from ctypes import wintypes
+        if _KERNEL32_TEMPOS is None:
+            k = ctypes.WinDLL("kernel32", use_last_error=True)
+            k.OpenProcess.restype = wintypes.HANDLE
+            k.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+            k.GetProcessTimes.restype = wintypes.BOOL
+            k.GetProcessTimes.argtypes = (wintypes.HANDLE,) + (
+                ctypes.POINTER(wintypes.FILETIME),) * 4
+            k.CloseHandle.argtypes = (wintypes.HANDLE,)
+            _KERNEL32_TEMPOS = k
+        k = _KERNEL32_TEMPOS
+        alca = k.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not alca:
+            return None
+        try:
+            tempos = [wintypes.FILETIME() for _ in range(4)]
+            if not k.GetProcessTimes(alca, *(ctypes.byref(t) for t in tempos)):
+                return None
+            nasceu = tempos[0]
+            return ((nasceu.dwHighDateTime << 32) | nasceu.dwLowDateTime) / 1e7
+        finally:
+            k.CloseHandle(alca)
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
 def _hhmm(iso) -> str:
     return str(iso or "")[11:16] or "?"
 

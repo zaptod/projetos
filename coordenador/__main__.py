@@ -211,6 +211,11 @@ def main(argv=None):
         except ValueError as exc:
             print(f"recusado: {exc}", file=sys.stderr)
             return 3
+        except OSError as exc:
+            # COO-6: a trava do pedidos.json ocupada (o passo da Mesa) saia
+            # como traceback e o pedido nao era registrado
+            print(f"recusado: a Mesa está ocupada ({exc}); tente de novo", file=sys.stderr)
+            return 3
         if pedido.get("duplicado"):
             # 08/10/2026: o pedido juntado sumia calado e so voltava o id
             # repetido (desde 11/10 so junta o MESMO texto ou o mesmo assunto)

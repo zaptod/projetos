@@ -33,11 +33,22 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
 ARQUIVO = None                 # os testes apontam para outro lugar
 MOTIVO_MAX = 300
+# COO-9 (auditoria 11/10): o `os.replace` do app gravando (ou um antivirus)
+# tranca o arquivo por um instante; um PermissionError passageiro virava
+# "ilegivel = PROIBIDO" e a guarda matava o trabalhador na hora.
+LER_TENTATIVAS = 5
+LER_ESPERA_S = 0.2
+TENTATIVAS_REPLACE = 6
+ESPERA_REPLACE_S = 0.15
+ILEGIVEL_CONFIRMA_S = 2.0      # ilegivel so para quem esta rodando se durar isso
+_dormir = time.sleep
+_relogio = time.monotonic
 
 
 def _pasta() -> Path:
@@ -101,16 +112,21 @@ def ler() -> dict:
     "sem_arquivo" ou "ilegivel") e `texto` (a frase para a tela).
     """
     alvo = caminho()
-    try:
-        bruto = alvo.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        _registrar_ausencia()
-        return _com_texto({"liberado": True, "em": None, "por": "", "motivo": "",
-                           "origem": "sem_arquivo"})
-    except OSError as exc:
-        return _com_texto({"liberado": False, "em": None, "por": "",
-                           "motivo": f"claude.json não pôde ser lido: {exc}",
-                           "origem": "ilegivel"})
+    for tentativa in range(LER_TENTATIVAS):
+        try:
+            bruto = alvo.read_text(encoding="utf-8")
+            break
+        except FileNotFoundError:
+            _registrar_ausencia()
+            return _com_texto({"liberado": True, "em": None, "por": "", "motivo": "",
+                               "origem": "sem_arquivo"})
+        except OSError as exc:
+            if tentativa < LER_TENTATIVAS - 1:
+                _dormir(LER_ESPERA_S)
+                continue
+            return _com_texto({"liberado": False, "em": None, "por": "",
+                               "motivo": f"claude.json não pôde ser lido: {exc}",
+                               "origem": "ilegivel"})
     try:
         dados = json.loads(bruto)
         if not isinstance(dados, dict) or not isinstance(dados.get("liberado"), bool):
@@ -175,12 +191,31 @@ def liberado() -> bool:
 
 def motivo_proibido() -> str:
     """"" se liberado; senao, a frase de recusa para quem ia usar o Claude."""
-    estado = ler()
+    return _motivo_de(ler())
+
+
+def _motivo_de(estado: dict) -> str:
     if estado["liberado"]:
         return ""
     if estado["origem"] == "ilegivel":
         return f"Claude proibido: {estado['motivo']}"
     return f"Claude proibido pelo Adrian desde {_quando(estado['em'])}"
+
+
+def motivo_para_parar(lembranca: dict) -> str:
+    """Para quem ja esta RODANDO decidir se mata: o "proibido" do arquivo
+    vale na hora; o "ilegivel" so quando a leitura seguinte, `ILEGIVEL_CONFIRMA_S`
+    ou mais depois, ainda for ilegivel (COO-9). `lembranca` e um dict do
+    chamador que guarda desde quando esta ilegivel."""
+    estado = ler()
+    if estado["origem"] != "ilegivel":
+        lembranca.pop("ilegivel_desde", None)
+        return _motivo_de(estado)
+    agora = _relogio()
+    desde = lembranca.setdefault("ilegivel_desde", agora)
+    if agora - desde >= ILEGIVEL_CONFIRMA_S:
+        return _motivo_de(estado)
+    return ""
 
 
 def mudar(liberar: bool, *, por: str, motivo: str = "") -> dict:
@@ -204,7 +239,18 @@ def mudar(liberar: bool, *, por: str, motivo: str = "") -> dict:
                                     f"{threading.get_ident()}.tmp")
         temporario.write_text(json.dumps(novo, ensure_ascii=False, indent=2) + "\n",
                               encoding="utf-8")
-        os.replace(temporario, alvo)
+        for tentativa in range(TENTATIVAS_REPLACE):
+            try:
+                os.replace(temporario, alvo)
+                break
+            except PermissionError:
+                if tentativa == TENTATIVAS_REPLACE - 1:
+                    try:
+                        temporario.unlink()
+                    except OSError:
+                        pass
+                    raise
+                _dormir(ESPERA_REPLACE_S * (tentativa + 1))
         _anexar(dict(novo, antes=antes["liberado"], origem_antes=antes["origem"]))
     return {"estado": ler(), "mudou": True, "antes": antes["liberado"]}
 

@@ -1035,6 +1035,91 @@ def test_faxina_sem_ler_os_pedidos_nao_limpa_nada(mundo):
     assert any(t == "trabalho_faxina" and "não limpo nada" in x for t, x in mundo.eventos)
 
 
+# ================================ auditoria profunda 11/10 (consertos 14/10)
+def test_commit_do_integrador_vai_para_as_duas_fichas(mundo):
+    # COO-2: o pedido so fecha com commit; quem aplicou foi o integrador, e a
+    # ficha original fica sabendo (aplicado_por + commit)
+    d = mundo.delegar
+    gravados = []
+
+    def registrar_commit(ident, commit, aplicado_por=None):
+        gravados.append((ident, commit, aplicado_por))
+        d.tarefas.setdefault(ident, {"id": ident}).update(
+            commit=commit, **({"aplicado_por": aplicado_por} if aplicado_por else {}))
+    d.registrar_commit = registrar_commit
+    d.ler_estado = lambda ident: {"id": ident, "titulo": "a original"} if ident == "x1" else {}
+    d.novo("integrar-x1", mundo.depois, titulo="Integrar x1")
+    d.tarefas["integrar-x1"]["cargo"] = "integrador"
+    d.testes["integrar-x1"] = [verde()]
+    mundo.vigia.passo()
+    assert gravados == [("integrar-x1", "c1", None), ("x1", "c1", "integrar-x1")]
+
+
+def test_commit_que_falha_nao_contrata_integrador(mundo):
+    # COO-2 (3): os arquivos ja estao na arvore; um integrador bateria neles
+    d = mundo.delegar
+    criados = []
+    d.criar = lambda ident, pedido, permitidos, **kw: criados.append(ident) or {"id": ident}
+    d.no_fundo = lambda args, ident: None
+    d.ler_estado = lambda ident: {"permitidos": ["remoto/**"]}
+
+    def commitar(arquivos, mensagem):
+        raise RuntimeError("git commit falhou: index.lock")
+    mundo.vigia.commitar = commitar
+    d.novo("sem-commit", mundo.depois)
+    d.testes["sem-commit"] = [verde()]
+    mundo.vigia.passo()
+    assert criados == []
+    assert any("aplicado na árvore, mas o commit falhou" in a for a in mundo.avisos)
+
+
+def test_esperando_sai_quando_aplicada_por_fora(mundo):
+    # COO-18: as entradas de `esperando` ficavam para sempre no retrato
+    d = mundo.delegar
+    d.novo("x1", mundo.depois)
+    d.tarefas["x1"].update(aplicado={"em": "x"}, limpo={"em": "x"})
+    d.novo("x2", mundo.depois)
+    d.tarefas["x2"]["situacao"] = "parado"
+    d.novo("vivo", mundo.depois)
+    d.testes["vivo"] = [verde()]
+    mundo.seguro[:] = [False, "publicacao em andamento"]
+    mem = mundo.vigia._ler_memoria()
+    mem["esperando"] = {"x1": "publicacao em andamento", "x2": "janela",
+                        "sumiu": "janela"}
+    mem["sujo_desde"] = {"x1": "2026-10-02T08:00:00"}
+    mem["sujo_avisado"] = {"sumiu": "2026-10-02T08:00:00"}
+    mundo.vigia._gravar_memoria(mem)
+    mundo.vigia.passo()
+    mem = mundo.vigia._ler_memoria()
+    assert mem["esperando"] == {"vivo": "publicacao em andamento"}
+    assert mem["sujo_desde"] == {} and mem["sujo_avisado"] == {}
+
+
+def test_criado_antigo_sujo_avisa_uma_vez(mundo):
+    # COO-19: o "criado antigo" ia ao olho (e ao Telegram) a cada passo
+    d = mundo.delegar
+    d.tarefas["sujo-antigo"] = {"id": "sujo-antigo", "situacao": "criado", "limpo": None,
+                                 "criado_em": "2026-10-01T09:00:00"}
+    d.commits_a_frente = lambda _estado: 1
+    for _ in range(5):
+        mundo.vigia.passo()
+        mundo.relogio.andar(1)
+    assert len([a for a in mundo.avisos if a.startswith("⚠") and "sujo-antigo" in a]) == 1
+
+
+def test_criado_antigo_sem_saber_o_commit_nao_alarma(mundo):
+    d = mundo.delegar
+    d.tarefas["quem-sabe"] = {"id": "quem-sabe", "situacao": "criado", "limpo": None,
+                               "criado_em": "2026-10-01T09:00:00"}
+    d.commits_a_frente = lambda _estado: None
+    for _ in range(3):
+        mundo.vigia.passo()
+    assert not [a for a in mundo.avisos if "quem-sabe" in a]
+    assert d.tarefas["quem-sabe"]["situacao"] == "criado"
+    assert [x for t, x in mundo.eventos if "quem-sabe" in x] == [
+        "quem-sabe: não sei se tem commit"]
+
+
 def test_em_uso_real_le_trabalhador_e_conferente_dos_pedidos_abertos(tmp_path, monkeypatch):
     import json
     from coordenador import pedidos

@@ -37,6 +37,16 @@ python -m coordenador reiniciar app
 `status --curto` e o retrato para handoff: le os pedidos, incluindo o registro
 do trabalhador (PID conferido, prova e espera), sem varrer fichas de delegados.
 
+**Consertos da auditoria profunda (14/10/2026, `docs/auditoria/2026-10-11-profunda/consertos/coordenador-e-delegacao.md`):**
+- `delegar limpar --orfas` so apaga pasta `codex-*` que NENHUM git conhece: junta o `worktree list` de todos os repositorios das fichas, toda ficha nao limpa protege a sua pasta, e pasta com `.git` (worktree viva de outro repo, ou registro perdido) nunca e apagada (COO-1; a do `E:\jogo_ZOMBIE` ia ao rmtree).
+- O pedido so vira "conferido" com o COMMIT feito: hash gravado na ficha pelo vigia (`delegar.registrar_commit`; a do integrador grava tambem na original, `aplicado_por`) ou os arquivos limpos na arvore (aplicado e commitado a mao). Aplicado sem commit fica "entregue" com o motivo e avisa uma vez depois de 10 min; a entrega aplicada pelo `integrar-<id>` fecha o pedido; `olho` do vigia aparece como motivo (COO-2). O ramo `conferir` dos pedidos e o `_contratar`/`_conferir_aplicadas` do gerente (codigo morto) sairam (COO-20).
+- `pedidos.lock` espera 60 s; `coordenador pedir` com a Mesa ocupada diz "recusado: a Mesa está ocupada" e sai com 3 (COO-6).
+- `aplicar`: `git apply -3` que falha sem conflito desfaz e recusa; o sw.js/teste da casca reescritos entram em `aplicado.arquivos` (e com mudanca alheia nao sao tocados) (COO-7, COO-11). `coletar` com `-z`/`core.quotepath=false` (nome com acento) e `.handoff.md` e ruido (COO-8, COO-23).
+- `claude.json` trancado: `ler` tenta 5 vezes, `mudar` repete o replace; quem ja roda (guarda do despachante, pulso) so para com "proibido" do arquivo ou ilegivel por 2 s ou mais (COO-9).
+- Ficha `rodando` grava `pid_criado`; PID vivo com outra hora de criacao conta como morto, e `rodando` sem evento ha `rodar_timeout_s + 600` s fecha (COO-10). O `coordenador.lock` grava pid + hora de criacao (lock antigo: exige `-m coordenador` na linha de comando); nao subir loga uma vez por hora (COO-14).
+- `pedir_reinicio("coordenador")` (entrega em `coordenador/**`): o laco sai no proximo momento seguro sem thread de fundo viva, e a tarefa o religa (COO-12). "Suspender o PC" recusa com render (`--write-movie`, ffmpeg, `main.py noite|palco|...`, historias `auto`) (COO-13).
+- Apurador: Mesa fora guarda a investigacao (COO-15); estado corrompido esgota tambem as apuracoes (COO-24). Grimorio: doc de sessao fora de utf-8 nao derruba o `responder` (COO-16). Permissao com alvo absoluto dentro do repo libera o relativo (COO-17). `esperando` do vigia limpa o que foi resolvido por fora; "criado antigo" avisa uma vez (COO-18, COO-19). `corrigir` recusado mantem a prova dos testes; `pedido_de_permissao` com `diff: None`; `ler_eventos` no corte exato (COO-21, 22, 25).
+
 Para desfazer a substituicao das tres tarefas antigas, execute `python -m coordenador religar-tarefas-antigas`. Para remover somente a tarefa nova, execute `python -m coordenador remover-tarefa`.
 
 Os comandos de celular aceitos sem IA sao `servico_reiniciar`, `servico_parar`, `servico_ligar` e `pc_acao`. Acoes do PC passam por uma allowlist; nao ha execucao de texto arbitrario. O interruptor do Claude interrompe somente delegados, nunca esses quatro servicos.

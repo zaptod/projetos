@@ -1897,7 +1897,7 @@ class Manipulador(BaseHTTPRequestHandler):
                                    "situacao": "recebido", "para": "cerebro"})
             item = pedidos.registrar(texto, "app")
         except (OSError, ValueError) as exc:
-            return self._erro(503, f"não consegui guardar a mensagem: {exc}")
+            return self._erro(503, _mesa_ocupada(exc, "não consegui guardar a mensagem"))
         # 05/10 (conferente 3): texto solto nunca continua um pedido; volta o
         # id e o titulo, para o aviso dizer QUAL pedido nasceu
         return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
@@ -1936,7 +1936,7 @@ class Manipulador(BaseHTTPRequestHandler):
         except ValueError as exc:
             return self._erro(409, str(exc))
         except OSError as exc:
-            return self._erro(503, f"não consegui guardar a resposta: {exc}")
+            return self._erro(503, _mesa_ocupada(exc, "não consegui guardar a resposta"))
         return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
                            "situacao": item["situacao"], "titulo": _titulo_do_pedido(item),
                            "continuacao": True})
@@ -1963,7 +1963,7 @@ class Manipulador(BaseHTTPRequestHandler):
         except ValueError as exc:
             return self._erro(409, str(exc))
         except OSError as exc:
-            return self._erro(503, f"não consegui passar para a equipe: {exc}")
+            return self._erro(503, _mesa_ocupada(exc, "não consegui passar para a equipe"))
         return self._json({"feito": True, "id": item["id"], "em": item["atualizado_em"],
                            "situacao": item["situacao"], "para": "orquestrador",
                            "titulo": _titulo_do_pedido(item), "continuacao": False})
@@ -2428,6 +2428,15 @@ def _correio():
     subir mesmo sem o pacote `ias` no caminho)."""
     from ias import correio
     return correio
+
+
+def _mesa_ocupada(exc, cabeca: str) -> str:
+    """COO-6: a trava do pedidos.json ocupada (o passo da Mesa andando os
+    pedidos) virava um 503 com "trava ocupada ha mais de 10 s: pedidos.lock"."""
+    if isinstance(exc, TimeoutError) or "trava ocupada" in str(exc):
+        return (f"{cabeca}: a Mesa está ocupada andando os pedidos; nada foi registrado, "
+                "tente de novo em um minuto")
+    return f"{cabeca}: {exc}"
 
 
 def _titulo_do_pedido(item) -> str:

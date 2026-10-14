@@ -86,6 +86,8 @@ PROGRESSO_S = 60            # no maximo uma linha de progresso por minuto
 MAX_RETOMADAS = 5           # o mesmo trabalhador retomado 5 vezes: falhou
 MAX_EXECUCOES = 3           # acoes do repositorio real por pedido
 LENTO_PRAZO_S = 5 * 60      # "contratando" sem dono vivo ha 5 min: o pulso morreu no meio
+SEM_COMMIT_AVISO_S = 10 * 60  # aplicado e sem commit ha 10 min: avisa o Adrian (uma vez)
+TRAVA_PEDIDOS_PRAZO_S = 60.0  # quanto o pedir/app esperam o passo soltar o pedidos.lock
 FINAIS = ("conferido", "falhou", "respondido")
 VIVOS = ("recebido", "trabalhando", "esperando", "entregue", "parado_limite",
          "esperando_voce", "executando", "contratando")
@@ -127,7 +129,9 @@ class _TravaDoArquivo:
     def __enter__(self):
         from remoto.api_http import trava_arquivo
         alvo = estado.pasta() / "pedidos.lock"
-        contexto = trava_arquivo(alvo)
+        # COO-6: com o padrao de 10 s, o `coordenador pedir` (e o app) morria
+        # com TimeoutError enquanto o passo lia as fichas dos trabalhadores
+        contexto = trava_arquivo(alvo, prazo=TRAVA_PEDIDOS_PRAZO_S)
         contexto.__enter__()
         self._pilha().append(contexto)
         return self
@@ -340,7 +344,7 @@ LIVRE_SEM_MODELO = ("Não consegui ler a sua mensagem agora ({motivo}). Ela fico
 LIVRE_SEM_MODELO_COMO = {"app": "Se é um trabalho, toque «Passar para a equipe».",
                          "telegram": "Se é um trabalho, mande de novo começando com «pedido:»."}
 _ROTULO = {"recebido": "recebido", "trabalhando": "trabalhando", "esperando": "em espera",
-           "entregue": "entregue, esperando aplicar e conferir",
+           "entregue": "entregue, esperando o vigia testar e aplicar (prova automática)",
            "parado_limite": "parado no limite — volta sozinho",
            "esperando_voce": "esperando você",
            "executando": "o servidor está executando",
@@ -628,13 +632,6 @@ def _aprovado(resposta: str) -> bool:
     texto = str(resposta or "").upper()
     sim, nao = texto.find("APROVADO"), texto.find("DEFEITO")
     return sim >= 0 and (nao < 0 or sim < nao)
-
-
-def _id_conferente(trabalhador: str) -> str:
-    # o MESMO id do gerente da equipe (`equipe._conferir_aplicadas`): se o
-    # gerente estiver ligado, ele ve que a conferencia ja existe e nao duplica
-    from .equipe import _id
-    return _id("conf-" + trabalhador)
 
 
 def _num(valor):
@@ -1857,11 +1854,17 @@ class MesaPedidos:
         return situacao
 
     def _pid_morto(self, ficha) -> bool:
-        vivo = getattr(self.despachante, "_pid_vivo", None)
         pid = (ficha or {}).get("pid")
-        if vivo is None or not pid:
+        if not pid:
             return False
+        # COO-10: o do despachante tambem confere a hora de criacao (PID reaproveitado)
+        despachante_vivo = getattr(self.despachante, "_despachante_vivo", None)
+        vivo = getattr(self.despachante, "_pid_vivo", None)
         try:
+            if callable(despachante_vivo):
+                return despachante_vivo(ficha) is False
+            if vivo is None:
+                return False
             return vivo(pid) is False
         except Exception:                                     # noqa: BLE001
             return False
@@ -2690,8 +2693,8 @@ class MesaPedidos:
         # aviso de "conferido" a usam, nao o resposta.md da cobranca
         pedido.update(situacao="entregue", motivo="", atualizado_em=_iso(),
                       resposta=_resumo(resposta, 20_000))
-        _linha(dados, pedido, "entregue; esperando o vigia testar e aplicar, depois o "
-                              "conferente olha")
+        _linha(dados, pedido, "entregue; esperando o vigia testar e aplicar (prova "
+                              "automática)")
 
     def _bloquear(self, dados, pedido, motivo, resposta="", *, prefixo="bloqueado: "):
         """Parou por algo que so o Adrian faz: "esperando voce", com o que falta.
@@ -3062,6 +3065,14 @@ class MesaPedidos:
 
     # ------------------------------------------------------------ conferir
     def _conferir(self, dados, pedido):
+        """Fecha o pedido "entregue" pela prova automatica (decisao de 07/10).
+
+        COO-2 (auditoria 11/10): so a ficha do proprio trabalhador contava,
+        entao a entrega aplicada pelo `integrar-<id>` nunca fechava o pedido, e
+        uma entrega com `aplicado` cujo commit falhou fechava "✅ conferido".
+        Agora conta a ficha que aplicou (a dele ou a do integrador), e so fecha
+        com o commit feito: o hash gravado pelo vigia, ou os arquivos limpos na
+        arvore (aplicado e commitado a mao)."""
         trabalhador = pedido.get("trabalhador")
         ficha = self._estado_do(trabalhador)
         if not ficha:
@@ -3077,106 +3088,94 @@ class MesaPedidos:
             if not self._permissao_vira_grimorio(dados, pedido, ficha):
                 self._esperar(dados, pedido, str(ficha.get("motivo") or "aguardando permissão"))
             return
-        if not ficha.get("aplicado"):
+        quem, aplicada = self._quem_aplicou(trabalhador, ficha)
+        if aplicada is None:
+            olho = self._olho_do_vigia(trabalhador)
+            if olho:
+                self._entregue_parado(dados, pedido, "o vigia: " + olho)
             return                # o vigia ainda nao aplicou (testes, momento seguro)
-        if not pedido.get("conferir"):
-            do_trabalhador = str(pedido.get("resposta") or "") or self._resposta(trabalhador)
-            final = _resumo(do_trabalhador, 400) or "pronto"
-            pedido.update(situacao="conferido", motivo="", resposta=do_trabalhador[:1000],
-                          atualizado_em=_iso())
-            _linha(dados, pedido, "conferido pela prova automática: " + final, tipo="final")
-            self._avisar(pedido, "✅ Pedido conferido", final)
+        falta = self._sem_commit(aplicada)
+        if falta:
+            self._entregue_parado(dados, pedido, f"aplicado por {quem}, mas sem commit: {falta}",
+                                  avisar=True)
             return
-        ident = pedido.get("conferente") or _id_conferente(trabalhador)
-        conf = self._estado_do(ident)
-        if conf is None:
-            if not self._pode_tentar(pedido, "conf_tentou_em"):
-                return
-            pedido["conf_tentou_em"] = _iso(self.relogio())
-            motivo = self._motivo_claude()
-            ia = "codex" if motivo else "claude"
-            caminho = self.despachante.pasta_da(ident) / "pedido.md"
-            caminho.parent.mkdir(parents=True, exist_ok=True)
-            corpo = ("Confira a entrega do pedido " + pedido["id"] + " (trabalhador "
-                     + trabalhador + "), JÁ APLICADA nesta worktree: "
-                     + ", ".join((ficha.get("aplicado") or {}).get("arquivos") or [])
-                     + ".\n\nO pedido do Adrian:\n\n" + pedido["texto"][:20_000]
-                     + "\n\nA resposta do trabalhador:\n\n"
-                     + (str(pedido.get("resposta") or "") or self._resposta(trabalhador))[:20_000]
-                     + "\n\nDevolva APROVADO ou DEFEITOS (com a lista) na sua mensagem final; "
-                       "não crie arquivo resposta.md (nem outro) na worktree.")
-            if ia == "codex":
-                try:
-                    corpo = self.despachante.prompt_do_cargo("conferente") + "\n\n" + corpo
-                except Exception:
-                    pass
-            caminho.write_text(corpo, encoding="utf-8")
-            despachante, titulo = self.despachante, "Conferir " + pedido["id"]
+        pedido.pop("sem_commit_desde", None)
+        pedido.pop("sem_commit_avisado", None)
+        do_trabalhador = str(pedido.get("resposta") or "") or self._resposta(trabalhador)
+        final = _resumo(do_trabalhador, 400) or "pronto"
+        pedido.update(situacao="conferido", motivo="", resposta=do_trabalhador[:1000],
+                      atualizado_em=_iso())
+        _linha(dados, pedido, "conferido pela prova automática: " + final, tipo="final")
+        self._avisar(pedido, "✅ Pedido conferido", final)
 
-            def contratar_conferente():
-                despachante.criar(ident, caminho, PERMITIDOS[:3], ia=ia, cargo="conferente",
-                                  titulo=titulo)
-                despachante.no_fundo(["rodar", "--id", ident], ident)
+    def _quem_aplicou(self, trabalhador, ficha):
+        """(id, ficha) de quem aplicou a entrega: o trabalhador ou o integrador
+        que o vigia contratou para ele (`integrar-<id>`); (None, None) = ninguem."""
+        if ficha.get("aplicado"):
+            return trabalhador, ficha
+        integrador = ("integrar-" + str(trabalhador))[:40]
+        outra = self._estado_do(integrador)
+        if outra and outra.get("aplicado"):
+            return integrador, outra
+        if ficha.get("aplicado_por") and ficha.get("commit"):
+            return str(ficha["aplicado_por"]), ficha
+        return None, None
 
-            def depois(dados, pedido, _resultado, erro):
-                if erro is not None:
-                    self._esperar_conferente(dados, pedido, str(erro)[:200])
-                    return
-                pedido.update(conferente=ident, motivo="")
-                _linha(dados, pedido, f"aplicado; conferente ({ia}) olhando")
+    def _olho_do_vigia(self, trabalhador) -> str:
+        """O motivo do `olho` do vigia para a entrega (ou a do integrador dela)."""
+        try:
+            mem = json.loads((estado.pasta() / "trabalho_memoria.json").read_text(
+                encoding="utf-8"))
+        except (OSError, ValueError):
+            return ""
+        olho = mem.get("olho") if isinstance(mem, dict) else None
+        if not isinstance(olho, dict):
+            return ""
+        for ident in (str(trabalhador), ("integrar-" + str(trabalhador))[:40]):
+            item = olho.get(ident)
+            if isinstance(item, dict) and item.get("motivo"):
+                return str(item["motivo"])[:200]
+        return ""
 
-            self._lento(dados, pedido, contratar_conferente, depois, f"contratando o conferente "
-                                                                     f"({ident})")
-            return
-        pedido["conferente"] = ident
-        situacao = self._situacao_do(conf)
-        if situacao == "terminou":
-            resposta = self._resposta(ident)
-            if _aprovado(resposta):
-                do_trabalhador = str(pedido.get("resposta") or "") or self._resposta(trabalhador)
-                pedido.update(situacao="conferido", motivo="", resposta=resposta[:1000],
-                              atualizado_em=_iso())
-                final = (_resumo(do_trabalhador, 400) or "pronto")
-                _linha(dados, pedido, "conferido: " + final, tipo="final")
-                self._avisar(pedido, "✅ Pedido conferido", final)
-            else:
-                pedido.update(situacao="falhou", motivo="o conferente apontou defeitos",
-                              resposta=resposta[:1000], atualizado_em=_iso())
-                _linha(dados, pedido, "o conferente apontou defeitos: "
-                       + (resposta.strip()[:400] or "(sem resposta)"), tipo="final")
-                self._avisar(pedido, "❌ Pedido com defeitos", resposta.strip()[:400] or "?")
-            return
-        if situacao in ("rodando", "criado"):
-            return
-        # parado/falhou: retoma o MESMO conferente, sem recriar
-        if not self._pode_tentar(pedido, "conf_tentou_em"):
-            return
-        pedido["conf_tentou_em"] = _iso(self.relogio())
-        motivo = self._motivo_claude() if conf.get("ia") == "claude" else ""
-        if not motivo and conf.get("ia") == "claude":
-            # caiu no limite e ele ainda nao renovou: nao relanca a cada 120 s
-            queda = self._queda_por_limite(ident)
-            renova = _num((queda or {}).get("renova_em"))
-            if queda and renova is not None and self.relogio().timestamp() < renova:
-                motivo = f"o Claude bateu no limite; renova {_hora(renova)}"
-        if motivo:
-            self._esperar_conferente(dados, pedido, motivo)
-            return
-        despachante = self.despachante
+    def _sem_commit(self, ficha) -> str:
+        """'' quando o commit da entrega esta feito; senao, o que falta."""
+        if ficha.get("commit") or (ficha.get("aplicado") or {}).get("commit"):
+            return ""
+        arquivos = [str(a) for a in (ficha.get("aplicado") or {}).get("arquivos") or []]
+        repo_da = getattr(self.despachante, "repo_da", None)
+        if not arquivos or not callable(repo_da):
+            return ""                 # sem como medir (despachante antigo): confia
+        try:
+            from .vigia_trabalho import arquivos_sujos
+            sujos = arquivos_sujos(arquivos, repo=repo_da(ficha))
+        except Exception as exc:                              # noqa: BLE001
+            return f"não consegui conferir o commit ({str(exc)[:160]})"
+        if not sujos:
+            return ""
+        return "os arquivos estão na árvore sem commit: " + ", ".join(sujos[:5])
 
-        def depois(dados, pedido, _resultado, erro):
-            if erro is not None:
-                self._esperar_conferente(dados, pedido, str(erro)[:200])
+    def _entregue_parado(self, dados, pedido, motivo, *, avisar=False):
+        """Continua "entregue" (o pulso volta a olhar e fecha sozinho quando
+        resolver), com o motivo. "esperando" relancaria o trabalhador.
 
-        self._lento(dados, pedido, lambda: despachante.no_fundo(["rodar", "--id", ident], ident),
-                    depois, f"relançando o conferente ({ident})")
-
-    def _esperar_conferente(self, dados, pedido, motivo):
-        """Continua "entregue" (o pulso volta ao conferente), com o motivo."""
-        motivo = "conferente: " + str(motivo)[:220]
+        Com `avisar`, o Adrian sabe UMA vez, e so se a falta durar
+        `SEM_COMMIT_AVISO_S` (o vigia commita logo depois de aplicar: o
+        instante entre os dois nao e defeito)."""
+        motivo = str(motivo)[:240]
         if pedido.get("motivo") != motivo:
-            pedido["motivo"] = motivo
+            pedido.update(motivo=motivo, atualizado_em=_iso())
             _linha(dados, pedido, "em espera: " + motivo)
+        if not avisar:
+            return
+        agora = self.relogio()
+        passou = _segundos_desde(pedido.get("sem_commit_desde"), agora)
+        if passou is None:
+            pedido["sem_commit_desde"] = _iso(agora)
+            return
+        if not pedido.get("sem_commit_avisado") and passou >= SEM_COMMIT_AVISO_S:
+            pedido["sem_commit_avisado"] = _iso(agora)
+            self._avisar(pedido, "⚠ Entrega aplicada sem commit",
+                         motivo + " (commite por caminho e o pedido fecha sozinho)")
 
     # ------------------------------------------------------------ pulso
     def _anotar_sem_pedido_de_origem(self, ev, opcao):
@@ -3339,14 +3338,16 @@ class MesaPedidos:
         except Exception as exc:                              # noqa: BLE001
             self.avisar(f"⚠ não consegui ler o Grimório: {exc}")
         dono = uuid.uuid4().hex[:12]
+        # COO-6: as fichas dos delegados tem a trava delas; reconciliar com o
+        # pedidos.lock na mao segurava o `pedir` e o app sem necessidade
+        reconciliar = getattr(self.despachante, "reconciliar_fantasmas", None)
+        if callable(reconciliar):
+            try:
+                reconciliar()
+            except Exception:
+                pass
         with _TRAVA:
             dados = _ler()
-            reconciliar = getattr(self.despachante, "reconciliar_fantasmas", None)
-            if callable(reconciliar):
-                try:
-                    reconciliar()
-                except Exception:
-                    pass
             self._dono, self._fila_lenta = dono, []
             try:
                 self._andar_os_pedidos(dados)

@@ -260,7 +260,9 @@ def test_trava_de_processo_morto_e_retomada(tmp_path):
     caminho.write_text("999999", encoding="utf-8")
     assert TravaUnica(caminho).adquirir(vivo=lambda pid: False)
     caminho.write_text("4242", encoding="utf-8")
-    assert not TravaUnica(caminho).adquirir(vivo=lambda pid: True)
+    # lock antigo (so o pid) de um coordenador vivo: respeita
+    assert not TravaUnica(caminho).adquirir(
+        vivo=lambda pid: True, comando=lambda pid: "python -m coordenador rodar")
 
 
 # ------------------------------------------------ a esteira de sprites (02/10)

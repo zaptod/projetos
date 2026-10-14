@@ -84,6 +84,9 @@ def _gravar_estado(dados: dict) -> None:
             date.today().isoformat(): TETO_CONSERTOS_DIA}
         dados["testes_por_dia"] = {
             date.today().isoformat(): TETO_CONSERTOS_DIA}
+        # COO-24 (auditoria 11/10): o teto das APURACOES tambem fica esgotado
+        # (antes so os consertos; `por_dia` recomecava do zero)
+        dados["por_dia"] = {date.today().isoformat(): TETO_DIARIO}
         _alarmar("estado do apurador ilegivel: guardado como .corrompido e "
                  "conserto bloqueado ate amanha")
     temporario = caminho.with_name(caminho.name + ".tmp")
@@ -1075,7 +1078,13 @@ def uma_volta(*, log=print) -> dict:
         if pendente:
             if travas.ocupada(TRAVA_DA_AGENDA):
                 return {"feito": False, "motivo": "rodada da agenda em andamento: pedido adiado"}
-            pedido = abrir_pedido(pendente["erros"], pendente["diagnostico"])
+            try:
+                pedido = abrir_pedido(pendente["erros"], pendente["diagnostico"])
+            except Exception as exc:                          # noqa: BLE001
+                # COO-15: a investigacao continua guardada para a proxima volta
+                return {"feito": False, "motivo": f"Mesa indisponível: {exc}; pedido adiado",
+                        "erros": len(pendente["erros"]),
+                        "diagnostico": pendente["diagnostico"]}
             _tirar_investigacao(pendente["chave"])
             return {"feito": True, "erros": len(pendente["erros"]),
                     "diagnostico": pendente["diagnostico"], "pedido": pedido["id"],
@@ -1108,7 +1117,15 @@ def uma_volta(*, log=print) -> dict:
             _guardar_investigacao(erros, texto)
             return {"feito": False, "motivo": "rodada da agenda em andamento: pedido adiado",
                     "erros": len(erros), "diagnostico": texto}
-        pedido = abrir_pedido(erros, texto)
+        try:
+            pedido = abrir_pedido(erros, texto)
+        except Exception as exc:                              # noqa: BLE001
+            # COO-15 (auditoria 11/10): a Mesa fora (trava ocupada, disco) fazia
+            # a excecao subir com os erros ja marcados: o diagnostico, ja pago,
+            # se perdia. Fica guardado e a proxima volta abre o pedido.
+            _guardar_investigacao(erros, texto)
+            return {"feito": False, "motivo": f"Mesa indisponível: {exc}; pedido adiado",
+                    "erros": len(erros), "diagnostico": texto}
         saida = {"feito": True, "erros": len(erros), "diagnostico": texto,
                  "pedido": pedido["id"], "recibo": pedido["recibo"]}
         return saida

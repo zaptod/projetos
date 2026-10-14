@@ -100,7 +100,8 @@ GUARDA_S = 2.0                # de quanto em quanto o interruptor e olhado
 TETO_A_CADA_S = 30.0          # e o teto (le o rollout)
 
 # Os arquivos do despachante na worktree: nunca entram no diff.
-NOSSOS = (".codex_tarefa.md", ".codex_resposta.md", ".codex_correcao.md", ".permissao.json")
+NOSSOS = (".codex_tarefa.md", ".codex_resposta.md", ".codex_correcao.md", ".permissao.json",
+          ".handoff.md")                  # COO-23: a renovacao escreve na raiz da worktree
 # Sobras do ambiente, nao trabalho do Codex (01/10: o Adrian viu "RECUSADO" em
 # tudo e era isto): temporarios de teste, caches e travas que o pytest deixa.
 RUIDO = ("**/.teste_tmp/**", ".teste_tmp/**", "**/.pytest_cache/**", ".pytest_cache/**",
@@ -916,12 +917,18 @@ def ler_eventos(tarefa_id: str, desde: int = -1, maximo_bytes: int = 393_216) ->
     if desde >= 0 and desde > tamanho:
         inicio = 0
     with open(caminho, "rb") as fh:
+        anterior = b"\n"
+        if desde < 0 and inicio > 0:
+            fh.seek(inicio - 1)
+            anterior = fh.read(1)
         fh.seek(inicio)
         bruto = fh.read(maximo_bytes)
     fim_util = bruto.rfind(b"\n") + 1
     pedaco = bruto[:fim_util]
-    if desde < 0 and inicio > 0:
-        corte = pedaco.find(b"\n") + 1            # a primeira linha veio pela metade
+    if desde < 0 and inicio > 0 and anterior != b"\n":
+        # a primeira linha veio pela metade; no corte exato (o byte de antes
+        # ja e o \n) ela esta inteira e fica (COO-25)
+        corte = pedaco.find(b"\n") + 1
         pedaco, inicio = pedaco[corte:], inicio + corte
     eventos = []
     for bruta in pedaco.decode("utf-8", errors="replace").splitlines():
@@ -1072,25 +1079,75 @@ def _pid_vivo(pid) -> bool | None:
         return None
 
 
+def _hora_de_criacao(pid) -> float | None:
+    try:
+        from .orquestrador import hora_de_criacao
+        return hora_de_criacao(pid)
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def _despachante_vivo(estado: dict) -> bool | None:
+    """O despachante da ficha ainda roda? COO-10 (auditoria 11/10): so o
+    numero do PID nao basta (o Windows reaproveita); com `pid_criado`
+    gravado, um processo vivo nascido em outra hora e OUTRO: conta como morto."""
+    pid = estado.get("pid")
+    vivo = _pid_vivo(pid)
+    criado = estado.get("pid_criado")
+    if vivo is not True or criado is None:
+        return vivo
+    agora = _hora_de_criacao(pid)
+    try:
+        return agora is None or abs(agora - float(criado)) < 2.0
+    except (TypeError, ValueError):
+        return True
+
+
 def _rodando(estado: dict) -> bool:
-    return estado.get("situacao") == "rodando" and _pid_vivo(estado.get("pid")) is not False
+    return estado.get("situacao") == "rodando" and _despachante_vivo(estado) is not False
+
+
+def _parado_ha(ficha: dict, agora: datetime) -> float | None:
+    """Segundos desde o ultimo evento (o eventos.jsonl, senao o inicio)."""
+    try:
+        quando = datetime.fromtimestamp((pasta_da(ficha["id"]) / "eventos.jsonl").stat().st_mtime)
+    except (OSError, KeyError, Recusa, ValueError):
+        try:
+            quando = datetime.fromisoformat(str(ficha.get("inicio") or ficha.get("criado_em")))
+        except (TypeError, ValueError):
+            return None
+    return (agora - quando).total_seconds()
 
 
 def reconciliar_fantasmas(*, minutos: float = 10) -> list[str]:
-    """Fecha fichas ``rodando`` cujo despachante ja morreu."""
+    """Fecha fichas ``rodando`` cujo despachante ja morreu (ou cujo PID agora e
+    de outro processo), e as que nao escrevem evento ha mais de
+    `rodar_timeout_s + 600` s, qualquer que seja o PID (COO-10)."""
     agora = _agora()
+    try:
+        calado_s = float(ler_config().get("rodar_timeout_s") or 0) + 600
+    except (Recusa, TypeError, ValueError):
+        calado_s = None
     parados = []
     for ficha in listar():
-        if ficha.get("situacao") != "rodando" or _pid_vivo(ficha.get("pid")) is not False:
+        if ficha.get("situacao") != "rodando":
             continue
-        try:
-            inicio = datetime.fromisoformat(str(ficha.get("inicio") or ficha.get("criado_em")))
-        except (TypeError, ValueError):
-            inicio = agora
-        if (agora - inicio).total_seconds() < minutos * 60:
+        motivo = None
+        if _despachante_vivo(ficha) is False:
+            try:
+                inicio = datetime.fromisoformat(str(ficha.get("inicio") or ficha.get("criado_em")))
+            except (TypeError, ValueError):
+                inicio = agora
+            if (agora - inicio).total_seconds() >= minutos * 60:
+                motivo = "processo morreu"
+        if motivo is None and calado_s:
+            parado = _parado_ha(ficha, agora)
+            if parado is not None and parado > calado_s:
+                motivo = f"sem evento há {int(parado // 60)} min (passou do prazo da rodada)"
+        if motivo is None:
             continue
         _mudar_estado(ficha["id"], situacao="parado", pid=None, pid_codex=None,
-                      fim=_agora_iso(), motivo="processo morreu")
+                      pid_criado=None, fim=_agora_iso(), motivo=motivo)
         parados.append(ficha["id"])
     return parados
 
@@ -1146,8 +1203,13 @@ def _preparar_rodada(tarefa_id: str, tipo: str, forcar: bool) -> tuple[dict, dic
             raise Recusa(f"no máximo {limite} delegado(s) ao mesmo tempo: {nomes} rodando")
         if not Path(estado["worktree"]).is_dir():
             raise Recusa(f"a worktree sumiu: {estado['worktree']}")
-        estado.update(situacao="rodando", pid=os.getpid(), pid_codex=None,
+        estado.update(situacao="rodando", pid=os.getpid(),
+                      pid_criado=_hora_de_criacao(os.getpid()), pid_codex=None,
                       inicio=_agora_iso(), fim=None, motivo="")
+        if tipo == "corrigir":
+            # A proxima rodada pode mudar o diff; uma prova da rodada anterior
+            # nunca pode autorizar a aplicacao enquanto o vigia nao mediu de novo
+            estado["testes"] = None
         estado["rodadas"] = list(estado.get("rodadas") or []) + [
             {"tipo": tipo, "inicio": estado["inicio"], "fim": None, "codigo": None,
              "tokens": {"entrada": 0, "cache": 0, "saida": 0, "raciocinio": 0},
@@ -1217,8 +1279,9 @@ class _Rodada:
         limite = time.monotonic() + float(self.config["rodar_timeout_s"])
         proximo_teto = time.monotonic() + TETO_A_CADA_S
         teto = self.config["teto_codex_pct"]
+        lembranca: dict = {}            # COO-9: ilegivel por um instante nao mata
         while not self.fim.wait(GUARDA_S):
-            motivo = (claude_estado.motivo_proibido()
+            motivo = (claude_estado.motivo_para_parar(lembranca)
                       if self.estado.get("ia") == "claude" else "")
             if motivo:
                 self.parar(motivo)
@@ -1487,7 +1550,9 @@ def pedido_de_permissao(tarefa_id: str) -> dict | None:
     resposta = _texto_da_resposta(tarefa_id).lower()
     desistiu = ("fora dos caminhos permitidos", "não tenho permissão", "nao tenho permissao",
                 "ampliar o escopo")
-    if estado.get("diff", {}).get("ok") is False and any(trecho in resposta for trecho in desistiu):
+    # COO-22: a ficha recem-criada tem "diff": None (o .get com padrao nao cobre)
+    if (estado.get("diff") or {}).get("ok") is False and any(trecho in resposta
+                                                              for trecho in desistiu):
         return {"o_que": "ampliar o escopo da tarefa", "categoria": "caminho_protegido",
                 "por_que": "o trabalhador informou que esta fora dos caminhos permitidos",
                 "alvo": "escopo atual da tarefa"}
@@ -1544,14 +1609,35 @@ def _recriar_worktree_no_repo(estado: dict, novo_repo: Path) -> None:
     estado.update(repo=str(novo_repo), base=base, thread_id=None)
 
 
-def _caminhos_do_alvo(alvo) -> list[str]:
+def _relativo_a(bruto: str, raizes) -> str | None:
+    """`E:\\projetos\\remoto\\x.py` com a raiz `E:\\projetos` -> `remoto/x.py`."""
+    limpo = bruto.strip().strip("`'\"()")
+    if not re.match(r"^[A-Za-z]:[\\/]", limpo):
+        return None
+    normal = os.path.normpath(limpo)
+    for raiz in raizes:
+        if not raiz:
+            continue
+        base = os.path.normpath(str(raiz))
+        if os.path.normcase(normal).startswith(os.path.normcase(base).rstrip("\\/") + os.sep):
+            return normal[len(base.rstrip("\\/")) + 1:].replace("\\", "/")
+    return None
+
+
+def _caminhos_do_alvo(alvo, raizes=()) -> list[str]:
     """Os caminhos do REPOSITORIO num `alvo` de permissao ("a/**, b.py; c").
 
     Fora do repositorio (`%LOCALAPPDATA%`, `C:\\...`, `..`) nao vira caminho
-    permitido: o diff so tem arquivos da worktree.
+    permitido: o diff so tem arquivos da worktree. COO-17 (auditoria 11/10):
+    caminho absoluto DENTRO de uma das `raizes` (o repositorio, a worktree)
+    vira o relativo; antes todo caminho com ":" era descartado e a permissao
+    voltava sem caminho novo (o laco de 11/10).
     """
     saida = []
     for bruto in re.split(r"[,;\s]+", str(alvo or "")):
+        relativo = _relativo_a(bruto, raizes)
+        if relativo is not None:
+            bruto = relativo
         p = re.sub(r"^(\./)+", "", bruto.strip().strip("`'\"()").replace("\\", "/"))
         if (not p or ".." in p.split("/") or ":" in p or "%" in p
                 or p.startswith(("/", "~"))):
@@ -1570,7 +1656,11 @@ def _liberar_caminhos(estado: dict, alvo) -> list[str]:
     "fora do escopo" de novo e pedia de novo. Devolve so os caminhos novos.
     """
     atuais = list(estado.get("permitidos") or [])
-    novos = [p for p in _caminhos_do_alvo(alvo) if p not in atuais]
+    try:
+        raizes = [repo_da(estado), estado.get("worktree")]
+    except (Recusa, OSError):
+        raizes = [estado.get("worktree")]
+    novos = [p for p in _caminhos_do_alvo(alvo, raizes) if p not in atuais]
     if not novos:
         return []
     estado["permitidos"] = atuais + novos
@@ -1670,9 +1760,8 @@ def corrigir(tarefa_id: str, arquivo_texto: Path, *, forcar: bool = False) -> di
     destino = pasta_da(tarefa_id)
     n = len([p for p in destino.glob("correcao_*.md")]) + 1
     (destino / f"correcao_{n}.md").write_text(texto, encoding="utf-8")
-    # A proxima rodada pode mudar o diff; uma prova da rodada anterior nunca
-    # pode autorizar a aplicacao enquanto o vigia ainda nao mediu de novo.
-    _mudar_estado(tarefa_id, testes=None)
+    # A prova dos testes da rodada anterior sai em `_preparar_rodada`, depois
+    # das guardas (COO-21): zerar aqui apagava a prova de uma correcao recusada
     return _rodada(tarefa_id, "corrigir", texto, forcar=forcar)
 
 
@@ -1808,11 +1897,14 @@ def coletar(tarefa_id: str) -> dict:
     _git("add", "-A", "--", ".", *excluir, cwd=wt)
     # Arquivo que so mudou o fim de linha (CRLF da worktree, ex. editing.json)
     # nao e mudanca do Codex: sai do indice antes de medir.
-    mudados = _git("diff", "--cached", "--no-renames", "--name-only", estado["base"],
-                   cwd=wt).stdout.splitlines()
+    # COO-8 (auditoria 11/10): sem -z o git poe o nome com acento entre aspas
+    # e em octal ("docs/decis\303\243o.md") e o arquivo sumia da entrega
+    mudados = [n for n in _git("-c", "core.quotepath=false", "diff", "--cached",
+                               "--no-renames", "--name-only", "-z", estado["base"],
+                               cwd=wt).stdout.split("\0") if n]
     deixados = []
     for caminho in mudados:
-        c = caminho.strip().replace("\\", "/")
+        c = caminho
         if _e_ruido(c):
             # o `exclude` do add nao tira o que JA estava no indice (05/10: o
             # pedido-cb44cd52-1 nasceu quando resposta.md ainda era rastreado,
@@ -1829,15 +1921,15 @@ def coletar(tarefa_id: str) -> dict:
                      "--", caminho, cwd=wt, verificar=False)
         if igual.returncode == 0:
             _git("reset", "-q", "--", caminho, cwd=wt, verificar=False)
-    numstat = _git("diff", "--cached", "--no-renames", "--numstat", estado["base"],
-                   cwd=wt).stdout
+    numstat = _git("-c", "core.quotepath=false", "diff", "--cached", "--no-renames",
+                   "--numstat", "-z", estado["base"], cwd=wt).stdout
     arquivos = []
-    for linha in numstat.splitlines():
-        partes = linha.split("\t")
-        if len(partes) < 3:
+    for linha in numstat.split("\0"):
+        partes = linha.split("\t", 2)          # com -z: mais<TAB>menos<TAB>caminho<NUL>
+        if len(partes) < 3 or not partes[2]:
             continue
         binario = partes[0] == "-" or partes[1] == "-"
-        arquivos.append({"caminho": partes[2].strip().replace("\\", "/"),
+        arquivos.append({"caminho": partes[2],
                          "mais": 0 if binario else int(partes[0]),
                          "menos": 0 if binario else int(partes[1]),
                          "binario": binario})
@@ -2014,12 +2106,27 @@ def aplicar(tarefa_id: str, *, sem_testes: bool = False, processos=None) -> dict
         # versao da casca no sw.js). Agora tenta o merge de 3 vias e resolve sozinho
         # os conflitos conhecidos; so desiste (e devolve a arvore como estava) se
         # sobrar conflito de verdade -- e ai o vigia contrata o integrador.
-        _git("apply", "-3", str(patch), cwd=alvo_repo, verificar=False)
-        restantes = _resolver_conflitos_conhecidos(alvo_repo)
-        if restantes:
+        feito3 = _git("apply", "-3", str(patch), cwd=alvo_repo, verificar=False)
+        conflitos = _git("diff", "--name-only", "--diff-filter=U", cwd=alvo_repo,
+                         verificar=False).stdout.split()
+        if feito3.returncode != 0 and not conflitos:
+            # COO-7 (auditoria 11/10): um arquivo apagado na principal faz o
+            # `apply -3` sair com 1 ("does not exist in index") sem conflito
+            # nenhum; o retorno era ignorado e a ficha ganhava `aplicado`
             _desfazer_aplicacao(alvo_repo, arquivos)
+            raise Recusa("git apply -3 falhou: "
+                         + (feito3.stderr or feito3.stdout).strip()[:300])
+        restantes, extras = _resolver_conflitos_conhecidos(alvo_repo, arquivos)
+        if restantes:
+            _desfazer_aplicacao(alvo_repo, sorted(set(arquivos) | set(extras)))
             raise Recusa("conflito de merge em: " + ", ".join(restantes[:8]))
+        # COO-11: o sw.js e o teste que crava a casca, reescritos pelo
+        # resolvedor, entram na lista (o vigia commita so a lista)
+        arquivos = sorted(set(arquivos) | set(extras))
         _git("reset", "-q", "--", *arquivos, cwd=alvo_repo, verificar=False)
+        if not _git("status", "--porcelain", "--", *arquivos, cwd=alvo_repo,
+                    verificar=False).stdout.strip():
+            raise Recusa("git apply -3 não mudou nada na árvore (a entrega já estava lá?)")
     aplicado = {"em": _agora_iso(), "sha": resumo["sha"], "arquivos": arquivos,
                 "sem_testes": sem_testes}
     _mudar_estado(tarefa_id, aplicado=aplicado)
@@ -2031,12 +2138,21 @@ _CONFLITO = re.compile(r"<<<<<<< [^\n]*\n(.*?)=======\n(.*?)>>>>>>> [^\n]*\n", r
 _CASCA = re.compile(r"painel-casca-v(\d+)")
 
 
-def _resolver_conflitos_conhecidos(repo: Path) -> list[str]:
-    """Resolve o que da para resolver sem pensar; devolve os que sobraram.
+CASCA_FIXOS = ("remoto/app/sw.js", "remoto/test_app_vila_objetos.py")
+
+
+def _resolver_conflitos_conhecidos(repo: Path, da_entrega=()) -> tuple[list[str], list[str]]:
+    """Resolve o que da para resolver sem pensar; devolve (os que sobraram,
+    os arquivos FORA da entrega que ele reescreveu).
 
     Conhecido = conflito em que os dois lados so diferem na versao da casca do
     app (`painel-casca-vN`) ou em comentario: fica a versao MAIOR + 1, e o resto
-    dos dois lados junto. Qualquer outro conflito sobra para o integrador."""
+    dos dois lados junto. Qualquer outro conflito sobra para o integrador.
+
+    COO-11 (auditoria 11/10): o sw.js e o teste da casca eram reescritos mesmo
+    fora do patch e ficavam M na principal (o vigia commita so a lista). Agora
+    voltam em `extras`, e um deles com mudanca nao commitada de outro nao e
+    tocado (a mudanca alheia entraria no commit da entrega)."""
     sujos = _git("diff", "--name-only", "--diff-filter=U", cwd=repo, verificar=False).stdout.split()
     restantes = []
     for nome in sujos:
@@ -2070,15 +2186,27 @@ def _resolver_conflitos_conhecidos(repo: Path) -> list[str]:
             # a casca sobe junto em todos os lugares que a citam
             novo = _CASCA.sub(f"painel-casca-v{max(versoes) + 1}", novo)
         caminho.write_text(novo, encoding="utf-8")
+    extras = []
     maior = _maior_casca(repo)
     if not restantes and maior:
         # o sw.js e o teste que crava a versao andam juntos
-        for nome in ("remoto/app/sw.js", "remoto/test_app_vila_objetos.py"):
+        da_entrega = {str(a).replace("\\", "/") for a in da_entrega}
+        for nome in CASCA_FIXOS:
             alvo = Path(repo) / nome
-            if alvo.is_file():
-                texto = alvo.read_text(encoding="utf-8")
-                alvo.write_text(_CASCA.sub(f"painel-casca-v{maior}", texto), encoding="utf-8")
-    return restantes
+            if not alvo.is_file():
+                continue
+            fora = nome not in da_entrega and nome not in sujos
+            if fora and _git("status", "--porcelain", "--", nome, cwd=repo,
+                             verificar=False).stdout.strip():
+                continue
+            texto = alvo.read_text(encoding="utf-8")
+            novo = _CASCA.sub(f"painel-casca-v{maior}", texto)
+            if novo == texto:
+                continue
+            alvo.write_text(novo, encoding="utf-8")
+            if fora:
+                extras.append(nome)
+    return restantes, extras
 
 
 def _maior_casca(repo: Path) -> int:
@@ -2155,6 +2283,16 @@ def limpar(tarefa_id: str) -> dict:
     return saida
 
 
+def registrar_commit(tarefa_id: str, commit: str, *, aplicado_por: str | None = None) -> dict:
+    """Grava na ficha o commit da entrega aplicada (COO-2): a Mesa so fecha o
+    pedido como conferido com o commit feito. `aplicado_por` marca a ficha
+    original quando foi o integrador quem aplicou."""
+    campos = {"commit": str(commit or "").strip() or None}
+    if aplicado_por:
+        campos["aplicado_por"] = aplicado_por
+    return _mudar_estado(tarefa_id, **campos)
+
+
 def abandonar(tarefa_id: str, motivo: str = "criado há mais de 24 h sem pedido aberto") -> dict:
     """Marca uma ficha esquecida sem tocar na worktree."""
     estado = ler_estado(tarefa_id)
@@ -2180,14 +2318,80 @@ def commits_a_frente(estado: dict) -> int | None:
         return None
 
 
-def limpar_orfas() -> list[dict]:
-    """As pastas `codex-*` que o git nao conhece mais (as de 01/10, a mao)."""
-    registradas = {os.path.normcase(os.path.abspath(l.split(" ", 1)[1].strip()))
-                   for l in _git("worktree", "list", "--porcelain").stdout.splitlines()
-                   if l.startswith("worktree ")}
+def _norm(caminho) -> str:
+    return os.path.normcase(os.path.abspath(str(caminho)))
+
+
+def _worktrees_do_git(repositorio: Path, *, obrigatorio: bool) -> set[str]:
+    feito = _git("worktree", "list", "--porcelain", cwd=repositorio, verificar=obrigatorio)
+    if feito.returncode != 0:
+        return set()
+    return {_norm(l.split(" ", 1)[1].strip()) for l in feito.stdout.splitlines()
+            if l.startswith("worktree ")}
+
+
+def _git_da_pasta(pasta_wt: Path) -> str | None:
+    """Por que a pasta ainda e do git (None = nao tem nada de git dentro).
+
+    Uma `.git` (arquivo de worktree ou pasta de clone) e sinal de trabalho que
+    so o git sabe dizer se esta commitado: a faxina nunca apaga."""
+    marca = pasta_wt / ".git"
+    if marca.is_dir():
+        return "é um repositório git próprio"
+    if not marca.exists():
+        return None
+    try:
+        linha = marca.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return "a .git dela não pôde ser lida"
+    if linha.startswith("gitdir:"):
+        destino = Path(linha.split(":", 1)[1].strip())
+        if not destino.is_absolute():
+            destino = pasta_wt / destino
+        if destino.exists():
+            return f"é worktree viva de outro repositório ({destino})"
+    return "tem .git sem registro: o git não diz se há mudança não commitada"
+
+
+def limpar_orfas(puladas: list | None = None) -> list[dict]:
+    """As pastas `codex-*` que nenhum git conhece mais (as de 01/10, a mao).
+
+    COO-1 (auditoria 11/10): so o `git worktree list` do repositorio padrao
+    contava, e a worktree viva de uma tarefa do E:\\jogo_ZOMBIE (com trabalho
+    do Codex nao commitado) ia para o rmtree. Agora conta a uniao das listas de
+    todos os repositorios das fichas, toda ficha nao limpa protege a sua pasta,
+    e pasta que ainda tem `.git` nunca e apagada. `puladas` (opcional) recebe
+    as pastas que ficaram e o porque."""
+    repos = {_norm(repo()): repo()}
+    protegidas: set[str] = set()
+    for estado in listar():
+        try:
+            alvo = repo_da(estado)
+            repos.setdefault(_norm(alvo), alvo)
+        except (Recusa, OSError):
+            pass
+        if estado.get("limpo"):
+            continue
+        if estado.get("worktree"):
+            protegidas.add(_norm(estado["worktree"]))
+        try:
+            protegidas.add(_norm(worktree_de(estado.get("id") or "")))
+        except Recusa:
+            pass
+    registradas: set[str] = set()
+    for chave, alvo in repos.items():
+        registradas |= _worktrees_do_git(alvo, obrigatorio=chave == _norm(repo()))
     saida = []
     for p in sorted(wt_raiz().glob("codex-*")):
-        if not p.is_dir() or os.path.normcase(os.path.abspath(p)) in registradas:
+        if not p.is_dir():
+            continue
+        chave = _norm(p)
+        motivo = ("registrada no git" if chave in registradas
+                  else "tem ficha não limpa" if chave in protegidas
+                  else _git_da_pasta(p))
+        if motivo:
+            if puladas is not None:
+                puladas.append({"pasta": str(p), "motivo": motivo})
             continue
         saida.append({"pasta": str(p), **_mover_para_o_lixo(p, p.name)})
     return saida
@@ -2197,7 +2401,7 @@ def limpar_orfas() -> list[dict]:
 def _vivo_para_tela(estado: dict) -> dict:
     """O estado como a Oficina mostra (sem caminho de disco)."""
     situacao = estado.get("situacao")
-    if situacao == "rodando" and _pid_vivo(estado.get("pid")) is False:
+    if situacao == "rodando" and _despachante_vivo(estado) is False:
         situacao = "sumiu"
     eventos = pasta_da(estado["id"]) / "eventos.jsonl" if _ID.fullmatch(
         str(estado.get("id") or "")) else None
@@ -2382,9 +2586,13 @@ def main(argv=None) -> int:
             print("aplicado. Commite por caminho: git commit -- " + " ".join(r["arquivos"]))
         elif args.acao == "limpar":
             if args.orfas:
-                for r in limpar_orfas():
+                puladas: list = []
+                for r in limpar_orfas(puladas):
                     print(f"{r['pasta']}: " + (f"sobrou {r['sobrou']} ({r['como_apagar']})"
                                                if r.get("sobrou") else "apagada"))
+                for r in puladas:
+                    if r["motivo"] not in ("registrada no git", "tem ficha não limpa"):
+                        print(f"{r['pasta']}: ficou ({r['motivo']})")
             elif args.id:
                 r = limpar(args.id)
                 print(f"limpa: {r['worktree']}"

@@ -341,3 +341,66 @@ def test_o_fonte_nao_chama_o_claude_sem_passar_pelo_interruptor():
     apu = (raiz / "apurador.py").read_text(encoding="utf-8")
     assert "claude_proibido()" in apu.split("def apurar")[1][:300]
     assert "claude_proibido()" in apu.split("def consertar")[1][:700]
+
+
+# ================================ auditoria profunda 11/10 (consertos 14/10)
+def test_ler_tenta_de_novo_no_permission_error(monkeypatch):
+    # COO-9: o app gravando (os.replace) tranca o arquivo por um instante
+    from pathlib import Path
+    C.mudar(True, por="teste")
+    real = Path.read_text
+    falhas = []
+
+    def read_text(self, *a, **k):
+        if self == C.caminho() and len(falhas) < 2:
+            falhas.append(1)
+            raise PermissionError(13, "trancado pelo app")
+        return real(self, *a, **k)
+    monkeypatch.setattr(Path, "read_text", read_text)
+    monkeypatch.setattr(C, "_dormir", lambda s: None)
+    estado = C.ler()
+    assert estado["liberado"] is True and estado["origem"] == "arquivo" and len(falhas) == 2
+
+
+def test_ilegivel_que_dura_continua_proibido(monkeypatch):
+    from pathlib import Path
+    C.mudar(True, por="teste")
+
+    def read_text(self, *a, **k):
+        raise PermissionError(13, "trancado")
+    monkeypatch.setattr(Path, "read_text", read_text)
+    monkeypatch.setattr(C, "_dormir", lambda s: None)
+    assert C.ler()["origem"] == "ilegivel" and C.motivo_proibido()
+
+
+def test_mudar_tenta_o_replace_de_novo(monkeypatch):
+    real = C.os.replace
+    falhas = []
+
+    def replace(a, b):
+        if len(falhas) < 2:
+            falhas.append(1)
+            raise PermissionError(5, "Acesso negado")
+        return real(a, b)
+    monkeypatch.setattr(C.os, "replace", replace)
+    monkeypatch.setattr(C, "_dormir", lambda s: None)
+    assert C.mudar(False, por="teste")["mudou"] is True
+    assert C.ler()["liberado"] is False and len(falhas) == 2
+
+
+def test_motivo_para_parar_confirma_o_ilegivel(monkeypatch):
+    leituras = iter(["ilegivel", "ilegivel", "arquivo", "ilegivel", "ilegivel"])
+    relogio = iter([0.0, 2.5, 10.0, 11.0])
+
+    def ler():
+        origem = next(leituras)
+        return {"liberado": origem != "ilegivel", "origem": origem, "em": None,
+                "motivo": "não pôde ser lido", "por": "", "texto": ""}
+    monkeypatch.setattr(C, "ler", ler)
+    monkeypatch.setattr(C, "_relogio", lambda: next(relogio))
+    lembranca = {}
+    assert C.motivo_para_parar(lembranca) == ""                 # 1a leitura ilegivel
+    assert "proibido" in C.motivo_para_parar(lembranca)        # 2,5 s depois, ainda
+    assert C.motivo_para_parar(lembranca) == "" and lembranca == {}   # voltou: zera
+    assert C.motivo_para_parar(lembranca) == ""                 # ilegivel de novo: so marca
+    assert C.motivo_para_parar(lembranca) == ""                 # 1 s depois: nao confirma

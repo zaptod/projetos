@@ -86,6 +86,21 @@ def publicacao_rodando(processos):
                for p in processos)
 
 
+# COO-13 (auditoria 11/10): o "Suspender o PC" nunca olhava o render. Conta
+# como render: o Movie Maker do Godot (`--write-movie`), um Godot headless de
+# render do palco, o ffmpeg montando video, e as rodadas que geram video
+# (`main.py noite|palco|generate-video|duelo` dos builds, `main.py auto` das
+# historias, o `producao`/`render_luta` do palco).
+RENDER = re.compile(
+    r"--write-movie|godot\S*\s.*--headless.*render|\bffmpeg(\.exe)?\b|render_luta|"
+    r"palco[\\/]\S*render|\bproducao\b|"
+    r"main\.py\"?\s+(noite|palco|generate-video|duelo|auto)\b", re.I)
+
+
+def render_rodando(processos):
+    return any(RENDER.search(p.get("comando", "")) for p in processos)
+
+
 ESPERA_ENTREGA_S = 600   # quanto o reinicio por codigo velho espera uma entrega do carteiro
 
 # 04/10/2026, 13:17-13:29: 13 religadas do app e do bot SEM commit nenhum (era
@@ -198,6 +213,9 @@ def ciclo_das_esteiras(rodar=subprocess.run, python=None, raiz=RAIZ):
     return saida
 
 
+_LEMBRANCA_CLAUDE: dict = {}       # desde quando o claude.json esta ilegivel (COO-9)
+
+
 def _pid_vivo(pid: int) -> bool:
     """Existe um processo com esse pid? (tasklist, sem psutil)."""
     try:
@@ -209,29 +227,93 @@ def _pid_vivo(pid: int) -> bool:
     return f'"{int(pid)}"' in (feito.stdout or "")
 
 
+def _criado_de(pid):
+    try:
+        from remoto.orquestrador import hora_de_criacao
+        return hora_de_criacao(pid)
+    except Exception:                                         # noqa: BLE001
+        return None
+
+
+def _comando_de(pid) -> str | None:
+    """A linha de comando do processo `pid` (None = nao sei)."""
+    try:
+        feito = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command",
+             f"(Get-CimInstance Win32_Process -Filter 'ProcessId={int(pid)}').CommandLine"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+    if feito.returncode != 0:
+        return None
+    # vazio: processo elevado lido por um nao elevado (o Windows esconde a
+    # linha de comando) ou que acabou de sair; "nao sei", e a trava e respeitada
+    return feito.stdout.strip() or None
+
+
 class TravaUnica:
     def __init__(self, caminho=None):
         self.caminho = Path(caminho or pasta() / "coordenador.lock")
         self.adquirida = False
+        self.dono = None
 
-    def adquirir(self, vivo=None):
+    def _ler_dono(self):
+        """(pid, hora de criacao) gravados; o lock antigo so tinha o pid."""
+        try:
+            texto = self.caminho.read_text(encoding="utf-8").strip()
+        except OSError:
+            return 0, None
+        try:
+            dados = json.loads(texto or "0")
+        except ValueError:
+            return 0, None
+        if isinstance(dados, dict):
+            try:
+                return int(dados.get("pid") or 0), dados.get("criado")
+            except (TypeError, ValueError):
+                return 0, None
+        try:
+            return int(dados), None
+        except (TypeError, ValueError):
+            return 0, None
+
+    @staticmethod
+    def _ainda_e_o_dono(dono, hora, criado, comando) -> bool:
+        """COO-14 (auditoria 11/10): o pid do lock pode ter virado outro
+        programa (o Windows reaproveita). Com a hora de criacao gravada, ela
+        tem de bater; no lock antigo, a linha de comando tem de ser a do
+        coordenador. Sem como saber, respeita o dono."""
+        if hora is not None:
+            agora = criado(dono)
+            try:
+                return agora is None or abs(float(agora) - float(hora)) < 2.0
+            except (TypeError, ValueError):
+                return True
+        linha = comando(dono)
+        if linha is None:
+            return True
+        return re.search(r"-m\s+coordenador\b", linha) is not None
+
+    def adquirir(self, vivo=None, criado=None, comando=None):
         """Uma trava de processo MORTO e retomada: sem isso, o coordenador que
-        morre de repente deixa o arquivo e nenhum outro sobe mais (02/10)."""
+        morre de repente deixa o arquivo e nenhum outro sobe mais (02/10).
+        Idem a de pid vivo que ja nao e o coordenador (COO-14)."""
         vivo = vivo or _pid_vivo
+        criado = criado or _criado_de
+        comando = comando or _comando_de
         self.caminho.parent.mkdir(parents=True, exist_ok=True)
         for _ in range(2):
             try:
                 fd = os.open(self.caminho, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    fh.write(str(os.getpid()))
+                    fh.write(json.dumps({"pid": os.getpid(), "criado": criado(os.getpid())}))
                 self.adquirida = True
                 return True
             except FileExistsError:
-                try:
-                    dono = int(self.caminho.read_text(encoding="utf-8").strip() or "0")
-                except (OSError, ValueError):
-                    dono = 0
-                if dono and vivo(dono):
+                dono, hora = self._ler_dono()
+                if dono and vivo(dono) and self._ainda_e_o_dono(dono, hora, criado, comando):
+                    self.dono = dono
                     return False
                 try:
                     self.caminho.unlink()
@@ -313,6 +395,7 @@ class Supervisor:
         self.assembleia_em = None
         self.trabalho = {}
         self.reinicio_pedido = set()
+        self.sair_quando_seguro = False     # pedir_reinicio("coordenador")
         self.ultima_recusa = {}
         self.estado = {n: {"situacao": "parado", "pid": None, "desde": None,
                            "reinicios_24h": 0, "reinicios": [], "ultimo_erro": "",
@@ -412,8 +495,10 @@ class Supervisor:
 
     @staticmethod
     def _claude_proibido():
-        from remoto.claude_estado import motivo_proibido
-        return motivo_proibido()
+        # COO-9: so para os delegados com o "proibido" do arquivo, ou com o
+        # claude.json ilegivel em duas leituras a 2 s ou mais uma da outra
+        from remoto.claude_estado import motivo_para_parar
+        return motivo_para_parar(_LEMBRANCA_CLAUDE)
 
     @staticmethod
     def _delegados():
@@ -451,6 +536,7 @@ class Supervisor:
 
     def _executar_acao(self, acao):
         return acoes_pc.executar(acao, publicar_ativo=lambda: publicacao_rodando(self.processos()),
+                                 render_ativo=lambda: render_rodando(self.processos()),
                                  reiniciar_tudo=self.reiniciar_tudo, resumo=self.resumo)
 
     def _adotar(self, ficha, processos):
@@ -770,7 +856,19 @@ class Supervisor:
             self.em_fundo("obsidian", self.obsidian)
 
     def pedir_reinicio(self, nome):
-        """O vigia aplicou codigo deste servico: reinicia no proximo momento seguro."""
+        """O vigia aplicou codigo deste servico: reinicia no proximo momento seguro.
+
+        COO-12 (auditoria 11/10): "coordenador" nao e servico da lista, e o
+        pedido sumia: ele seguia com o codigo velho. Agora o laco sai no
+        proximo momento seguro, sem thread de fundo no meio, e a tarefa do
+        Agendador (a cada 5 min) o sobe com o codigo novo; os servicos ficam
+        vivos e sao adotados pela linha de comando."""
+        if nome == "coordenador":
+            if not self.sair_quando_seguro:
+                self.sair_quando_seguro = True
+                self.evento("", "reinicio_pedido", "código do coordenador aplicado; saio no "
+                                                   "próximo momento seguro e a tarefa me religa")
+            return
         if nome in self.servicos:
             self.reinicio_pedido.add(nome)
             self.estado[nome]["reinicio_pedido"] = True
@@ -928,12 +1026,46 @@ class Supervisor:
         except OSError:
             return "desconhecida"
 
+    def _avisar_trava_ocupada(self, dono):
+        """COO-14: nao subir saia com 1 calado. A tarefa tenta a cada 5 min:
+        a linha vai ao log no maximo uma vez por hora."""
+        marca = pasta() / "trava_ocupada_avisada.txt"
+        try:
+            ultima = float(marca.read_text(encoding="utf-8").strip() or "0")
+        except (OSError, ValueError):
+            ultima = 0.0
+        agora = time.time()
+        if agora - ultima < 3600:
+            return
+        try:
+            marca.parent.mkdir(parents=True, exist_ok=True)
+            marca.write_text(str(agora), encoding="utf-8")
+        except OSError:
+            pass
+        self.log(f"[coordenador] trava de {dono or '?'} ativa; não subi")
+
+    def pode_sair(self):
+        """O reinicio pedido do proprio coordenador pode acontecer agora?"""
+        if not self.sair_quando_seguro:
+            return False
+        if any(t.is_alive() for t in self.fundos.values()):
+            return False                  # o vigia aplicando, os pedidos contratando...
+        try:
+            return bool(self.seguro("")[0])
+        except Exception:                 # noqa: BLE001 - na duvida, fica
+            return False
+
     def rodar(self, parar=lambda: False):
         trava = TravaUnica()
         if not trava.adquirir():
+            self._avisar_trava_ocupada(trava.dono)
             return 1
         try:
             while not parar():
+                if self.pode_sair():
+                    self.log("[coordenador] saio para subir com o código novo "
+                             "(a tarefa NeuralFights_coordenador me religa)")
+                    break
                 try:
                     self.pulso()
                 except Exception as exc:          # noqa: BLE001 - um pulso ruim nao mata o laco

@@ -159,13 +159,6 @@ def _pedido(mesa, ident=None):
     return next(p for p in lista if p["id"] == ident) if ident else lista[0]
 
 
-def _pedir_conferencia(ident):
-    with pedidos._TRAVA:
-        dados = pedidos._ler()
-        next(p for p in dados["pedidos"] if p["id"] == ident)["conferir"] = True
-        pedidos._gravar(dados)
-
-
 def test_pedido_cria_orquestrador_com_o_texto(mesa):
     p = mesa.registrar("corrija a tela do Agora")
     assert p["situacao"] == "recebido" and mesa.despachante.criados == []   # nada na hora
@@ -309,37 +302,97 @@ def test_claude_proibido_no_meio_de_construir_passa_ao_codex(mesa):
         (p["id"], "claude"), (p["id"] + "-1", "codex")]
 
 
-def test_entrega_aplicada_vai_ao_conferente_e_o_final_chega_ao_telegram(mesa):
+def _git_brinquedo(pasta):
+    import subprocess
+    pasta.mkdir(parents=True, exist_ok=True)
+
+    def git(*args):
+        return subprocess.run(["git", *args], cwd=str(pasta), check=True,
+                              capture_output=True, text=True).stdout
+    git("init", "-q")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (pasta / "remoto").mkdir()
+    (pasta / "remoto" / "x.py").write_text("A = 0\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    return git
+
+
+def test_entregue_fecha_quando_integrador_aplica(mesa):
+    # COO-2: a entrega travou, o vigia contratou o integrar-<id>, e foi ELE
+    # quem aplicou e commitou; o pedido ficava "entregue" para sempre.
     p = mesa.registrar("corrija o defeito X do app")
-    _pedir_conferencia(p["id"])
     mesa.passo()
     mesa.despachante.terminar(p["id"], aplicado=False, resposta="consertei X")
     mesa.passo()
     assert _pedido(mesa)["situacao"] == "entregue"
-    mesa.passo()
-    assert len(mesa.despachante.criados) == 1           # espera o vigia aplicar
-    mesa.despachante.estados[p["id"]]["aplicado"] = {"arquivos": ["remoto/x.py"]}
-    mesa.passo()
-    conf, kw, tarefa = mesa.despachante.criados[1]
-    assert conf == "mesa-conf-" + p["id"] and kw["cargo"] == "conferente"
-    assert "corrija o defeito X do app" in tarefa and "consertei X" in tarefa
-    mesa.despachante.terminar(conf, resposta="APROVADO: testes ok")
+    integrador = "integrar-" + p["id"]
+    mesa.despachante.estados[integrador] = {
+        "id": integrador, "situacao": "terminou", "commit": "abc1234",
+        "aplicado": {"arquivos": ["remoto/x.py"]}}
     mesa.passo()
     assert _pedido(mesa)["situacao"] == "conferido"
-    assert mesa.avisos and "consertei X" in mesa.avisos[-1]
+    assert any("✅" in a for a in mesa.avisos)
 
 
-def test_conferente_com_defeitos_falha(mesa):
+def test_aplicado_sem_commit_nao_vira_conferido(mesa, tmp_path):
+    # COO-2: o commit do vigia falhou e os arquivos ficaram na arvore sem
+    # commit; antes o pedido fechava "✅ Pedido conferido".
+    git = _git_brinquedo(tmp_path / "repo")
+    mesa.despachante.repo_da = lambda ficha: tmp_path / "repo"
     p = mesa.registrar("corrija o defeito X do app")
-    _pedir_conferencia(p["id"])
     mesa.passo()
-    mesa.despachante.terminar(p["id"])
+    mesa.despachante.terminar(p["id"], aplicado=False, resposta="consertei X")
+    mesa.passo()
+    (tmp_path / "repo" / "remoto" / "x.py").write_text("A = 1\n", encoding="utf-8")
+    mesa.despachante.estados[p["id"]]["aplicado"] = {"arquivos": ["remoto/x.py"]}
+    mesa.avisos.clear()
+    for _ in range(3):
+        mesa.passo()
+    pedido = _pedido(mesa)
+    assert pedido["situacao"] == "entregue" and "sem commit" in pedido["motivo"]
+    assert "remoto/x.py" in pedido["motivo"]
+    assert not any("✅" in a for a in mesa.avisos) and mesa.avisos == []   # o instante nao avisa
+    mesa.relogio.andar(seconds=pedidos.SEM_COMMIT_AVISO_S + 1)
     mesa.passo()
     mesa.passo()
-    mesa.despachante.terminar("mesa-conf-" + p["id"], resposta="DEFEITOS: quebrou Y")
+    assert [a for a in mesa.avisos if "sem commit" in a.lower()] == [mesa.avisos[0]]
+    assert len(mesa.avisos) == 1
+    # commitado (a mao ou pelo vigia), o pedido fecha sozinho
+    git("commit", "-qam", "conserto")
     mesa.passo()
-    assert _pedido(mesa)["situacao"] == "falhou"
-    assert "quebrou Y" in mesa.avisos[-1]
+    assert _pedido(mesa)["situacao"] == "conferido"
+
+
+def test_aplicado_com_commit_gravado_fecha_sem_olhar_a_arvore(mesa):
+    def nao_pode(_ficha):
+        raise AssertionError("com o hash na ficha nao precisa do git")
+    mesa.despachante.repo_da = nao_pode
+    p = mesa.registrar("corrija o defeito X do app")
+    mesa.passo()
+    mesa.despachante.terminar(p["id"], aplicado=False, resposta="testes verdes")
+    mesa.passo()
+    mesa.despachante.estados[p["id"]].update(aplicado={"arquivos": ["remoto/x.py"]},
+                                             commit="c1")
+    mesa.passo()
+    assert _pedido(mesa)["situacao"] == "conferido"
+
+
+def test_entregue_com_o_vigia_de_olho_mostra_o_motivo(mesa):
+    p = mesa.registrar("corrija o defeito X do app")
+    mesa.passo()
+    mesa.despachante.terminar(p["id"], aplicado=False, resposta="consertei X")
+    mesa.passo()
+    from coordenador import estado
+    (estado.pasta() / "trabalho_memoria.json").write_text(json.dumps(
+        {"olho": {p["id"]: {"motivo": "o validador recusou: fora dos permitidos",
+                            "em": "2026-10-03T10:20:00"}}}), encoding="utf-8")
+    mesa.passo()
+    pedido = _pedido(mesa)
+    assert pedido["situacao"] == "entregue"          # "esperando" relancaria o trabalhador
+    assert pedido["motivo"] == "o vigia: o validador recusou: fora dos permitidos"
+    assert len(mesa.despachante.fundos) == 1
 
 
 def test_entrega_codex_aplicada_fecha_pela_prova_automatica(mesa):
@@ -1045,17 +1098,11 @@ def test_no_maximo_tres_execucoes_por_pedido(mesa, acao_duble):
 
 # ================================================ prompts (item 12)
 def test_prompts_mandam_responder_na_mensagem_final(mesa):
-    p = mesa.registrar("corrija o defeito X do app")
-    _pedir_conferencia(p["id"])
+    mesa.registrar("corrija o defeito X do app")
     mesa.passo()
     tarefa = mesa.despachante.criados[0][2]
     assert "mensagem final" in tarefa and "NÃO crie arquivo resposta.md" in tarefa
     assert "EXECUTAR:" in tarefa and "decisao_de_produto" in tarefa
-    mesa.despachante.terminar(p["id"])
-    mesa.passo()
-    mesa.passo()
-    conferente = mesa.despachante.criados[1][2]
-    assert "mensagem final" in conferente and "em resposta.md" not in conferente
 
 
 def test_o_cargo_do_orquestrador_nao_manda_criar_resposta_md():
@@ -1073,3 +1120,44 @@ def test_recusa_por_limite_de_uso_do_codex_nao_gasta_retomada():
     assert any("bateu o limite de uso" in r for r in pedidos.RECUSAS_DE_ESPERA)
     recusa = "o Codex bateu o limite de uso; volta 11/10 23:32 (a propria mensagem dele)"
     assert any(p in recusa for p in pedidos.RECUSAS_DE_ESPERA)
+
+
+# ================================ auditoria profunda 11/10 (consertos 14/10)
+@pytest.mark.skipif(sys.platform != "win32", reason="a trava entre processos e a do msvcrt")
+def test_pedir_com_trava_ocupada_nao_da_traceback(mesa, monkeypatch, capsys):
+    # COO-6: outro processo (o passo do coordenador) segurando o pedidos.lock
+    # fazia o `coordenador pedir` morrer com TimeoutError e o pedido sumir
+    import subprocess
+    from coordenador import __main__ as cli, estado
+    trava = estado.pasta() / "pedidos.lock"
+    trava.parent.mkdir(parents=True, exist_ok=True)
+    dono = subprocess.Popen(
+        [sys.executable, "-c",
+         "import msvcrt, sys, time\n"
+         "f = open(sys.argv[1], 'a+b'); f.seek(0)\n"
+         "msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)\n"
+         "print('ok', flush=True); time.sleep(6)\n", str(trava)],
+        stdout=subprocess.PIPE, text=True)
+    try:
+        assert dono.stdout.readline().strip() == "ok"
+        monkeypatch.setattr(pedidos, "TRAVA_PEDIDOS_PRAZO_S", 1.0)
+        assert cli.main(["pedir", "conserte a tela do Agora"]) == 3
+    finally:
+        dono.kill()
+        dono.wait()
+    erro = capsys.readouterr().err
+    assert "recusado: a Mesa está ocupada" in erro and "Traceback" not in erro
+    # solta a trava, o mesmo pedido entra
+    assert cli.main(["pedir", "conserte a tela do Agora"]) == 0
+
+
+def test_pedidos_esperam_a_trava_por_um_minuto():
+    assert pedidos.TRAVA_PEDIDOS_PRAZO_S >= 60
+
+
+def test_app_explica_a_mesa_ocupada():
+    from remoto import api_http
+    texto = api_http._mesa_ocupada(TimeoutError("trava ocupada ha mais de 60 s: pedidos.lock"),
+                                   "não consegui guardar a mensagem")
+    assert "Mesa está ocupada" in texto and "nada foi registrado" in texto
+    assert api_http._mesa_ocupada(OSError("disco cheio"), "x") == "x: disco cheio"

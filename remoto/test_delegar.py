@@ -1114,3 +1114,311 @@ def test_sem_mensagem_de_limite_nao_cria_bloqueio(mundo):
         json.dumps({"ev": {"type": "error", "message": "outra coisa"}}) + "\n", encoding="utf-8")
     assert delegar._registrar_limite_de_uso("t01") is None
     assert not delegar._arquivo_do_limite().exists()
+
+
+# ================================ auditoria profunda 11/10 (consertos 14/10)
+def _outro_repo(mundo, nome="zombie"):
+    outro = mundo.tmp / nome
+    outro.mkdir()
+    _git(outro, "init", "-q")
+    _git(outro, "config", "user.email", "t@t")
+    _git(outro, "config", "user.name", "t")
+    (outro / "jogo.ts").write_text("export const a = 1;\n", encoding="utf-8")
+    _git(outro, "add", "-A")
+    _git(outro, "commit", "-qm", "base")
+    return outro
+
+
+def test_limpar_orfas_preserva_worktree_de_outro_repo(mundo):
+    # COO-1 (critico): a worktree viva de uma tarefa do E:\jogo_ZOMBIE passava
+    # por orfa (so o `git worktree list` do repo padrao contava) e ia ao rmtree
+    # com o trabalho do Codex nao commitado dentro.
+    outro = _outro_repo(mundo)
+    e = _criar(mundo, tid="zumbi", repo_tarefa=outro)
+    wt = Path(e["worktree"])
+    (wt / "jogo.ts").write_text("export const a = 2;  // do Codex\n", encoding="utf-8")
+    puladas = []
+    assert delegar.limpar_orfas(puladas) == []
+    assert wt.is_dir() and "do Codex" in (wt / "jogo.ts").read_text(encoding="utf-8")
+    assert [Path(p["pasta"]).name for p in puladas] == ["codex-zumbi"]
+
+
+def test_limpar_orfas_preserva_worktree_viva_sem_ficha(mundo):
+    # mesmo que a ficha suma (pasta de delegados apagada), a .git da pasta
+    # aponta para um repositorio que a conhece: nao e orfa.
+    outro = _outro_repo(mundo)
+    wt = mundo.tmp / "wt" / "codex-sem-ficha"
+    _git(outro, "worktree", "add", "-q", str(wt), "-b", "lado")
+    (wt / "jogo.ts").write_text("mudado\n", encoding="utf-8")
+    assert delegar.limpar_orfas() == []
+    assert (wt / "jogo.ts").read_text(encoding="utf-8") == "mudado\n"
+
+
+def test_limpar_orfas_nao_apaga_pasta_com_git_sem_registro(mundo):
+    # .git apontando para um registro que sumiu: o git nao diz se ha mudanca
+    # nao commitada, entao a faxina nao apaga (fica para a mao).
+    wt = mundo.tmp / "wt" / "codex-perdida"
+    wt.mkdir(parents=True)
+    (wt / ".git").write_text(f"gitdir: {mundo.tmp / 'nao-existe' / 'wt'}\n", encoding="utf-8")
+    (wt / "trabalho.py").write_text("x = 1\n", encoding="utf-8")
+    puladas = []
+    assert delegar.limpar_orfas(puladas) == []
+    assert (wt / "trabalho.py").exists()
+    assert "não commitada" in puladas[0]["motivo"]
+
+
+def test_limpar_orfas_protege_ficha_nao_limpa_mesmo_fora_do_git(mundo):
+    _criar(mundo)
+    wt = mundo.tmp / "wt" / "codex-t01"
+    _git(mundo.repo, "worktree", "remove", "--force", str(wt))
+    wt.mkdir()
+    (wt / "sobra.txt").write_text("x", encoding="utf-8")
+    assert delegar.limpar_orfas() == []
+    assert wt.is_dir()
+    delegar._mudar_estado("t01", limpo={"em": "x"})
+    assert [Path(f["pasta"]).name for f in delegar.limpar_orfas()] == ["codex-t01"]
+
+
+def test_aplicar_3vias_falho_nao_marca_aplicado(mundo):
+    # COO-7: o arquivo apagado na principal faz o `apply -3` sair com 1 sem
+    # conflito nenhum; a ficha ganhava `aplicado` com nada aplicado
+    e = _criar(mundo)
+    delegar.rodar("t01")                                   # o duble cria remoto/novo.py
+    wt = Path(e["worktree"])
+    (wt / "remoto" / "existente.py").write_bytes(b"A = 1\r\n")
+    _git(mundo.repo, "rm", "-q", "remoto/existente.py")
+    _git(mundo.repo, "commit", "-qm", "apagado na principal")
+    delegar.testar("t01", f'"{sys.executable}" -c "print(1)"')
+    with pytest.raises(delegar.Recusa, match="apply -3 falhou"):
+        delegar.aplicar("t01", processos=[])
+    assert not delegar.ler_estado("t01")["aplicado"]
+    assert not (mundo.repo / "remoto" / "novo.py").exists()
+    assert _git(mundo.repo, "status", "--short").strip() == ""
+
+
+def test_casca_extra_entra_em_aplicado(mundo):
+    # COO-11: o resolvedor sobe a casca no teste que a crava, fora do patch; o
+    # vigia commitava so a lista e o teste ficava M na principal
+    app = mundo.repo / "remoto" / "app"
+    app.mkdir()
+    sw, teste = app / "sw.js", mundo.repo / "remoto" / "test_app_vila_objetos.py"
+    sw.write_text('const CASCA = "painel-casca-v5";\n', encoding="utf-8")
+    teste.write_text('CASCA = "painel-casca-v5"\n', encoding="utf-8")
+    _git(mundo.repo, "add", "-A")
+    _git(mundo.repo, "commit", "-qm", "casca v5")
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    wt = Path(e["worktree"])
+    (wt / "remoto" / "app" / "sw.js").write_text('const CASCA = "painel-casca-v6";\n',
+                                                 encoding="utf-8")
+    sw.write_text('const CASCA = "painel-casca-v7";\n', encoding="utf-8")
+    _git(mundo.repo, "commit", "-qam", "casca v7 na principal")
+    delegar.testar("t01", f'"{sys.executable}" -c "print(1)"')
+    feito = delegar.aplicar("t01", processos=[])
+    assert "painel-casca-v8" in sw.read_text(encoding="utf-8")
+    assert "painel-casca-v8" in teste.read_text(encoding="utf-8")
+    assert {"remoto/app/sw.js", "remoto/test_app_vila_objetos.py"} <= set(feito["arquivos"])
+    assert delegar.ler_estado("t01")["aplicado"]["arquivos"] == feito["arquivos"]
+    sujos = [l[3:].strip() for l in _git(mundo.repo, "status", "--porcelain",
+                                          "-uall").splitlines() if l.strip()]
+    assert sujos and set(sujos) <= set(feito["arquivos"])
+
+
+def test_casca_extra_com_mudanca_alheia_nao_e_tocada(mundo):
+    app = mundo.repo / "remoto" / "app"
+    app.mkdir()
+    sw, teste = app / "sw.js", mundo.repo / "remoto" / "test_app_vila_objetos.py"
+    sw.write_text('const CASCA = "painel-casca-v5";\n', encoding="utf-8")
+    teste.write_text('CASCA = "painel-casca-v5"\n', encoding="utf-8")
+    _git(mundo.repo, "add", "-A")
+    _git(mundo.repo, "commit", "-qm", "casca v5")
+    e = _criar(mundo)
+    delegar.rodar("t01")
+    (Path(e["worktree"]) / "remoto" / "app" / "sw.js").write_text(
+        'const CASCA = "painel-casca-v6";\n', encoding="utf-8")
+    sw.write_text('const CASCA = "painel-casca-v7";\n', encoding="utf-8")
+    _git(mundo.repo, "commit", "-qam", "casca v7 na principal")
+    teste.write_text('CASCA = "painel-casca-v5"\nOUTRO = "do Adrian"\n', encoding="utf-8")
+    delegar.testar("t01", f'"{sys.executable}" -c "print(1)"')
+    feito = delegar.aplicar("t01", processos=[])
+    assert "remoto/test_app_vila_objetos.py" not in feito["arquivos"]
+    assert teste.read_text(encoding="utf-8") == 'CASCA = "painel-casca-v5"\nOUTRO = "do Adrian"\n'
+
+
+def test_coletar_nome_com_acento(mundo):
+    # COO-8: sem -z/quotepath o git devolvia "docs/decis\303\243o.md" (aspas e octal)
+    e = _criar(mundo, permitidos=("docs/**",))
+    wt = Path(e["worktree"])
+    (wt / "docs").mkdir()
+    (wt / "docs" / "decisão.md").write_text("# decisão\n", encoding="utf-8")
+    (wt / "docs" / "com espaço 'aspas'.md").write_text("x\n", encoding="utf-8")
+    resumo = delegar.coletar("t01")
+    caminhos = sorted(a["caminho"] for a in resumo["arquivos"])
+    assert caminhos == ["docs/com espaço 'aspas'.md", "docs/decisão.md"]
+    assert all((wt / c).is_file() for c in caminhos)
+    assert all(a["mais"] == 1 for a in resumo["arquivos"])
+
+
+def test_handoff_e_ruido(mundo):
+    # COO-23: o /renovar escreve .handoff.md na raiz da worktree
+    assert delegar._e_ruido(".handoff.md") is True
+    e = _criar(mundo)
+    (Path(e["worktree"]) / ".handoff.md").write_text("nota da renovacao\n", encoding="utf-8")
+    assert delegar.coletar("t01")["arquivos"] == []
+
+
+def _guarda_com_leituras(mundo, monkeypatch, leituras):
+    """Roda a `_Rodada.guarda` de um trabalhador Claude com o `claude.json`
+    devolvendo `leituras` (a ultima se repete)."""
+    _criar(mundo, ia="claude", cargo="conferente")
+    fila = list(leituras)
+
+    def ler():
+        origem = fila.pop(0) if len(fila) > 1 else fila[0]
+        return {"liberado": origem != "ilegivel", "origem": origem, "em": None,
+                "motivo": "claude.json não pôde ser lido: [WinError 5]", "por": "", "texto": ""}
+    monkeypatch.setattr(claude_estado, "ler", ler)
+    estado = delegar.ler_estado("t01")
+    rodada = delegar._Rodada(estado, delegar.ler_config(), ["x"], "p")
+    fio = threading.Thread(target=rodada.guarda, daemon=True)
+    fio.start()
+    return rodada, fio
+
+
+def test_guarda_nao_mata_por_ilegivel_unico(mundo, monkeypatch):
+    # COO-9: um PermissionError passageiro no claude.json virava PROIBIDO e a
+    # guarda matava o trabalhador Claude na hora
+    rodada, fio = _guarda_com_leituras(mundo, monkeypatch, ["ilegivel", "arquivo"])
+    time.sleep(1.0)
+    rodada.fim.set()
+    fio.join(5)
+    assert rodada.motivo_parada == ""
+
+
+def test_guarda_mata_quando_o_ilegivel_dura(mundo, monkeypatch):
+    monkeypatch.setattr(claude_estado, "ILEGIVEL_CONFIRMA_S", 0.3)
+    rodada, fio = _guarda_com_leituras(mundo, monkeypatch, ["ilegivel"])
+    fio.join(10)
+    assert "proibido" in rodada.motivo_parada.lower()
+
+
+def test_fantasma_com_pid_reaproveitado(mundo):
+    # COO-10: a ficha "rodando" com o PID de outro processo (o Windows
+    # reaproveita) nunca fechava, e testar/aplicar/limpar davam "Ocupado"
+    from remoto import orquestrador
+    _criar(mundo)
+    criado = orquestrador.hora_de_criacao(os.getpid())
+    assert criado is not None
+    delegar._mudar_estado("t01", situacao="rodando", pid=os.getpid(),
+                          pid_criado=criado - 3600, inicio="2026-10-01T12:00:00")
+    assert not delegar._rodando(delegar.ler_estado("t01"))
+    assert delegar.reconciliar_fantasmas(minutos=0) == ["t01"]
+    assert delegar.ler_estado("t01")["situacao"] == "parado"
+    delegar.limpar("t01")                                     # nao levanta Ocupado
+
+
+def test_pid_com_a_mesma_hora_de_criacao_segue_rodando(mundo):
+    from remoto import orquestrador
+    _criar(mundo)
+    delegar._mudar_estado("t01", situacao="rodando", pid=os.getpid(),
+                          pid_criado=orquestrador.hora_de_criacao(os.getpid()),
+                          inicio="2026-10-01T18:00:00")
+    assert delegar._rodando(delegar.ler_estado("t01"))
+    assert delegar.reconciliar_fantasmas(minutos=0) == []
+    with pytest.raises(delegar.Ocupado):
+        delegar.limpar("t01")
+
+
+def test_rodando_calado_alem_do_prazo_fecha_qualquer_que_seja_o_pid(mundo):
+    _criar(mundo)
+    delegar._mudar_estado("t01", situacao="rodando", pid=os.getpid(), pid_criado=None,
+                          inicio="2026-10-01T09:00:00")
+    eventos = delegar.pasta_da("t01") / "eventos.jsonl"
+    eventos.write_text("{}\n", encoding="utf-8")
+    prazo = float(delegar.ler_config()["rodar_timeout_s"]) + 600
+    velho = AGORA.timestamp() - prazo - 60
+    os.utime(eventos, (velho, velho))
+    assert delegar.reconciliar_fantasmas(minutos=0) == ["t01"]
+    assert "sem evento" in delegar.ler_estado("t01")["motivo"]
+
+
+def test_preparar_rodada_grava_a_hora_de_criacao(mundo):
+    from remoto import orquestrador
+    _criar(mundo)
+    estado, _ = delegar._preparar_rodada("t01", "rodar", True)
+    assert estado["pid"] == os.getpid()
+    assert abs(estado["pid_criado"] - orquestrador.hora_de_criacao(os.getpid())) < 1
+
+
+def test_alvo_absoluto_dentro_do_repo_libera():
+    # COO-17: todo caminho com ":" era descartado, e a permissao voltava sem
+    # caminho novo (o laco de 11/10)
+    raiz = [Path(r"E:\projetos")]
+    assert delegar._caminhos_do_alvo(r"E:\projetos\remoto\app\sw.js", raizes=raiz) == [
+        "remoto/app/sw.js"]
+    assert delegar._caminhos_do_alvo(r"e:/PROJETOS/remoto/**", raizes=raiz) == ["remoto/**"]
+    assert delegar._caminhos_do_alvo(r"C:\Windows\x", raizes=raiz) == []
+    assert delegar._caminhos_do_alvo(r"E:\projetos-wt\codex-x\a.py", raizes=raiz) == []
+    assert delegar._caminhos_do_alvo(r"E:\projetos\remoto\x.py") == []      # sem raiz: fora
+
+
+def test_permissao_com_alvo_absoluto_entra_nos_permitidos(mundo):
+    e = _criar(mundo)
+    alvo = str(mundo.repo / "remoto" / "app" / "sw.js")
+    novos = delegar._liberar_caminhos(dict(e), alvo + "; " + str(Path(e["worktree"]) / "docs"))
+    assert novos == ["remoto/app/sw.js", "docs"]
+
+
+def test_corrigir_recusado_mantem_testes(mundo):
+    # COO-21: `corrigir` zerava a prova dos testes ANTES das guardas da rodada
+    _criar(mundo)
+    delegar.rodar("t01")
+    prova = {"ok": True, "codigo": 0, "diff_sha": "abc", "resumo": "10 passed"}
+    delegar._mudar_estado("t01", testes=prova)
+    for p in (mundo.home / "sessions").rglob("*.jsonl"):
+        p.unlink()
+    _rollout(mundo.home, 90.0, time.time() + 3600)          # o Codex no teto
+    texto = mundo.tmp / "corr.md"
+    texto.write_text("Faltou o teste.", encoding="utf-8")
+    with pytest.raises(delegar.Recusa):
+        delegar.corrigir("t01", texto)
+    assert delegar.ler_estado("t01")["testes"] == prova
+
+
+def test_corrigir_que_roda_zera_a_prova_antiga(mundo):
+    _criar(mundo)
+    delegar.rodar("t01")
+    delegar._mudar_estado("t01", testes={"ok": True, "diff_sha": "abc"})
+    texto = mundo.tmp / "corr.md"
+    texto.write_text("Faltou o teste.", encoding="utf-8")
+    assert delegar.corrigir("t01", texto)["testes"] is None
+
+
+def test_pedido_de_permissao_sem_diff(mundo):
+    # COO-22: a ficha recem-criada tem "diff": None e o .get("diff", {}) nao cobria
+    _criar(mundo)
+    assert delegar.ler_estado("t01")["diff"] is None
+    (delegar.pasta_da("t01") / "resposta.md").write_text(
+        "Parei: o arquivo está fora dos caminhos permitidos.", encoding="utf-8")
+    assert delegar.pedido_de_permissao("t01") is None
+
+
+def test_ler_eventos_corte_exato(mundo):
+    # COO-25: com o corte caindo logo depois de um \n, a 1a linha (inteira)
+    # era descartada como se viesse pela metade
+    delegar.pasta_da("t01").mkdir(parents=True)
+    linhas = [json.dumps({"n": i, "em": "x", "ev": {"type": "turn.started"}}) + "\n"
+              for i in range(1, 6)]
+    (delegar.pasta_da("t01") / "eventos.jsonl").write_bytes("".join(linhas).encode("utf-8"))
+    tres = sum(len(l.encode("utf-8")) for l in linhas[-3:])
+    lido = delegar.ler_eventos("t01", -1, maximo_bytes=tres)
+    assert len(lido["eventos"]) == 3
+    # e o corte no meio de uma linha continua jogando a metade fora
+    assert len(delegar.ler_eventos("t01", -1, maximo_bytes=tres + 5)["eventos"]) == 3
+
+
+def test_registrar_commit_grava_na_ficha(mundo):
+    _criar(mundo)
+    delegar.registrar_commit("t01", "abc1234", aplicado_por="integrar-t01")
+    e = delegar.ler_estado("t01")
+    assert e["commit"] == "abc1234" and e["aplicado_por"] == "integrar-t01"

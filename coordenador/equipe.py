@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Gerente soberano da equipe descartavel.
+"""Gerente da equipe: so cuida das permissoes dos trabalhadores.
 
-Ele nao conversa com trabalhadores: cria uma worktree, dispara uma sessao e
-deixa o vigia aplicar. Assim app e VS Code continuam clientes do servidor.
+Contratar e trabalho exclusivo do passo da Mesa (`pedidos.MesaPedidos.passo`)
+e a conferencia e a prova automatica do vigia (decisao de 07/10). COO-20
+(auditoria 11/10): `_contratar` e `_conferir_aplicadas` eram codigo morto e sairam.
 """
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from remoto import delegar, orquestrador
 
@@ -15,19 +15,6 @@ INTERVALO_S = 60
 
 def _agora():
     return datetime.now()
-
-
-def _id(item_id: str) -> str:
-    texto = re.sub(r"[^a-z0-9-]", "-", str(item_id).lower()).strip("-")
-    return ("mesa-" + texto)[:40].rstrip("-") or "mesa-tarefa"
-
-
-def _tipo(texto: str) -> str:
-    texto = texto.lower()
-    for nome in ("conferir", "consertar", "investigar", "implementar", "construir"):
-        if nome in texto:
-            return nome
-    return "construir"
 
 
 class GerenteEquipe:
@@ -57,66 +44,6 @@ class GerenteEquipe:
             return bool(ler().get("fila_pausada"))
         except Exception:                                    # noqa: BLE001
             return True
-
-    def _ia(self, ia):
-        """Claude acima do teto (sessao, SEMANA ou "rejected") nao e contratado:
-        o trabalho vai ao Codex. 04/10/2026: com a semana em 100% os
-        trabalhadores Claude eram relancados e caiam na hora."""
-        if ia != "claude":
-            return ia
-        ler = getattr(self.mesa, "ler_uso", None)
-        if ler is None:
-            return ia
-        try:
-            return "codex" if (ler() or {}).get("passou_teto") else ia
-        except Exception:                                    # noqa: BLE001
-            return ia
-
-    def _contratar(self, item):
-        tarefa_id = _id(item.get("id"))
-        if any(t.get("id") == tarefa_id for t in self.despachante.listar()):
-            return
-        titulo = str(item.get("item") or item.get("titulo") or "")
-        cargo = str(item.get("parte") or "integrador").lower()
-        if cargo not in self.despachante.cargos():
-            cargo = "integrador"
-        regra = self.despachante.ler_config().get("regra_ia") or {}
-        ia = self._ia(regra.get(_tipo(titulo), "codex"))
-        pasta = self.despachante.pasta() / tarefa_id
-        pasta.mkdir(parents=True, exist_ok=True)
-        pedido = pasta / "pedido.md"
-        pedido.write_text(titulo, encoding="utf-8")
-        estado = self.despachante.criar(tarefa_id, pedido, ["remoto/**", "coordenador/**", "docs/**"],
-                                        ia=ia, cargo=cargo, titulo=titulo)
-        self.despachante.no_fundo(["rodar", "--id", tarefa_id], tarefa_id)
-        self.evento("equipe_contratou", f"{estado['ia']} {cargo}: {titulo}")
-
-    def _conferir_aplicadas(self):
-        for trabalhador in self.despachante.listar():
-            ident = trabalhador.get("id")
-            if not ident or not trabalhador.get("aplicado") or ident in self.estado["conferidos"]:
-                continue
-            conferencia = _id("conf-" + ident)
-            if not any(t.get("id") == conferencia for t in self.despachante.listar()):
-                pasta = self.despachante.pasta() / conferencia
-                pasta.mkdir(parents=True, exist_ok=True)
-                pedido = pasta / "pedido.md"
-                ia = self._ia("claude")
-                corpo = ("Confira a entrega aplicada " + ident + ". Devolva APROVADO ou "
-                         "DEFEITOS (com a lista) na sua mensagem final; não crie "
-                         "arquivo resposta.md (nem outro) na worktree.")
-                if ia == "codex":
-                    # o Codex nao le o cargo sozinho: vai junto com a tarefa
-                    try:
-                        corpo = self.despachante.prompt_do_cargo("conferente") + "\n\n" + corpo
-                    except Exception:                        # noqa: BLE001
-                        pass
-                pedido.write_text(corpo, encoding="utf-8")
-                self.despachante.criar(conferencia, pedido, ["remoto/**", "coordenador/**", "docs/**"],
-                                       ia=ia, cargo="conferente", titulo="Conferir " + ident)
-                self.despachante.no_fundo(["rodar", "--id", conferencia], conferencia)
-            self.estado["conferidos"][ident] = conferencia
-            self.evento("equipe_conferencia", f"conferente para {ident}")
 
     def _permissoes_pendentes(self, ligado: bool):
         """O gerente so executa a regra automatica quando esta ligado.

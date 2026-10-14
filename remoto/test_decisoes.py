@@ -556,3 +556,31 @@ def test_nao_ha_projeto_fora_da_lista(mundo):
         D.adicionar("zombie", "X", "?", ["a"])
     assert set(D.PROJETOS) == {"geral", "builds", "historias", "publicacao", "metricas",
                                "app-e-bot", "painel-e-vila", "jogo-zombie"}
+
+
+# ================================ auditoria profunda 11/10 (consertos 14/10)
+def test_responder_com_sessao_cp1252(mundo):
+    # COO-16: um docs/sessoes/*.md fora de utf-8 fazia o UnicodeDecodeError sair
+    # DEPOIS de o evento estar gravado (o app dava 500; a 2a resposta duplicava)
+    D.adicionar("builds", "Ferramenta do visual", "Qual ferramenta?",
+                ["godot=Godot 4", "unity=Unity"], id="ferramenta")
+    sessao = mundo.repo / "docs" / "sessoes" / "builds.md"
+    sessao.write_bytes("# Sessão builds\n\nAção à mão.\n".encode("cp1252"))
+    evento = D.responder("ferramenta", "godot", commitar=False)
+    linhas = D.caminho_eventos().read_text(encoding="utf-8").splitlines()
+    assert len(linhas) == 1 and evento["opcao"] == "godot"
+    bruto = sessao.read_bytes()
+    assert "Ação à mão.".encode("cp1252") in bruto        # os bytes dele, intactos
+    assert "Ferramenta do visual".encode("utf-8") in bruto  # e o bloco regenerado
+
+
+def test_responder_com_textos_que_falham_anota_e_nao_levanta(mundo, monkeypatch):
+    D.adicionar("builds", "Ferramenta do visual", "Qual ferramenta?",
+                ["godot=Godot 4", "unity=Unity"], id="ferramenta")
+
+    def quebra(_itens=None):
+        raise PermissionError(13, "README trancado")
+    monkeypatch.setattr(D, "gerar_textos", quebra)
+    evento = D.responder("ferramenta", "unity", commitar=False)
+    assert "textos não regenerados" in evento["nota"]
+    assert len(D.caminho_eventos().read_text(encoding="utf-8").splitlines()) == 1

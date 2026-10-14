@@ -630,8 +630,11 @@ class VigiaTrabalho:
         return "claude"
 
     def _contratar_integrador(self, mem: dict, ident: str, motivo: str) -> str | None:
-        if ident.startswith("integrar-") or "não mudou nada" in motivo or PASSAGEIRA.search(motivo):
-            # nao integra integrador; vazio vira permissao; trava ocupada passa sozinha
+        if (ident.startswith("integrar-") or "não mudou nada" in motivo
+                or motivo.startswith("aplicado na árvore") or PASSAGEIRA.search(motivo)):
+            # nao integra integrador; vazio vira permissao; trava ocupada passa
+            # sozinha; aplicado sem commit (COO-2) ja esta na arvore: um
+            # integrador bateria nos mesmos arquivos sujos
             return None
         feitos = mem.setdefault("integrando", {})
         if ident in feitos:
@@ -741,12 +744,26 @@ class VigiaTrabalho:
                 d = por_id.get(ident)
                 quando = _data((mem[chave][ident] or {}).get("em"))
                 velho = quando is not None and (agora - quando).total_seconds() > OLHO_VALIDADE_S
-                resolvido = d is not None and (d.get("aplicado") or d.get("limpo"))
+                resolvido = d is not None and (d.get("aplicado") or d.get("limpo")
+                                               or d.get("aplicado_por"))
                 sumiu = d is None and lista_ok
                 if resolvido or sumiu or velho:
                     mem[chave].pop(ident, None)
                     if velho and not resolvido and not sumiu and ident not in mem["arquivados"]:
                         mem["arquivados"].append(ident)
+        # COO-18 (auditoria 11/10): `esperando` (e as marcas da arvore suja)
+        # nunca saiam quando a entrega era aplicada ou limpa por fora: as 6
+        # entradas da memoria real eram de fichas resolvidas desde 04-08/10
+        for chave in ("esperando", "sujo_desde", "sujo_avisado"):
+            for ident in list(mem[chave]):
+                d = por_id.get(ident)
+                if d is None:
+                    if lista_ok:
+                        mem[chave].pop(ident, None)
+                    continue
+                if (d.get("aplicado") or d.get("limpo") or d.get("aplicado_por")
+                        or d.get("situacao") != "terminou"):
+                    mem[chave].pop(ident, None)
 
     def _faxina_delegados(self, delegados: list, mem: dict, agora: datetime) -> None:
         """Worktree de delegado encerrado ha mais de 6 h e sem commit proprio
@@ -787,7 +804,20 @@ class VigiaTrabalho:
             if (not callable(abandonar) or not did or did in em_uso or d.get("situacao") != "criado"
                     or criado is None or (agora - criado).total_seconds() < 24 * 3600):
                 continue
-            if commits(d) != 0:
+            # COO-19 (auditoria 11/10): sem olhar `olho`/`arquivados`, o mesmo
+            # "criado antigo" ia ao olho a cada passo (35.262 linhas no log)
+            if did in mem["olho"] or did in mem["arquivados"]:
+                continue
+            a_frente = commits(d)
+            if a_frente is None:
+                # nao sei se tem commit: nao apaga e nao alarma; anota uma vez
+                avisados = mem.setdefault("sem_saber_commit", [])
+                if did not in avisados:
+                    avisados.append(did)
+                    del avisados[:-100]
+                    self.evento("trabalho_faxina", f"{did}: não sei se tem commit")
+                continue
+            if a_frente != 0:
                 self._olho(mem, did, "precisa de olho: criado antigo com mudança não aplicada",
                            integrar=False)
                 continue
@@ -967,6 +997,7 @@ class VigiaTrabalho:
         mem["esperando"].pop(did, None)
         mem["aplicados"][did] = {"commit": commit, "em": _iso(self.relogio()),
                                  "arquivos": arquivos[:20]}
+        self._registrar_commit(d, commit)
         self._novidade(mem, "aplicado", f"entrega {did} aplicada: {commit}")
         try:
             servicos = self.servicos()
@@ -980,6 +1011,21 @@ class VigiaTrabalho:
             self.delegar.limpar(did)
         except Exception as exc:                              # noqa: BLE001
             self.evento("trabalho_limpar", f"{did}: não limpei a worktree ({exc})")
+
+    def _registrar_commit(self, d: dict, commit: str) -> None:
+        """O hash vai para a ficha (e para a original, quando quem aplicou foi
+        o integrador): a Mesa so fecha o pedido com o commit feito (COO-2)."""
+        registrar = getattr(self.delegar, "registrar_commit", None)
+        if not callable(registrar):
+            return
+        did = str(d["id"])
+        try:
+            registrar(did, commit)
+            original, _ = self._original_do_integrador(d)
+            if original and original.get("id") and str(original["id"]) != did:
+                registrar(str(original["id"]), commit, aplicado_por=did)
+        except Exception as exc:                              # noqa: BLE001
+            self.evento("trabalho_commit", f"{did}: não gravei o commit na ficha ({exc})")
 
     def _testar(self, d: dict, mem: dict, arquivos: list[str]) -> dict | None:
         """Os testes da area; None = nao rodou (ja foi para `olho`, ou para
