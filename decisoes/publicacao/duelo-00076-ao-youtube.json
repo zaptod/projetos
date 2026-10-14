@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:47:19",
+      "evento": "2026-10-14T08:47:14",
+      "linha": 179,
+      "nota": "resposta sem pedido de origem: publicacao/duelo-00076-ao-youtube = Levar ao YouTube também (recomendado)",
+      "opcao": "levar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Conserto PUB-2 da auditoria (decisão publicacao/build-so-no-tiktok).",
   "criado": "2026-10-14T03:21:01.198987",
   "depende_de": [],
