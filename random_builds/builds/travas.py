@@ -72,6 +72,14 @@ def trava(nome: str, esperar: float = 0.0):
     """
     seguradas = _seguradas()
     chave = _nome_seguro(nome)
+    if chave.startswith("teste_") and not os.environ.get(
+            "NEURAL_FIGHTS_RUNTIME_DIR"):
+        # SCR-M13 (14/10/2026): 93 de 217 arquivos da pasta REAL de locks
+        # tinham nome de teste. O pytest isola pelo conftest da raiz; o que
+        # ainda escreveria ali e um `python -m unittest` direto, sem a
+        # variavel. Trava de teste no runtime real e erro, nao lixo.
+        raise RuntimeError(f"trava de teste no runtime real: {nome!r} "
+                           "(defina NEURAL_FIGHTS_RUNTIME_DIR)")
     if chave in seguradas:
         # Ja e minha: so conta mais um nivel e devolve. Nao encosta no
         # arquivo, senao o `finally` de dentro soltaria a trava de fora.

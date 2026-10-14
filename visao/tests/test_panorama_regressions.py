@@ -74,7 +74,9 @@ class NaoDerrubaTests(unittest.TestCase):
 
         dados = panorama.resumo()
         self.assertNotIn("erro", dados["inventario"])
-        self.assertEqual(0, dados["inventario"]["videos_prontos"]["historias"])
+        # SCR-P8 (14/10/2026): o lado que nao contou e `None` ("?" na tela),
+        # nunca 0 — estoque zero e "nao consegui contar" eram o mesmo numero
+        self.assertIsNone(dados["inventario"]["videos_prontos"]["historias"])
 
 
 class CincoFamiliasTests(unittest.TestCase):

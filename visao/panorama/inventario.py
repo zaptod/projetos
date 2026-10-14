@@ -9,11 +9,13 @@ from __future__ import annotations
 
 
 def _videos_de_build() -> dict:
+    # CATALOGO QUEBRADO NAO E "0 PRONTOS" (SCR-P8, 14/10/2026): estoque zero
+    # e "nao consegui contar" eram o mesmo numero na Vila e na Auditoria.
     try:
         from builds.publicar import catalogo
         videos = list(catalogo.listar() or [])
-    except Exception:
-        return {"prontos": 0, "erro": True}
+    except Exception as exc:                                   # noqa: BLE001
+        return {"prontos": None, "erro": f"builds: {type(exc).__name__}: {exc}"}
     return {"prontos": len(videos)}
 
 
@@ -21,8 +23,9 @@ def _videos_de_historia() -> dict:
     try:
         from contos.publicar import catalogo
         videos = list(catalogo.resumo() or [])
-    except Exception:
-        return {"prontos": 0}
+    except Exception as exc:                                   # noqa: BLE001
+        return {"prontos": None,
+                "erro": f"historias: {type(exc).__name__}: {exc}"}
     return {"prontos": len(videos)}
 
 
@@ -78,11 +81,17 @@ def _geracoes() -> dict:
 def estoque() -> dict:
     builds = _videos_de_build()
     historias = _videos_de_historia()
+    contagens = (builds.get("prontos"), historias.get("prontos"))
+    erros = [lado["erro"] for lado in (builds, historias) if lado.get("erro")]
+    prontos = {"builds": contagens[0], "historias": contagens[1],
+               # um lado que nao contou deixa o total sem resposta (None):
+               # metade do estoque somada como se fosse tudo seria outra
+               # mentira
+               "total": (None if None in contagens else sum(contagens))}
+    if erros:
+        prontos["erros"] = erros
     return {
-        "videos_prontos": {"builds": builds.get("prontos", 0),
-                           "historias": historias.get("prontos", 0),
-                           "total": builds.get("prontos", 0)
-                           + historias.get("prontos", 0)},
+        "videos_prontos": prontos,
         "historias_por_etapa": _historias_por_etapa(),
         "banco": _banco_do_jogo(),
         **_geracoes(),

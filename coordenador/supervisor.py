@@ -338,7 +338,8 @@ class Supervisor:
                  delegados=None, parar_delegado=None, executar_acao=None, gravar=None, log=None, raiz=RAIZ,
                  cerebro=None, vigia_trabalho=None, em_fundo=None, esteira=None, assembleia=None,
                  gerente_equipe=None, pedidos=None, aplicar_app=None, conversa=None, obsidian=None,
-                 carregar=None, janela=None, dormir=None, pendentes=None):
+                 carregar=None, janela=None, dormir=None, pendentes=None,
+                 vigia_rodadas=None):
         self.servicos = servicos or carregar_servicos()
         self.relogio, self.processos = relogio, processos
         # a janela das postagens (dublavel), a espera pela morte do processo
@@ -392,6 +393,10 @@ class Supervisor:
         self.em_fundo = em_fundo or self._em_fundo
         self.fundos = {}
         self.vigia_em = None
+        # SCR-7 (14/10/2026): a rodada longa calada ha horas e encerrada;
+        # so o `montar()` de producao liga
+        self.vigia_rodadas = vigia_rodadas
+        self.rodadas, self.rodadas_em = [], None
         self.assembleia_em = None
         self.trabalho = {}
         self.reinicio_pedido = set()
@@ -805,6 +810,24 @@ class Supervisor:
             self.trabalho = self.vigia_trabalho.passo()
         self.em_fundo("vigia", passo)
 
+    def vigiar_rodadas(self):
+        """SCR-7: o vigia das rodadas penduradas, em fundo (o `taskkill` e a
+        confirmacao de morte levam segundos), uma olhada por `INTERVALO_S`."""
+        if not self.vigia_rodadas:
+            return
+        from .vigia_rodadas import INTERVALO_S
+        agora = self.relogio()
+        anterior = self.rodadas_em
+        if anterior is not None and (agora - anterior).total_seconds() < INTERVALO_S:
+            return
+        self.rodadas_em = agora
+
+        def passo():
+            feito = self.vigia_rodadas.passo(forcar=True)
+            if feito:
+                self.rodadas = feito
+        self.em_fundo("rodadas", passo)
+
     def gerenciar_equipe(self):
         if not self.gerente_equipe:
             return
@@ -1009,6 +1032,7 @@ class Supervisor:
         self.processar_conversa()
         self.processar_pedidos()
         self.vigiar_trabalho()
+        self.vigiar_rodadas()
         self.gerenciar_equipe()
         self.rodar_esteira()
         self.avancar_assembleia()
@@ -1020,7 +1044,9 @@ class Supervisor:
                 "versao": self._versao(), "servicos": self.estado,
                 "acoes_pc": acoes_pc.catalogo(), "eventos": self.eventos[-100:],
                 "cerebro": {"ligado": bool(self.cerebro)},
-                "trabalho": self.trabalho, "equipe": self.equipe, "esteira": self.ultima_esteira}
+                "trabalho": self.trabalho, "equipe": self.equipe, "esteira": self.ultima_esteira,
+                # SCR-7: o que o vigia das rodadas fez na ultima olhada com novidade
+                "rodadas": self.rodadas}
 
     @staticmethod
     def _versao():
@@ -1062,8 +1088,12 @@ class Supervisor:
     def rodar(self, parar=lambda: False):
         trava = TravaUnica()
         if not trava.adquirir():
+            # SCR-6 (14/10/2026): "ja ha um coordenador no ar" nao e falha.
+            # Com 1, o RestartOnFailure (PT1M x999) da tarefa relancava a
+            # cada minuto enquanto o outro (aberto pela linha de comando)
+            # vivesse.
             self._avisar_trava_ocupada(trava.dono)
-            return 1
+            return 0
         try:
             while not parar():
                 if self.pode_sair():

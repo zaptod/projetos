@@ -110,7 +110,10 @@ class RegistroUnicoTests(unittest.TestCase):
         fonte = (RAIZ / "ferramentas" / "postar.py").read_text(encoding="utf-8")
         trecho = fonte[fonte.index("def postar_historia("):]
         trecho = trecho[:trecho.index("\ndef _visibilidade_das_historias")]
-        self.assertIn('"visibilidade": visibilidade', trecho)
+        # desde 14/10 (SCR-P7), a usada de fato; o comportamento esta em
+        # historias/tests/test_visibilidade_do_ledger_regressions.py
+        self.assertIn('"visibilidade": _visibilidade_usada(provas, visibilidade)',
+                      trecho)
         self.assertNotIn("publicar_youtube(alvo, None)", trecho)
 
 

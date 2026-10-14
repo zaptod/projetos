@@ -233,13 +233,10 @@ def _redirecionar_saida(argv: list) -> tuple:
     E a saida continua em ARQUIVO, nunca no console do Agendador: escrever
     num console que ninguem esvazia trava o `print` (08/09/2026).
     """
-    if "--saida" not in argv:
-        return argv, None
-    i = argv.index("--saida")
-    if i + 1 >= len(argv):
-        return argv[:i], None
-    arquivo = open(argv[i + 1], "a", encoding="utf-8", buffering=1)
-    return argv[:i] + argv[i + 2:], arquivo
+    # A regra mora em `builds.saida_da_tarefa` (SCR-12, 14/10/2026): cria a
+    # pasta do log e, com `--saida` sem arquivo, sai com 2 e avisa no diario.
+    from builds import saida_da_tarefa
+    return saida_da_tarefa.abrir(argv, "builds")
 
 
 def main() -> None:

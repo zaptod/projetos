@@ -434,7 +434,6 @@
         ],
         "_comment_modelo": "null = nao troca de modelo. Os image-to-video do menu (Kling, Runway, Veo, Seedance, Sora) sao PAGOS e estao fora da lista branca. Consequencia medida: com Real Motion o anexo funciona mecanicamente mas a imagem nao prende a identidade — ver a secao do README sobre isso.",
         "modelo": null,
-        "max_anexos": 1,
         "folha_unica": false,
         "_comment_folha": "Quem junta e o Editor Pro do PicassoIA, que devolve o personagem SEGURANDO a arma; o Digen recebe essa imagem unica. O editor aceita as DUAS imagens no mesmo campo, uma apos a outra (medido no DOM em 27/08/2026: ficam 'Remover imagem 1' e 'Remover imagem 2') — entao a juncao manda personagem e arma limpos, sem folha colada. O que fazia parecer que a segunda substituia a primeira era o detector de anexo procurando miniatura `blob:`, que este site nao cria."
     },

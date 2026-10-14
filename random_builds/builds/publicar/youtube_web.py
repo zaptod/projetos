@@ -1271,6 +1271,9 @@ def publicar(video, *, visibilidade: str | None = None,
         "qualidade_no_clique": "", "falta_texto": "", "texto_da_barra": "",
         "reconhecido": False, "upload_s": None, "confirmacao_extra": False,
         "quando": _agora(),
+        # A pedida e a aplicada (decisao `visibilidade-no-ledger`, 14/10):
+        # `visibilidade` so ganha valor quando a opcao e clicada na tela.
+        "visibilidade_pedida": visibilidade, "visibilidade": "",
     })
 
     # A Vila mostra o que esta acontecendo lendo o diario, e ate 01/09/2026
@@ -1435,13 +1438,16 @@ def publicar(video, *, visibilidade: str | None = None,
                     "aberta para voce terminar na mao. Rode "
                     "`python -m builds.publicar.youtube_web --sondar` para eu "
                     "ajustar os seletores da tela de agendamento.")
+            laudo["visibilidade"] = "agendado"
         else:
             escolha = _primeiro(page, VISIBILIDADE[visibilidade], timeout=20.0)
             if escolha is None:
                 passo(f"nao achei a opcao '{visibilidade}'; o video fica como "
                       "o Studio deixou.")
+                laudo["visibilidade"] = "nao_escolhida"
             else:
                 escolha.click()
+                laudo["visibilidade"] = visibilidade
                 passo(f"visibilidade: {visibilidade}.")
 
         if not postar:

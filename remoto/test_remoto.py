@@ -689,8 +689,9 @@ class TarefaDoBotTests(unittest.TestCase):
             fonte = (Path(__file__).resolve().parent / nome).read_text(
                 encoding="utf-8")
             bloco = fonte[fonte.index('if __name__ == "__main__":'):]
-            self.assertIn('"--saida"', bloco, nome)
-            self.assertIn('open(argumentos[i + 1], "a"', bloco, nome)
+            # desde 14/10 (SCR-12) a regra e a unica de
+            # `builds.saida_da_tarefa` (o modo "a" e testado la)
+            self.assertIn("saida_da_tarefa.abrir(sys.argv", bloco, nome)
             self.assertIn("sys.stdout = sys.stderr = saida", bloco, nome)
         self.assertIsNotNone(importlib.util.find_spec("remoto.api_http"))
 
@@ -715,11 +716,48 @@ class TarefaDoBotTests(unittest.TestCase):
              tarefa.escrever_lancador) = reais
 
         self.addCleanup(restaurar)
-        self.assertTrue(tarefa.instalar()["ok"])
+        # desde 14/10 (SCR-5) so cria a tarefa com `forcar`
+        self.assertTrue(tarefa.instalar(forcar=True)["ok"])
         (args,) = chamadas
         acao = args[args.index("/TR") + 1]
         self.assertIn("wscript.exe //B //Nologo", acao)
         self.assertTrue(acao.endswith(f'"{Path("C:/r/bot.cmd")}"'))
+
+    def test_instalar_nao_recria_tarefa_do_bot(self):
+        """SCR-5 (14/10/2026): o bot e do coordenador desde 13/10 (b1ef6f7)
+        e a tarefa dele esta desligada de proposito; o `/Create /F` a
+        reabilitaria. Sem `forcar`, so o `.cmd` e regravado."""
+        from remoto import tarefa
+        chamadas, escritos = [], []
+        with mock.patch.object(tarefa, "_schtasks",
+                               side_effect=lambda a: chamadas.append(a)), \
+                mock.patch.object(tarefa, "escrever_lancador",
+                                  side_effect=lambda python=None: escritos.append(1)
+                                  or Path("C:/r/bot.cmd")):
+            ficha = tarefa.instalar()
+        self.assertEqual([], chamadas)
+        self.assertEqual([1], escritos)
+        self.assertTrue(ficha["ok"])
+        self.assertFalse(ficha["tarefa_criada"])
+
+    def test_schtasks_decodifica_oem(self):
+        """SCR-5: com `text=True` sob `-X utf8` o "Ê" de "ÊXITO" (cp850)
+        derrubava a thread leitora e a mensagem sumia."""
+        from remoto import tarefa
+        bruto = "ÊXITO".encode("oem", "replace")
+        proc = type("P", (), {"returncode": 0, "stdout": bruto, "stderr": b""})()
+        with mock.patch.object(tarefa.subprocess, "run", return_value=proc):
+            saida = tarefa._schtasks(["/Query"])
+        self.assertIn("XITO", saida.stdout)
+
+    def test_lancador_do_bot_sem_cr_cr_lf(self):
+        """SCR-11: `write_text` com CRLF gravava CR CR LF no `bot.cmd`."""
+        import tempfile
+        from remoto import tarefa
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(tarefa, "RAIZ", Path(tmp)):
+            texto = tarefa.escrever_lancador().read_bytes()
+        self.assertNotIn(b"\r\r\n", texto)
 
 
 class VigiaDoTailnetNoBotTests(BaseTemp):
@@ -815,9 +853,28 @@ class AgendadorNoRelatorioTests(unittest.TestCase):
         for nome in self._gerar():
             self.assertIn(nome, pedidas)
         self.assertEqual("NeuralFights_gerar_01", self._gerar()[0])
-        # 2 da criacao + 10 da postagem + 5 da geracao + bot + app
-        esperado = 2 + len(relatorios.grade.HORAS) + 5 + 2
+        # 2 da criacao + 10 da postagem + 5 da geracao + o coordenador (bot,
+        # app e Vila sao conferidas como DESLIGADAS desde 14/10, SCR-P10)
+        esperado = 2 + len(relatorios.grade.HORAS) + 5 + 1
         self.assertEqual([f"  ✓ {esperado} tarefas ativas e confiáveis"], linhas)
+
+    def test_postar_desligada_acende(self):
+        """SCR-P10: um `postar_17` desligado passava como ✓."""
+        from builds import tarefas_windows
+
+        def conferir(nome):
+            estado = "Disabled" if nome == "NeuralFights_postar_17" else "Ready"
+            if nome in ("NeuralFights_bot_telegram", "NeuralFights_app_celular",
+                        "NeuralFights_vila_flutuante"):
+                estado = "Disabled"
+            return {"tarefa": nome, "confiavel": True, "estado": estado,
+                    "ligada": estado != "Disabled"}
+        self._rodar()
+        with mock.patch.object(tarefas_windows, "conferir", conferir):
+            linhas = relatorios._linhas_do_agendador()
+        self.assertEqual(1, len(linhas))
+        self.assertIn("1 tarefa(s) desligadas", linhas[0])
+        self.assertIn("NeuralFights_postar_17", linhas[0])
 
     def test_tarefa_de_geracao_que_sumiu_acende(self):
         todas, _ = self._rodar()

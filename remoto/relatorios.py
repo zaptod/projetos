@@ -556,40 +556,32 @@ def _linhas_do_agendador() -> list[str]:
     #
     # LISTA QUE NAO SE LE NAO SOME EM SILENCIO. Sem ela o monitor conferia
     # menos tarefas e dizia "✓" do mesmo jeito.
-    ilegiveis = []
+    #
+    # UMA LISTA SO (SCR-P10, 14/10/2026): `panorama.recursos.
+    # tarefas_esperadas`, a mesma do panorama, com o coordenador e com as
+    # tarefas desligadas de proposito (bot, app e Vila, que passaram ao
+    # coordenador em 13/10); a regra e `tarefas_windows.julgar`, que tambem
+    # ve tarefa DESLIGADA (antes um `postar_17` desligado passava como ✓).
+    ilegiveis: list = []
     try:
-        from contos.pipeline import agenda
-        horas_de_criacao = list(agenda.carregar()["horas"])
+        from panorama.recursos import tarefas_esperadas
+        esperadas = tarefas_esperadas(ilegiveis)
     except Exception:                                          # noqa: BLE001
-        horas_de_criacao = []
-        ilegiveis.append("da criação das histórias")
-    try:
-        from builds.pipeline import noite, tarefas_noite
-        geracao = noite.carregar()
-        tarefas_da_geracao = ([tarefas_noite.nome_da_tarefa(h)
-                               for h in geracao["horas"]]
-                              if geracao.get("ativo", True) else [])
-    except Exception:                                          # noqa: BLE001
-        tarefas_da_geracao = []
-        ilegiveis.append("da geração noturna")
-    nomes = ([f"Historias_auto_{h:02d}" for h in horas_de_criacao]
-             + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
-             + tarefas_da_geracao
-             + ["NeuralFights_bot_telegram", "NeuralFights_app_celular"])
-    fracas, sumidas = [], []
-    for nome in nomes:
-        ficha = tarefas_windows.conferir(nome)
-        if not ficha:
-            sumidas.append(nome)
-        elif not ficha.get("confiavel"):
-            fracas.append(nome)
+        return ["  (não consegui montar a lista das tarefas)"]
+    julgado = tarefas_windows.julgar(esperadas)
+    nomes = [n for n, quer in esperadas.items() if quer == "ligada"]
+    sumidas, fracas = julgado["faltando"], julgado["fracas"]
+    if julgado["sem_leitura"]:
+        ilegiveis.append(f"({len(julgado['sem_leitura'])} sem leitura no "
+                         "Agendador)")
     saida = []
     if sumidas:
         saida.append(f"  ❗ {len(sumidas)} tarefa(s) não existem: "
                      + ", ".join(sumidas[:3]))
     if fracas:
-        saida.append(f"  ⚠ {len(fracas)} tarefa(s) somem na bateria ou "
-                     "perdem horário: " + ", ".join(fracas[:3]))
+        saida.append(f"  ⚠ {len(fracas)} tarefa(s) desligadas, ligadas "
+                     "sem dever ou que somem na bateria: "
+                     + ", ".join(fracas[:3]))
     if not saida:
         saida.append(f"  ✓ {len(nomes)} tarefas ativas e confiáveis")
     for qual in ilegiveis:

@@ -10,6 +10,24 @@ from __future__ import annotations
 from builds import atividade
 
 
+def diario_ilegivel() -> str:
+    """O motivo de o diario (`atividade.jsonl`) NAO poder ser lido, ou "".
+
+    SCR-P3 (14/10/2026): com o diario ausente ou trancado, `recentes` e
+    `estado_das_fabricas` devolviam vazio, e as telas diziam "0 erros, tudo
+    ocioso" — igual a um dia calmo.
+    """
+    try:
+        caminho = atividade._arquivo()
+        if not caminho.is_file():
+            return f"o diário não existe ({caminho})"
+        with open(caminho, "rb"):
+            pass
+    except OSError as exc:
+        return f"diário ilegível ({type(exc).__name__}: {exc})"[:200]
+    return ""
+
+
 def _erros_recentes(quantos: int = 12) -> list:
     """Os ultimos eventos de erro do diario, do mais novo para o mais velho."""
     try:
@@ -42,28 +60,16 @@ def _ledger() -> dict:
         return {}
 
 
-def _alvos_do_jogo() -> dict:
-    """A ultima avaliacao de qualidade de luta, se ela ja foi rodada.
-
-    So LE o relatorio salvo. Rodar o corpus custa minutos de simulacao e nao
-    pode acontecer porque alguem abriu uma tela.
-    """
-    try:
-        import json
-        from pathlib import Path
-        from neural_fights.data import database
-        caminho = Path(database.RUNTIME_DIR) / "relatorio_qualidade.json"
-        if not caminho.is_file():
-            return {}
-        with open(caminho, encoding="utf-8-sig") as fh:
-            dados = json.load(fh)
-        return {"quando": dados.get("quando", ""),
-                "reprovados": len(dados.get("reprovados") or [])}
-    except Exception:
-        return {}
+# `qualidade_das_lutas` SAIU em 14/10/2026 (SCR-P9): lia o
+# relatorio de qualidade das lutas no runtime, que nenhum codigo escreve, e mostraria "nunca
+# avaliado" para sempre. Nenhuma tela lia o campo. Volta junto com um
+# escritor de verdade (o `neural_fights/tools/qualidade_luta.py`).
 
 
 def problemas() -> dict:
+    motivo = diario_ilegivel()
+    if motivo:
+        return {"erro": motivo}
     erros = _erros_recentes()
     por_fabrica: dict[str, int] = {}
     for erro in erros:
@@ -74,5 +80,4 @@ def problemas() -> dict:
         "erros_por_fabrica": por_fabrica,
         "total_erros": len(erros),
         "ledger": _ledger(),
-        "qualidade_das_lutas": _alvos_do_jogo(),
     }

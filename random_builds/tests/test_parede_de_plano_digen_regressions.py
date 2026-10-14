@@ -33,7 +33,6 @@ import contextlib
 import inspect
 import os
 import unittest
-from pathlib import Path
 from unittest import mock
 
 import pytest

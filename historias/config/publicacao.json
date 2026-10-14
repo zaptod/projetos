@@ -30,8 +30,7 @@
         "modo": "navegador"
     },
     "um_clique": {
-        "_comment": "O botao Publicar serie do painel. YouTube sobe TODAS as partes agendadas; o TikTok POSTA de verdade (sem parada de seguranca - decisao de 31/08), uma parte por clique, porque nao ha agendamento na automacao e despejar a serie de uma vez mata a sequencia.",
-        "tiktok": true,
+        "_comment": "O botao Publicar serie do painel. YouTube sobe TODAS as partes agendadas; o TikTok POSTA de verdade (sem parada de seguranca - decisao de 31/08), uma parte por clique, porque nao ha agendamento na automacao e despejar a serie de uma vez mata a sequencia. (A chave `tiktok`: true saiu em 14/10/2026: nenhum codigo a lia.)",
         "tiktok_partes_por_clique": 1
     }
 }

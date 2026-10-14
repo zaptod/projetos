@@ -24,6 +24,13 @@ from pathlib import Path
 
 
 def runtime_dir() -> Path:
+    # O runtime DESCARTAVEL dos testes vale aqui tambem (SCR-9, 14/10/2026):
+    # medido, com `NEURAL_FIGHTS_RUNTIME_DIR` apontado para uma pasta de
+    # teste isto continuava dando o LOCALAPPDATA real — o proximo teste sem
+    # patch gravaria em producao. Mesma regra de `neural_fights.data.database`.
+    isolado = os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR")
+    if isolado:
+        return Path(os.path.abspath(os.path.expanduser(isolado)))
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     return Path(base) / "neural-fights"
 

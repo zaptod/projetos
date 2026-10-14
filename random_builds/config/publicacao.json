@@ -57,8 +57,7 @@
     "modo": "navegador"
   },
   "tiktok": {
-    "postar_automatico": false,
-    "_comment_postar": "false = o painel sobe o arquivo, escreve a legenda e PARA com a janela aberta para você conferir e clicar em Publicar. true = clica sozinho (o TikTok não tem API aberta de post; isso é automação de navegador na SUA conta e pode quebrar quando o site mudar).",
+    "_comment_postar": "Sem chave de postar automatico desde 14/10/2026 (decisao publicacao/tiktok-postar-automatico): a grade posta sempre (postar=True explicito) e o botao do painel sobe o arquivo, escreve a legenda e PARA para voce clicar. O TikTok nao tem API aberta de post; isso e automacao de navegador na SUA conta e pode quebrar quando o site mudar.",
     "url_upload": "https://www.tiktok.com/tiktokstudio/upload"
   },
   "_porque_descartados": "Videos tirados de circulacao DE PROPOSITO, com o motivo. Nada e apagado: o mp4 fica na pasta e tirar a linha daqui devolve o video ao catalogo (painel, fila e `main.py publicar`). A chave e `<fonte_id>:<origem>` e vale para os dois perfis e as duas variantes.",

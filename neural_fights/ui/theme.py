@@ -1,6 +1,5 @@
 """Tema visual compartilhado do launcher Neural Fights."""
 
-import math
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageTk
 

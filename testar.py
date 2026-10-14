@@ -55,7 +55,12 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # personagens.json, live.sqlite3). Rodada sem isolamento, ela mexeria no
 # banco de verdade do jogo. O CI ja resolve isso apontando o runtime para
 # uma pasta descartavel; aqui e a mesma receita, com as mesmas variaveis.
-PASTA_DESCARTAVEL = Path(tempfile.gettempdir()) / "neural-fights-testar"
+# No E: quando existe (SCR-10, 14/10/2026): o C: deste PC vive cheio, e o
+# temporario padrao e no C:.
+_TEMP_DO_E = Path(r"E:\tmp_pytest")
+PASTA_DESCARTAVEL = ((_TEMP_DO_E if _TEMP_DO_E.is_dir()
+                      else Path(tempfile.gettempdir()))
+                     / "neural-fights-testar")
 AMBIENTE_ISOLADO = {
     "NEURAL_FIGHTS_RUNTIME_DIR": str(PASTA_DESCARTAVEL),
     # pygame sem tela nem placa de som: o smoke roda em maquina sem monitor
@@ -65,50 +70,52 @@ AMBIENTE_ISOLADO = {
     "PYTHONUTF8": "1",
 }
 
+def _pytest(pasta: str) -> list:
+    """O comando de uma suite: PYTEST, e nao `unittest discover` (SCR-2).
+
+    Ate 14/10/2026 era tudo `unittest discover`, que nao coleta FUNCAO de
+    teste nem carrega `conftest.py`: os testes do app, do delegar e do
+    orquestrador (funcoes pytest) e o `coordenador/`, a `esteira_sprites/` e
+    o `palco/testes/` inteiros nunca entravam no "TUDO VERDE". O pytest
+    roda os `unittest.TestCase` do mesmo jeito.
+    """
+    return [PY, "-X", "utf8", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+            pasta]
+
+
 # (nome, pasta, comando). A ordem é do mais barato para o mais caro: quem
-# roda isto quer o primeiro erro rápido.
+# roda isto quer o primeiro erro rápido. Toda pasta com `test_*.py` fora de
+# `IGNORAR` tem uma suíte aqui — `tests/test_testar_cobre_tudo_regressions.py`
+# cobra isso (um teste novo numa pasta nova nascia invisível).
 SUITES = (
-    ("mimetizar", RAIZ / "mimetizar",
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
-      "-p", "test_*.py"]),
-    ("random_builds", RAIZ / "random_builds",
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
-      "-p", "test_*.py"]),
-    ("historias", RAIZ / "historias",
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
-      "-p", "test_*.py"]),
-    # `discover` e nao o modulo pelo nome: nomear um arquivo so faz com que
+    ("mimetizar", RAIZ / "mimetizar", _pytest("tests")),
+    ("random_builds", RAIZ / "random_builds", _pytest("tests")),
+    ("historias", RAIZ / "historias", _pytest("tests")),
+    # A pasta, e nao o modulo pelo nome: nomear um arquivo so faz com que
     # todo teste novo ao lado dele nasca invisivel. Aconteceu em 11/09/2026 —
     # cinco testes entraram, o total do repositorio nao mexeu, e o unico
     # sinal foi a conta nao bater.
-    ("remoto (bot)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "remoto",
-      "-t", ".", "-p", "test_*.py"]),
-    # As fichas das IAs (Vila das IAs, fase 1, 29/09/2026): schema com o
-    # caso ZERO, o catalogo de textos com dubles e o protocolo por arquivos
-    # da sessao guiada. Mesmo `discover` dos vizinhos.
-    ("ias (fichas)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "ias",
-      "-t", ".", "-p", "test_*.py"]),
-    # A `vila/` (motor em pixel e a Oficina dela) foi aposentada em
-    # 28/09/2026 por decisao do Adrian; a Oficina de sprites nova mora no
-    # painel e os testes dela (`painel/test_oficina_sprites.py`) entram no
-    # `discover` do painel logo abaixo.
-    # `discover` pelo mesmo motivo do remoto: `test_flutuante` (a janela
-    # flutuante, 17/09/2026) nasceria invisivel com o modulo pelo nome.
-    ("painel (novo)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "painel",
-      "-t", ".", "-p", "test_*.py"]),
-    ("panorama (metricas)", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "visao/tests",
-      "-p", "test_*.py"]),
-    # A maior suite do repositorio, e a que ninguem rodava aqui: `testar.py`
-    # cobria tres projetos e o CI cobria so este, em conjuntos DISJUNTOS.
-    # Nenhum comando rodava tudo. Vem por ultimo por ser a mais cara.
-    ("neural_fights", RAIZ,
-     [PY, "-X", "utf8", "-m", "unittest", "discover", "-s", "tests",
-      "-p", "test_*.py"]),
+    ("remoto (bot)", RAIZ, _pytest("remoto")),
+    # As fichas das IAs (Vila das IAs, fase 1, 29/09/2026).
+    ("ias (fichas)", RAIZ, _pytest("ias")),
+    # A `vila/` foi aposentada em 28/09/2026; a Oficina de sprites nova mora
+    # no painel (`painel/test_oficina_sprites.py`) e entra aqui.
+    ("painel (novo)", RAIZ, _pytest("painel")),
+    ("panorama (metricas)", RAIZ, _pytest("visao/tests")),
+    # Nunca tinham entrado (SCR-2, 14/10/2026).
+    ("coordenador", RAIZ, _pytest("coordenador")),
+    ("esteira de sprites", RAIZ, _pytest("esteira_sprites")),
+    ("palco", RAIZ, _pytest("palco/testes")),
+    ("ferramentas", RAIZ, _pytest("ferramentas")),
+    # A maior suite do repositorio. Vem por ultimo por ser a mais cara.
+    ("neural_fights", RAIZ, _pytest("tests")),
 )
+
+# Pastas com `test_*.py` que NAO sao suite, com o motivo.
+IGNORAR_NO_TESTAR = {
+    "neural_fights": "testes do motor moram em `tests/` (os 2 avulsos sao "
+                     "do pacote e rodam la)",
+}
 SMOKE = ("painel (páginas)", RAIZ, [PY, "-X", "utf8", "-m", "painel",
                                        "--smoke"])
 
@@ -132,10 +139,14 @@ def _rodar(nome: str, cwd: Path, comando: list, tempo: int = 900) -> dict:
         return {"nome": nome, "ok": False, "resumo": f"não rodou: {exc}",
                 "segundos": time.monotonic() - inicio, "saida": ""}
     saida = (proc.stdout or "") + (proc.stderr or "")
-    # `unittest` escreve o placar no stderr; o número de testes está nele.
-    achado = re.search(r"^Ran (\d+) test", saida, re.M)
+    # O placar: `N passed` do pytest (desde 14/10, SCR-2) ou o `Ran N` do
+    # unittest.
+    achado = (re.search(r"(\d+) passed", saida)
+              or re.search(r"^Ran (\d+) test", saida, re.M))
     quantos = int(achado.group(1)) if achado else 0
-    falhas = re.findall(r"^(?:FAIL|ERROR): (\S+)", saida, re.M)
+    falhas = (re.findall(r"^FAILED (\S+)", saida, re.M)
+              + re.findall(r"^ERROR (\S+)", saida, re.M)
+              + re.findall(r"^(?:FAIL|ERROR): (\S+)", saida, re.M))
     ok = proc.returncode == 0
     resumo = (f"{quantos} testes" if quantos else "ok") if ok else (
         f"{len(falhas)} falha(s)" if falhas else
@@ -160,26 +171,39 @@ def ferramentas() -> dict:
 #
 # (Escrever este comentario introduziu o mesmo byte, e a propria checagem
 #  acusou. E o melhor argumento possivel a favor dela.)
-EXTENSOES_VIGIADAS = ("*.py", "*.bat")
+EXTENSOES_VIGIADAS = ("*.py", "*.bat", "*.cmd")
+# Pastas da raiz que nao sao fonte (SCR-10): saida, perfis de navegador,
+# copias de worktree e dependencias.
+IGNORAR = {"__pycache__", ".git", ".claude", ".venv", "venv", "node_modules",
+           "outputs", ".browser_profile", ".pytest_cache", ".ruff_cache",
+           "build", "dist", "videos_onda8"}
 
 
-def integridade() -> dict:
-    """Byte de controle no fonte — o defeito que não aparece em teste nenhum."""
+def _ignorado(arquivo: Path, raiz: Path | None = None) -> bool:
+    try:
+        partes = arquivo.relative_to(raiz or RAIZ).parts
+    except ValueError:
+        partes = arquivo.parts
+    return any(p in IGNORAR for p in partes)
+
+
+def integridade(raiz: Path | None = None) -> dict:
+    """Byte de controle no fonte — o defeito que não aparece em teste nenhum.
+
+    Desde 14/10/2026 (SCR-10) varre TODAS as pastas da raiz (menos
+    `IGNORAR`) e tambem os `.cmd`: `coordenador/`, `ias/` e `palco/` ficavam
+    de fora, e um byte de controle num `.cmd` passava sem ser visto.
+    """
+    raiz = Path(raiz) if raiz is not None else RAIZ
     permitidos = {9, 10, 13}
     sujos = []
     alvos = []
-    for projeto in (RAIZ / "random_builds", RAIZ / "historias",
-                    RAIZ / "mimetizar", RAIZ / "remoto", RAIZ / "painel",
-                    RAIZ / "visao", RAIZ / "ferramentas"):
-        if projeto.is_dir():
-            for padrao in EXTENSOES_VIGIADAS:
-                alvos += list(projeto.rglob(padrao))
-    # Os lancadores moram na raiz e sao justamente onde o defeito bateu.
-    alvos += list(RAIZ.glob("*.bat")) + list(RAIZ.glob("*.py"))
+    for padrao in EXTENSOES_VIGIADAS:
+        alvos += [a for a in raiz.rglob(padrao) if not _ignorado(a, raiz)]
 
     for _ in (1,):
         for arquivo in alvos:
-            if "__pycache__" in str(arquivo):
+            if "__pycache__" in str(arquivo) or not arquivo.is_file():
                 continue
             bruto = arquivo.read_bytes()
             if any(b < 32 and b not in permitidos for b in bruto):

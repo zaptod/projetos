@@ -131,6 +131,17 @@ def chave_da_noite(agora, janela: dict | None) -> str:
 MINUTO_PADRAO = 20
 
 
+# OS PADROES SAO OS DO ARQUIVO (SCR-PT, 14/10/2026). Cada leitor tinha o
+# seu: `reparos_por_rodada` valia 6 num lugar e 2 noutro, e
+# `minutos_minimos`/`minutos_por_historia`/`passos_por_rodada` caiam em
+# 90/240/1 contra 30/150/12 do `agenda.json` — apagar a chave mudava muito o
+# comportamento, sem aviso. Um valor so, igual ao do config.
+PADRAO_REPAROS_POR_RODADA = 6
+PADRAO_MINUTOS_MINIMOS = 30
+PADRAO_MINUTOS_POR_HISTORIA = 150
+PADRAO_PASSOS_POR_RODADA = 12
+
+
 def carregar(caminho: Path | None = None) -> dict:
     """O config, com `horas` (ints) e `minutos` ({hora: minuto}) normalizados.
 
@@ -486,7 +497,8 @@ def planejar(config: dict, agora, *, aprovados=None, barrados=None,
          else len(list(aprovados)))
     if modo == "lote":
         meta = alvo_do_lote(config, agora)
-        reparos = int(config.get("reparos_por_rodada") or 6)
+        reparos = int(config.get("reparos_por_rodada")
+                      or PADRAO_REPAROS_POR_RODADA)
         rotulo = f"lote: {n} publicavel(is) para um alvo de {meta}"
     else:
         meta = piso_de_reposicao(config)
@@ -539,7 +551,17 @@ def _diario(destino: Path, tela=print):
                 fh.write(f"{datetime.now():%H:%M:%S} {texto}\n")
         except OSError:
             pass
+        _pulsar()
     return log
+
+
+def _pulsar() -> None:
+    """Renova o pulso da rodada deste processo (SCR-7). Nunca levanta."""
+    try:
+        from builds import rodada_viva
+        rodada_viva.pulsar()
+    except Exception:                                          # noqa: BLE001
+        pass
 
 
 class _SaidaNoDiario:
@@ -592,6 +614,7 @@ class _SaidaNoDiario:
                         fh.write(f"{datetime.now():%H:%M:%S} {linha}\n")
             except OSError:
                 pass
+            _pulsar()
         return len(texto)
 
     def flush(self) -> None:
@@ -660,7 +683,7 @@ def _registrar_erro(resultado: dict) -> None:
             detalhe = f"{resultado.get('motivo', '')} {resultado.get('erro', '')}"
         alvo = resultado.get("historia_id") or "criacao automatica"
         atividade.registrar("estudio", "erro", f"{alvo}: {detalhe[:400]}",
-                            "historias")
+                            "historias", etapa="rodada")
     except Exception:                                          # noqa: BLE001
         pass
 
@@ -1435,8 +1458,17 @@ def rodar_faixas(*, config: dict | None = None, headless: bool = False,
             servico = _servico_fora_da_rodada(plano, headless, log)
             return _sai({"feito": "nada", "motivo": "ja rodando",
                          "servico_do_dia": servico})
+        # O supervisor das faixas fica CALADO enquanto elas trabalham: o pulso
+        # dele vem do laco (SCR-7), e cada faixa tem a ficha dela.
+        import contextlib
+
+        from builds import rodada_viva
+        ficha_da_rodada = contextlib.ExitStack()
+        ficha_da_rodada.enter_context(rodada_viva.rodada(
+            TRAVA, "historias (supervisor das faixas)"))
         vivos, fim, codigos, lancadas, ocupadas = {}, {}, {}, {}, set()
         while True:
+            _pulsar()
             for gerador in lista:
                 proc = vivos.get(gerador)
                 if proc is not None:
@@ -1477,11 +1509,12 @@ def rodar_faixas(*, config: dict | None = None, headless: bool = False,
             if not vivos:
                 break
             _dormir(vigiar_s)
+        ficha_da_rodada.close()
     if not lancadas:
         return {"feito": "nada", "motivo": "ja rodando"}
     erros = [f"a faixa do {g} saiu com codigo {c}"
              for g, c in codigos.items() if c]
-    log(f"[auto] as faixas terminaram: "
+    log("[auto] as faixas terminaram: "
         + ", ".join(f"{g} {c}" for g, c in codigos.items()) + ".")
     return {"feito": "faixas", "faixas": codigos, "lancadas": lancadas,
             "erros": erros}
@@ -1566,6 +1599,18 @@ def rodar(*, config: dict | None = None, headless: bool = False,
         # bibliotecas de navegador aparece. Ele vai para o diario: num console
         # do Agendador ele TRAVA o processo, e no diario ele vira o unico
         # sinal de que a rodada esta andando.
+        # A FICHA DA RODADA (SCR-7, 14/10/2026): enquanto este processo segura
+        # a trava, `<runtime>/rodadas/<pid>.json` diz quem e, e cada linha do
+        # diario renova o pulso. O vigia do coordenador encerra a rodada que
+        # calou por `rodada_viva.LIMITE_SEM_PULSO_MIN` (a de 12/10 segurou a
+        # trava 31 h calada).
+        import contextlib
+
+        from builds import rodada_viva
+        ficha_da_rodada = contextlib.ExitStack()
+        ficha_da_rodada.enter_context(rodada_viva.rodada(
+            trava_da_faixa(gerador) if gerador else TRAVA,
+            f"historias (faixa {gerador})" if gerador else "historias"))
         anterior_out, anterior_err = sys.stdout, sys.stderr
         sys.stdout = _SaidaNoDiario(destino, anterior_out)
         sys.stderr = _SaidaNoDiario(destino, anterior_err)
@@ -1595,6 +1640,7 @@ def rodar(*, config: dict | None = None, headless: bool = False,
                 raise
         finally:
             sys.stdout, sys.stderr = anterior_out, anterior_err
+            ficha_da_rodada.close()
 
 
 def _emendar(config: dict, plano: dict, headless: bool, log) -> dict:
@@ -1610,7 +1656,8 @@ def _emendar(config: dict, plano: dict, headless: bool, log) -> dict:
     """
     efetivo = plano["config"]
     emendar = bool(plano.get("emendar"))
-    limite = (max(1, int(config.get("passos_por_rodada") or 1))
+    limite = (max(1, int(config.get("passos_por_rodada")
+                         or PADRAO_PASSOS_POR_RODADA))
               if emendar else 1)
     passos, historias, resultado = 0, [], None
     while True:
@@ -1796,7 +1843,7 @@ def revisar_estoque(config: dict, *, headless: bool = False,
     from . import conserto_de_cena as C
 
     janela = config.get("janela_pesada")
-    margem = float(config.get("minutos_minimos") or 90)
+    margem = float(config.get("minutos_minimos") or PADRAO_MINUTOS_MINIMOS)
     ja = {l.get("video_id") for l in serie.publicados() if _publicado(l)}
     pendentes = [v for v in catalogo.listar()
                  if v.perfil == "celular" and v.id not in ja]
@@ -1904,7 +1951,7 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     janela = config.get("janela_pesada")
     if janela:
         sobra = minutos_ate_fechar(_relogio(), janela)
-        if sobra < float(config.get("minutos_minimos") or 90):
+        if sobra < float(config.get("minutos_minimos") or PADRAO_MINUTOS_MINIMOS):
             log(f"[auto] faltam {sobra:.0f} min para a janela fechar. Nao "
                 "comeco trabalho pesado: ele invadiria a hora do silencio.")
             return {"feito": "nada", "motivo": "sem tempo na janela"}
@@ -1960,7 +2007,8 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
     # historia enquanto conserta (`_posse`).
     na_faixa = ({"posse": lambda historia_id: _posse(historia_id, config, log)}
                 if faixa else {})
-    conserto = reparo.rodada(limite=int(config.get("reparos_por_rodada") or 2),
+    conserto = reparo.rodada(limite=int(config.get("reparos_por_rodada")
+                                        or PADRAO_REPAROS_POR_RODADA),
                              headless=headless, log=log, **na_faixa)
     if conserto["barrados"]:
         log(f"[auto] {conserto['consertados']} de {conserto['barrados']} "
@@ -2012,7 +2060,8 @@ def _trabalhar(config: dict, headless: bool, log) -> dict:
         return {"feito": "nada", "motivo": "sem tempo na janela"}
     if janela:
         sobra = minutos_ate_fechar(_relogio(), janela)
-        precisa = float(config.get("minutos_por_historia") or 240)
+        precisa = float(config.get("minutos_por_historia")
+                        or PADRAO_MINUTOS_POR_HISTORIA)
         if sobra < precisa:
             log(f"[auto] faltam {sobra:.0f} min para a janela fechar e uma "
                 f"historia leva ~{precisa:.0f}. Nao comeco outra: ela "
@@ -2334,8 +2383,6 @@ def _retomar_texto(pipeline, historia_id: str, faltam: list,
     """Escreve as partes que faltam e so entao segue para imagem e video."""
     from ..roteiro import gerar as G
     from ..roteiro import roteiro as R
-
-    from ..llm import papeis
 
     config = carregar()
     # A historia continua com QUEM a comecou (o estilo e dele); se ele falhar,

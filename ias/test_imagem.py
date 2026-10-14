@@ -1114,6 +1114,17 @@ class Rodizio(_Base):
 
 
 # ================================================================ disco
+class PadraoDoRodizio(_Base):
+    # (a cota de imagem do Gemini como `limite` e o IAS-1: `test_cota_do_gemini`)
+
+    def test_padrao_do_rodizio_sem_picasso(self):
+        """SCR-PT: com a chave apagada o Picasso (fora da roda desde 06/10)
+        voltava ao rodizio."""
+        from unittest import mock
+        with mock.patch.object(imagem, "_config", return_value={}):
+            self.assertNotIn("picasso", imagem.rodizio_ordem())
+
+
 class AltaProcuraDoGrok(_Base):
     """29/09 17:30 e 17:44: o card "Alta procura" do grok.com no lugar da
     resposta. O cliente agora sai em segundos com `SiteIndisponivel`; aqui, o

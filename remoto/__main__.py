@@ -75,11 +75,13 @@ def main(argv=None) -> int:
     if args.instalar or args.desinstalar:
         from . import tarefa
         r = tarefa.instalar() if args.instalar else tarefa.desinstalar()
-        print(f"[remoto] {r['tarefa']}: {r['mensagem'][:120]}")
+        print(f"[remoto] {r['tarefa']}: {r['mensagem'][:200]}")
         if args.instalar and r["ok"]:
             print(f"[remoto] lancador: {r['lancador']}")
-            print("[remoto] a tarefa bate de 10 em 10 minutos e sobe o bot se "
-                  "ele nao estiver no ar (se cair, ele volta sozinho).")
+            if r.get("tarefa_criada", True):
+                print("[remoto] a tarefa bate de 10 em 10 minutos e sobe o "
+                      "bot se ele nao estiver no ar (se cair, ele volta "
+                      "sozinho).")
         return 0 if r["ok"] else 1
 
     atual = config.carregar()
@@ -238,14 +240,10 @@ def avisar(texto: str, *, chave: str | None = None) -> bool:
 
 if __name__ == "__main__":
     # `--saida ARQUIVO`: o Python abre o log, em vez do `>>` do cmd, que
-    # nega escrita a outro processo (14/09 e 11/10/2026).
-    argumentos = list(sys.argv)
-    saida = None
-    if "--saida" in argumentos:
-        i = argumentos.index("--saida")
-        if i + 1 < len(argumentos):
-            saida = open(argumentos[i + 1], "a", encoding="utf-8", buffering=1)
-            argumentos = argumentos[:i] + argumentos[i + 2:]
+    # nega escrita a outro processo (14/09 e 11/10/2026). A regra e a unica
+    # de `builds.saida_da_tarefa` (SCR-12, 14/10/2026).
+    from builds import saida_da_tarefa
+    argumentos, saida = saida_da_tarefa.abrir(sys.argv, "bot")
     if saida is not None:
         sys.stdout = sys.stderr = saida
     sys.exit(main(argumentos[1:]))

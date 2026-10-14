@@ -113,11 +113,14 @@ class _Placar:
         try:
             from visao import panorama
             resumo = panorama.resumo(forcar=True)
+            saude = resumo.get("saude") or {}
             valor = {
                 "publicados": (resumo.get("desempenho") or {}).get("total"),
                 "prontos": ((resumo.get("inventario") or {})
                             .get("videos_prontos") or {}).get("total"),
-                "trabalhando": len((resumo.get("saude") or {}).get("trabalhando") or []),
+                # familia com `erro` (diario ilegivel, SCR-P3) e "—", nunca 0
+                "trabalhando": (None if saude.get("erro")
+                                else len(saude.get("trabalhando") or [])),
                 "problemas": (resumo.get("qualidade") or {}).get("total_erros"),
             }
         except Exception as exc:                             # noqa: BLE001

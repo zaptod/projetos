@@ -1553,7 +1553,7 @@ def _alcance_do_youtube(ficha: dict, alvo, visibilidade) -> None:
         url = _subir_parte_no_youtube(alvo, visibilidade, provas)
         alcance["url"] = url
         serie.registrar(alvo, url, "youtube", None,
-                        {"por": "postar.py", "visibilidade": visibilidade,
+                        {"por": "postar.py", "visibilidade": _visibilidade_usada(provas, visibilidade),
                          "alcance": True, "prova": provas,
                          "prova_ok": _prova_ok(provas),
                          **_ids_da_parte(provas)})
@@ -1677,7 +1677,7 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     try:
         url = _subir_parte_no_youtube(alvo, visibilidade, provas)
         serie.registrar(alvo, url, "youtube", None,
-                        {"por": "postar.py", "visibilidade": visibilidade,
+                        {"por": "postar.py", "visibilidade": _visibilidade_usada(provas, visibilidade),
                          "prova": provas,
                          "prova_ok": _prova_ok(provas),
                          **_ids_da_parte(provas)})
@@ -1706,7 +1706,7 @@ def postar_historia(*, so_ver: bool = False) -> dict:
     ficha = {"canal": "historias", "feito": bool(url), "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url,
              "parte": alvo.parte, "partes": alvo.partes,
-             "visibilidade": visibilidade, "recusados": recusados}
+             "visibilidade": _visibilidade_usada(provas, visibilidade), "recusados": recusados}
     if divida is not None:
         ficha["youtube_devido"] = divida_quando
     _valvula_da_parte(ficha, alvo)
@@ -1899,7 +1899,7 @@ def subir_so_no_youtube(video_id: str, *, so_ver: bool = False) -> dict:
     url = _subir_parte_no_youtube(alvo, visibilidade, provas)
     serie.registrar(alvo, url, "youtube", None,
                     {"por": "postar.py --so-youtube",
-                     "visibilidade": visibilidade, "prova": provas,
+                     "visibilidade": _visibilidade_usada(provas, visibilidade), "prova": provas,
                      "prova_ok": _prova_ok(provas),
                      **_ids_da_parte(provas)})
     ficha.update({"feito": bool(url), "url": url,
@@ -3001,18 +3001,37 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
 
 
 def _visibilidade_das_historias() -> str:
-    """A visibilidade do config, com `public` como queda — nunca `None`.
+    """A visibilidade PEDIDA pelo config, com `public` como queda — nunca `None`.
 
     `None` funcionava na publicacao (cada backend resolve pelo config), mas
     era veneno no registro: gravava `null` e a linha deixava de responder a
     unica pergunta que ela existe para responder.
+
+    A chave mora em `youtube.visibilidade` (SCR-P7, 14/10/2026): ate aqui
+    lia `visibilidade` na RAIZ do `historias/config/publicacao.json`, que
+    nao existe, e devolvia `public` qualquer que fosse o config. O que vai
+    ao LEDGER e a usada de fato (`_visibilidade_usada`); esta e so o pedido.
     """
     try:
         from contos.publicar.catalogo import carregar_config
-        alvo = (carregar_config() or {}).get("visibilidade")
+        alvo = ((carregar_config() or {}).get("youtube") or {}).get(
+            "visibilidade")
     except Exception:                                          # noqa: BLE001
         alvo = None
     return str(alvo or "public")
+
+
+def _visibilidade_usada(provas, pedida: str) -> str:
+    """A visibilidade que o publicador aplicou (laudos), senao a pedida.
+
+    Decisao `publicacao/visibilidade-no-ledger` (14/10/2026). Nunca levanta:
+    o registro da publicacao vale mais que a precisao deste campo.
+    """
+    try:
+        from builds.publicar.metricas import visibilidade_usada
+        return visibilidade_usada(provas, pedida) or str(pedida or "public")
+    except Exception:                                          # noqa: BLE001
+        return str(pedida or "public")
 
 
 # ------------------------------------------------------------------ builds
@@ -3752,8 +3771,11 @@ def proximo_build(config=None, *, marcar: bool = False):
 # SO DESTA DATA EM DIANTE (a da decisao). Medido no ledger em 14/10/2026,
 # 02:22: 3 builds so no TikTok, nenhum desde 13/10 — o mais novo e o
 # `duelo_00076:duelo:celular` (12/10 16:31); os outros dois sao de antes de
-# 10/09 (`CORTE_DO_TIKTOK`, gordura). Para incluir o de 12/10, mova a data.
-CORTE_DA_DIVIDA_DOS_BUILDS = "2026-10-13"
+# 10/09 (`CORTE_DO_TIKTOK`, gordura). Decisao `publicacao/duelo-00076-ao-
+# youtube` (14/10/2026): levar o de 12/10 tambem — o corte passou para
+# 12/10. Medido no ledger em 14/10 08:5x: corte 13/10 = 0 devidos; corte
+# 12/10 = 1 (o duelo_00076, 12/10 16:31:22).
+CORTE_DA_DIVIDA_DOS_BUILDS = "2026-10-12"
 
 
 def _divida_do_youtube_dos_builds() -> tuple:
@@ -4059,9 +4081,10 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
     # sobreviver a uma excecao levantada depois do clique.
     laudo: dict = {}
     try:
-        # `postar=True` EXPLICITO. O config tem `postar_automatico: false`, que
-        # e o certo para o botao do painel — la a ultima palavra e dele. A
-        # grade automatica nao tem quem clique, entao ela diz o que quer.
+        # `postar=True` EXPLICITO. Sem ele o `tiktok.publicar` para antes de
+        # publicar, que e o certo para o botao do painel — la a ultima palavra
+        # e dele. A grade automatica nao tem quem clique, entao ela diz o que
+        # quer. (A chave `tiktok.postar_automatico` saiu do config em 14/10.)
         estado = _tk.publicar(alvo, postar=True, canal="builds",
                               progresso=lambda t: _linha(f"   {t}"),
                               prova=laudo)
@@ -4089,14 +4112,17 @@ def escrever_lancador() -> Path:
     destino = RAIZ / "postar.cmd"
     saida = RAIZ / "outputs" / "postar.txt"
     saida.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(
-        "@echo off\r\n"
-        "rem Postagem diaria: um video de cada canal.\r\n"
-        "rem Gerado por: python ferramentas/postar.py --instalar\r\n"
-        f'cd /d "{RAIZ}"\r\n'
-        f'"{sys.executable}" -u -X utf8 ferramentas\\postar.py '
-        f'--saida "{saida}" > NUL 2>&1\r\n',
-        encoding="utf-8")
+    # `newline=""` (SCR-11, 14/10/2026): o texto ja vem em CRLF, e o modo
+    # texto do Windows trocava cada \n por \r\n de novo — o `postar.cmd`
+    # ficava com CR CR LF (`cat -A`: ^M^M$).
+    with open(destino, "w", encoding="utf-8", newline="") as fh:
+        fh.write(
+            "@echo off\r\n"
+            "rem Postagem diaria: um video de cada canal.\r\n"
+            "rem Gerado por: python ferramentas/postar.py --instalar\r\n"
+            f'cd /d "{RAIZ}"\r\n'
+            f'"{sys.executable}" -u -X utf8 ferramentas\\postar.py '
+            f'--saida "{saida}" > NUL 2>&1\r\n')
     return destino
 
 
@@ -4120,26 +4146,32 @@ def instalar_grade(horas=None) -> list[dict]:
 
 
 def instalar(hora: str = HORA_PADRAO, *, nome: str | None = None) -> dict:
+    from builds import tarefas_windows
     lancador = escrever_lancador()
-    nome = nome or TAREFA
+    # SEM SUFIXO NUNCA (SCR-4, 14/10/2026): `NeuralFights_postar` e a tarefa
+    # antiga que `instalar_grade` APAGA para nao haver postagem dobrada; o
+    # `--hora` a recriava.
+    nome = nome or nome_da_tarefa(int(str(hora)[:2]))
     # SEM `text=True`: o schtasks escreve na pagina de codigo do console
     # (cp850/cp1252 aqui) e o Python assume UTF-8 — o "Ê" de "ÊXITO" virava
     # `UnicodeDecodeError` dentro da thread leitora do subprocess, no meio de
     # uma instalacao que tinha dado certo. Mesma familia do `-X utf8` que o
     # resto do projeto ja carrega.
+    # A ACAO OCULTA (SCR-4): era o unico instalador sem `wscript //B
+    # oculto.vbs`; reinstalar voltava com 10 janelas pretas por dia.
     proc = subprocess.run(
-        ["schtasks", "/Create", "/TN", nome, "/TR", f'"{lancador}"',
+        ["schtasks", "/Create", "/TN", nome,
+         "/TR", tarefas_windows.acao_oculta(lancador),
          "/SC", "DAILY", "/ST", hora, "/RL", "LIMITED", "/F"],
         capture_output=True, timeout=60, creationflags=NO_WINDOW)
-    saida = (proc.stdout or b"").decode("utf-8", "replace")
-    erro = (proc.stderr or b"").decode("utf-8", "replace")
+    saida = (proc.stdout or b"").decode("oem", "replace")
+    erro = (proc.stderr or b"").decode("oem", "replace")
     ficha = {"tarefa": nome, "hora": hora, "ok": proc.returncode == 0,
              "mensagem": (saida or erro).strip()}
     if ficha["ok"]:
         # Sem isto a postagem diaria herda os padroes do Windows: na bateria
         # ela nem comeca, e um horario perdido nunca volta — que e o oposto
         # de "pelo menos um video novo por dia". Ver builds/tarefas_windows.py.
-        from builds import tarefas_windows
         ajuste = tarefas_windows.endurecer(nome)
         ficha["ajustada"] = ajuste["ok"]
         if not ajuste["ok"]:
@@ -4846,7 +4878,7 @@ def escoar_historias(*, limite: int = 0, so_ver: bool = False) -> dict:
             url = _subir_parte_no_youtube(alvo, visibilidade, provas)
             serie.registrar(alvo, url, "youtube", None,
                             {"por": "postar.py --tudo",
-                             "visibilidade": visibilidade, "prova": provas,
+                             "visibilidade": _visibilidade_usada(provas, visibilidade), "prova": provas,
                              "prova_ok": _prova_ok(provas),
                              **_ids_da_parte(provas)})
             ficha = {"canal": "historias", "feito": True,
@@ -5713,6 +5745,8 @@ def main(argv=None) -> int:
                         help="cria as tarefas da grade no Agendador")
     parser.add_argument("--hora", metavar="HH:MM",
                         help="instala UM horario so, em vez da grade inteira")
+    parser.add_argument("--lancador", action="store_true",
+                        help="so regrava o postar.cmd (nao mexe no Agendador)")
     parser.add_argument("--so", choices=("historias", "builds"),
                         help="posta so de um canal")
     parser.add_argument("--tudo", action="store_true",
@@ -5729,7 +5763,7 @@ def main(argv=None) -> int:
                              "a vistoria (com --ver, so confere)")
     args = parser.parse_args(argv)
 
-    if args.ver or args.instalar:
+    if args.ver or args.instalar or args.lancador:
         return _main(args)          # nao publica: nao espera ninguem
     prazo = ESPERA_PELA_RODADA_ANTERIOR_S
     with _trava_da_rodada(prazo, _tipo_da_chamada(args)) as vez:
@@ -5774,6 +5808,11 @@ def _main(args) -> int:
                + (f" — {r.get('alvo')}" if r.get("alvo") else "")
                + (f" ({r['motivo']})" if r.get("motivo") else ""))
         return 0 if r["feito"] or not r["fila"] else 1
+
+    if args.lancador:
+        # SCR-4/SCR-11: regravar o .cmd (CRLF certo) sem recriar as tarefas
+        _linha(f"[postar] lancador regravado: {escrever_lancador()}")
+        return 0
 
     if args.instalar:
         fichas = ([instalar(args.hora)] if args.hora
@@ -6049,13 +6088,10 @@ def _main(args) -> int:
 
 
 if __name__ == "__main__":
-    argumentos = list(sys.argv)
-    saida = None
-    if "--saida" in argumentos:
-        i = argumentos.index("--saida")
-        if i + 1 < len(argumentos):
-            saida = open(argumentos[i + 1], "a", encoding="utf-8", buffering=1)
-            argumentos = argumentos[:i] + argumentos[i + 2:]
+    # `--saida ARQUIVO` pela regra unica (`builds.saida_da_tarefa`, SCR-12):
+    # pasta do log criada; `--saida` sem arquivo sai 2 e avisa no diario.
+    from builds import saida_da_tarefa
+    argumentos, saida = saida_da_tarefa.abrir(sys.argv, "publicacao")
     if saida is not None:
         sys.stdout = sys.stderr = _SaidaDatada(saida)
     raise SystemExit(main(argumentos[1:]))

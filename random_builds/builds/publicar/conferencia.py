@@ -600,7 +600,8 @@ def _avisar_sinais(canal: str, vigia: dict, avisos: dict, atividade) -> None:
         atividade.registrar(
             "conferencia", atividade.ERRO,
             f"sinais {canal}: noite(s) sem conferencia: "
-            + ", ".join(f"{d[8:10]}/{d[5:7]}" for d in puladas), canal=canal)
+            + ", ".join(f"{d[8:10]}/{d[5:7]}" for d in puladas), canal=canal,
+            etapa="conferencia.sinais")
         noite["noites"] = puladas
     eventos = vigia.get("eventos_24h") or {}
     if eventos.get("poucos") and not noite.get("eventos"):
@@ -611,7 +612,7 @@ def _avisar_sinais(canal: str, vigia: dict, avisos: dict, atividade) -> None:
             f"sinais {canal}: {eventos.get('eventos', 0)} evento(s) de "
             f"trabalho em {eventos.get('horas_cobertas', 0):.0f} h no diario, "
             f"menos que os {eventos.get('minimo', 0)} horario(s) da grade "
-            "nesse tempo — o canal parou?", canal=canal)
+            "nesse tempo — o canal parou?", canal=canal, etapa="conferencia.sinais")
         noite["eventos"] = True
     cobertura = vigia.get("cobertura_ids") or {}
     if cobertura.get("baixa") and not noite.get("cobertura"):
@@ -623,7 +624,8 @@ def _avisar_sinais(canal: str, vigia: dict, avisos: dict, atividade) -> None:
             f"{cobertura.get('linhas', 0)} publicacao(oes) do YouTube de "
             f"{str(cobertura.get('de'))[:10]} a {str(cobertura.get('ate'))[:10]}"
             f" tem youtube_id ({100 * (cobertura.get('cobertura') or 0):.0f}%)"
-            " — a reconciliacao da madrugada parou?", canal=canal)
+            " — a reconciliacao da madrugada parou?", canal=canal,
+            etapa="conferencia.sinais")
         noite["cobertura"] = True
 
 
@@ -677,7 +679,7 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
                 atividade.registrar(
                     "conferencia", atividade.ERRO,
                     f"conferencia {canal} nao rodou: {tipo}: {exc}",
-                    canal=canal)
+                    canal=canal, etapa="conferencia.rodada")
                 avisos["noite"]["erro"] = tipo
         else:
             log(f"[conferencia] {canal}: {ficha['casados']}/"
@@ -724,7 +726,8 @@ def _alarmes_da_conferencia(canal: str, ficha: dict, avisos: dict,
             "conferencia", atividade.ERRO,
             f"conferencia {canal}/{ficha.get('plataforma')}: lista do canal "
             f"incompleta — {lista.get('motivo')}. Sem veredito do ledger "
-            f"(fantasma nao prova nada com video faltando).", canal=canal)
+            f"(fantasma nao prova nada com video faltando).", canal=canal,
+            etapa="conferencia.lista")
         avisos["noite"]["lista"] = (f"{lista.get('publicos')}/"
                                     f"{lista.get('declarados')}")
     if ficha["veredito"] == "sujo":
@@ -739,7 +742,8 @@ def _alarmes_da_conferencia(canal: str, ficha: dict, avisos: dict,
             f"{len(ficha['fantasmas'])} no ledger sem video no canal, "
             f"{len(ficha['rascunhos'])} rascunho(s), "
             f"{len(ficha.get('orfaos_privados') or [])} privado(s) fora "
-            f"do ledger em {ficha['janela_dias']} dia(s)", canal=canal)
+            f"do ledger em {ficha['janela_dias']} dia(s)", canal=canal,
+            etapa="conferencia.ledger")
     deficit = int(ficha.get("deficit") or 0)
     ja = avisos["grade"]
     ja_avisado = (int(ja.get("deficit") or 0)
@@ -764,7 +768,7 @@ def _alarmes_da_conferencia(canal: str, ficha: dict, avisos: dict,
             f"{str(ate)[:16].replace('T', ' ')} ({deficit} em "
             f"falta: {', '.join(ficha.get('horarios_em_falta') or [])}; "
             f"{ficha.get('linhas_no_dia_de_grade', 0)} linha(s) no ledger)",
-            canal=canal)
+            canal=canal, etapa="conferencia.grade")
         avisos["grade"] = {"dia_de_grade": ficha.get("dia_de_grade"),
                            "deficit": deficit}
     elif ja.get("dia_de_grade") != ficha.get("dia_de_grade"):

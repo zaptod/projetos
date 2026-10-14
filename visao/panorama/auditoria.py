@@ -43,12 +43,19 @@ def _publicado(linha) -> bool:
 
 
 def _publicados_hoje(agora: datetime | None = None) -> dict:
-    """`{canal: {plataforma: [horas]}}` do dia, dos dois ledgers."""
+    """`{canal: {plataforma: [horarios]}}` do dia, dos dois ledgers.
+
+    Um item por HORARIO DA GRADE pago, nao por linha (SCR-P1, 14/10/2026):
+    duas linhas no mesmo horario (parte em 2 Shorts, recuperacao) pagavam
+    dois horarios, e "13 de 10" escondia horario perdido no veredito, na
+    pagina Auditoria e no relatorio. A chave e `conferencia.chave_do_horario`,
+    a mesma da guarda de um post por horario e do `remoto.relatorios.metas`.
+    """
     agora = agora or datetime.now()
     hoje = agora.strftime("%Y-%m-%d")
     saida = {}
     try:
-        from builds.publicar import metricas
+        from builds.publicar import conferencia, metricas
     except Exception:                                          # noqa: BLE001
         return saida
     for canal in ("historias", "builds"):
@@ -62,7 +69,10 @@ def _publicados_hoje(agora: datetime | None = None) -> dict:
             if not quando.startswith(hoje) or not _publicado(linha):
                 continue
             plataforma = linha.get("plataforma") or "youtube"
-            por_plataforma.setdefault(plataforma, []).append(quando[11:16])
+            chave = conferencia.chave_do_horario(quando, plataforma)
+            pagos = por_plataforma.setdefault(plataforma, [])
+            if chave not in pagos:
+                pagos.append(chave)
         saida[canal] = por_plataforma
     return saida
 
@@ -84,11 +94,12 @@ def metas(agora: datetime | None = None) -> dict:
         por_plataforma = feitos.get(canal) or {}
         ficha = {}
         for plataforma in grade.PLATAFORMAS:
-            saiu = len(por_plataforma.get(plataforma) or [])
             # O devido e o da grade DAQUELA plataforma: desde 13/09/2026 o
             # TikTok pula 7h e 8h, e cobrar dele os oito horarios acusaria
             # dois "faltando" todo dia por uma decisao, nao por uma falha.
             devido = len(grade.vencidos(agora, plataforma))
+            # um por horario pago, e nunca mais que o devido (SCR-P1)
+            saiu = min(len(por_plataforma.get(plataforma) or []), devido)
             ficha[plataforma] = {"saiu": saiu, "devido": devido,
                                  "faltando": max(0, devido - saiu)}
         canais[canal] = ficha
@@ -213,7 +224,27 @@ def _nao_verificado(familia) -> str:
 
 
 _NOMES = {"qualidade": "a qualidade da fila", "metas": "as metas de hoje",
-          "recursos": "os recursos"}
+          "recursos": "os recursos",
+          # SCR-P5 (14/10/2026): com a producao ilegivel o veredito seguia
+          # "tudo em dia"
+          "producao": "a produção"}
+
+# As partes da producao que tambem podem vir com `erro` por dentro.
+_PARTES_DA_PRODUCAO = {"historias_incompletas": "as histórias pela metade",
+                       "estoque": "o estoque", "agora": "o que roda agora"}
+
+
+def _producao_nao_verificada(producao) -> list:
+    """Os pedacos da producao que trouxeram `erro` (SCR-P5)."""
+    if not isinstance(producao, dict):
+        return []
+    saida = []
+    for chave, nome in _PARTES_DA_PRODUCAO.items():
+        parte = producao.get(chave)
+        if isinstance(parte, dict) and parte.get("erro"):
+            saida.append(f"nao consegui verificar a produção ({nome}): "
+                         f"{parte['erro']}")
+    return saida
 
 
 def veredito(dados: dict | None = None) -> dict:
@@ -228,6 +259,7 @@ def veredito(dados: dict | None = None) -> dict:
         motivo = _nao_verificado(dados.get(familia))
         if motivo:
             problemas.append(f"nao consegui verificar {nome}: {motivo}")
+    problemas.extend(_producao_nao_verificada(dados.get("producao")))
 
     qual = dados.get("qualidade")
     lida = not _nao_verificado(qual)

@@ -604,9 +604,54 @@ class LimiteDaTarefaTests(unittest.TestCase):
         _trocar(self, tw, "limitar_execucao",
                 lambda nome, limite: pedidos.append((nome, limite))
                 or {"ok": True})
+        _trocar(self, tw, "garantir_vbs", lambda pasta=None: "C:/rt/oculto.vbs")
         ficha = m.instalar("20:37", nome="NeuralFights_postar_20")
         self.assertTrue(ficha["limite"])
         self.assertEqual([("NeuralFights_postar_20", "PT2H")], pedidos)
+
+    def _instalar_e_ver(self, *args, **kwargs):
+        m = _postar()
+        from builds import tarefas_windows as tw
+        chamadas = []
+        m.escrever_lancador = lambda: "E:/x/postar.cmd"
+        m.subprocess = type("S", (), {
+            "run": staticmethod(lambda a, **k: chamadas.append(a) or type(
+                "P", (), {"returncode": 0, "stdout": b"", "stderr": b""})()),
+            "CREATE_NO_WINDOW": 0})
+        _trocar(self, tw, "endurecer", lambda nome: {"ok": True})
+        _trocar(self, tw, "limitar_execucao",
+                lambda nome, limite: {"ok": True})
+        _trocar(self, tw, "garantir_vbs", lambda pasta=None: "C:/rt/oculto.vbs")
+        return m.instalar(*args, **kwargs), chamadas
+
+    def test_instalar_usa_wscript_oculto(self):
+        """SCR-4 (14/10/2026): era o unico instalador sem o `oculto.vbs`;
+        reinstalar voltava com 10 janelas pretas por dia."""
+        _ficha, chamadas = self._instalar_e_ver("17:57",
+                                                nome="NeuralFights_postar_17")
+        acao = chamadas[0][chamadas[0].index("/TR") + 1]
+        self.assertIn("wscript.exe", acao)
+        self.assertIn("//B", acao)
+        self.assertTrue(acao.endswith('"E:/x/postar.cmd"'), acao)
+
+    def test_hora_usa_nome_com_sufixo(self):
+        """SCR-4: `--hora 17:57` recriava `NeuralFights_postar` (sem sufixo),
+        a tarefa antiga que `instalar_grade` apaga para nao dobrar a postagem."""
+        ficha, chamadas = self._instalar_e_ver("17:57")
+        self.assertEqual("NeuralFights_postar_17", ficha["tarefa"])
+        self.assertEqual("NeuralFights_postar_17",
+                         chamadas[0][chamadas[0].index("/TN") + 1])
+
+    def test_lancador_sem_cr_cr_lf(self):
+        """SCR-11: `write_text` com CRLF gravava CR CR LF no `postar.cmd`."""
+        import tempfile
+        from pathlib import Path
+        m = _postar()
+        with tempfile.TemporaryDirectory() as tmp:
+            m.RAIZ = Path(tmp)
+            texto = m.escrever_lancador().read_bytes()
+        self.assertNotIn(b"\r\r\n", texto)
+        self.assertIn(b"\r\n", texto)
 
 
 class _BaseDaDona(_BaseDaRodada):

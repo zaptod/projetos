@@ -223,6 +223,79 @@ class Reconciliacao(_Base):
         self.assertIsNone(self.linhas()[0].get("youtube_id"))
         self.assertTrue(any("proxima reconciliacao" in f for f in falas), falas)
 
+    # ---- SCR-M7 (14/10/2026): medido no ledger, 36 (historias) + 12 (builds)
+    # linhas com `youtube_id` e `prova_ok: False`. Nunca entravam em `faltam`
+    # (que so pega linha SEM id) e a funcao saia antes de olhar o canal.
+    def test_linha_com_id_e_prova_falsa_ganha_prova_pelo_canal(self):
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "h:p1", "plataforma": "youtube", "titulo": "T",
+            "quando": "2026-10-01T10:00:00", "youtube_id": "abc",
+            "prova_ok": False, "visibilidade": "public"}, "builds")
+        self._canal({"youtube_id": "abc", "titulo": "T",
+                     "publicado_em": "2026-10-01T13:00:00Z",
+                     "privacidade": "public"})
+        falas = []
+        self.assertEqual(0, M.reconciliar("builds", log=falas.append))
+        (linha,) = self.linhas()
+        self.assertIs(True, linha["prova_ok"])
+        self.assertTrue(linha["prova_pelo_canal"])
+        self.assertTrue(any("ganharam prova" in f for f in falas), falas)
+
+    def test_rascunho_privado_nao_vira_prova(self):
+        """O "Publicar mesmo assim" deixa rascunho PRIVADO com id."""
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "h:p1", "plataforma": "youtube", "titulo": "T",
+            "quando": "2026-10-01T10:00:00", "youtube_id": "abc",
+            "prova_ok": False, "visibilidade": "public"}, "builds")
+        self._canal({"youtube_id": "abc", "titulo": "T",
+                     "publicado_em": "2026-10-01T13:00:00Z",
+                     "privacidade": "private"})
+        M.reconciliar("builds", log=lambda *_: None)
+        self.assertIs(False, self.linhas()[0]["prova_ok"])
+
+    def test_id_fora_do_canal_e_prova_none_ficam(self):
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "h:p1", "plataforma": "youtube", "titulo": "T",
+            "quando": "2026-10-01T10:00:00", "youtube_id": "sumiu",
+            "prova_ok": False}, "builds")
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "h:p2", "plataforma": "youtube", "titulo": "U",
+            "quando": "2026-10-01T11:00:00", "youtube_id": "abc",
+            "prova_ok": None}, "builds")
+        self._canal({"youtube_id": "abc", "titulo": "U",
+                     "publicado_em": "2026-10-01T11:00:00Z",
+                     "privacidade": "public"})
+        M.reconciliar("builds", log=lambda *_: None)
+        self.assertEqual([False, None],
+                         [l["prova_ok"] for l in self.linhas()])
+
+    def test_caso_zero_ledger_sem_pendencia_nao_pergunta_ao_canal(self):
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "h:p1", "plataforma": "youtube", "titulo": "T",
+            "quando": "2026-10-01T10:00:00", "youtube_id": "abc",
+            "prova_ok": True}, "builds")
+        real = M.enviados
+        M.enviados = lambda *a, **k: self.fail("perguntou ao canal")
+        self.addCleanup(lambda: setattr(M, "enviados", real))
+        self.assertEqual(0, M.reconciliar("builds", log=lambda *_: None))
+
+    def test_linha_que_nao_casa_diz_por_que(self):
+        """As 3 de 07/10 nunca casaram e o log so dizia "0 de N"."""
+        M.acrescentar_ao_ledger(self.ledger, {
+            "video_id": "historia_00054:celular:p02", "plataforma": "youtube",
+            "titulo": "A Casa (Parte 2)", "quando": "2026-10-07T12:27:00"},
+            "builds")
+        self._canal({"youtube_id": "x1", "titulo": "A Casa (Parte 2)",
+                     "publicado_em": "2026-10-09T12:27:00Z"})
+        falas = []
+        M.reconciliar("builds", log=falas.append)
+        self.assertTrue(any("sem id: historia_00054:celular:p02" in f
+                            and "hora fora da folga" in f for f in falas), falas)
+        self.assertEqual("nenhum video com este titulo no canal",
+                         M.motivo_sem_casamento(
+                             {"titulo": "Outro", "quando": "2026-10-07T12:00"},
+                             [], [{"youtube_id": "x1", "titulo": "A Casa"}]))
+
     def test_reconciliacao_le_a_pendente_e_nao_a_duplica(self):
         """`publicados()` ja traz a pendente; reescrever nao pode repeti-la."""
         M.acrescentar_ao_ledger(self.ledger, {"video_id": "antes", "plataforma": "youtube",

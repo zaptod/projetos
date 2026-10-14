@@ -55,7 +55,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import time
 import unittest
@@ -64,8 +63,6 @@ from types import SimpleNamespace
 from unittest import mock
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from contos.roteiro import roteiro as R  # noqa: E402
 
@@ -188,8 +185,13 @@ class OTituloEAProducaoOuONovo(unittest.TestCase):
 
     def test_propriedade_no_corpus_e_nas_recusas_medidas(self):
         from contos.llm.texto import e_recusa_enlatada
-        sys.path.insert(0, str(RAIZ / "tests"))
-        from test_recusa_do_gemini_regressions import RECUSAS_MEDIDAS
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "recusas_do_gemini_medidas",
+            RAIZ / "tests" / "test_recusa_do_gemini_regressions.py")
+        vizinho = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(vizinho)
+        RECUSAS_MEDIDAS = vizinho.RECUSAS_MEDIDAS
         textos = list(RECUSAS_MEDIDAS) + [l["texto"] for l in _corpus()]
         escapes = [t for t in textos if e_recusa_enlatada(t)
                    and not R.e_recusa_no_trecho(t, titulo=True)]

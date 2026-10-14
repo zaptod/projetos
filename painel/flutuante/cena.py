@@ -287,7 +287,6 @@ class CenaFofa:
         """Saiu uma publicacao: confete na praca e todo mundo comemora."""
         agora = self.relogio()
         self.vida.publicou(agora)
-        cores = ["#ff6b81", "#ffd56b", "#6fd6a8", "#6fb7ff", "#c9a7ff"]
         x0, y0 = arte.FONTE[0], arte.FONTE[1] - 20
         for _ in range(36):
             angulo = self._rnd.uniform(-math.pi * .9, -math.pi * .1)

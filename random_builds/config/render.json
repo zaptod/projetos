@@ -25,8 +25,7 @@
         "bg_bottom": "#1f1a35",
         "accent_character": "#9b59ff",
         "accent_weapon": "#ff8c42",
-        "text": "#f5f2ff",
-        "text_dim": "#9a93b8"
+        "text": "#f5f2ff"
     },
     "audio": {
         "sample_rate": 44100,

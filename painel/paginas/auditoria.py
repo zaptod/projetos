@@ -154,10 +154,15 @@ class Pagina:
         # prontas para virar chave do torneio, que e outra coisa — e mostrava
         # "1 build com video" num dia com 231 videos no disco.
         pronto = (prod.get("estoque") or {}).get("videos_prontos") or {}
+
+        def _conta(chave):
+            # None = o catalogo nao contou (SCR-P8): "?" e nao "None"/"0"
+            valor = pronto.get(chave, "—")
+            return "?" if valor is None else valor
         self._cartoes["producao"].configure(
             text=f"{quantas} história(s) incompleta(s)\n"
-                 f"{pronto.get('historias', '—')} vídeo(s) de história\n"
-                 f"{pronto.get('builds', '—')} vídeo(s) de build")
+                 f"{_conta('historias')} vídeo(s) de história\n"
+                 f"{_conta('builds')} vídeo(s) de build")
 
         rec = dados.get("recursos") or {}
         disco = rec.get("disco") or {}

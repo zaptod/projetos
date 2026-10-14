@@ -50,7 +50,10 @@ def xml_tarefa(comando: str = r"C:\Windows\System32\wscript.exe",
 
 def instalar(rodar=subprocess.run):
     """Materializa o lancador e importa a tarefa. Nunca e chamado sozinho."""
-    CMD.write_text('@echo off\r\ncd /d E:\\projetos\r\nC:\\Python314\\python.exe -u -X utf8 -m coordenador rodar\r\n', encoding="ascii")
+    # SCR-11: `newline=""` — o texto ja vem em CRLF, e o `write_text` padrao
+    # do Windows trocava cada \n por \r\n de novo (o arquivo ficava CR CR LF)
+    with open(CMD, "w", encoding="ascii", newline="") as fh:
+        fh.write('@echo off\r\ncd /d E:\\projetos\r\nC:\\Python314\\python.exe -u -X utf8 -m coordenador rodar\r\n')
     vbs = Path(os.environ.get("LOCALAPPDATA", "")) / "neural-fights" / "oculto.vbs"
     if not vbs.is_file():
         vbs.parent.mkdir(parents=True, exist_ok=True)
@@ -70,9 +73,19 @@ def remover(rodar=subprocess.run):
     rodar(["schtasks", "/delete", "/tn", NOME, "/f"], check=True)
 
 
-def tarefas_antigas(ligar, rodar=subprocess.run):
+def tarefas_antigas(ligar, rodar=subprocess.run) -> dict:
+    """SCR-6: um nome que falha nao impede os outros (era `check=True` no
+    laco: a primeira tarefa ausente deixava as seguintes como estavam).
+    Devolve {nome: codigo de saida}."""
+    resumo = {}
     for nome in ("NeuralFights_app_celular", "NeuralFights_bot_telegram", "NeuralFights_vila_flutuante"):
-        rodar(["schtasks", "/change", "/tn", nome, "/enable" if ligar else "/disable"], check=True)
+        try:
+            feito = rodar(["schtasks", "/change", "/tn", nome, "/enable" if ligar else "/disable"],
+                          check=False)
+            resumo[nome] = int(getattr(feito, "returncode", 0) or 0)
+        except OSError:
+            resumo[nome] = -1
+    return resumo
 
 
 def montar() -> Supervisor:
@@ -101,6 +114,11 @@ def montar() -> Supervisor:
         seguro=lambda: s.seguro(""), pedir_reinicio=s.pedir_reinicio)
     s.gerente_equipe = GerenteEquipe(avisar=s.avisar,
                                      evento=lambda tipo, texto: s.evento("", tipo, texto))
+    # SCR-7 (14/10/2026): rodada de historias/builds calada ha horas morre e
+    # solta a trava (a de 12/10 segurou `historias__auto` 31 h)
+    from .vigia_rodadas import VigiaRodadas
+    s.vigia_rodadas = VigiaRodadas(avisar=s.avisar, log=s.log,
+                                   evento=lambda tipo, texto: s.evento("", tipo, texto))
     # a resposta final de um pedido vai tambem ao Telegram, de onde quer que
     # ele tenha vindo
     pedidos.MESA.avisar = s.avisar
@@ -108,6 +126,22 @@ def montar() -> Supervisor:
     # desfecho das acoes da lista branca vai ao diario (05/10/2026)
     pedidos._ligar_producao()
     return s
+
+
+def avisar_se_religou(s: Supervisor, anterior: dict) -> str | None:
+    """SCR-1 (decisao `geral/pc-religado`): "o PC religou", uma vez por boot.
+    Nunca derruba a subida do coordenador."""
+    try:
+        from .estado import pasta
+        from .religou import verificar
+        texto = verificar(pasta(), anterior=anterior)
+    except Exception as exc:                                  # noqa: BLE001
+        s.log(f"[coordenador] nao conferi se o PC religou: {exc}")
+        return None
+    if texto:
+        s.evento("", "pc_religou", texto)
+        s.avisar(texto)
+    return texto
 
 
 def resumo_dos_servicos(estado: dict) -> str:
@@ -224,7 +258,10 @@ def main(argv=None):
         print(pedido["id"])
         return 0
     if args.acao == "rodar":
-        return montar().rodar()
+        anterior = ler_estado()
+        s = montar()
+        avisar_se_religou(s, anterior)
+        return s.rodar()
     if args.acao in ("reabrir-pedido", "reavaliar-pedido"):
         from . import pedidos
         codigo = 0
@@ -259,7 +296,10 @@ def main(argv=None):
     elif args.acao == "remover-tarefa":
         remover()
     else:
-        tarefas_antigas(args.acao == "religar-tarefas-antigas")
+        resumo = tarefas_antigas(args.acao == "religar-tarefas-antigas")
+        for nome, codigo in resumo.items():
+            print(f"{nome}: {'ok' if codigo == 0 else f'falhou ({codigo})'}")
+        return 0 if all(c == 0 for c in resumo.values()) else 1
     return 0
 
 

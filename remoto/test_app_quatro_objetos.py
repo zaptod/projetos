@@ -227,7 +227,7 @@ def test_os_cinco_objetos_e_nada_mais_na_prateleira():
 def test_os_quatro_objetos_usam_a_arte_do_atelie_quando_existir():
     vila = JS["vila.js"]
     for nome in ("agora", "decidir", "mandar", "ver"):
-        assert f"/arte-vila/atelie/objetos/${{nome}}.png" in vila
+        assert "/arte-vila/atelie/objetos/${nome}.png" in vila
     assert "dados.mundo.versao" in vila and "atual.replaceWith(imagem)" in vila
 
 

@@ -17,13 +17,10 @@ outros 307 titulos ficaram iguais.
 """
 from __future__ import annotations
 
-import sys
 import unittest
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from contos.roteiro.roteiro import titulo_da_parte  # noqa: E402
 

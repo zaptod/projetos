@@ -21,10 +21,8 @@
   "teto_gb": 50,
   "bitrate_estimado_mbps": 2.5,
 
-  "_comentario_cookies": "Video com idade travada ou so-para-inscritos precisa de sessao. Usa o perfil de Chrome do YouTube Studio que ja existe no registro de contas.",
-  "cookies_do_perfil": true,
+  "_comentario_cookies": "Video com idade travada ou so-para-inscritos precisa de sessao (`baixar --com-sessao`). Usa o perfil de Chrome do YouTube Studio que ja existe no registro de contas. O prazo por video mora em medidas.json (`timeout_por_video_s`).",
   "servico_do_cookie": "youtube_web",
 
-  "tentativas": 3,
-  "timeout_por_video_s": 1800
+  "tentativas": 3
 }

@@ -511,7 +511,8 @@ def main(argv=None) -> int:
     funcoes = {"instalar": lambda: instalar(args.cofre), "decisoes": lambda: decisoes(args.cofre, args.raiz),
                "diario": lambda: diario(args.cofre, args.raiz, args.dia), "agora": lambda: agora_nota(args.cofre, args.raiz),
                "tudo": lambda: tudo(args.cofre, args.raiz)}
-    return 0 if funcoes[args.acao]() else 0
+    # SCR-F3 (14/10/2026): era `else 0` — a falha saia com 0
+    return 0 if funcoes[args.acao]() else 1
 
 
 if __name__ == "__main__":

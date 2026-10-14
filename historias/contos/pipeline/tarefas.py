@@ -27,6 +27,10 @@ RAIZ = Path(__file__).resolve().parents[2]
 PREFIXO = "Historias_auto"
 # O minuto da GERACAO. Depois da postagem (:07), nunca antes.
 MINUTO = 20
+# `ExecutionTimeLimit` das tarefas (SCR-7, 14/10/2026; era o PT72H do
+# `/Create`). A rodada emenda historias e pode passar disso: o limite so
+# devolve a tarefa, o python segue (medido em 06/10, `tarefas_windows`).
+LIMITE_DA_TAREFA = "PT6H"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -62,7 +66,15 @@ def escrever_lancador(python: str | None = None) -> Path:
     python = python or sys.executable
     saida = RAIZ / "outputs" / "_logs" / "auto_saida.txt"
     saida.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(
+    # `newline=""` (SCR-11, 14/10/2026): o texto ja vem em CRLF; o modo texto
+    # do Windows gravava CR CR LF no `auto.cmd`.
+    with open(destino, "w", encoding="utf-8", newline="") as fh:
+        fh.write(_conteudo_do_lancador(python, saida))
+    return destino
+
+
+def _conteudo_do_lancador(python: str, saida: Path) -> str:
+    return (
         "@echo off\r\n"
         "rem Criacao automatica de historias. Chamado pelas tarefas\r\n"
         "rem Historias_auto_HH do Agendador do Windows.\r\n"
@@ -74,9 +86,7 @@ def escrever_lancador(python: str | None = None) -> Path:
         # "ç". `-u` para o log nao ficar preso no buffer enquanto ela trabalha.
         # O console do cmd vai para NUL, onde escrever nunca trava; a saida de
         # verdade o Python abre sozinho com `--saida`.
-        f'"{python}" -u -X utf8 main.py auto --saida "{saida}" > NUL 2>&1\r\n',
-        encoding="utf-8")
-    return destino
+        f'"{python}" -u -X utf8 main.py auto --saida "{saida}" > NUL 2>&1\r\n')
 
 
 class _Saida:
@@ -143,6 +153,12 @@ def instalar(horas: list, minutos: dict | None = None) -> list[dict]:
                     f"{ficha['mensagem']} (criada, mas os ajustes de bateria "
                     f"e de horario perdido falharam: {ajuste['mensagem']})"
                 ).strip()
+            # SCR-7 (14/10/2026): o `/Create` deixa PT72H, e com IgnoreNew a
+            # tarefa pendurada ignorava os disparos dela por 3 dias. O limite
+            # devolve a TAREFA (o Agendador mata so o wscript); quem encerra
+            # a rodada calada e o vigia do coordenador.
+            limite = tarefas_windows.limitar_execucao(nome, LIMITE_DA_TAREFA)
+            ficha["limitada"] = limite["ok"]
         saida.append(ficha)
     return saida
 

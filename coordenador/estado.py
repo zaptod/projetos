@@ -12,11 +12,13 @@ def pasta() -> Path:
     teste = os.environ.get("NF_COORDENADOR_PASTA")
     if teste:
         return Path(teste)
-    if os.environ.get("PYTEST_CURRENT_TEST") and os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR"):
+    if os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR"):
         # 02/10: o texto livre do Telegram virou entrada do cerebro, e um
         # teste antigo do bot ("apaga tudo por favor") escreveria na entrada
-        # REAL, que o coordenador de verdade atenderia com o Codex. Sob o
-        # pytest, sem pasta escolhida, vale a pasta descartavel do conftest.
+        # REAL, que o coordenador de verdade atenderia com o Codex. Sem pasta
+        # escolhida, vale a pasta descartavel do conftest. Desde 14/10 (SCR-9)
+        # sem exigir o pytest: o `testar.py` (unittest) tambem define a
+        # variavel, e ali `PYTEST_CURRENT_TEST` nao existe.
         return Path(os.environ["NEURAL_FIGHTS_RUNTIME_DIR"]) / "coordenador"
     return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "neural-fights" / "coordenador"
 

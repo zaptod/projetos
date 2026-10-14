@@ -8,10 +8,11 @@ oculta (`wscript //B oculto.vbs <.cmd>`, desde 17/09/2026), se voltou a abrir
 console, ou se QUEBROU (o `oculto.vbs` ou o .cmd sumiu). Sai com 0 quando
 esta tudo oculto e 1 quando ha o que olhar.
 
-Nao muda nada. A troca das 25 tarefas ja foi feita; o que pode desfaze-la e
-rodar um instalador (`postar.py --instalar`, `remoto --instalar`,
-`main.py auto --instalar`), que recria a tarefa apontando para o .cmd. A Vila
-flutuante mostra o mesmo resultado no selo "tarefas ocultas" da barra.
+Nao muda nada. A troca das 25 tarefas ja foi feita. Desde 14/10/2026 (SCR-4)
+todos os instaladores (`postar.py --instalar`, `main.py auto --instalar`,
+`main.py noite --instalar`) recriam a tarefa ja com `tarefas_windows.
+acao_oculta`; o que ainda poderia desfaze-la e uma tarefa recriada a mao. A
+Vila flutuante mostra o mesmo resultado no selo "tarefas ocultas" da barra.
 """
 from __future__ import annotations
 

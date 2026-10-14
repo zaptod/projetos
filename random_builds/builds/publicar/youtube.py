@@ -179,7 +179,8 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
         from . import metricas
         metricas.registrar_publicado(
             video, estado, "youtube", canal=canal,
-            extra={"visibilidade": _visibilidade_efetiva(kw, config),
+            extra={"visibilidade": metricas.visibilidade_usada(
+                       laudo, _visibilidade_efetiva(kw, config)),
                    "via": caminho,
                    # O ID VAI PARA A LINHA, e nao so para o laudo:
                    # `registrar_publicacao` o extrai da URL, e sem URL a

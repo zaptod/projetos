@@ -1,4 +1,3 @@
-import base64
 import http.client
 import io
 import json

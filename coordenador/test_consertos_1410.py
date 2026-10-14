@@ -140,8 +140,10 @@ def test_nao_subir_avisa_no_maximo_uma_vez_por_hora(tmp_path, monkeypatch):
     logs = []
     s, _ = montar(Mundo(), log=logs.append)
     monkeypatch.setattr(mod.TravaUnica, "adquirir", lambda self, **k: setattr(self, "dono", 4242))
-    assert s.rodar() == 1
-    assert s.rodar() == 1
+    # SCR-6: sair 0 (outro coordenador no ar nao e falha; com 1 o
+    # RestartOnFailure da tarefa relancava a cada minuto)
+    assert s.rodar() == 0
+    assert s.rodar() == 0
     assert logs == ["[coordenador] trava de 4242 ativa; não subi"]
 
 

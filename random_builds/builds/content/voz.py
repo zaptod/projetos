@@ -43,13 +43,16 @@ PADRAO = {
     "ativa": True,
     "motor": "edge",                 # edge | sapi
     "voz": "pt-BR-AntonioNeural",
-    "taxa": "+12%",                  # edge-tts rate
+    # Os mesmos do `config/render.json` (SCR-PT, 14/10/2026): o padrao era
+    # +12%/1.35/0.3 e so valia com a chave apagada — a voz mudaria de
+    # velocidade sem ninguem ter decidido.
+    "taxa": "+0%",                   # edge-tts rate
     "tom": "+0Hz",                   # edge-tts pitch
     "voz_sapi": "Maria",             # trecho do nome da voz do Windows
     "taxa_sapi": 2,                  # -10..10
     "volume": 1.0,
-    "max_atempo": 1.35,
-    "folga": 0.3,                    # quanto uma fala pode passar do evento
+    "max_atempo": 1.1,
+    "folga": 0.15,                   # quanto uma fala pode passar do evento
     "atraso": 0.05,                  # respiro depois do corte
 }
 

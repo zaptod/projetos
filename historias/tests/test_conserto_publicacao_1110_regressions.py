@@ -16,7 +16,6 @@ import importlib.util
 import io
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -493,9 +492,10 @@ class SaidaDatadaTests(unittest.TestCase):
     def test_o_main_abre_a_saida_pelo_python_e_data(self):
         fonte = POSTAR.read_text(encoding="utf-8")
         bloco = fonte[fonte.index('if __name__ == "__main__":'):]
-        self.assertIn('"--saida"', bloco)
         self.assertIn("_SaidaDatada(saida)", bloco)
-        self.assertIn('open(argumentos[i + 1], "a"', bloco)
+        # desde 14/10 (SCR-12) o `--saida` e aberto pela regra unica de
+        # `builds.saida_da_tarefa` (modo "a", testado la)
+        self.assertIn("saida_da_tarefa.abrir(sys.argv", bloco)
 
 
 class LancadorTests(unittest.TestCase):

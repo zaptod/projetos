@@ -394,6 +394,26 @@ são dela (`serie.prompt_biblia_livre`). O rodízio de molde ainda existe e acon
   turno novo, levanta "o envio voltou para a caixa: nenhum turno novo". Quem espera sem ter
   enviado por aquele cliente não é conferido. Testes:
   `tests/test_envio_devolvido_com_turnos_regressions.py`.
+- **Bíblia com menos partes** (14/10/2026, HIS-4; decisão `historias/plano-com-menos-partes`:
+  sai mais curta). A porta só exigia lista não vazia: 5 de 6 partes viravam roteiro com
+  `partes_esperadas: 6`, `incompletas()` o devolvia sempre e a retomada pedia "PARTE 6 de 5".
+  Agora `gerar._biblia_curta_vira_serie_curta` (depois do 2º pedido e depois da troca de
+  premissa) põe `partes_esperadas` = partes planejadas e loga "a bíblia planejou N de M";
+  a que veio curta com menos de 2 partes falha (pedir 1 parte, vídeo único, continua valendo). Na retomada, roteiro antigo com parte sem plano também sai mais
+  curto (o `roteiro.json` passa a esperar as planejadas) e nada é pedido além do plano.
+  Medido em 14/10: 0 de 72 roteiros nessa situação (latente). Testes:
+  `tests/test_biblia_curta_regressions.py`.
+- **`imagens/referencia.py` apagado** (14/10/2026, HIS-13; decisão
+  `historias/imagem-de-referencia`): ninguém o importava; a "âncora visual" que ele
+  descrevia nunca acontecia. A guarda: todo módulo de `contos/imagens/` tem importador em
+  produção (`tests/test_imagens_sem_modulo_morto_regressions.py`).
+- **A rodada longa tem ficha e pulso** (14/10/2026, SCR-7): `agenda.rodar`/`rodar_faixas`
+  gravam `<runtime>/rodadas/<pid>.json` ao pegar a trava, e cada linha do diário renova o
+  pulso; o coordenador encerra a rodada calada há 120 min (a de 12/10 segurou
+  `historias__auto` 31 h). Ver `docs/sessoes/coordenador.md`. As tarefas `Historias_auto_*`
+  nascem com limite PT6H. Os padrões de `reparos_por_rodada`, `minutos_minimos`,
+  `minutos_por_historia` e `passos_por_rodada` no código passaram a ser os do `agenda.json`
+  (`PADRAO_*`; eram 2 ou 6, 90, 240 e 1).
 - **roteiro.json/biblia.json pela metade** (14/10/2026, HIS-1): eram gravados com
   `open("w")` direto, regravados a cada parte; um corte deixava o JSON truncado, `listar()`
   pulava calado e a queda de provedor via "nova" e escrevia outra bíblia por cima das cenas.

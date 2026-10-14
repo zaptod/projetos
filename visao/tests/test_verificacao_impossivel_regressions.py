@@ -47,15 +47,28 @@ class VereditoNaoVerificado(unittest.TestCase):
 
     def test_cada_controle_ilegivel_vira_um_problema(self):
         bom = {"qualidade": {"liberados": 5, "barrados": 0, "fila": []},
-               "metas": {"faltando": 0}, "recursos": {"alertas": []}}
+               "metas": {"faltando": 0}, "recursos": {"alertas": []},
+               "producao": {"historias_incompletas": [], "estoque": {}}}
         self.assertEqual("ok", auditoria.veredito(dict(bom))["cor"])
-        for familia in ("qualidade", "metas", "recursos"):
+        for familia in ("qualidade", "metas", "recursos", "producao"):
             dados = dict(bom)
             dados[familia] = {"erro": f"{familia} caiu"}
             veredito = auditoria.veredito(dados)
             self.assertNotEqual("ok", veredito["cor"], familia)
             self.assertTrue(any(f"{familia} caiu" in p
                                 for p in veredito["problemas"]), veredito)
+
+    def test_producao_com_erro_nao_e_tudo_em_dia(self):
+        """SCR-P5 (14/10/2026): `_NOMES` nao tinha a producao, e com ela
+        ilegivel (inteira ou um pedaco) o veredito dizia "tudo em dia"."""
+        bom = {"qualidade": {"liberados": 5, "barrados": 0, "fila": []},
+               "metas": {"faltando": 0}, "recursos": {"alertas": []}}
+        self.assertNotEqual("ok", auditoria.veredito(
+            dict(bom, producao={"erro": "x"}))["cor"])
+        veredito = auditoria.veredito(dict(bom, producao={
+            "historias_incompletas": [], "estoque": {"erro": "catalogo caiu"}}))
+        self.assertNotEqual("ok", veredito["cor"])
+        self.assertTrue(any("catalogo caiu" in p for p in veredito["problemas"]))
 
     def test_controle_ausente_tambem_nao_e_verde(self):
         """Familia que nem veio (None) e familia que nao foi verificada."""

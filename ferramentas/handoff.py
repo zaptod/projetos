@@ -32,7 +32,10 @@ PASTA = RAIZ / "docs" / "handoff"
 NOTA = PASTA / "NOTA.md"
 ATUAL = PASTA / "ATUAL.md"
 HISTORICO = PASTA / "historico"
-LOCAL = Path(os.environ.get("LOCALAPPDATA", "")) / "neural-fights"
+# SCR-9 (14/10/2026): o runtime descartavel dos testes vale aqui tambem.
+LOCAL = (Path(os.environ["NEURAL_FIGHTS_RUNTIME_DIR"])
+         if os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR")
+         else Path(os.environ.get("LOCALAPPDATA", "")) / "neural-fights")
 PY = [sys.executable, "-X", "utf8"]
 
 

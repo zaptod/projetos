@@ -340,8 +340,19 @@ def main(argv=None) -> int:
                             "recria-la")
     grupo.add_argument("--desinstalar", action="store_true",
                        help="remove a tarefa (o .cmd fica)")
+    parser.add_argument("--forcar", action="store_true",
+                        help="com --instalar: cria a tarefa mesmo sendo a Vila "
+                             "do coordenador")
     args = parser.parse_args(argv)
 
+    if args.instalar and not args.forcar:
+        # SCR-5 (14/10/2026): desde 13/10 (b1ef6f7) a Vila e do COORDENADOR e
+        # a `NeuralFights_vila_flutuante` esta desligada de proposito; criar
+        # (ou recriar com /F) a religaria e abriria uma segunda Vila.
+        print("A Vila e mantida pelo coordenador desde 13/10; a tarefa dela "
+              "fica desligada. Para criar mesmo assim: --instalar --forcar. "
+              "So o .cmd: --lancador.")
+        return 1
     if args.instalar:
         ficha = instalar()
         print(("ok: " if ficha["ok"] else "FALHOU: ") + ficha["mensagem"])

@@ -14,7 +14,8 @@ teste (00101 so no TikTok, hoje): o YouTube recebia `generation_00102` e o
 "junto"), e o TikTok o 00102.
 
 No ledger real, em 14/10/2026 02:22: 3 builds so no TikTok, nenhum desde
-13/10 (`CORTE_DA_DIVIDA_DOS_BUILDS`) — o caso ZERO de hoje: nada muda.
+13/10. Em 14/10 (decisao `duelo-00076-ao-youtube`) o corte
+(`CORTE_DA_DIVIDA_DOS_BUILDS`) passou para 12/10: 1 devido, o duelo_00076.
 """
 from __future__ import annotations
 
@@ -118,12 +119,22 @@ class DividaDosBuildsTests(unittest.TestCase):
         self.assertTrue(ficha["feito"])
 
     def test_linha_do_tiktok_antes_do_corte_nao_muda_nada(self):
-        self.ledger[:] = [_linha(G101, "tiktok", "2026-10-12T16:31:00")]
-        self.assertEqual("2026-10-13", self.m.CORTE_DA_DIVIDA_DOS_BUILDS)
+        self.ledger[:] = [_linha(G101, "tiktok", "2026-10-11T23:59:00")]
+        self.assertEqual("2026-10-12", self.m.CORTE_DA_DIVIDA_DOS_BUILDS)
         ficha = self.m.postar_build()
         self.assertEqual([G102], self.youtube)
         self.assertEqual([G102], self.tiktok)
         self.assertFalse(ficha.get("youtube_devido"))
+
+    def test_duelo_de_12_10_entra_na_divida(self):
+        """Decisao `duelo-00076-ao-youtube` (14/10): o de 12/10 16:31 e devido.
+
+        Medido no ledger real em 14/10: corte 13/10 = 0 devidos, 12/10 = 1.
+        """
+        self.ledger[:] = [_linha(G101, "tiktok", "2026-10-12T16:31:22")]
+        ficha = self.m.postar_build()
+        self.assertEqual(G101, self.youtube[0])
+        self.assertTrue(ficha["youtube_devido"])
 
     def test_caso_zero_ledger_vazio(self):
         self.ledger[:] = []

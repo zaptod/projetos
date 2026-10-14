@@ -42,16 +42,76 @@ DISCO_BAIXO_GB = 8.0
 TRAVAS_VITAIS = ("picasso", "instancia_unica", "historias_auto")
 
 
-def _disco() -> dict:
-    try:
-        uso = shutil.disk_usage(RAIZ)
-    except OSError as erro:
-        return {"erro": str(erro)}
-    livre = uso.free / (1024 ** 3)
-    return {"livre_gb": round(livre, 2),
+# Os configs que freiam a producao pelo disco, cada um com o volume dele.
+_CONFIGS_DE_DISCO = (RAIZ / "historias" / "config" / "agenda.json",
+                     RAIZ / "random_builds" / "config" / "geracao.json")
+# "Baixo" = este tanto acima do freio do config.
+FOLGA_DO_BAIXO_GB = 3.0
+_ORDEM = {"ok": 0, "baixo": 1, "critico": 2}
+
+
+def _volume(caminho) -> str:
+    texto = str(caminho).replace("\\", "/")
+    return (texto[:2].upper() + "/") if texto[1:2] == ":" else texto
+
+
+def _volumes_a_vigiar() -> dict:
+    """`{volume: (critico_gb, baixo_gb)}`: o do repositorio, com os limites de
+    sempre, e o `disco_a_vigiar` de cada config, com o `disco_livre_minimo_gb`
+    dele (SCR-P6, 14/10/2026)."""
+    import json
+    volumes = {_volume(RAIZ): (DISCO_CRITICO_GB, DISCO_BAIXO_GB)}
+    for arquivo in _CONFIGS_DE_DISCO:
+        try:
+            config = json.loads(arquivo.read_text(encoding="utf-8-sig"))
+            alvo = config.get("disco_a_vigiar")
+            minimo = float(config.get("disco_livre_minimo_gb"))
+        except (OSError, ValueError, TypeError):
+            continue
+        if not alvo:
+            continue
+        nome = _volume(alvo)
+        critico, baixo = volumes.get(nome, (0.0, 0.0))
+        volumes[nome] = (max(critico, minimo),
+                         max(baixo, minimo + FOLGA_DO_BAIXO_GB))
+    return volumes
+
+
+def _disco(uso_de=None) -> dict:
+    """O disco que PARA a producao, e nao so o do repositorio (SCR-P6).
+
+    Ate 14/10/2026 media so o volume do repositorio (E:, 57 GB livres: "ok")
+    enquanto o C: — o `disco_a_vigiar` dos dois configs, com freio de 5 GB —
+    tinha 13 GB e caia. Agora mede cada volume vigiado com o limite dele; as
+    chaves de cima (`livre_gb`, `situacao`, `volume`) sao as do PIOR volume,
+    para as telas que ja liam assim, e `volumes` traz todos.
+    """
+    uso_de = uso_de or shutil.disk_usage
+    volumes = {}
+    for nome, (critico, baixo) in _volumes_a_vigiar().items():
+        try:
+            uso = uso_de(nome)
+        except OSError as erro:
+            volumes[nome] = {"erro": str(erro)}
+            continue
+        livre = uso.free / (1024 ** 3)
+        volumes[nome] = {
+            "livre_gb": round(livre, 2),
             "total_gb": round(uso.total / (1024 ** 3), 1),
-            "situacao": ("critico" if livre < DISCO_CRITICO_GB
-                         else "baixo" if livre < DISCO_BAIXO_GB else "ok")}
+            "critico_gb": critico,
+            "situacao": ("critico" if livre < critico
+                         else "baixo" if livre < baixo else "ok")}
+    lidos = {n: v for n, v in volumes.items() if "erro" not in v}
+    if not lidos:
+        erros = "; ".join(f"{n}: {v['erro']}" for n, v in volumes.items())
+        return {"erro": erros or "nenhum volume", "volumes": volumes}
+    pior = max(lidos, key=lambda n: (_ORDEM[lidos[n]["situacao"]],
+                                     -lidos[n]["livre_gb"]))
+    saida = dict(lidos[pior], volume=pior, volumes=volumes)
+    sem_leitura = [n for n in volumes if n not in lidos]
+    if sem_leitura:
+        saida["sem_leitura"] = sem_leitura
+    return saida
 
 
 def _travas() -> dict:
@@ -145,11 +205,16 @@ def situacao() -> dict:
     alertas = _sem_verificar(dados, _PEDACOS)
 
     disco = dados.get("disco") or {}
-    if disco.get("situacao") == "critico":
-        alertas.append(f"disco em {disco.get('livre_gb')} GB livres: o render "
-                       "comeca a morrer no meio sem dizer por que")
-    elif disco.get("situacao") == "baixo":
-        alertas.append(f"disco em {disco.get('livre_gb')} GB livres")
+    for nome, volume in sorted((disco.get("volumes") or {}).items()):
+        if volume.get("situacao") == "critico":
+            # "critico" na frase: e o que o veredito le como grave
+            alertas.append(f"disco {nome} critico: {volume.get('livre_gb')} GB "
+                           f"livres (freio em {volume.get('critico_gb')} GB) — "
+                           "a producao para e o render morre no meio")
+        elif volume.get("situacao") == "baixo":
+            alertas.append(f"disco {nome} em {volume.get('livre_gb')} GB livres")
+    for nome in disco.get("sem_leitura") or []:
+        alertas.append(f"nao consegui verificar o disco {nome}")
 
     freio = dados.get("freio") or {}
     if freio.get("pausado"):
@@ -210,8 +275,9 @@ def completo() -> dict:
         dados["alertas"].append(f"{len(faltando)} tarefa(s) do Windows nao "
                                 "existem: " + ", ".join(faltando[:3]))
     if fracas:
-        dados["alertas"].append(f"{len(fracas)} tarefa(s) somem na bateria ou "
-                                "perdem horario: " + ", ".join(fracas[:3]))
+        dados["alertas"].append(f"{len(fracas)} tarefa(s) desligadas, ligadas "
+                                "sem dever, ou que somem na bateria: "
+                                + ", ".join(fracas[:3]))
     return dados
 
 
@@ -247,35 +313,55 @@ def _tarefas_de_geracao() -> list:
     return [tarefas_noite.nome_da_tarefa(h) for h in config.get("horas") or ()]
 
 
+# Desde b1ef6f7 (13/10/2026, decisao `geral/gerente-unico-dos-servicos`) bot,
+# app e Vila sao do coordenador, e as tarefas antigas deles ficam DESLIGADAS
+# de proposito: religadas, abririam um segundo bot/app.
+DESLIGADAS_DE_PROPOSITO = ("NeuralFights_app_celular", "NeuralFights_bot_telegram",
+                           "NeuralFights_vila_flutuante")
+
+
+def tarefas_esperadas(ilegiveis: list | None = None) -> dict:
+    """`{nome: "ligada"|"desligada"}` — a lista UNICA das tarefas (SCR-P10).
+
+    O panorama e o relatorio do bot (`remoto.relatorios._linhas_do_agendador`)
+    tinham listas diferentes, nenhuma com o coordenador, e as duas cobravam o
+    bot como tarefa ligada depois de ele passar ao coordenador.
+
+    LISTA QUE NAO SE LE NAO SOME EM SILENCIO: o config que nao abriu vai para
+    `ilegiveis` ("da criação das histórias", "da geração noturna").
+    """
+    from builds import grade
+    ilegiveis = ilegiveis if ilegiveis is not None else []
+    horas = _horas_de_criacao()
+    if not horas:
+        try:
+            from contos.pipeline import agenda
+            agenda.carregar()["horas"]
+        except Exception:                                      # noqa: BLE001
+            ilegiveis.append("da criação das histórias")
+    try:
+        from builds.pipeline import noite
+        noite.carregar()
+    except Exception:                                          # noqa: BLE001
+        ilegiveis.append("da geração noturna")
+    saida = {f"Historias_auto_{h:02d}": "ligada" for h in horas}
+    saida.update({nome: "ligada" for nome in _tarefas_de_geracao()})
+    saida.update({f"NeuralFights_postar_{h:02d}": "ligada" for h in grade.HORAS})
+    saida["NeuralFights_coordenador"] = "ligada"
+    saida.update({nome: "desligada" for nome in DESLIGADAS_DE_PROPOSITO})
+    return saida
+
+
 def _agendador() -> dict:
     try:
-        from builds import grade, tarefas_windows
+        from builds import tarefas_windows
+        esperadas = tarefas_esperadas()
     except Exception as erro:                                  # noqa: BLE001
         return {"erro": f"{type(erro).__name__}: {erro}"}
-    nomes = ([f"Historias_auto_{h:02d}" for h in _horas_de_criacao()]
-             + _tarefas_de_geracao()
-             + [f"NeuralFights_postar_{h:02d}" for h in grade.HORAS]
-             + ["NeuralFights_bot_telegram"])
-    faltando, fracas, sem_leitura, motivo = [], [], [], ""
-    for nome in nomes:
-        try:
-            ficha = tarefas_windows.conferir(nome)
-        except Exception as erro:                              # noqa: BLE001
-            # Ate 11/10/2026 isto era `continue`: com o Agendador fora, saiam
-            # "34 tarefas, nada faltando, nada fraco" — o retrato exato de
-            # tudo saudavel. Tarefa que nao deu para ler tem lista propria.
-            sem_leitura.append(nome)
-            motivo = motivo or f"{type(erro).__name__}: {erro}"
-            continue
-        if not ficha:
-            faltando.append(nome)
-        elif not ficha.get("confiavel"):
-            fracas.append(nome)
-    saida = {"total": len(nomes), "faltando": faltando, "fracas": fracas,
-             "sem_leitura": sem_leitura}
-    if motivo:
-        saida["motivo_sem_leitura"] = motivo
-    return saida
+    # Ate 11/10/2026 a tarefa que nao deu para ler era `continue`: com o
+    # Agendador fora, saiam "34 tarefas, nada faltando, nada fraco". Agora
+    # ela vai para `sem_leitura` (em `tarefas_windows.julgar`).
+    return tarefas_windows.julgar(esperadas)
 
 
 def _oauth_vivo() -> dict:

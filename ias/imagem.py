@@ -203,7 +203,10 @@ def _config() -> dict:
 def rodizio_ordem() -> list:
     """Os geradores do rodizio, do que gerou ha MAIS tempo ao mais recente: assim
     eles DIVIDEM o trabalho em vez de o primeiro da lista levar tudo (03/10/2026)."""
-    ordem = _config().get("rodizio_imagem") or ["gemini", "chatgpt", "picasso"]
+    # Sem o picasso no padrao (SCR-PT, 14/10/2026): ele saiu da roda por
+    # decisao (`geral/picasso-fora-da-roda`, 06/10), e com a chave apagada
+    # do config ele VOLTAVA. O padrao e o mesmo do `ias/config.json`.
+    ordem = _config().get("rodizio_imagem") or ["gemini", "chatgpt"]
     ordem = [str(g).lower() for g in ordem if str(g).lower() in correio.GERADORES]
     ultima = ultima_imagem_por_gerador()
     return sorted(ordem, key=lambda g: (ultima.get(g, ""), ordem.index(g)))

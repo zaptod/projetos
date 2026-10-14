@@ -8,8 +8,6 @@ vai para `tmp_path` e as fontes de `painel_dados` sao dubles.
 from __future__ import annotations
 
 import http.client
-import base64
-import io
 import json
 import os
 import socket
@@ -21,7 +19,6 @@ import types
 from pathlib import Path
 
 import pytest
-from PIL import Image
 
 from remoto import api_http, painel_dados
 from esteira_sprites import config as sprites_config

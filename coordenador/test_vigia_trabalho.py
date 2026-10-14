@@ -235,6 +235,24 @@ def test_validador_recusou_avisa_e_nao_aplica(mundo):
     assert mundo.vigia.ultimo["olho"][0]["id"] == "fora"
 
 
+def test_olho_igual_so_avisa_uma_vez(mundo):
+    """maquina.md #1 (11/10): 6.489 `trabalho_olho` num dia, o mesmo texto ao
+    Telegram a cada passo. A mesma entrega com o mesmo motivo avisa 1x."""
+    d = mundo.delegar
+    d.novo("preso", mundo.depois, ok=False, motivos=["diff ilegível"])
+    mundo.vigia.passo()
+    primeiro = len(mundo.avisos)
+    mem = mundo.vigia._ler_memoria()
+    motivo = mem["olho"]["preso"]["motivo"]
+    mundo.vigia._olho(mem, "preso", motivo)
+    assert len(mundo.avisos) == primeiro
+    mundo.vigia._olho(mem, "preso", "motivo novo")
+    assert len(mundo.avisos) == primeiro + 1
+    mundo.relogio.andar(1)
+    mundo.vigia.passo()
+    assert not [a for a in mundo.avisos[primeiro + 1:] if "preso travou" in a]
+
+
 def test_janela_da_grade_espera_e_depois_aplica(mundo):
     d = mundo.delegar
     d.novo("na-janela", mundo.depois)

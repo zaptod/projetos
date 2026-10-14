@@ -87,7 +87,20 @@ destino de um teste vermelho: a entrega nao e aplicada.
 
 **Desligar so o aplicar:** `{"vigia_aplica": false}` no `config.json` da pasta do coordenador. A entrega validada e testada fica em `esperando` ("pronta para aplicar") e o orquestrador aplica; o resto do vigia segue.
 
-Memoria em `trabalho_memoria.json` (vistos, aplicados, corrigidos, olho, esperando, avisos de parada, nos por dia): reiniciar o coordenador nao repete aviso.
+Memoria em `trabalho_memoria.json` (vistos, aplicados, corrigidos, olho, esperando, avisos de parada, nos por dia): reiniciar o coordenador nao repete aviso. A mesma entrega com o mesmo motivo vai ao `olho` (e ao Telegram) UMA vez: a guarda mora no `_olho`, por onde passam os 12 caminhos (maquina.md #1: 6.489 linhas `trabalho_olho` num dia, 14/10/2026).
+
+## O vigia das rodadas penduradas (14/10/2026, SCR-7)
+
+A rodada de historias das 07:02 de 12/10 (pid 4332) calou no Gemini as 13:09 e segurou `historias__auto` 31 h; os disparos seguintes sairam "ja tem uma rodada" e nada matou o Python (as 49 tarefas tinham PT72H, e o Agendador no limite mata so o `wscript`). Codigo: `coordenador/vigia_rodadas.py` (ligado pelo `montar()`, uma olhada por minuto, em fundo) e `random_builds/builds/rodada_viva.py`.
+
+- A rodada longa (`agenda.rodar`/`rodar_faixas` das historias, `noite.rodar` dos builds) grava `<runtime>/rodadas/<pid>.json` (pid, inicio, trava, rotulo, pulso) quando PEGA a trava, e apaga quando solta. Cada linha do diario dela (`_SaidaNoDiario`, `_diario`, `noite._Diario`) e o laco do supervisor das faixas renovam o `pulso` (no maximo a cada 30 s).
+- Pulso parado ha `LIMITE_SEM_PULSO_MIN` (120; o pior trecho calado saudavel medido nos logs de set-out foi 43,4 min nos builds e 22,6 min nas historias) com o MESMO processo vivo (a hora de criacao do pid tem de ser anterior a ficha): `taskkill /T /F` na arvore, confere a morte, apaga a ficha, evento `rodada_encerrada` e Telegram com pid, faixa e ultimo sinal. A trava de arquivo solta com o processo. Se nao morrer: avisa UMA vez, "feche na mao".
+- Pid morto ou reaproveitado: a ficha e lixo e sai, sem aviso. Rodada que fala nao morre, por mais longa que seja.
+- As tarefas `Historias_auto_*` e `NeuralFights_gerar_*` passam a nascer com `ExecutionTimeLimit` PT6H (`LIMITE_DA_TAREFA` nos dois instaladores); as que existem so mudam quando alguem reinstalar.
+
+**PC religou (SCR-1, decisao `geral/pc-religado`: so o aviso).** Na primeira subida do coordenador depois de um boot novo (`coordenador/religou.py`, chamado pelo `rodar` do `__main__`), um aviso: hora do boot, hora do logon e o ultimo pulso do coordenador antes de cair (o `pulso_em` do `estado.json`). Uma vez por boot (marca `boot_<epoch>.marca` com O_EXCL); a primeira subida depois de instalar so grava a marca. Nao guarda senha nem liga logon automatico.
+
+**Trava ocupada sai 0 (SCR-6).** Outro coordenador no ar nao e falha: com 1, o RestartOnFailure (PT1M x999) relancava a cada minuto. `desligar-/religar-tarefas-antigas` seguem nome a nome e dizem qual falhou. O `TimeTrigger PT5M` do XML FICA: e ele que religa o coordenador depois do "saio para subir com o codigo novo" (saida 0, que o RestartOnFailure nao cobre) — o 0x800710E0 a cada 5 min e o preco disso.
 
 ## Permissoes dos trabalhadores (03/10)
 

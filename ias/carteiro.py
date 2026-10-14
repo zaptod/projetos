@@ -51,6 +51,8 @@ RAIZ = Path(__file__).resolve().parent
 CONFIG = RAIZ / "config.json"
 # Quanto cada tentativa de trava espera antes de o carteiro voltar a pulsar.
 PASSO_TRAVA_S = 20.0
+# Ocioso, o carteiro deixa uma linha no log a cada tanto (maquina.md #3).
+PULSO_OCIOSO_S = 300.0
 
 PEDIDO_RESUMO = (
     "PEDIDO DE TEXTO: resuma em até 12 linhas o que combinamos nesta conversa "
@@ -710,6 +712,7 @@ class Carteiro:
         self._casa: dict | None = None
         self._fora_da_casa = False
         self._ultima_varredura: float | None = None
+        self._ultimo_pulso_ocioso = 0.0
 
     # ------------------------------------------------------------ real
     def _fabrica_real(self, ia: str):
@@ -1816,6 +1819,13 @@ class Carteiro:
                     return 0
                 if parar is not None and parar():
                     return 0
+                # PULSO NO LOG (maquina.md #3, 11/10/2026): o carteiro ficou
+                # 38 h vivo e calado, sem uma linha, e nao dava para separar
+                # "ocioso" de "travado". Ocioso fala a cada `PULSO_OCIOSO_S`.
+                agora = self.relogio()
+                if agora - self._ultimo_pulso_ocioso >= PULSO_OCIOSO_S:
+                    self._ultimo_pulso_ocioso = agora
+                    self.log("[carteiro] vivo; olhando as caixas")
                 self.dormir(intervalo)
 
 

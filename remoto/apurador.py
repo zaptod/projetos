@@ -741,7 +741,7 @@ def _rodar_claude(comando: list, pasta: Path):
 def _alarmar(texto: str) -> None:
     with contextlib.suppress(Exception):
         from builds import atividade
-        atividade.registrar(FABRICA, "erro", texto[:300], "builds")
+        atividade.registrar(FABRICA, "erro", texto[:300], "builds", etapa="apuracao")
 
 
 def _pasta_dos_remendos() -> Path:
@@ -1102,7 +1102,7 @@ def uma_volta(*, log=print) -> dict:
             log(f"[apurador] {texto_pulado}")
             with contextlib.suppress(Exception):
                 from builds import atividade
-                atividade.registrar(FABRICA, "log", texto_pulado, "builds")
+                atividade.registrar(FABRICA, "log", texto_pulado, "builds", etapa="apuracao")
             return {"feito": False, "motivo": texto_pulado, "pulada": True,
                     "erros": len(erros)}
         texto = apurar(erros, log=log)

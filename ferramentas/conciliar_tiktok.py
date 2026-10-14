@@ -277,6 +277,18 @@ def main(argv=None) -> int:
                 print(f"      NAO peguei a trava de {canal}; abortei "
                       f"(rode de novo depois).")
                 continue
+            # RELIDO DENTRO DA TRAVA (SCR-F1, 14/10/2026): a proposta acima
+            # foi feita sem a trava, e duas conciliacoes juntas gravavam o
+            # mesmo `tiktok_id` duas vezes.
+            do_ledger, vistos = _ledger_lido(caminho)
+            usados, quandos = _posts_ja_com_dono(do_ledger)
+            novas = linhas_a_importar(itens, _catalogo(canal), vistos,
+                                      usados, quandos)
+            if args.so:
+                novas = [n for n in novas if n["video_id"] in set(args.so)]
+            if not novas:
+                print("      nada novo (outra conciliacao ja gravou).")
+                continue
             carimbo = datetime.now().strftime("%Y%m%d-%H%M%S")
             copia = caminho.with_suffix(f".jsonl.antes-{carimbo}")
             shutil.copy2(caminho, copia)

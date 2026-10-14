@@ -765,6 +765,13 @@ class _Diario:
                         fh.write(f"{datetime.now():%H:%M:%S} {linha}\n")
             except OSError:
                 pass
+            # O pulso da rodada (SCR-7): o vigia do coordenador encerra a
+            # que calou por `rodada_viva.LIMITE_SEM_PULSO_MIN`.
+            try:
+                from .. import rodada_viva
+                rodada_viva.pulsar()
+            except Exception:                                  # noqa: BLE001
+                pass
         return len(texto)
 
     def flush(self) -> None:
@@ -985,16 +992,27 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
         if not minha:
             print("[noite] ja tem uma rodada de geracao em andamento. Saindo.")
             return {"feito": "nada", "motivo": "ja rodando", "modo": modo}
+        # A ficha da rodada (SCR-7): quem segura `builds__gerar`, e o pulso
+        # renovado por cada linha do diario (`_Diario.write`).
+        import contextlib
+
+        from .. import rodada_viva
+        ficha_da_rodada = contextlib.ExitStack()
+        ficha_da_rodada.enter_context(rodada_viva.rodada(TRAVA, "builds"))
         comeco = time.monotonic()
-        resultado = _trabalhar(config=efetivo, ensaio=ensaio, duelos=duelos,
-                               sem_worker=sem_worker, relogio=relogio,
-                               gerar_duelo=gerar_duelo,
-                               drenar_worker=drenar_worker, jobs=jobs,
-                               estoque=estoque, proximo=proximo,
-                               builds=builds, gerar_build=gerar_build,
-                               estoque_builds=estoque_builds,
-                               metas=plano.get("metas"), contagem=contado,
-                               limite=limite)
+        try:
+            resultado = _trabalhar(
+                config=efetivo, ensaio=ensaio, duelos=duelos,
+                sem_worker=sem_worker, relogio=relogio,
+                gerar_duelo=gerar_duelo,
+                drenar_worker=drenar_worker, jobs=jobs,
+                estoque=estoque, proximo=proximo,
+                builds=builds, gerar_build=gerar_build,
+                estoque_builds=estoque_builds,
+                metas=plano.get("metas"), contagem=contado,
+                limite=limite)
+        finally:
+            ficha_da_rodada.close()
         resultado["modo"] = modo
         resultado["plano"] = plano
         if (plano.get("impedimento") and not resultado.get("duelos")

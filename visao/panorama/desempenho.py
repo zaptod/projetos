@@ -44,13 +44,24 @@ def _historias() -> list:
         return []
 
 
-def _salvas() -> list:
+def _salvas(canal: str = "builds") -> list:
     """As metricas ja baixadas do YouTube (arquivos em outputs/_metricas)."""
     try:
         from builds.publicar import metricas
-        return list(metricas.carregar_salvas() or [])
+        return list(metricas.carregar_salvas(canal) or [])
     except Exception:
         return []
+
+
+def _numeros(salvas: list) -> dict:
+    com_numero = [d for d in salvas if not d.get("erro")]
+    medias = [d.get("media_percentual") for d in com_numero
+              if isinstance(d.get("media_percentual"), (int, float))]
+    return {"com_metrica": len(com_numero),
+            "views": sum(int(d.get("views") or 0) for d in com_numero),
+            "likes": sum(int(d.get("likes") or 0) for d in com_numero),
+            "retencao_media": (round(sum(medias) / len(medias), 1)
+                               if medias else None)}
 
 
 def _por_plataforma(linhas: list) -> dict:
@@ -101,6 +112,14 @@ def publicado() -> dict:
         "historias": {"total": len(historias),
                       "por_plataforma": _por_plataforma(historias)},
         "total": len(builds) + len(historias),
+        # Os numeros de cima (`views`, `likes`, `retencao_media`) sao SO dos
+        # builds, como sempre foram — e agora isso esta escrito (SCR-P2,
+        # 14/10/2026): ficavam ao lado de um `total` dos dois canais. Os dois
+        # canais, separados (media de canais diferentes nao significa nada),
+        # estao em `metricas_por_canal`.
+        "metricas_de": "builds",
+        "metricas_por_canal": {"builds": _numeros(salvas),
+                               "historias": _numeros(_salvas("historias"))},
         "com_metrica": len(com_numero),
         "views": sum(int(d.get("views") or 0) for d in com_numero),
         "likes": sum(int(d.get("likes") or 0) for d in com_numero),

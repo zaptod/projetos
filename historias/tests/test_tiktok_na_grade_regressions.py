@@ -109,8 +109,9 @@ class OsDoisDestinosTests(unittest.TestCase):
             self.assertIn("NAO subiu", corpo, nome)
 
     def test_a_grade_automatica_manda_postar_de_verdade(self):
-        """`postar_automatico: false` e o certo para o BOTAO do painel, onde a
-        ultima palavra e dele. A grade nao tem quem clique."""
+        """Parar antes de publicar e o certo para o BOTAO do painel, onde a
+        ultima palavra e dele. A grade nao tem quem clique. (A chave
+        `tiktok.postar_automatico` saiu do config em 14/10/2026.)"""
         self.assertIn("postar=True", self._corpo("_tiktok_dos_builds"))
         self.assertIn("postar=True", self._corpo("_tiktok_das_historias"))
 

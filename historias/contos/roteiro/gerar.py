@@ -354,6 +354,35 @@ def _trocar_premissa_se_precisar(cliente, biblia: dict, partes: int,
     return biblia
 
 
+MINIMO_DE_PARTES = 2
+
+
+def _biblia_curta_vira_serie_curta(biblia: dict, pasta, log) -> dict:
+    """HIS-4 (decisao `historias/plano-com-menos-partes`, 14/10/2026): a
+    biblia que voltou com MENOS partes que o pedido sai mais curta.
+
+    Ate aqui a porta so exigia lista nao vazia: uma biblia com 5 de 6 partes
+    virava roteiro com `partes_esperadas: 6`, `incompletas()` o devolvia
+    sempre e a retomada pedia ao LLM "PARTE 6 de 5 ... e a ultima parte",
+    sem plano. Agora a serie fica com as N planejadas (nao perde o trabalho
+    ja feito); com menos de `MINIMO_DE_PARTES`, nao e serie e falha.
+    """
+    planejadas = len(biblia.get("partes") or [])
+    pedidas = int(biblia.get("partes_esperadas") or 0)
+    # Pedir UMA parte (video unico) e legitimo; o minimo vale para a biblia
+    # que veio mais curta que o pedido.
+    if 0 < planejadas < pedidas and planejadas < MINIMO_DE_PARTES:
+        raise GeracaoFalhou(
+            f"a biblia planejou so {planejadas} parte(s) de {pedidas}; serie "
+            f"precisa de pelo menos {MINIMO_DE_PARTES}. O texto cru esta em "
+            f"{pasta / 'conversa'}.")
+    if 0 < planejadas < pedidas:
+        log(f"[serie] a biblia planejou {planejadas} de {pedidas} partes; a "
+            f"serie fica com {planejadas}.")
+        biblia = dict(biblia, partes_esperadas=planejadas)
+    return biblia
+
+
 # QUANTO A CRIACAO ESPERA A CONTA DO LLM. O padrao do cliente e 10 s, e a
 # postagem das :07 segura o Gemini no parecer por ate ~30 min (60 s pela conta,
 # 900 s pelo video, 900 s pela resposta). Uma rodada que chegasse ao roteiro
@@ -402,6 +431,31 @@ def retomar_serie(historia_id: str, *, provedor: str = "gemini",
     biblia.setdefault("tipo", roteiro.get("tipo") or "")
 
     partes_prontas = [dict(p) for p in (roteiro.get("partes") or [])]
+    # HIS-4: parte SEM PLANO na biblia nao e pedida ao LLM ("PARTE 6 de 5").
+    # Roteiro de antes do conserto (plano com 5, `partes_esperadas` 6): pela
+    # decisao `plano-com-menos-partes` ele SAI MAIS CURTO — o roteiro em disco
+    # passa a esperar as partes planejadas, e so as planejadas sao escritas.
+    planejadas = {int(p.get("n") or 0) for p in biblia.get("partes") or []}
+    sem_plano = [n for n in faltam if n not in planejadas]
+    if sem_plano:
+        if len(planejadas) < MINIMO_DE_PARTES:
+            raise GeracaoFalhou(
+                f"{historia_id}: parte(s) {sem_plano} sem plano na biblia (ela "
+                f"planejou {len(planejadas)} de "
+                f"{roteiro.get('partes_esperadas')}); nao peco ao modelo um "
+                "episodio depois do fim.")
+        caminho = pasta / "roteiro.json"
+        with open(caminho, encoding="utf-8-sig") as fh:
+            bruto = json.load(fh)
+        bruto["partes_esperadas"] = len(planejadas)
+        R._gravar_json_atomico(caminho, bruto)
+        log(f"[serie] {historia_id}: a biblia planejou {len(planejadas)} de "
+            f"{roteiro.get('partes_esperadas')} partes; a serie fica com "
+            f"{len(planejadas)} (as partes {sem_plano} nao sao pedidas).")
+        faltam = [n for n in faltam if n in planejadas]
+        if not faltam:
+            return {"historia_id": historia_id, "partes": 0,
+                    "retomada": False, "encurtada": True}
     log(f"[serie] retomando {historia_id}: faltam as partes {faltam} de "
         f"{roteiro.get('partes_esperadas')}.")
     with abrir_cliente(provedor, headless=headless,
@@ -572,12 +626,15 @@ def gerar_serie(*, provedor: str = "chatgpt", partes: int = S.PARTES_PADRAO,
                         "o modelo nao devolveu a biblia no formato mesmo depois de "
                         f"corrigir ({'; '.join(problemas)}). O texto cru esta em "
                         f"{pasta / 'conversa'}.")
+            biblia = _biblia_curta_vira_serie_curta(biblia, pasta, log)
             # A PREMISSA IMPUBLICAVEL SE DESCOBRE AQUI, e aqui ela ainda tem
             # conserto. Depois desta linha vem seis turnos de escrita, 84
             # imagens (~40 min) e ~1h de render — e a agenda so descobria no
             # fim, jogando a historia inteira fora. Custa um turno de chat.
             biblia = _trocar_premissa_se_precisar(
                 cliente, biblia, partes, pasta, log)
+            # a troca de premissa traz uma biblia NOVA, que pode ser curta
+            biblia = _biblia_curta_vira_serie_curta(biblia, pasta, log)
             # O molde e o tipo vao NA BIBLIA: `prompt_parte` le dali as
             # regras, a abertura e o fechamento do molde — inclusive na
             # retomada, que abre um chat novo sem o contexto da biblia.

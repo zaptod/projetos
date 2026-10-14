@@ -290,6 +290,18 @@ class CarteiroEntrega(_Base):
         self.assertEqual(correio.estado_do_carteiro()["situacao"], "ocioso")
 
 
+class CarteiroPulsoOcioso(_Base):
+    def test_ocioso_deixa_pulso_no_log(self):
+        """maquina.md #3 (11/10/2026): 38 h vivo e calado, sem uma linha."""
+        registros, paradas = [], [False, False, True]
+        relogio = iter([1000.0, 1100.0, 1400.0])
+        c = _novo(carteiro_mod.fabrica_duble(), log=registros.append,
+                  relogio=lambda: next(relogio, 9999.0))
+        c.rodar(intervalo=0, parar=lambda: paradas.pop(0))
+        pulsos = [r for r in registros if "vivo; olhando as caixas" in r]
+        self.assertEqual(2, len(pulsos), registros)   # 1000 e 1400 (>= 300 s)
+
+
 class CarteiroPrioridade(_Base):
     def test_trava_com_a_pipeline_espera_registra_e_nunca_mata(self):
         fabrica = carteiro_mod.fabrica_duble(responder=lambda t: "OK")

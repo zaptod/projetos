@@ -24,7 +24,6 @@
   "exige_evidencia": ["formula", "edicao", "cadencia", "apostas"],
 
   "resposta_timeout_s": 900,
-  "tentativas_por_secao": 2,
 
   "_comentario_amostra": "Quantas fichas entram inteiras no prompt do esqueleto. Acima disso vai a agregacao (contagens e medianas) mais uma amostra — 177 fichas cruas nao cabem num chat.",
   "fichas_no_prompt": 12

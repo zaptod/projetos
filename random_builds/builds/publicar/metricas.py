@@ -159,6 +159,30 @@ def prova_ok(laudo: dict | list | None) -> bool | None:
                 or laudo.get("confirmado"))
 
 
+def visibilidade_usada(laudo: dict | list | None, reserva: str) -> str:
+    """A visibilidade que o publicador DE FATO aplicou, para o ledger.
+
+    Decisao `publicacao/visibilidade-no-ledger` (14/10/2026): o ledger grava a
+    que o publicador usou, nao a que o config diz. O `youtube_web` escreve
+    `visibilidade` no laudo no instante em que clica a opcao (ou
+    `nao_escolhida` quando a opcao nao estava na tela, `agendado` no
+    agendamento). Ate aqui a linha das historias dizia `public` sempre, lida
+    de uma chave que nao existe (`visibilidade` na raiz do config).
+
+    `reserva` vale quando nenhum laudo diz (caminho da API, que nao le a
+    tela, ou linha sem laudo). Com dois pedacos que discordam, `mista`: a
+    linha nao pode afirmar uma so.
+    """
+    laudos = laudo if isinstance(laudo, list) else [laudo]
+    vistas = {str(um.get("visibilidade")).lower() for um in laudos
+              if isinstance(um, dict) and um.get("visibilidade")}
+    if not vistas:
+        return str(reserva or "").lower()
+    if len(vistas) > 1:
+        return "mista"
+    return vistas.pop()
+
+
 # ------------------------------------------------------ trava do ledger
 # Todo escritor do ledger usa a MESMA trava, `ledger__<canal>`. Sem ela, uma
 # reescrita (a reconciliacao da madrugada, a cura) le o arquivo, pensa, e
@@ -252,7 +276,8 @@ def acrescentar_ao_ledger(caminho: Path, linha: dict, canal: str,
                             "publicacao", "erro",
                             f"ledger de {canal} ocupado na troca; guardei "
                             f"pendente: {linha.get('video_id')} "
-                            f"({linha.get('plataforma')}).", canal)
+                            f"({linha.get('plataforma')}).", canal,
+                            etapa="metricas.ledger")
             else:
                 with open(caminho, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(linha, ensure_ascii=False) + "\n")
@@ -265,7 +290,7 @@ def acrescentar_ao_ledger(caminho: Path, linha: dict, canal: str,
                 "publicacao", "erro",
                 f"guardei pendente no ledger de {canal} (trava ocupada por "
                 f"{paciencia:.0f} s): {linha.get('video_id')} "
-                f"({linha.get('plataforma')}).", canal)
+                f"({linha.get('plataforma')}).", canal, etapa="metricas.ledger")
 
 
 def reescrever_ledger(caminho: Path, linhas: list) -> bool:
@@ -712,6 +737,36 @@ def casar_ids(linhas: list, videos: list,
     return pares
 
 
+def motivo_sem_casamento(linha: dict, linhas: list, videos: list,
+                         folga: timedelta = FOLGA_DE_CASAMENTO) -> str:
+    """POR QUE uma linha sem id nao casou (SCR-M7). Pura; so para o log.
+
+    As 3 linhas de 07/10 (`historia_00054:p02`, `00063:p01`, `00061:p03`)
+    nunca casaram e ninguem sabia por que: a reconciliacao so dizia "0 de N".
+    A ordem das perguntas e a de `casar_ids`.
+    """
+    usados = {str(L.get("youtube_id")) for L in linhas if L.get("youtube_id")}
+    chave = _chave_de_titulo(linha.get("titulo"))
+    mesmos = [v for v in videos or () if v.get("youtube_id")
+              and _chave_de_titulo(v.get("titulo")) == chave]
+    if not mesmos:
+        return "nenhum video com este titulo no canal"
+    livres = [v for v in mesmos if v["youtube_id"] not in usados]
+    if not livres:
+        return ("o(s) video(s) com este titulo ja sao de outra linha: "
+                + ", ".join(v["youtube_id"] for v in mesmos[:3]))
+    corte = titulos.corte(linha.get("titulo"))
+    inteiros = [v for v in livres if titulos.corte(v.get("titulo")) == corte]
+    if not inteiros:
+        return "so ha pedaco(s) (N de M) com este titulo; a linha e a parte inteira"
+    referencia = _instante(linha.get("agendado_para")) or _instante(linha.get("quando"))
+    if referencia is None:
+        return "a linha nao tem hora"
+    horas = [str(v.get("publicado_em") or "?")[:16] for v in inteiros[:3]]
+    return (f"hora fora da folga de {folga}: linha {str(referencia)[:16]}, "
+            f"video(s) {', '.join(horas)}")
+
+
 def reconciliar(canal: str = "builds", log=print) -> int:
     """Preenche o `youtube_id` que faltou no ledger, casando pelo TITULO.
 
@@ -729,7 +784,12 @@ def reconciliar(canal: str = "builds", log=print) -> int:
     faltam = [L for L in linhas
               if L.get("plataforma", "youtube") == "youtube"
               and not L.get("youtube_id") and L.get("titulo")]
-    if not faltam:
+    # SCR-M7 (14/10/2026): a linha que JA tinha id (recuperado antes) e
+    # `prova_ok: False` nunca entrava em `faltam`, e o a34b355 so marcava a
+    # prova na linha preenchida AGORA. Medido no ledger: 36 (historias) + 12
+    # (builds) linhas com id e prova False. O id no canal tambem e prova.
+    sem_prova = [L for L in linhas if _sem_prova_com_id(L)]
+    if not faltam and not sem_prova:
         log(f"[{canal}] nenhum upload sem id.")
         return 0
     token, _ = _token(canal)
@@ -763,7 +823,16 @@ def reconciliar(canal: str = "builds", log=print) -> int:
             # laudo incompleto do Studio: a reconciliacao confirmou a saida.
             linha["prova_ok"] = True
             achados += 1
-        if achados:
+        # o POR QUE de cada linha que segue sem id (as 10 mais novas)
+        ainda = [L for L in linhas
+                 if str(L.get("plataforma") or "youtube") == "youtube"
+                 and not L.get("youtube_id") and L.get("titulo")]
+        for linha in ainda[-10:]:
+            log(f"[{canal}] sem id: {linha.get('video_id')} "
+                f"({str(linha.get('quando') or '')[:16]}) — "
+                f"{motivo_sem_casamento(linha, linhas, videos)}"[:300])
+        provados = _provar_pelo_canal(linhas, videos)
+        if achados or provados:
             # Reescrito inteiro porque o ledger e a linha do tempo: ordem e
             # conteudo das outras linhas nao mudam, so os campos preenchidos.
             if not reescrever_ledger(registro, linhas):
@@ -772,9 +841,42 @@ def reconciliar(canal: str = "builds", log=print) -> int:
                 # proxima coleta; as linhas continuam sem id ate la.
                 log(f"[{canal}] ledger ocupado por um leitor na troca; "
                     f"{achados} id(s) ficam para a proxima reconciliacao.")
-                achados = 0
+                achados = provados = 0
+    if provados:
+        log(f"[{canal}] {provados} linha(s) com id ganharam prova pelo canal.")
     log(f"[{canal}] {achados} de {len(faltam)} upload(s) reconciliados.")
     return achados
+
+
+def _sem_prova_com_id(linha: dict) -> bool:
+    return (str(linha.get("plataforma") or "youtube") == "youtube"
+            and bool(linha.get("youtube_id")) and linha.get("prova_ok") is False)
+
+
+def _provar_pelo_canal(linhas: list, videos: list) -> int:
+    """Marca `prova_ok: True` na linha com id e prova False cujo id esta no
+    canal (SCR-M7). No lugar; devolve quantas mudaram.
+
+    O id no canal so prova o que a linha afirma se o video esta no ar como
+    ela diz: um rascunho do "Publicar mesmo assim" tambem tem id, e e
+    PRIVADO. Privado so conta quando a linha diz que subiu privado.
+    """
+    no_canal = {str(v.get("youtube_id")): str(v.get("privacidade") or "")
+                for v in videos or () if v.get("youtube_id")}
+    mudou = 0
+    for linha in linhas:
+        if not _sem_prova_com_id(linha):
+            continue
+        privacidade = no_canal.get(str(linha["youtube_id"]))
+        if privacidade is None:
+            continue
+        pedida = str(linha.get("visibilidade") or "public").lower()
+        if privacidade == "private" and pedida != "private":
+            continue
+        linha["prova_ok"] = True
+        linha["prova_pelo_canal"] = True
+        mudou += 1
+    return mudou
 
 
 def motivo_da_recusa(resposta) -> str:
@@ -1019,7 +1121,7 @@ def atualizar_uma_vez_por_dia(log=print, agora=None,
                     "metricas", atividade.ERRO,
                     f"coleta {rotulo} de {canal} falhou: {ficha.get('erro')}"
                     " — a noite fica pendente e a proxima rodada tenta de novo",
-                    canal=canal)
+                    canal=canal, etapa="metricas.coleta")
             ficha["avisado"] = tipo
         elif ficha["estado"] == "ok":
             ficha["ultimo_ok"] = ficha["quando"]
@@ -1230,7 +1332,8 @@ def avisar_coleta_atrasada(agora: datetime | None = None, *,
         texto = texto_do_atraso(atraso, contexto)
         canal = (atraso["partes"][0].split("_")[0] if atraso["partes"]
                  else "builds")
-        atividade.registrar("metricas", atividade.ERRO, texto, canal=canal)
+        atividade.registrar("metricas", atividade.ERRO, texto, canal=canal,
+                            etapa="metricas.coleta")
         log(f"[metricas] {texto}")
         return texto
     except Exception as exc:                                  # noqa: BLE001

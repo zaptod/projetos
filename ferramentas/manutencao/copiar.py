@@ -37,10 +37,26 @@ def destino_mudou(destino: Path, base: str, arquivos: list[str]) -> list[str]:
     return [linha for linha in r.stdout.splitlines() if linha]
 
 
+def _dentro(raiz: Path, rel: str) -> Path:
+    """`raiz / rel` resolvido, recusando o que escapa da raiz (SCR-F2).
+
+    `destino / "../fora.txt"` sobrescrevia um arquivo irmao da arvore
+    principal, sem copia.
+    """
+    if Path(rel).is_absolute():
+        raise ValueError(f"caminho absoluto nao e relativo: {rel}")
+    base = Path(raiz).resolve()
+    caminho = (base / rel).resolve()
+    if not caminho.is_relative_to(base):
+        raise ValueError(f"{rel} escapa de {base}")
+    return caminho
+
+
 def copiar(origem: Path, destino: Path, arquivos: list[str]) -> None:
-    for rel in arquivos:
-        fonte = origem / rel
-        alvo = destino / rel
+    # confere TODOS antes de escrever o primeiro
+    pares = [(rel, _dentro(origem, rel), _dentro(destino, rel))
+             for rel in arquivos]
+    for rel, fonte, alvo in pares:
         dados = fonte.read_bytes().replace(b"\r\n", b"\n")
         crlf = alvo.is_file() and b"\r\n" in alvo.read_bytes()
         if crlf or not alvo.is_file():

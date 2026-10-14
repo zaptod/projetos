@@ -51,7 +51,12 @@ IGNORAR = ("__pycache__", ".venv", "venv", "build", "dist", ".git",
            # sys.path" pularam de 2 (o teto) para 7 sem ninguem ter escrito
            # uma linha. Vermelho falso e caro — ele ensina a ignorar
            # vermelho, que e o oposto do que a catraca existe para fazer.
-           ".claude")
+           ".claude",
+           # DOCUMENTACAO, nao codigo do produto (14/10/2026, SCR-3): os
+           # `docs/sprites/prototipo_*.py` sao rascunhos citados nos textos,
+           # que ninguem importa; contavam uma cirurgia de sys.path e um
+           # "pacote" `sprites` repetido com o `painel/sprites`.
+           "docs")
 
 # Mutacao de sys.path que e legitima e nao entra na conta. Mantenha esta
 # lista CURTA e com o motivo escrito - allowlist que cresce sem justificativa
@@ -65,9 +70,25 @@ PERDOADAS = {
 ESTE_ARQUIVO = Path(__file__).resolve()
 
 
+def _ignorado(caminho: Path) -> bool:
+    """O caminho cai numa pasta ignorada ABAIXO da raiz?
+
+    Olha so as partes RELATIVAS a `RAIZ` (14/10/2026). Com o caminho
+    absoluto, rodar a catraca DE DENTRO de uma worktree
+    (`E:\\projetos\\.claude\\worktrees\\X`) ignorava o repositorio INTEIRO
+    por causa do `.claude` do proprio caminho: "0 cirurgias, nada piorou"
+    com 19 no codigo — a nota boa para a maquina parada.
+    """
+    try:
+        partes = caminho.resolve().relative_to(RAIZ).parts
+    except ValueError:
+        partes = caminho.parts
+    return any(parte in IGNORAR for parte in partes)
+
+
 def _fontes():
     for caminho in RAIZ.rglob("*.py"):
-        if any(parte in IGNORAR for parte in caminho.parts):
+        if _ignorado(caminho):
             continue
         # A propria auditoria contem os literais que ela procura. Contar a si
         # mesma inflaria o teto e, pior, esconderia uma reintroducao real
@@ -111,7 +132,7 @@ def _e_pacote(pasta: Path) -> bool:
     Sem `__init__.py` ela e um namespace PEP 420 - que importa do mesmo
     jeito e colide do mesmo jeito, so que em silencio.
     """
-    if any(parte in IGNORAR for parte in pasta.parts):
+    if _ignorado(pasta):
         return False
     return any(pasta.glob("*.py"))
 
@@ -120,7 +141,7 @@ def pacotes_de_topo() -> dict:
     """{nome: [caminhos]} dos pacotes que podem virar import de topo."""
     encontrados = {}
     for pasta in [RAIZ] + [d for d in RAIZ.iterdir() if d.is_dir()]:
-        if pasta != RAIZ and any(p in IGNORAR for p in pasta.parts):
+        if pasta != RAIZ and _ignorado(pasta):
             continue
         for filho in pasta.iterdir() if pasta.is_dir() else []:
             if filho.is_dir() and _e_pacote(filho):
@@ -139,7 +160,7 @@ def colisoes_com_a_raiz() -> list:
     instalado chamado `historias`, devolvendo namespace vazio.
     """
     da_raiz = {d.name for d in RAIZ.iterdir()
-               if d.is_dir() and not any(p in IGNORAR for p in d.parts)}
+               if d.is_dir() and not _ignorado(d)}
     ruins = []
     for nome, caminhos in pacotes_de_topo().items():
         if nome in da_raiz and nome not in caminhos:
@@ -254,7 +275,7 @@ def main(argv=None) -> int:
     if args.gravar:
         BASELINE.write_text(
             json.dumps(_contagens(dados), ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8")
+            encoding="utf-8", newline="\n")
         print(f"teto gravado em {_relativo(BASELINE)}")
         return 0
 

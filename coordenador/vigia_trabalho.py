@@ -591,7 +591,16 @@ class VigiaTrabalho:
         self.evento(f"trabalho_{tipo}", texto)
 
     def _olho(self, mem: dict, ident: str, motivo: str, integrar: bool = True) -> None:
-        mem["olho"][ident] = {"motivo": motivo[:400], "em": _iso(self.relogio())}
+        motivo = motivo[:400]
+        anterior = mem["olho"].get(ident)
+        # A MESMA ENTREGA COM O MESMO MOTIVO E AVISADA UMA VEZ (maquina.md #1,
+        # 11/10/2026: 6.489 linhas `trabalho_olho` em um dia, 5,7 MB, e o
+        # mesmo texto indo ao Telegram a cada passo de 1 min). Guarda no
+        # funil: os 12 caminhos que chamam `_olho` passam por aqui. Motivo
+        # novo ainda avisa.
+        if anterior and anterior.get("motivo") == motivo:
+            return
+        mem["olho"][ident] = {"motivo": motivo, "em": _iso(self.relogio())}
         mem["esperando"].pop(ident, None)
         mem["sujo_desde"].pop(ident, None)
         mem["sujo_avisado"].pop(ident, None)

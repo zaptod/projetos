@@ -51,7 +51,12 @@ def _paralelismo() -> dict:
 
 
 def agora() -> dict:
-    """O estado deste minuto."""
+    """O estado deste minuto. Diario ilegivel e `erro`, nunca "tudo ocioso"
+    (SCR-P3, 14/10/2026)."""
+    from .qualidade import diario_ilegivel
+    motivo = diario_ilegivel()
+    if motivo:
+        return {"erro": motivo}
     fluxo = _fluxo()
     fabricas = atividade.estado_das_fabricas()
     por_canal = atividade.estado_por_canal()

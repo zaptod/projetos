@@ -74,6 +74,8 @@ def tela_isolada(tmp_path, monkeypatch):
     local = tmp_path / "localappdata"
     local.mkdir()
     monkeypatch.setenv("LOCALAPPDATA", str(local))
+    # desde 14/10 (SCR-9) o runtime de teste manda em `remoto.config.runtime_dir`
+    monkeypatch.setenv("NEURAL_FIGHTS_RUNTIME_DIR", str(local / "neural-fights"))
     monkeypatch.setenv("NF_IAS_PASTA", str(tmp_path / "ias"))
     monkeypatch.setattr(api_http, "ARQUIVO", local / "app_celular.json")
     monkeypatch.setattr(api_http, "PASTA_ARENA", tmp_path / "arena")      # nunca as lutas reais

@@ -63,8 +63,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from . import (acoes, biblioteca, claude_estado, comandos_app, decisoes, delegar, orquestrador,
                painel_dados, tarefas, vila_dados, vila_nova)
@@ -2853,14 +2852,10 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     # `--saida ARQUIVO`: o Python abre o log, em vez do `>>` do cmd, que
-    # nega escrita a outro processo (14/09 e 11/10/2026).
-    argumentos = list(sys.argv)
-    saida = None
-    if "--saida" in argumentos:
-        i = argumentos.index("--saida")
-        if i + 1 < len(argumentos):
-            saida = open(argumentos[i + 1], "a", encoding="utf-8", buffering=1)
-            argumentos = argumentos[:i] + argumentos[i + 2:]
+    # nega escrita a outro processo (14/09 e 11/10/2026). A regra e a unica
+    # de `builds.saida_da_tarefa` (SCR-12, 14/10/2026).
+    from builds import saida_da_tarefa
+    argumentos, saida = saida_da_tarefa.abrir(sys.argv, "app")
     if saida is not None:
         sys.stdout = sys.stderr = saida
     raise SystemExit(main(argumentos[1:]))

@@ -49,9 +49,7 @@
         "bg_top": "#0d0b12",
         "bg_bottom": "#191320",
         "accent": "#ffb703",
-        "accent_alt": "#e63946",
-        "text": "#f7f3ea",
-        "text_dim": "#a99f92"
+        "text": "#f7f3ea"
     },
     "fonts": {
         "bold": "C:/Windows/Fonts/arialbd.ttf",
@@ -72,7 +70,6 @@
         "_comment_corte": "corte_visual_s: cena mais longa que isto vira DOIS (ou tres) planos da mesma imagem, com enquadramentos diferentes. Medido em 01/09/2026: a historia trocava de imagem a cada 14,7 s contra 2,5 s do video de build — foto parada por quinze segundos e slideshow. 0 desliga.",
         "corte_visual_s": 5.0,
         "plano_minimo_s": 3.0,
-        "corte_aperto": 1.22,
         "_comment_zoom": "As imagens saem em 1088x1920 — so 0,7% acima da tela. Medido em 01/09/2026: no zoom 1.37 o detalhe caia 23% (laplaciano 2.22 -> 1.71), porque 796px viravam 1080. Com teto 1.15 a perda fica desprezivel."
     },
     "_comment_legenda": "Legenda karaoke: a palavra falada acende. E o que segura quem assiste no mudo - a maior parte do publico de Shorts.",

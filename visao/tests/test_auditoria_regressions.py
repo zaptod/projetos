@@ -133,7 +133,9 @@ class VereditoTests(unittest.TestCase):
     def _dados(**extra):
         base = {"qualidade": {"liberados": 5, "barrados": 0, "fila": []},
                 "metas": {"faltando": 0},
-                "recursos": {"alertas": []}}
+                "recursos": {"alertas": []},
+                # desde 14/10 (SCR-P5) a producao tambem precisa ter sido lida
+                "producao": {"historias_incompletas": [], "estoque": {}}}
         base.update(extra)
         return base
 

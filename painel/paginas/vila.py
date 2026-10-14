@@ -208,6 +208,8 @@ class Pagina:
 
         prontos = numero("inventario", (inventario.get("videos_prontos")
                                         or {}).get("total", 0))
+        if prontos is None:            # catalogo que nao contou (SCR-P8)
+            prontos = "?"
         trabalhando = numero("saude", len(saude.get("trabalhando") or []))
         problemas = numero("qualidade", qualidade.get("total_erros", 0))
         texto = (f"📤 {numero('desempenho', desempenho.get('total', 0))} "

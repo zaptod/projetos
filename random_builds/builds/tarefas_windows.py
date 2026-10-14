@@ -39,6 +39,13 @@ def _aspas(texto: str) -> str:
     return "'" + str(texto).replace("'", "''") + "'"
 
 
+def _em_teste() -> bool:
+    """Rodando dentro de uma suite (pytest, ou o runtime descartavel)."""
+    import os
+    return bool(os.environ.get("PYTEST_CURRENT_TEST")
+                or os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR"))
+
+
 def _rodar(script: str, nome: str, timeout: float):
     """PowerShell com o nome EMBUTIDO e a saida decodificada na mao.
 
@@ -55,6 +62,12 @@ def _rodar(script: str, nome: str, timeout: float):
     subprocess — e o erro nao subia, a funcao so devolvia vazio, como se a
     tarefa nao existisse.
     """
+    if "Set-ScheduledTask" in script and _em_teste():
+        # TESTE NAO MUDA O AGENDADOR DE VERDADE (14/10/2026). Os testes dos
+        # instaladores dublam o `/Create`, mas o ajuste depois dele usa o
+        # NOME real ("Historias_auto_07"): sem esta guarda, um teste que
+        # esquecesse de dublar `limitar_execucao` mudaria a tarefa viva.
+        return 1, "", "recusado: teste nao muda o Agendador real"
     proc = subprocess.run(
         ["powershell", "-NoProfile", "-NonInteractive",
          "-Command", script.replace("@NOME@", _aspas(nome))],
@@ -144,8 +157,8 @@ def conferir(nome: str, *, timeout: float = 60) -> dict:
         "$ErrorActionPreference='Stop';"
         "$t = Get-ScheduledTask -TaskName @NOME@;"
         "$s = $t.Settings;"
-        "'{0};{1};{2}' -f $s.DisallowStartIfOnBatteries,"
-        "$s.StopIfGoingOnBatteries, $s.StartWhenAvailable")
+        "'{0};{1};{2};{3}' -f $s.DisallowStartIfOnBatteries,"
+        "$s.StopIfGoingOnBatteries, $s.StartWhenAvailable, $t.State")
     try:
         codigo, saida, _erro = _rodar(script, nome, timeout)
     except (OSError, subprocess.SubprocessError):
@@ -153,19 +166,61 @@ def conferir(nome: str, *, timeout: float = 60) -> dict:
     if codigo != 0:
         return {}
     campos = saida.strip().split(";")
-    if len(campos) != 3:
+    if len(campos) not in (3, 4):
         return {}
     def _bool(texto: str) -> bool:
         return str(texto).strip().lower() in ("true", "verdadeiro", "1")
-    so_no_ac, para_na_bateria, roda_se_perdeu = (_bool(c) for c in campos)
+    so_no_ac, para_na_bateria, roda_se_perdeu = (_bool(c) for c in campos[:3])
+    # SCR-P10 (14/10/2026): o ESTADO. Ate aqui uma `NeuralFights_postar_17`
+    # desligada passava como "confiavel" (so os ajustes de bateria eram
+    # lidos). `State` e um enum (Ready, Running, Disabled...), em ingles em
+    # qualquer idioma do Windows.
+    estado = campos[3].strip() if len(campos) == 4 else ""
     return {"tarefa": nome,
             "so_no_ac": so_no_ac,
             "para_na_bateria": para_na_bateria,
             "roda_se_perdeu": roda_se_perdeu,
+            "estado": estado,
+            "ligada": estado.lower() != "disabled",
             # A pergunta que interessa, ja respondida: da para confiar que
             # esta tarefa dispara no horario combinado?
             "confiavel": (not so_no_ac and not para_na_bateria
                           and roda_se_perdeu)}
+
+
+def julgar(esperadas: dict, ler=None) -> dict:
+    """Confere um conjunto `{nome: "ligada"|"desligada"}` (SCR-P10).
+
+    Uma regra so para os dois leitores (o panorama e o relatorio do bot), que
+    tinham listas diferentes e nenhum dos dois via tarefa desligada. Devolve
+    `{"total", "faltando", "fracas", "sem_leitura", "motivo_sem_leitura"?}`:
+    falta a ligada que nao existe; e fraca a ligada que nao e confiavel ou
+    esta desligada, e a desligada de proposito que voltou a ficar ligada (o
+    `remoto --instalar` a religaria). Desligada de proposito e ausente nao
+    falta. Erro de leitura vai para `sem_leitura` — nunca vira "tudo certo".
+    """
+    ler = ler or conferir
+    faltando, fracas, sem_leitura, motivo = [], [], [], ""
+    for nome, quer in esperadas.items():
+        try:
+            ficha = ler(nome)
+        except Exception as erro:                              # noqa: BLE001
+            sem_leitura.append(nome)
+            motivo = motivo or f"{type(erro).__name__}: {erro}"
+            continue
+        if quer == "desligada":
+            if ficha and ficha.get("ligada", True) and ficha.get("estado"):
+                fracas.append(nome)
+            continue
+        if not ficha:
+            faltando.append(nome)
+        elif not ficha.get("confiavel") or not ficha.get("ligada", True):
+            fracas.append(nome)
+    saida = {"total": len(esperadas), "faltando": faltando, "fracas": fracas,
+             "sem_leitura": sem_leitura}
+    if motivo:
+        saida["motivo_sem_leitura"] = motivo
+    return saida
 
 
 # ---------------------------------------------------------- sem janela preta

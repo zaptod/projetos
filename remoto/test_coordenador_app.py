@@ -25,6 +25,9 @@ def _estado(pulso=None):
 @pytest.fixture
 def mundo(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    # desde 14/10 (SCR-9) o runtime de teste manda em `remoto.config.runtime_dir`
+    monkeypatch.setenv("NEURAL_FIGHTS_RUNTIME_DIR",
+                       str(tmp_path / "local" / "neural-fights"))
     monkeypatch.setattr(api_http, "ARQUIVO", tmp_path / "app_celular.json")
     return tmp_path / "local" / "neural-fights" / "coordenador" / "estado.json"
 

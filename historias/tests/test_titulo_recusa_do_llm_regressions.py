@@ -30,7 +30,6 @@ Tres guardas, e e por isso que sao tres testes:
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,8 +37,6 @@ from types import SimpleNamespace
 from unittest import mock
 
 RAIZ = Path(__file__).resolve().parents[1]
-if str(RAIZ) not in sys.path:
-    sys.path.insert(0, str(RAIZ))
 
 from contos.roteiro import roteiro as R  # noqa: E402
 

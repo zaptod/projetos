@@ -50,19 +50,34 @@ def escrever_lancador(python: str | None = None) -> Path:
     python = python or sys.executable
     saida = RAIZ / "outputs" / "bot.txt"
     saida.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(
-        "@echo off\r\n"
-        "rem Bot de Telegram (avisos + comandos do celular).\r\n"
-        "rem Gerado por: python -m remoto --instalar\r\n"
-        f'cd /d "{RAIZ}"\r\n'
-        f'"{python}" -u -X utf8 -m remoto --saida "{saida}" > NUL 2>&1\r\n',
-        encoding="utf-8")
+    # `newline=""` (SCR-11, 14/10/2026): o texto ja vem em CRLF; o modo texto
+    # do Windows gravava CR CR LF.
+    with open(destino, "w", encoding="utf-8", newline="") as fh:
+        fh.write(
+            "@echo off\r\n"
+            "rem Bot de Telegram (avisos + comandos do celular).\r\n"
+            "rem Gerado por: python -m remoto --instalar\r\n"
+            f'cd /d "{RAIZ}"\r\n'
+            f'"{python}" -u -X utf8 -m remoto --saida "{saida}" > NUL 2>&1\r\n')
     return destino
 
 
-def _schtasks(argumentos: list) -> subprocess.CompletedProcess:
-    return subprocess.run(["schtasks"] + argumentos, capture_output=True,
-                          text=True, timeout=60, creationflags=NO_WINDOW)
+class _Saida:
+    """`CompletedProcess` com `stdout`/`stderr` ja em texto."""
+
+    def __init__(self, proc):
+        self.returncode = proc.returncode
+        self.stdout = (proc.stdout or b"").decode("oem", "replace")
+        self.stderr = (proc.stderr or b"").decode("oem", "replace")
+
+
+def _schtasks(argumentos: list) -> _Saida:
+    # SEM `text=True` (SCR-5, 14/10/2026): sob `-X utf8` a saida do schtasks
+    # (pagina do console, cp850) dava `UnicodeDecodeError` na thread leitora
+    # e a mensagem sumia (stdout '', rc 0). Decodificada na mao, como em
+    # `tarefas_noite`.
+    return _Saida(subprocess.run(["schtasks"] + argumentos, capture_output=True,
+                                 timeout=60, creationflags=NO_WINDOW))
 
 
 def acao(lancador) -> str:
@@ -75,8 +90,22 @@ def acao(lancador) -> str:
         return f'"{lancador}"'
 
 
-def instalar(minutos: int = 10) -> dict:
+def instalar(minutos: int = 10, *, forcar: bool = False) -> dict:
+    """Regrava o `bot.cmd`. A TAREFA so com `forcar` (SCR-5, 14/10/2026).
+
+    Desde 13/10 (b1ef6f7, decisao `geral/gerente-unico-dos-servicos`) o bot
+    e do COORDENADOR, e a `NeuralFights_bot_telegram` esta desligada de
+    proposito. O `/Create /F` daqui a REABILITARIA (dois bots no mesmo token
+    comem as mensagens um do outro) e ainda com PT72H e WakeToRun, diferente
+    da viva. Sem `forcar`, so o lancador e regravado.
+    """
     lancador = escrever_lancador()
+    if not forcar:
+        return {"tarefa": TAREFA, "ok": True, "lancador": str(lancador),
+                "tarefa_criada": False,
+                "mensagem": ("bot.cmd regravado. A tarefa do bot NAO e mais "
+                             "usada: o coordenador mantem o bot no ar "
+                             "(decisao de 13/10). Nada mudou no Agendador.")}
     proc = _schtasks(["/Create", "/TN", TAREFA, "/TR", acao(lancador),
                       "/SC", "MINUTE", "/MO", str(int(minutos)),
                       "/RL", "LIMITED", "/F"])

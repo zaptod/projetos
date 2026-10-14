@@ -14,7 +14,10 @@ Duas consequências que valem estar escritas:
      upload para ajustar os seletores, como o `identity probe` faz.
   2. Por padrão a ferramenta NÃO clica em "Publicar". Ela sobe o arquivo,
      escreve a legenda e PARA com a janela aberta — publicar é irreversível e
-     a última palavra é sua. `postar_automatico: true` no config muda isso.
+     a última palavra é sua. Quem posta passa `postar=True` explícito (a
+     grade, `main.py publicar --postar`). A chave `tiktok.postar_automatico`
+     do config SAIU em 14/10/2026 (decisão `publicacao/tiktok-postar-
+     automatico`): a grade sempre a ignorou, e mudar ela não mudava nada.
 """
 from __future__ import annotations
 
@@ -579,7 +582,9 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
     config = catalogo.carregar_config() if config is None else config
     ajustes = config.get("tiktok", {})
     if postar is None:
-        postar = bool(ajustes.get("postar_automatico", False))
+        # Sem `postar` explicito, PARA antes de publicar (a chave
+        # `postar_automatico` saiu do config em 14/10/2026).
+        postar = False
     url_upload = ajustes.get("url_upload") or URL_UPLOAD
 
     caminho = Path(video.caminho)

@@ -14,7 +14,11 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
-PASTA = Path(os.environ.get("LOCALAPPDATA", ".")) / "neural-fights" / "biblioteca"
+# O runtime descartavel dos testes vale aqui tambem (SCR-9, 14/10/2026): a
+# pasta era sempre a do LOCALAPPDATA real.
+PASTA = (Path(os.environ["NEURAL_FIGHTS_RUNTIME_DIR"]) / "biblioteca"
+         if os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR")
+         else Path(os.environ.get("LOCALAPPDATA", ".")) / "neural-fights" / "biblioteca")
 ARQUIVO = None                       # os testes apontam para outro lugar
 RAIZ = Path(__file__).resolve().parents[1]
 PLANOS = Path(r"C:\Users\adrian\.claude\plans")

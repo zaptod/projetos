@@ -30,6 +30,9 @@ from .. import tarefas_windows
 
 RAIZ = Path(__file__).resolve().parents[2]
 PREFIXO = "NeuralFights_gerar"
+# `ExecutionTimeLimit` das tarefas (SCR-7, 14/10/2026; era o PT72H do
+# `/Create`). Uma rodada de geracao leva ~2 h; o limite so devolve a tarefa.
+LIMITE_DA_TAREFA = "PT6H"
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
@@ -126,6 +129,12 @@ def instalar(horas: list, minuto: int = 2) -> list[dict]:
                     f"{ficha['mensagem']} (criada, mas os ajustes de bateria "
                     f"e de horario perdido falharam: {ajuste['mensagem']})"
                 ).strip()
+            # SCR-7 (14/10/2026): o `/Create` deixa PT72H, e com IgnoreNew a
+            # tarefa pendurada ignorava os disparos dela por 3 dias. O limite
+            # devolve a TAREFA; quem mata a rodada calada e o vigia do
+            # coordenador (`coordenador/vigia_rodadas.py`).
+            limite = tarefas_windows.limitar_execucao(nome, LIMITE_DA_TAREFA)
+            ficha["limitada"] = limite["ok"]
         saida.append(ficha)
     return saida
 

@@ -49,15 +49,20 @@ ROTULO_DA_PARTE = {"builds": "do YouTube de builds",
                    "historias_tiktok": "do TikTok de historias"}
 
 
-def _ledger(modulo_nome: str) -> list:
+def _ledger(modulo_nome: str) -> list | None:
+    """O ledger do canal. `None` = nao consegui ler (SCR-P3, 14/10/2026).
+
+    Era `[]` na excecao: o ledger trancado virava "prometido 0", igual a um
+    dia sem post, e nenhum alerta acendia.
+    """
     try:
         if modulo_nome == "builds":
             from builds.publicar import metricas
             return list(metricas.publicados() or [])
         from contos.publicar import serie
         return list(serie.publicados() or [])
-    except Exception:
-        return []
+    except Exception:                                          # noqa: BLE001
+        return None
 
 
 def _diario() -> list | None:
@@ -343,6 +348,13 @@ def _sinais(linhas: dict, eventos, conferencias: dict,
 
 def _alertas(ficha: dict) -> list:
     alertas = []
+    # O QUE NAO FOI LIDO VEM PRIMEIRO (SCR-P3, 14/10/2026): diario ou ledger
+    # ilegivel davam "0 falhas, 0 publicacoes" — o retrato de um dia calmo.
+    if ficha.get("diario_lido") is False:
+        alertas.append("não consegui ler o diário (atividade.jsonl)")
+    for canal, lido in (ficha.get("ledger_lido") or {}).items():
+        if lido is False:
+            alertas.append(f"não consegui ler o ledger de {canal}")
     if ficha["sem_prova"]:
         alertas.append(f"{ficha['sem_prova']} publicação(ões) sem prova hoje")
     if ficha["fora_de_hd"]:
@@ -494,11 +506,16 @@ def hoje(dia: str | None = None, *, builds=None, historias=None,
     if agora is None:
         agora = (datetime.now() if referencia >= date.today()
                  else datetime.combine(referencia, datetime.max.time()))
-    linhas = {
+    brutos = {
         "builds": _ledger("builds") if builds is None else list(builds),
         "historias": (_ledger("historias") if historias is None
                       else list(historias)),
     }
+    # NAO LIDO NAO E ZERO (SCR-P3): o canal cujo ledger nao abriu segue com
+    # lista vazia para as contas, mas fica marcado e vira alerta.
+    ledger_lido = {canal: linhas_do is not None
+                   for canal, linhas_do in brutos.items()}
+    linhas = {canal: (linhas_do or []) for canal, linhas_do in brutos.items()}
     lidos = _diario() if eventos is None else list(eventos)
     eventos = lidos or []
     conferencias = _conferencias() if conferencias is None else conferencias
@@ -535,6 +552,8 @@ def hoje(dia: str | None = None, *, builds=None, historias=None,
         "sinais": _sinais(linhas, lidos, conferencias or {}, agora),
         "metricas": _metricas(marca, agora),
         "quando": datetime.now().isoformat(timespec="seconds"),
+        "diario_lido": lidos is not None,
+        "ledger_lido": ledger_lido,
     }
     ficha["alertas"] = _alertas(ficha)
     ficha["veredito"] = "atencao" if ficha["alertas"] else "ok"

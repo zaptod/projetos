@@ -282,7 +282,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Parte barrada segura as seguintes | `proxima_historia` (`bloqueadas`/`adiadas`) |
 | "A conferir" (clique sem confirmação; e áudio mudo, com `estado` começando por `[audio] `) | `desfecho.a_conferir`/`marcas` + `postar._sem_a_conferir`/`_com_as_raizes`. Só a marca `[audio] ` sai sozinha (`desfecho.soltar_marca` com prefixo); a de clique só por conferência humana |
 | Clique dado e exceção depois, nos dois publicadores (PUB-1, 14/10) | `youtube_web._depois_do_clique` e, desde 14/10, `tiktok.publicar` (antes o TikTok não marcava nada na exceção pós-clique) chamam `desfecho.resolver`. Marca que não grava: 2 tentativas, memória da execução (`desfecho._SEM_MARCA`, somada em `marcas`), `postar._garantir_marca` (nos 4 funis e no `postar_build`) e ficha da trava `sem_marca` → `_pousar_sem_marca` na rodada seguinte, antes da escolha. Nas histórias, `catalogo.publicar_youtube` põe o laudo em `provas` **antes** da chamada (o do pedaço que caiu leva `falhou`): a ficha ganha `youtube_clicou` e não é reposta como "rede". Teste `historias/tests/test_clique_sem_marca_postar_regressions.py`, `random_builds/tests/test_clique_sem_marca_regressions.py` |
-| Build que saiu só no TikTok (dívida do YouTube dos builds, decisão `build-so-no-tiktok`, 13/10) | `postar._divida_do_youtube_dos_builds`, chamada por `postar_build` antes da fila: o build com linha de TikTok desde `CORTE_DA_DIVIDA_DOS_BUILDS` (2026-10-13) e sem YouTube, o mais antigo primeiro, sobe no YouTube; o TikTok leva `proximo_build()`; e o YouTube sobe também o build novo do TikTok (`_alcance_do_youtube_dos_builds`, "junto com o novo, até zerar"). Crivos: catálogo, pendência, título no YouTube, "a conferir" do YouTube, teto da geração no YouTube, áudio mudo. Reposição no mesmo horário: `so_youtube` + `_juntar_reposicao`. Medido em 14/10 02:22: 3 builds só no TikTok, **nenhum** desde 13/10 (o mais novo, `duelo_00076`, é de 12/10 16:31 — fora do corte). Teste `historias/tests/test_divida_dos_builds_regressions.py` |
+| Build que saiu só no TikTok (dívida do YouTube dos builds, decisão `build-so-no-tiktok`, 13/10) | `postar._divida_do_youtube_dos_builds`, chamada por `postar_build` antes da fila: o build com linha de TikTok desde `CORTE_DA_DIVIDA_DOS_BUILDS` (2026-10-12 desde a decisão `duelo-00076-ao-youtube`, 14/10; era 2026-10-13) e sem YouTube, o mais antigo primeiro, sobe no YouTube; o TikTok leva `proximo_build()`; e o YouTube sobe também o build novo do TikTok (`_alcance_do_youtube_dos_builds`, "junto com o novo, até zerar"). Crivos: catálogo, pendência, título no YouTube, "a conferir" do YouTube, teto da geração no YouTube, áudio mudo. Reposição no mesmo horário: `so_youtube` + `_juntar_reposicao`. Medido em 14/10 02:22: 3 builds só no TikTok, **nenhum** desde 13/10 (o mais novo, `duelo_00076`, é de 12/10 16:31). Com o corte em 12/10 (medido 14/10 08:5x): **1** devido, o `duelo_00076` — sobe no YouTube na próxima rodada de builds. Teste `historias/tests/test_divida_dos_builds_regressions.py` |
 | `_pareceres.json` ilegível ou trancado (14/10) | `postar._pareceres_ilegiveis` (pergunta por `parecer.lembrado`, que levanta): a parte vira **retida** em `_retencao` (só sai se o horário ficaria vazio, marcada `[qualidade]`), não sai nas `adiadas`, e `_parecer_da_ia` barra em vez de derrubar a rodada. Diário 1x por rodada. Antes os leitores engoliam e respondiam "sem parecer". `qualidade.liberado` (parte Histórias) ainda engole — é do painel/agenda, não da publicação. Teste `historias/tests/test_veto_ilegivel_regressions.py` |
 | Espera de processamento e confirmação | `youtube_web.py`, `tiktok.py`; veredito em `desfecho.classificar` |
 | Texto que não entrou no campo (título, descrição, legenda) | `escrita.escrever` + `escrita.estado`, chamados por `youtube_web._escrever` e `tiktok._escrever_legenda`; foto da falha em `random_builds\outputs\_publicar\telas\` |
@@ -323,8 +323,12 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   só saem no TikTok quando falta vídeo novo (`reserva_do_tiktok`).
 - **Rascunhos do "Publicar mesmo assim" ficam** como gordura (15/09):
   `conferencia.rascunhos_aceitos` os tira do alarme. Não republicar.
-- **Quem decide publicar de verdade é uma pessoa**: `postar_automatico: false`
-  é para o botão do painel; a grade passa `postar=True` explícito.
+- **Quem decide publicar de verdade é uma pessoa**: sem `postar` explícito
+  o `tiktok.publicar` para antes de publicar (o botão do painel); a grade
+  passa `postar=True` explícito. A chave `tiktok.postar_automatico` dos
+  builds **saiu** do config e do código em 14/10 (decisão
+  `tiktok-postar-automatico`: "a grade posta; a chave sai") — a grade
+  sempre a ignorou. O `youtube.postar_automatico` do `youtube_web` segue.
 - **O nome da conta é o destino**: `youtube_web` publica, `youtube` só lê.
 - **Lote semanal** (decisões `geral/lote-*`, 30/09): trabalho pesado de dia
   (07–22h); histórias seg–qua, builds seg–ter; qui–dom só repõem abaixo do
@@ -798,6 +802,44 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   - *PUB-7*: a chave do memo dos trechos pretos leva `PRETO_AREA`,
     `PRETO_PIXEL`, `PRETO_MIN_S` e `PRETO_FPS`.
   - *Veto com `_pareceres.json` ilegível*: retida, não "sem parecer" (§2).
+- **Scripts e configs, 14/10/2026** (`consertos/scripts-configs-panorama.md`):
+  - *SCR-P7, visibilidade no ledger* (decisão `visibilidade-no-ledger`: a
+    que o publicador DE FATO usou). `_visibilidade_das_historias` lia
+    `visibilidade` na raiz de `historias/config/publicacao.json`; a chave
+    mora em `youtube.visibilidade` — com o config em `private` o ledger
+    gravaria `public`. Agora o `youtube_web` escreve no laudo
+    `visibilidade_pedida` e `visibilidade` (a aplicada: o valor clicado,
+    `nao_escolhida` se a opção não estava na tela, `agendado` no
+    agendamento; vazio se parou antes da etapa) e as linhas do YouTube —
+    histórias (os 4 registros do `postar`) e builds (`youtube.
+    publicar_como_configurado`) — gravam `metricas.visibilidade_usada(
+    laudos, pedida)`: a do laudo; `mista` se dois pedaços discordam; a
+    pedida quando nenhum laudo diz (caminho da API). O TikTok segue
+    `public` (o publicador não escolhe). Teste
+    `historias/tests/test_visibilidade_do_ledger_regressions.py`.
+  - *Dívida do YouTube dos builds*: corte em 12/10 (acima).
+  - *`tiktok.postar_automatico` dos builds saiu* (decisão
+    `tiktok-postar-automatico`, ver §3).
+  - *SCR-M7, `prova_ok` com id*: medido no ledger, 36 linhas de histórias
+    e 12 de builds com `youtube_id` e `prova_ok: False` — nunca entravam em
+    `faltam` (só linha **sem** id) e `reconciliar` saía antes de olhar o
+    canal. Agora uma segunda passada, dentro da mesma trava e da mesma
+    reescrita (`_provar_pelo_canal`), marca `prova_ok: True` (+
+    `prova_pelo_canal`) na linha cujo id está no canal **e** cuja
+    privacidade lá bate (rascunho privado do "Publicar mesmo assim" tem id e
+    não vira prova). E cada linha que segue sem id ganha o **porquê** no log
+    (`motivo_sem_casamento`: sem vídeo com o título, id já de outra linha,
+    só pedaço, hora fora da folga) — as 3 de 07/10 nunca casaram e o log só
+    dizia "0 de N". Testes em `test_trava_do_ledger_regressions`.
+  - *SCR-4/SCR-11, instalador*: `postar.py --instalar` usa
+    `tarefas_windows.acao_oculta` (era o único sem o `oculto.vbs`: reinstalar
+    trazia 10 janelas pretas por dia); `--hora HH:MM` cria
+    `NeuralFights_postar_HH` (recriava a `NeuralFights_postar` sem sufixo, a
+    que `instalar_grade` apaga para não dobrar a postagem); o `postar.cmd`
+    sai com CRLF simples (era CR CR LF); `--lancador` só regrava o `.cmd`.
+  - *SCR-12, `--saida`*: a regra mora em `builds.saida_da_tarefa` (os cinco
+    programas das tarefas): cria a pasta do log e `--saida` sem arquivo sai 2
+    com o motivo no diário.
 
 ## 5. O estado de hoje (27/09/2026)
 
@@ -968,7 +1010,7 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
 | `historias/.../prioridade.json` | **o Adrian** (pedido manual) | publicação só lê |
 | `atividade.jsonl` (diário) | **todos escrevem**, ninguém é dono | bot avisa no celular, apurador investiga erro, página de confiabilidade soma |
 | travas `ledger__<canal>`, `<plataforma>_a_conferir` | **publicação** | `historias__render__<fonte>` é da parte Histórias (aqui só se lê) |
-| `config/publicacao.json` (`grade.mistura`, `visibilidade`, `postar_automatico`) | **o Adrian** | publicação e painel leem |
+| `config/publicacao.json` (`grade.mistura`, `youtube.visibilidade`, `youtube.postar_automatico`; o `tiktok.postar_automatico` saiu em 14/10) | **o Adrian** | publicação e painel leem |
 | `contos.publicar.{catalogo,serie,qualidade,parecer,tipos}` | parte **Histórias** | publicação chama |
 | `builds.publicar.catalogo` (`pendencias`, `origem`, `capa`) | parte **Builds** | publicação chama |
 | `builds.contas` (conta ativa por serviço/canal) | parte **Contas** | publicação lê para dizer o destino |
