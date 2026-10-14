@@ -49,7 +49,7 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Botão 'Gerar Roster' do torneio** — Gravar num catálogo só do torneio (recomendado) (14/10/2026) `gerar-roster-do-torneio`
 - ✅ **Luta que termina empatada** — Desempatar pelo HP que sobrou (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `empate-persistente`
 - ✅ **Nome pedido pelo comentarista** — Manter a regra (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `nome-pedido-livre`
-- ⏳ **Os 29 traços sem efeito** — 29 traços de personalidade são sorteados para os lutadores mas não fazem nada na luta. O que fazer? `quirks-sem-efeito`
+- ✅ **Os 29 traços sem efeito** — Tirar do sorteio agora, implementar aos poucos (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `quirks-sem-efeito`
 - ⏳ **Atordoamento e relógio de ataque** — Hoje o atordoamento pausa o relógio de ataque do lutador (muda o ritmo de toda luta). Mantém? `atordoamento-e-relogio`
 - ⏳ **Lava do Vulcão e do Inferno** — O catálogo promete dano de lava nas arenas Vulcão e Inferno, mas a lava não machuca. O que fazer? `lava-do-vulcao`
 - ⏳ **Som da vitória** — Na vitória hoje toca a abertura da arena, quase muda. Que som deve tocar? `som-da-vitoria`

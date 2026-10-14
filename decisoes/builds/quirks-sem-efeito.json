@@ -3,7 +3,14 @@
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:02.077600",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+      "em": "2026-10-14T08:45:23",
+      "opcao": "tirar",
+      "origem": "cli"
+    }
+  ],
   "id": "quirks-sem-efeito",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "29 traços de personalidade são sorteados para os lutadores mas não fazem nada na luta. O que fazer?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Os 29 traços sem efeito",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+    "em": "2026-10-14T08:45:23",
+    "opcao": "tirar"
+  }
 }
