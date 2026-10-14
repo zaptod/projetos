@@ -407,3 +407,104 @@ def test_coordenador_com_o_pc_fora_diz_que_os_dados_estao_indisponiveis(  # noqa
         page.wait_for_function("() => !document.querySelector('#coord-topo')"
                                ".innerText.includes('SEM DADOS')", timeout=8000)
         assert "servidor do app" not in page.locator("#coord-servicos").inner_text()
+
+
+# ===================================== achados do conferente (14/10, casca v71)
+@pytest.mark.parametrize("tema,tamanho", TELAS)
+def test_coordenador_com_o_pc_ligado_e_sem_eventos_nao_fica_em_branco(  # noqa: F811
+        tela_isolada, tema, tamanho):
+    """Conferente, 14/10 (v70): com o PC LIGADO e `eventos` vazio, o cartão
+    O QUE ACONTECEU ficava em branco (e o de Serviços também, sem serviço
+    publicado). Cartão vazio parece defeito; o certo é dizer que não houve
+    nada, e desde quando. O retrato da prova (`tela_isolada`) é o do
+    coordenador recém-ligado: `servicos {}` e `eventos []`."""
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "agora", "agora")
+        _abrir_aba(page, "agora", "coordenador")
+        page.wait_for_function("() => document.querySelector('#coord-topo')"
+                               ".innerText.includes('NO AR')", timeout=8000)
+        eventos = page.locator("#coord-eventos").inner_text().strip()
+        assert eventos.startswith("Nada de novo desde "), eventos
+        hora = eventos.removeprefix("Nada de novo desde ")[:5]
+        assert hora[2] == ":" and hora.replace(":", "").isdigit(), eventos
+        servicos = page.locator("#coord-servicos").inner_text().strip()
+        assert servicos == "Nenhum serviço publicado pelo coordenador.", servicos
+        assert page.locator("#coord-trabalho").inner_text().strip()
+        for cartao in ("#coord-trabalho", "#coord-servicos", "#coord-eventos"):
+            assert "Dados indisponíveis" not in page.locator(cartao).inner_text()
+        page.locator("#coord-eventos").scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v71-coordenador-com-pc-{_nome(tema, tamanho)}.png"),
+                        full_page=True)
+
+
+@pytest.mark.parametrize("tamanho", [(390, 844), (844, 390)])
+def test_faixa_sem_pc_tem_o_mesmo_vao_na_agora_e_no_coordenador(  # noqa: F811
+        tela_isolada, monkeypatch, tamanho):
+    """Conferente, 14/10 (v70): na aba Agora o vão entre a faixa "sem
+    conexão" e as abas era 22 px, por causa da moldura de 12 px do mapa
+    (`.livro.mesa`); no Coordenador, 10 px. Em pé e deitado."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    vaos = {}
+    with _pagina(tela_isolada, tamanho=tamanho) as page:
+        page.wait_for_timeout(3000)                         # a carga da Vila assenta
+        fora["sim"] = True
+        _abrir_objeto(page, "agora", "agora")
+        for tela in ("agora", "coordenador"):
+            if tela != "agora":
+                _abrir_aba(page, "agora", tela)
+            page.locator("#aviso:not(.oculto)").wait_for(state="visible")
+            page.wait_for_timeout(500)
+            faixa = page.locator("#aviso").bounding_box()
+            abas = page.locator(f"#tela-{tela} .abas-objeto").bounding_box()
+            vaos[tela] = abas["y"] - (faixa["y"] + faixa["height"])
+            page.screenshot(path=str(
+                CAPTURAS / f"v71-faixa-vao-{tela}-{tamanho[0]}x{tamanho[1]}.png"))
+        # o PC voltou: sem a faixa, a Agora volta ao lugar de sempre (a
+        # moldura do mapa continua inteira, sem o desconto da faixa)
+        fora["sim"] = False
+        _abrir_aba(page, "coordenador", "agora")
+        # o ciclo da própria página pode achar o PC antes do toque: aí a faixa
+        # já sumiu e não há o que tocar
+        page.evaluate("() => { const b = document.querySelector('#btn-tentar');"
+                      " if (b && b.offsetParent) b.click(); }")
+        page.locator("#aviso.oculto").wait_for(state="attached")
+        page.wait_for_timeout(300)
+        topo = page.locator("#tela-agora .abas-objeto").bounding_box()["y"]
+        cabeca = page.locator("header").bounding_box()
+        assert topo - (cabeca["y"] + cabeca["height"]) >= 10, (topo, cabeca)
+    assert 8 <= vaos["agora"] <= 12 and abs(vaos["agora"] - vaos["coordenador"]) <= 1, vaos
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS)
+def test_caixinhas_do_editor_ao_lado_do_rotulo_e_tocaveis(tela_isolada, tema, tamanho):  # noqa: F811
+    """Conferente, 14/10 (v70): "Repetir / Ida e volta / Espelhar" saíam com a
+    caixinha EM CIMA do texto (a regra comum `input {width: 100%}` valia para
+    o checkbox). Caixa e rótulo na mesma linha, e o alvo inteiro (o rótulo)
+    com ≥ 40 px de altura; tocar no texto marca e desmarca."""
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "arena", "arena")
+        _abrir_aba(page, "arena", "atelie")
+        page.locator("#anim-grupos button").first.wait_for(state="visible")
+        page.locator("#anim-grupos button").first.click()
+        page.locator("#anim-lista .anim-peca").first.click()
+        page.locator("#anim-lista button").first.click()
+        page.locator("#anim-lista .anim-cartao-abrir").first.click()
+        page.locator("#anim-editor:not(.oculto)").wait_for(state="visible")
+        page.locator("#anim-loop").scroll_into_view_if_needed()
+        for caixa in ("#anim-loop", "#anim-ida-volta", "#anim-espelho", "#anim-auto", "#anim-grade"):
+            entrada = page.locator(caixa)
+            rotulo = page.locator(f"label:has({caixa})")
+            c, r = entrada.bounding_box(), rotulo.bounding_box()
+            meio_c, meio_r = c["y"] + c["height"] / 2, r["y"] + r["height"] / 2
+            assert abs(meio_c - meio_r) <= 4, (caixa, c, r)        # mesma linha
+            assert c["width"] <= 30, (caixa, c)                    # caixinha, não faixa
+            assert r["height"] >= 40, (caixa, r)                   # alvo de dedo
+            assert r["height"] < 2 * 40, (caixa, r)                # uma linha só
+        for caixa in ("#anim-loop", "#anim-ida-volta", "#anim-espelho"):
+            entrada = page.locator(caixa)
+            antes = entrada.is_checked()
+            page.locator(f"label:has({caixa})").click(position={"x": 60, "y": 20})
+            assert entrada.is_checked() != antes, caixa
+            page.locator(f"label:has({caixa})").click(position={"x": 60, "y": 20})
+            assert entrada.is_checked() == antes, caixa
+        page.screenshot(path=str(CAPTURAS / f"v71-atelie-caixinhas-{_nome(tema, tamanho)}.png"))

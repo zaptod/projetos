@@ -150,7 +150,10 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v70 = (14/10) o estilo do código de pareamento só no #codigo, o vão da
     # faixa deitado igual ao de em pé, e o Coordenador diz "dados
     # indisponíveis" com o PC fora.
-    assert "painel-casca-v70" in sw
+    # v71 = (14/10) o Coordenador com o PC ligado diz "Nada de novo desde",
+    # o vão da faixa na Agora igual ao das outras, e as caixinhas do Ateliê
+    # ao lado do rótulo.
+    assert "painel-casca-v71" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

@@ -258,3 +258,28 @@ def test_coordenador_sem_dados_diz_por_que():
     corpo = js.split("function coordSemDados", 1)[1].split("\n}\n", 1)[0]
     for alvo in ("coord-trabalho", "coord-servicos", "coord-eventos"):
         assert alvo in corpo
+
+
+# ------------------------------------- achados do conferente (14/10, casca v71)
+def test_coordenador_ligado_sem_eventos_diz_nada_de_novo():
+    """Com o PC ligado e `eventos` vazio, O QUE ACONTECEU ficava em branco."""
+    js = (APP / "coordenador.js").read_text(encoding="utf-8")
+    desenhar = js.split("function coordDesenhar", 1)[1].split("\n}\n", 1)[0]
+    assert "Nada de novo desde" in desenhar and "dados.desde" in desenhar
+    assert "Nenhum serviço publicado pelo coordenador." in desenhar
+
+
+def test_a_moldura_da_agora_sai_da_conta_com_a_faixa():
+    """A Agora (`.livro.mesa`, moldura de 12 px) tinha vão de 22 px até as
+    abas com a faixa "sem conexão"; as outras, 10 px."""
+    assert "border: 12px solid" in _bloco(".livro.mesa")
+    regra = re.search(r"body\.com-faixa \.livro\.mesa,\s*body\.deitado\.com-faixa "
+                      r"\.livro\.mesa\s*\{([^}]*)\}", CSS)
+    assert regra and "calc(64px - 12px + env(safe-area-inset-top)" in regra.group(1)
+
+
+def test_caixinha_nao_herda_a_largura_do_campo_comum():
+    """`input {width: 100%}` punha a caixinha EM CIMA do rótulo no Ateliê."""
+    assert "width: auto" in _bloco("input[type=checkbox], input[type=radio]")
+    assert "min-height: 44px" in _bloco(
+        "label.acao:has(> input[type=checkbox], > input[type=radio])")

@@ -86,8 +86,14 @@ function coordDesenhar(dados) {
   const eventos = Array.isArray(dados.eventos) ? dados.eventos : [];
   coordLimparPedidos(eventos);
   const servicos = dados.servicos && typeof dados.servicos === "object" ? dados.servicos : {};
-  $("coord-servicos").replaceChildren(...Object.entries(servicos).map(([nome, s]) =>
-    coordServico(nome, s && typeof s === "object" ? s : {}, eventos)));
+  // PC ligado e lista vazia: o cartão diz que não há nada, e desde quando
+  // (conferente, 14/10, v70: em branco parecia defeito ou dado perdido). Os
+  // eventos são os do coordenador desde que ele ligou (`desde`).
+  const vazio = (texto) => [el("div", {class: "fraco coord-vazio"}, texto)];
+  const nomes = Object.entries(servicos);
+  $("coord-servicos").replaceChildren(...(nomes.length ? nomes.map(([nome, s]) =>
+    coordServico(nome, s && typeof s === "object" ? s : {}, eventos))
+    : vazio("Nenhum serviço publicado pelo coordenador.")));
   const acoes = Array.isArray(dados.acoes_pc) ? dados.acoes_pc : [];
   if (!acoes.some((a) => a && a.id)) {
     $("coord-acoes").replaceChildren(el("span", {class: "fraco"}, "Nenhuma ação do PC publicada."));
@@ -98,10 +104,13 @@ function coordDesenhar(dados) {
     botao.addEventListener("click", () => acao.perigo ? coordPedirConfirmacao(acao) : coordEnviar("pc_acao", acao.id));
     return botao;
   }));
-  $("coord-eventos").replaceChildren(...eventos.slice().sort((a, b) =>
+  const ligou = quandoCurto(dados.desde);
+  $("coord-eventos").replaceChildren(...(eventos.length ? eventos.slice().sort((a, b) =>
     dataPC(b.em).getTime() - dataPC(a.em).getTime()).map((evento) =>
     el("div", {class: "linha"}, el("span", {class: "coord-evento-hora"}, quandoCurto(evento.em)),
-      el("div", {class: "corpo"}, evento.texto || evento.tipo || "evento"))));
+      el("div", {class: "corpo"}, evento.texto || evento.tipo || "evento")))
+    : vazio(ligou ? `Nada de novo desde ${ligou} (quando o coordenador ligou).`
+      : "Nada de novo desde que o coordenador ligou.")));
 }
 
 function coordPedirConfirmacao(acao) {

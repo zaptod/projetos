@@ -3093,3 +3093,40 @@ entrega, linha ruim, religada, 7 erros), `remoto/test_telegram_entrega.py`
 avisos, vigia) só valem depois de `python -m coordenador reiniciar app` e
 `... reiniciar bot`, fora de :25–:55. Na primeira subida o bot novo cria o
 `bot_visto.json`.
+
+# Três ajustes do conferente na v70 (14/10/2026, casca v71)
+
+Só casca (`coordenador.js`, `app.css`, `sw.js`); nada muda no servidor nem no
+que o app pode disparar.
+
+- **Coordenador com o PC ligado e lista vazia.** Com `eventos: []`, O QUE
+  ACONTECEU ficava em branco. Agora diz "Nada de novo desde HH:MM (quando o
+  coordenador ligou)." — os eventos do `estado.json` são os do coordenador
+  desde que ele subiu (`desde`; o `supervisor` começa com a lista vazia). Com
+  `servicos: {}`, Serviços diz "Nenhum serviço publicado pelo coordenador.".
+  Trabalho ("O vigia de trabalho ainda não passou."), Controlar o PC,
+  Propostas e Pedidos já tinham texto para o vazio. Com o PC fora segue o
+  "Dados indisponíveis" da v70.
+- **Vão da faixa na Agora.** A Agora é `.livro.mesa`, com moldura de 12 px:
+  com a faixa "sem conexão" o vão até as abas era 22 px (medido: 22,4 em pé e
+  22,7 deitado), contra 10 px no Coordenador. Com `body.com-faixa` a moldura
+  sai da conta (`64px - 12px`): 10 px nas duas, em pé e deitado. Sem a faixa
+  a Agora não muda.
+- **Caixinhas do Ateliê.** A regra comum `input {width: 100%}` valia para o
+  checkbox: "Repetir / Ida e volta / Espelhar" saíam com a caixa em cima do
+  texto (centro da caixa 12 px acima do centro do rótulo; a caixa com a
+  largura do rótulo). Agora `input[type=checkbox], input[type=radio]` têm
+  largura própria, e `label.acao` com caixinha é um alvo de 44 px com caixa e
+  texto na mesma linha (tocar no texto marca e desmarca). O mesmo vale para
+  os participantes da Assembleia (mesmo `label.acao`) e para o
+  Automático/Grade do corte (`.anim-corte label`).
+
+**Provas:** `remoto/test_app_modulos.py` (três regras estáticas),
+`remoto/test_app_auditoria_tela.py` (`NF_TESTE_NAVEGADOR=1`: Coordenador
+ligado sem eventos, vão Agora × Coordenador em 390x844 e 844x390, caixinhas
+ao lado do rótulo e tocáveis; capturas `<TEMP>/tela_app/v71-*.png`, claro,
+escuro e 844x390). Medido antes do conserto: os 8 testes de tela novos
+falham.
+
+**Fica para quem reinicia:** a casca v71 só chega ao celular depois de
+`python -m coordenador reiniciar app`, fora de :25–:55.
