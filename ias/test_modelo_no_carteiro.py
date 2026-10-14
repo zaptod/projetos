@@ -67,7 +67,7 @@ def _novo(fabrica):
         fabrica_de_sessao=fabrica, fabrica_imagem=imagem.fabrica_imagem_duble(),
         trava=_trava_livre, nome_da_trava=lambda ia: f"perfil__{ia}__teste",
         avisar=avisos.append, avisar_arquivo=lambda caminho, legenda: True,
-        log=lambda m: None, dormir=lambda s: None,
+        log=lambda m: None, dormir=lambda s: None, de_servico=True,
         ajustes={"janela_conversa_s": 0, "resumo_a_cada": 50,
                  "espera_conta_max_s": 100,
                  "rodizio_imagem": ["gemini", "chatgpt"], "cota_pausa_h": 6})

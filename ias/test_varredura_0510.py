@@ -72,6 +72,8 @@ def _novo(fabrica=None, fabrica_imagem=None, **kw):
     kw.setdefault("avisar_arquivo", lambda caminho, legenda: documentos.append(caminho))
     kw.setdefault("log", lambda m: None)
     kw.setdefault("dormir", lambda s: None)
+    # o carteiro de SERVICO (o laco, o carteiro.json e o Telegram; IAS-2/6/8)
+    kw.setdefault("de_servico", True)
     ajustes = {"janela_conversa_s": 0, "resumo_a_cada": 50, "espera_conta_max_s": 100,
                "rodizio_imagem": ["picasso", "gemini", "chatgpt"], "cota_pausa_h": 6}
     ajustes.update(kw.pop("ajustes", {}))
@@ -373,7 +375,10 @@ class ConferenciaDaEspera(_Base):
             else:
                 donos.append(atual)
         self.assertTrue(diretas)
-        self.assertEqual(sorted(set(donos)), ["_falhar", "_varrer_abandonadas"])
+        # `_retomar_orfa` e parte da varredura (IAS-4): a orfa velha, ou a
+        # imagem sem a conversa registrada, falha direto, tambem sem Telegram
+        self.assertEqual(sorted(set(donos)),
+                         ["_falhar", "_retomar_orfa", "_varrer_abandonadas"])
 
 
 # ============================================================== item 9

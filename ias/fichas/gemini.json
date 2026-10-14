@@ -96,6 +96,14 @@
       "visto_em": "2026-09-29T02:05"
     },
     {
+      "categoria": "limite",
+      "fonte": "logs",
+      "nota": "a cota de IMAGEM acabou (IAS-1, 11/10/2026): tira o Gemini do rodízio",
+      "seletor": "model-response message-content .markdown",
+      "texto": "Poderei criar mais imagens assim que seu limite for redefinido",
+      "visto_em": "2026-10-11"
+    },
+    {
       "categoria": "upgrade",
       "fonte": "adrian",
       "nota": "",

@@ -240,7 +240,7 @@ class PeloCarteiro(_ComRelogio):
         c = carteiro_mod.Carteiro(
             fabrica_de_sessao=fabrica, trava=_trava_livre,
             nome_da_trava=lambda ia: f"perfil__{ia}__teste", avisar=avisos.append,
-            log=self.linhas.append, dormir=lambda s: None,
+            log=self.linhas.append, dormir=lambda s: None, de_servico=True,
             ajustes={"janela_conversa_s": 0, "resumo_a_cada": 50,
                      "espera_conta_max_s": 100})
         c.avisos = avisos

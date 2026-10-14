@@ -66,7 +66,7 @@ def _carteiro(fabrica):
         fabrica_de_sessao=fabrica, fabrica_imagem=imagem.fabrica_imagem_duble(),
         trava=_trava_livre, nome_da_trava=lambda ia: f"perfil__{ia}__teste",
         avisar=lambda *a, **k: None, avisar_arquivo=lambda *a, **k: None,
-        log=lambda m: None, dormir=lambda s: None,
+        log=lambda m: None, dormir=lambda s: None, de_servico=True,
         ajustes={"janela_conversa_s": 0, "resumo_a_cada": 50, "espera_conta_max_s": 100,
                  "rodizio_imagem": ["picasso", "gemini", "grok", "chatgpt"],
                  "cota_pausa_h": 6})

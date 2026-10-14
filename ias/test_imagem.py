@@ -65,6 +65,8 @@ def _novo(fabrica_imagem=None, fabrica=None, **kw):
         (Path(caminho), legenda)))
     kw.setdefault("log", lambda m: None)
     kw.setdefault("dormir", lambda s: None)
+    # o carteiro de SERVICO (o laco, o carteiro.json e o Telegram; IAS-2/6/8)
+    kw.setdefault("de_servico", True)
     ajustes = {"janela_conversa_s": 0, "resumo_a_cada": 50, "espera_conta_max_s": 100,
                "rodizio_imagem": ["picasso", "gemini", "grok", "chatgpt"],
                "cota_pausa_h": 6}
@@ -344,10 +346,11 @@ class CarteiroGeraImagem(_Base):
 
     def test_imagem_na_casa_do_chat(self):
         fabrica = carteiro_mod.fabrica_duble()
-        c = _novo(fabrica=fabrica)
+        # a janela vai nos ajustes de quem chama: `uma_volta` rele o config
+        # e so o que o chamador fixou fica por cima (IAS-7)
+        c = _novo(fabrica=fabrica, ajustes={"janela_conversa_s": 1})
         correio.enviar("grok", "oi")
         m = correio.pedir_imagem("grok", "um gato", proporcao="3:4")
-        c.ajustes["janela_conversa_s"] = 1
         primeira = c.uma_volta()                       # texto, e na janela a imagem
         self.assertEqual(primeira["situacao"], "respondida")
         fim = correio.uma("grok", m["id"])
@@ -1272,10 +1275,9 @@ if __name__ == "__main__":
 class CarteiroImagemNovaERede(_Base):
     def test_texto_depois_da_imagem_volta_para_a_casa(self):
         fabrica = carteiro_mod.fabrica_duble()
-        c = _novo(fabrica=fabrica)
+        c = _novo(fabrica=fabrica, ajustes={"janela_conversa_s": 1})
         correio.enviar("grok", "oi")
         correio.pedir_imagem("grok", "um gato", proporcao="1:1")
-        c.ajustes["janela_conversa_s"] = 1
         c.uma_volta()
         url_casa = correio.casa("grok")["url"]
         # a casa e a conversa do TEXTO; a da imagem nunca vira casa (a ordem
@@ -1336,3 +1338,97 @@ class RodizioDivide(_Base):
             correio.atualizar("picasso", m["id"], situacao="respondida", gerador="picasso",
                               respondida_em="2026-10-03T09:00:00")
             self.assertEqual(imagem.rodizio_ordem(), ["chatgpt", "picasso", "gemini"])
+
+
+class AvisoDizOQueAconteceu(_Base):
+    """IAS-8 (11/10/2026): o porteiro que calava saia no log como "entregue",
+    e os workers (`avisar=lambda _: False`) logavam 276 "aviso no Telegram NAO
+    entregue" por dia sem ninguem ter tentado mandar nada."""
+
+    def test_calado_pelo_porteiro_nao_vira_entregue_no_log(self):
+        logs = []
+        c = _novo(avisar=lambda texto: "calado", log=logs.append)
+        correio.pedir_imagem("picasso", "x", proporcao="1:1")
+        c.avisar_arquivo = lambda caminho, legenda: "calado"
+        c.uma_volta()
+        avisos = [linha for linha in logs if "aviso no Telegram" in linha]
+        self.assertTrue(avisos, logs)
+        self.assertTrue(all("calado" in linha for linha in avisos), avisos)
+        self.assertFalse(any("entregue" in linha for linha in avisos), avisos)
+
+    def test_enfileirado_diz_que_ficou_na_fila(self):
+        logs = []
+        c = _novo(avisar=lambda texto: "enfileirado", log=logs.append)
+        correio.enviar("gemini", "oi")
+        c.uma_volta()
+        self.assertTrue(any("ficou na fila" in linha for linha in logs), logs)
+
+    def test_carteiro_de_worker_nao_loga_nao_entregue(self):
+        logs = []
+        c = _novo(avisar=lambda _texto: False, log=logs.append, de_servico=False)
+        m = correio.pedir_imagem("picasso", "x", proporcao="1:1", dono=os.getpid())
+        fim = c.entregar(correio.uma("picasso", m["id"]))
+        self.assertEqual(fim["situacao"], "respondida")
+        self.assertFalse(any("NAO entregue" in linha for linha in logs), logs)
+        self.assertFalse(any("aviso no Telegram" in linha for linha in logs), logs)
+        self.assertEqual(c.documentos, [])
+
+    def test_avisar_telegram_continua_bool_para_o_supervisor(self):
+        from unittest import mock
+        for situacao, esperado in (("entregue", True), ("calado", True),
+                                   ("enfileirado", False), ("sem_destino", False)):
+            with mock.patch.object(carteiro_mod, "avisar_telegram_situacao",
+                                   lambda texto, chave=None, s=situacao: s):
+                self.assertIs(carteiro_mod.avisar_telegram("oi"), esperado, situacao)
+
+
+class ProvaDoTurnoComparaOPedidoInteiro(unittest.TestCase):
+    """IAS-11 (11/10/2026): `_normal(prompt)[:60]` e sempre "crie uma imagem
+    na proporcao 9:16. responda so com a imagem," - qualquer pedido de imagem
+    nosso passava, ate na recuperacao em conversa reaberta."""
+
+    def _cliente(self, turno):
+        class _Cli:
+            provedor = "gemini"
+            sel = {}
+            imagens_na_resposta = [{"src": "https://x/gato", "w": 64, "h": 64}]
+
+            def imagens_da_resposta(self):
+                return {"ancorado": True, "turno": turno, "resposta": True,
+                        "imagens": [{"src": "https://x/gato"}]}
+        return _Cli()
+
+    def test_turno_de_outro_pedido_de_imagem_nao_passa(self):
+        cli = self._cliente(imagem.pedido_de_imagem("um cachorro verde", "9:16"))
+        with self.assertRaises(imagem.SemProva) as erro:
+            imagem.baixar_da_resposta(cli, imagem.pedido_de_imagem("um gato azul", "9:16"),
+                                      log=lambda *_a: None)
+        self.assertIn("não é o seu pedido", str(erro.exception))
+
+    def test_o_proprio_pedido_passa(self):
+        pedido = imagem.pedido_de_imagem("um gato azul " + "muito detalhado " * 20, "9:16")
+        self.assertTrue(imagem.turno_e_o_pedido(pedido, pedido))
+
+    def test_turno_encurtado_pela_interface_vale_pelo_comeco_da_cena(self):
+        cena = "um gato azul num telhado de Lisboa ao entardecer, " + "detalhe " * 40
+        pedido = imagem.pedido_de_imagem(cena, "9:16")
+        encurtado = pedido[:len(pedido) // 2] + "… Mostrar mais"
+        self.assertTrue(imagem.turno_e_o_pedido(encurtado, pedido))
+        outro = imagem.pedido_de_imagem("um cachorro verde " + "detalhe " * 40, "9:16")
+        self.assertFalse(imagem.turno_e_o_pedido(outro[:len(outro) // 2], pedido))
+
+    def test_mesmo_comeco_e_mesmo_sufixo_de_estilo_nao_passam(self):
+        """As cenas de uma historia: o mesmo protagonista no comeco e o mesmo
+        estilo no fim; so o meio muda."""
+        quem = "Joana, uma mulher de 30 anos de cabelo curto e jaqueta vermelha, "
+        estilo = ", fotografia realista, luz natural, 35 mm, sem texto na imagem"
+        nosso = imagem.pedido_de_imagem(quem + "corre pela feira no centro de Recife"
+                                        + estilo, "9:16")
+        outro = imagem.pedido_de_imagem(quem + "dorme no sofá de casa com o gato no colo"
+                                        + estilo, "9:16")
+        self.assertTrue(imagem.turno_e_o_pedido(nosso, nosso))
+        self.assertFalse(imagem.turno_e_o_pedido(outro, nosso))
+
+    def test_pedido_de_conversa_curto_continua_valendo(self):
+        self.assertTrue(imagem.turno_e_o_pedido("Gere um gato", "gere um gato"))
+        self.assertFalse(imagem.turno_e_o_pedido("gere um cachorro", "gere um gato"))

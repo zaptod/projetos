@@ -206,6 +206,8 @@ def _novo(fabrica, **kw):
     kw.setdefault("avisar", avisos.append)
     kw.setdefault("log", lambda m: None)
     kw.setdefault("dormir", lambda s: None)
+    # o carteiro de SERVICO (o laco, o carteiro.json e o Telegram; IAS-2/6/8)
+    kw.setdefault("de_servico", True)
     ajustes = {"janela_conversa_s": 0, "resumo_a_cada": 3, "espera_conta_max_s": 100}
     ajustes.update(kw.pop("ajustes", {}))
     c = carteiro_mod.Carteiro(fabrica_de_sessao=fabrica, ajustes=ajustes, **kw)
@@ -547,3 +549,29 @@ class CarteiroAnexoEmConversaNova(_Base):
         casa = correio.casa("gemini")
         self.assertEqual(casa.get("url"), casa_antes.get("url"))
         self.assertEqual(casa.get("mensagens"), casa_antes.get("mensagens"))
+
+
+class AtualizarConfereAntesDeEscrever(_Base):
+    """IAS-10 (11/10/2026): o delta de um id inexistente ia ao arquivo e so
+    depois subia `CorreioInvalido`; a linha ficava ilegivel para sempre."""
+
+    def test_id_inexistente_levanta_sem_escrever(self):
+        correio.enviar("chatgpt", "uma mensagem de verdade")
+        antes = correio.arquivo("chatgpt").read_bytes()
+        with self.assertRaises(correio.CorreioInvalido):
+            correio.atualizar("chatgpt", "deadbeef", nota="x")
+        self.assertNotIn(b"deadbeef", correio.arquivo("chatgpt").read_bytes())
+        self.assertEqual(correio.arquivo("chatgpt").read_bytes(), antes)
+        self.assertEqual(correio.ilegiveis("chatgpt"), 0)
+
+    def test_caixa_vazia_tambem_nao_cria_linha(self):
+        with self.assertRaises(correio.CorreioInvalido):
+            correio.atualizar("grok", "deadbeef", nota="x")
+        self.assertEqual(correio.ilegiveis("grok"), 0)
+
+    def test_id_existente_devolve_a_mensagem_dobrada(self):
+        m = correio.enviar("chatgpt", "pergunta")
+        fim = correio.atualizar("chatgpt", m["id"], situacao="respondida", resposta=42)
+        self.assertEqual(fim["situacao"], "respondida")
+        self.assertEqual(fim["resposta"], "42")
+        self.assertEqual(fim, correio.uma("chatgpt", m["id"]))

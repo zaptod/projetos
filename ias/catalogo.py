@@ -40,7 +40,10 @@ PADROES = (
         r"|cr[eé]ditos?\s+insuficiente|acabaram\s+(?:seus|os)\s+cr[eé]ditos"
         r"|(?:tente|volte)\s+(?:novamente\s+)?(?:em|daqui\s+a|após|apos|depois\s+de)\s+"
         r"\d+\s*(?:h|hora|min|minuto)|try again (?:in|after)\s+\d+"
-        r"|resets? (?:in|at)\s+\d+|redefin\w+\s+(?:em|às|as)\s+\d+)",
+        r"|resets? (?:in|at)\s+\d+|redefin\w+\s+(?:em|às|as)\s+\d+"
+        # a cota de IMAGEM do Gemini (IAS-1, 11/10/2026): «Poderei criar mais
+        # imagens assim que seu limite for redefinido» nao casava nada acima
+        r"|limite\s+(?:for|seja|ser)\s+redefinid|criar\s+mais\s+imagens\s+assim\s+que)",
         re.IGNORECASE)),
     ("upgrade", re.compile(
         r"\b(?:fa[cç]a\s+(?:o\s+)?upgrade\b|fazer\s+upgrade\b"
@@ -200,6 +203,9 @@ CONHECIDOS = {
              seletor="model-response message-content .markdown", fonte="logs", visto_em="2026-09-28"),
         item("recusa_enlatada", "Não consigo criar esse tipo de vídeo",
              seletor="model-response message-content .markdown", fonte="logs", visto_em="2026-09-27"),
+        item("limite", "Poderei criar mais imagens assim que seu limite for redefinido",
+             seletor="model-response message-content .markdown", fonte="logs",
+             visto_em="2026-10-11", nota="a cota de IMAGEM acabou (IAS-1): tira o Gemini do rodízio"),
         item("erro_site", "Algo deu errado (1155)", seletor="(toast; devolve a pergunta à caixa)",
              fonte="logs", visto_em="2026-09-27", nota="devolve o prompt à caixa sem anexo; cliente._envio_devolvido"),
         item("upgrade", "Faça upgrade para o Google AI Pro", seletor="(barra lateral)",

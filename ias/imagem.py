@@ -284,7 +284,20 @@ def _resumo_do_registro(registro: dict) -> dict:
             "altura": registro.get("altura"), "bytes": registro.get("bytes"),
             "formato": registro.get("formato"),
             "sha256": str(registro.get("sha256") or "")[:16],
-            "prova": str(prova.get("metodo") or ""), "forca": prova.get("forca")}
+            "prova": str(prova.get("metodo") or ""), "forca": prova.get("forca"),
+            **_como_baixou(prova)}
+
+
+def _como_baixou(prova: dict) -> dict:
+    """`download` (botao_tamanho_original, src_da_tela...) e `previa` da prova,
+    para o resumo do correio (IAS-3, 14/10/2026: o resumo so dizia
+    `turno_na_casa` e a previa do Gemini passava calada como o original)."""
+    saida = {}
+    if prova.get("download"):
+        saida["download"] = str(prova["download"])
+    if prova.get("previa"):
+        saida["previa"] = True
+    return saida
 
 
 def ja_guardada(gerador_ia: str, mensagem_id: str) -> dict | None:
@@ -343,15 +356,36 @@ def guardar(gerador_ia: str, mensagem_id: str, corpo: bytes, prova: dict) -> dic
     os.replace(ptmp, pasta / f"{mensagem_id}.prova.json")
     return {"arquivo": alvo.name, "largura": largura, "altura": altura,
             "bytes": len(corpo), "formato": ext.lstrip("."), "sha256": sha[:16],
-            "prova": str(prova.get("metodo") or ""), "forca": prova.get("forca")}
+            "prova": str(prova.get("metodo") or ""), "forca": prova.get("forca"),
+            **_como_baixou(prova)}
 
 
 # ================================================================ erro legivel
+def cota_no_texto(ia: str, *textos: str) -> tuple | None:
+    """(categoria, motivo) se algum dos textos (o do turno na tela, a resposta
+    da IA) e um aviso de COTA (limite, upgrade, parede); None se nao."""
+    from .carteiro import motivo_da_tela
+    for texto in textos:
+        achado = motivo_da_tela(ia, texto or "")
+        if achado and achado[0] in CATEGORIAS_DE_COTA:
+            return achado
+    return None
+
+
 def classificar(ia: str, exc: BaseException, tela: str = "") -> tuple:
     """(categoria, motivo legivel) de um pedido de imagem que falhou."""
     rotulo = correio.ROTULOS.get(ia, ia)
     nome = type(exc).__name__
     texto = " ".join(str(exc).split())
+    if isinstance(exc, SemImagem):
+        # A COTA DE IMAGEM VEM COMO TEXTO (IAS-1, 11/10/2026): o Gemini sem
+        # cota responde «Poderei criar mais imagens assim que seu limite for
+        # redefinido» e o pedido virava `sem_imagem` - ele nunca saia do
+        # rodizio. Aqui o texto da excecao E a resposta da IA na tela, entao
+        # vale como evidencia de cota (ao contrario do `classificar_erro`).
+        achado = cota_no_texto(ia, tela, texto)
+        if achado:
+            return achado
     if isinstance(exc, ImagemFalhou):
         return (exc.categoria, texto[:400])
     if nome == "ConteudoRecusado":
@@ -399,8 +433,11 @@ class SessaoImagemDuble:
     que o classificador le), `corpo` (bytes a devolver)."""
 
     def __init__(self, ia: str, *, falhar=None, sem_prova: bool = False, tela: str = "",
-                 corpo: bytes | None = None, demora_s: float = 0.0, dormir=time.sleep):
+                 corpo: bytes | None = None, demora_s: float = 0.0, dormir=time.sleep,
+                 prova_extra: dict | None = None):
         self.ia = ia
+        # campos a mais na prova (ex.: `download: src_da_tela`, `previa: True`)
+        self.prova_extra = dict(prova_extra or {})
         self.falhar = falhar
         self.sem_prova = sem_prova
         self.tela = tela
@@ -426,7 +463,7 @@ class SessaoImagemDuble:
         return {"bytes": corpo, "modelo": "dublê",
                 "prova": {"comprovada": True, "metodo": "duble", "forca": "duble",
                           "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest()[:16],
-                          "verificado_em": correio.agora()}}
+                          "verificado_em": correio.agora(), **self.prova_extra}}
 
     def reivindicar(self, resultado: dict, mensagem_id: str) -> None:
         self.reivindicadas.append(mensagem_id)
@@ -626,6 +663,18 @@ def baixar(ctx, page, src: str, timeout_s: float = 120.0) -> bytes:
 def botoes_de_baixar(cliente) -> list:
     """Os seletores do botao de baixar desta IA (vazio = nao medido)."""
     return list((getattr(cliente, "sel", None) or {}).get("imagem_baixar") or [])
+
+
+# IAs cujo `src` da tela JA E o arquivo original (ChatGPT: os mesmos bytes do
+# "Baixar", medido em 29/09). Nas outras com botao (Gemini: a tela mostra
+# 1024x559 e o original e 2816x1536), o `src` e a PREVIA.
+SRC_E_O_ORIGINAL = ("chatgpt",)
+
+
+def src_e_previa(cliente) -> bool:
+    """A imagem que veio pelo `src` da tela e a previa (meia resolucao)?"""
+    return (bool(botoes_de_baixar(cliente))
+            and str(getattr(cliente, "provedor", "") or "") not in SRC_E_O_ORIGINAL)
 
 
 # Marca a imagem escolhida (pelo src) DENTRO da resposta ao nosso turno, no
@@ -864,6 +913,19 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
                 log(f"[{cliente.provedor}] baixada pelo botão do site: "
                     f"{_nome_sugerido(baixados[-1])} ({len(corpo)} bytes)")
                 return corpo
+            if _queda_no_download(falhas_do_download) and pagina_viva(page):
+                # IAS-3 (12/10/2026: 118 linhas `Download.path` num dia): o
+                # `Download` morreu com TargetClosed, mas a PAGINA esta viva - no
+                # log a imagem seguinte baixa normal. Mais UM clique antes de
+                # desistir do original.
+                log(f"[{cliente.provedor}] o arquivo do download caiu (TargetClosed) com a "
+                    "página viva; clico em baixar mais uma vez")
+                corpo, mais = _clicar_de_novo(page, alvo, baixados, timeout_s)
+                if corpo:
+                    log(f"[{cliente.provedor}] baixada pelo botão do site no 2º clique: "
+                        f"{_nome_sugerido(baixados[-1])} ({len(corpo)} bytes)")
+                    return corpo
+                falhas_do_download.extend(f"2º clique: {f}" for f in mais)
             log(f"[{cliente.provedor}] o download veio, mas o arquivo não foi lido "
                 f"({'; '.join(falhas_do_download)}); tento a resposta de imagem do clique")
         melhor = b""
@@ -895,6 +957,45 @@ def baixar_pelo_botao(cliente, visto: dict | None = None, timeout_s: float = 90.
                 pass
         if abrir:
             _fechar_tela_cheia(page)
+
+
+_QUEDA_NO_DOWNLOAD = re.compile(r"TargetClosed|Target page, context or browser has been closed")
+
+
+def _queda_no_download(falhas) -> bool:
+    return any(_QUEDA_NO_DOWNLOAD.search(str(f)) for f in falhas or ())
+
+
+def pagina_viva(page) -> bool:
+    """A pagina ainda esta aberta E responde? So True com prova
+    (`is_closed()` False e um `evaluate` que volta); sem como saber, False."""
+    fechada = getattr(page, "is_closed", None)
+    if not callable(fechada):
+        return False
+    try:
+        if fechada() is not False:
+            return False
+        avaliar = getattr(page, "evaluate", None)
+        if callable(avaliar):
+            avaliar("() => 1")
+        return True
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _clicar_de_novo(page, alvo, baixados: list, timeout_s: float) -> tuple:
+    """Um 2o clique no botao de baixar: (bytes, falhas) do download novo."""
+    antes = len(baixados)
+    try:
+        alvo.click(timeout=10000)
+        fim = time.monotonic() + float(timeout_s)
+        while time.monotonic() < fim and len(baixados) <= antes:
+            page.wait_for_timeout(500)
+    except Exception as exc:                                   # noqa: BLE001
+        return b"", [f"clique: {type(exc).__name__}: {' '.join(str(exc).split())[:100]}"]
+    if len(baixados) <= antes:
+        return b"", [f"o download não veio em {timeout_s:.0f}s"]
+    return _bytes_do_download(baixados[-1])
 
 
 def _nome_sugerido(download) -> str:
@@ -950,6 +1051,42 @@ def _normal(texto: str) -> str:
     return " ".join(str(texto or "").split()).lower()
 
 
+# O comeco fixo de `pedido_de_imagem` (normalizado): igual em TODO pedido.
+_PREFIXO_DO_PEDIDO = re.compile(
+    r"^crie uma imagem na propor[cç][aã]o \S+\. responda s[oó] com a imagem, sem texto\. ")
+TRECHO_DA_PROVA = 60
+
+
+def turno_e_o_pedido(turno: str, prompt: str) -> bool:
+    """O ultimo turno do usuario na tela e ESTE pedido?
+
+    IAS-11 (11/10/2026): comparar so `[:60]` era comparar o prefixo fixo de
+    `pedido_de_imagem` ("crie uma imagem na proporcao 9:16. responda so com a
+    imagem,") - qualquer pedido de imagem nosso passava, ate na recuperacao
+    em conversa reaberta.
+
+    Agora o texto da CENA (o que vem depois do prefixo fixo) tem de estar no
+    turno: o comeco, o meio e o fim dela (o fim sozinho nao basta: as cenas
+    de uma historia terminam no mesmo sufixo de estilo, e o comeco pode ser a
+    mesma descricao do protagonista). Se a interface encurtou o turno longo
+    ("Mostrar mais": a tela tem menos texto que o pedido), valem os 60
+    caracteres do comeco da cena."""
+    alvo, visto = _normal(prompt), _normal(turno)
+    if not alvo:
+        return True
+    prefixo = _PREFIXO_DO_PEDIDO.match(alvo)
+    if prefixo and prefixo.group(0).strip() not in visto:
+        return False
+    cena = alvo[prefixo.end():] if prefixo else alvo
+    n = TRECHO_DA_PROVA
+    if cena[:n] not in visto:
+        return False
+    if len(visto) < len(alvo):
+        return True                                   # encurtado pela interface
+    meio = cena[max(0, len(cena) // 2 - n // 2):][:n]
+    return meio in visto and cena[-n:] in visto
+
+
 def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
                        log=print) -> dict | None:
     """A imagem que a ULTIMA resposta do chat trouxe (`cliente.imagens_na_resposta`,
@@ -971,8 +1108,7 @@ def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
     achado = (cliente.imagens_da_resposta() if hasattr(cliente, "imagens_da_resposta")
               else {}) or {}
     turno = str(achado.get("turno") or "")
-    trecho = _normal(prompt)[:60]
-    if not achado.get("ancorado") or (trecho and trecho not in _normal(turno)):
+    if not achado.get("ancorado") or not turno_e_o_pedido(turno, prompt):
         raise SemProva("o último turno na casa não é o seu pedido: não baixo imagem "
                        "que não sei de onde veio")
     src = str(visto.get("src") or "")
@@ -1050,6 +1186,13 @@ def baixar_da_resposta(cliente, prompt: str, proporcao: str | None = None,
              "ignoradas_fora_da_resposta": int(achado.get("fora") or 0),
              "imagens_na_resposta": len(imagens), "download": como,
              "verificado_em": correio.agora()}
+    if como == "src_da_tela" and src_e_previa(cliente):
+        # DECISAO DO ADRIAN (Grimorio historias/previa-do-gemini, 14/10/2026):
+        # o original nao baixou -> ACEITA a previa de meia resolucao, MARCADA
+        # (registro, correio e resumo), sem gerar de novo.
+        prova["previa"] = True
+        log(f"[{cliente.provedor}] o original não baixou: fica a PRÉVIA da tela "
+            f"({_dimensoes_dos_bytes(corpo)}), marcada como prévia")
     if proporcao:
         prova["proporcao"] = str(proporcao)
     return {"bytes": corpo, "prova": prova,

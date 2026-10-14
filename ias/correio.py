@@ -264,18 +264,36 @@ def pedir_imagem(caixa: str, prompt: str, *, proporcao: str, modelo: str | None 
 
 
 def atualizar(ia: str, mensagem_id: str, **campos) -> dict:
-    """Acrescenta um delta a mensagem (situacao, resposta, erro, nota...)."""
+    """Acrescenta um delta a mensagem (situacao, resposta, erro, nota...).
+
+    Le, confere que a mensagem existe e escreve SOB A MESMA TRAVA (IAS-10,
+    11/10/2026): antes o delta de um id inexistente ia ao arquivo e so depois
+    subia `CorreioInvalido`, deixando uma linha ilegivel para sempre."""
     ia = _ia(ia)
     situacao = campos.get("situacao")
     if situacao is not None and situacao not in SITUACOES:
         raise CorreioInvalido(f"situacao {situacao!r} fora de {SITUACOES}")
     if "resposta" in campos and campos["resposta"] is not None:
         campos["resposta"] = str(campos["resposta"])
-    delta = {"id": str(mensagem_id), "em": agora(), **campos}
-    _anexar_linha(arquivo(ia), delta)
-    achado = uma(ia, mensagem_id)
-    if achado is None:
-        raise CorreioInvalido(f"mensagem {mensagem_id} nao existe na caixa de {ia}")
+    mid = str(mensagem_id)
+    alvo = arquivo(ia)
+    with _trancado(alvo):
+        try:
+            with open(alvo, encoding="utf-8", errors="replace") as fh:
+                linhas = fh.readlines()
+        except OSError:
+            linhas = []
+        mensagens, _ = _dobrar(linhas)
+        achado = next((m for m in mensagens if m["id"] == mid), None)
+        if achado is None:
+            raise CorreioInvalido(f"mensagem {mensagem_id} nao existe na caixa de {ia}")
+        delta = {"id": mid, "em": agora(), **campos}
+        with open(alvo, "ab") as fh:
+            fh.write((json.dumps(delta, ensure_ascii=False) + "\n").encode("utf-8"))
+            fh.flush()
+    # o mesmo dobrar de `_dobrar`: toda chave do delta, menos id e em
+    achado.update({k: v for k, v in delta.items() if k not in ("id", "em")})
+    achado["atualizado_em"] = delta["em"]
     return achado
 
 
@@ -616,12 +634,32 @@ def casa(ia: str) -> dict:
     return base
 
 
+SUBSTITUIR_TENTATIVAS = 6
+SUBSTITUIR_PAUSA_S = 0.15
+
+
+def _substituir(tmp: Path, alvo: Path) -> None:
+    """`os.replace` que aguenta o arquivo aberto por outro processo.
+
+    No Windows, trocar um `casa.json` que o app (ou outro carteiro) esta
+    lendo da `PermissionError`; ate 14/10/2026 isso fazia a resposta ja
+    obtida virar "falhou" (IAS-5). Tenta `SUBSTITUIR_TENTATIVAS` vezes."""
+    for tentativa in range(1, SUBSTITUIR_TENTATIVAS + 1):
+        try:
+            os.replace(tmp, alvo)
+            return
+        except PermissionError:
+            if tentativa >= SUBSTITUIR_TENTATIVAS:
+                raise
+            time.sleep(SUBSTITUIR_PAUSA_S)
+
+
 def gravar_casa(ia: str, dados: dict) -> Path:
     alvo = pasta(_ia(ia)) / "casa.json"
     alvo.parent.mkdir(parents=True, exist_ok=True)
     tmp = alvo.with_suffix(".tmp")
     tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, alvo)
+    _substituir(tmp, alvo)
     return alvo
 
 
@@ -649,7 +687,7 @@ def gravar_resumo_da_casa(ia: str, texto: str) -> Path:
     cabecalho = (f"# Resumo da casa do {ROTULOS.get(_ia(ia), ia)} — {agora()}\n\n")
     tmp = alvo.with_suffix(".tmp")
     tmp.write_text(cabecalho + str(texto).strip() + "\n", encoding="utf-8")
-    os.replace(tmp, alvo)
+    _substituir(tmp, alvo)
     return alvo
 
 
@@ -695,7 +733,7 @@ def gravar_estado_do_carteiro(dados: dict) -> None:
     dados = dict(dados, pid=os.getpid(), pulso_em=agora())
     tmp = alvo.with_suffix(".tmp")
     tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, alvo)
+    _substituir(tmp, alvo)
 
 
 def estado_do_carteiro(agora_s: float | None = None) -> dict:
@@ -746,7 +784,7 @@ def registrar_presenca(chave: str) -> None:
             dados[str(chave)] = agora()
             tmp = alvo.with_suffix(".tmp")
             tmp.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
-            os.replace(tmp, alvo)
+            _substituir(tmp, alvo)
     except OSError:
         pass
 
