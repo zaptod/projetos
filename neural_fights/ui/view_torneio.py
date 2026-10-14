@@ -10,7 +10,9 @@ from tkinter import messagebox
 import threading
 
 from neural_fights.tournament.tournament_mode import Tournament, TournamentRunner
-from neural_fights.ui.theme import COR_ACCENT, COR_BG, COR_BG_SECUNDARIO, COR_SUCCESS
+from neural_fights.ui.theme import (
+    COR_ACCENT, COR_BG, COR_BG_SECUNDARIO, COR_SUCCESS, FilaDaThread,
+)
 from neural_fights.ui.main import area_util_tela
 
 
@@ -268,10 +270,21 @@ class TournamentWindow(ctk.CTkToplevel):
         self.btn_fight.configure(state="disabled")
         self.status_label.configure(text="Simulando luta...")
 
+        # MOT-117: a thread nao chama ``self.after`` (com a janela fechada
+        # isso dava RuntimeError); o desfecho vai pela fila.
+        fila = self._fila_da_thread()
+
         def executar():
             resultado = self.runner.run_single_match(match)
-            self.after(0, lambda: self._on_simulation_finished(match, resultado))
+            fila.enviar(lambda: self._on_simulation_finished(match, resultado))
+        fila.vigiar()
         threading.Thread(target=executar, daemon=True).start()
+
+    def _fila_da_thread(self):
+        fila = self.__dict__.get("_fila_trabalho")
+        if fila is None:
+            fila = self._fila_trabalho = FilaDaThread(self)
+        return fila
 
     def _on_simulation_finished(self, match, resultado):
         self.btn_fight.configure(state="normal")
@@ -279,10 +292,26 @@ class TournamentWindow(ctk.CTkToplevel):
             self.status_label.configure(text="Falha ao simular luta")
             messagebox.showerror("Erro", resultado["error"])
             return
-        self.tournament.record_match_result(
+        stats = resultado.get("stats") or {}
+        registrado = self.tournament.record_match_result(
             winner_name=resultado["winner"], duration=resultado["duration"],
             ko_type=resultado["ko_type"],
+            match=match,
+            hp_ratios={
+                match.fighter1_name: stats.get("p1_hp_ratio"),
+                match.fighter2_name: stats.get("p2_hp_ratio"),
+            },
         )
+        if not registrado:
+            # MOT-102: antes o resultado sumia e a tela dizia "Vencedor".
+            self.status_label.configure(text="Resultado NÃO registrado")
+            messagebox.showerror(
+                "Erro",
+                "O resultado não pôde ser registrado nesta luta "
+                "(já concluída ou sem os dois lutadores).",
+            )
+            self.refresh_bracket()
+            return
         self.status_label.configure(text=f"Vencedor: {resultado['winner']} ({resultado['ko_type']})")
         self.current_match = match
         self.refresh_bracket()
@@ -297,15 +326,18 @@ class TournamentWindow(ctk.CTkToplevel):
         self.btn_palco.configure(state="disabled")
         self.status_label.configure(text="Abrindo luta no Godot...")
 
+        fila = self._fila_da_thread()
+
         def abrir():
             try:
                 exportar_palco_selecao(match.fighter1_name, match.fighter2_name, "Arena", "janela")
             except Exception as error:
                 # o Python apaga `error` ao sair do except; o lambda roda depois
                 mensagem = str(error)
-                self.after(0, lambda: messagebox.showerror("Godot", mensagem))
+                fila.enviar(lambda: messagebox.showerror("Godot", mensagem))
             finally:
-                self.after(0, lambda: self.btn_palco.configure(state="normal"))
+                fila.enviar(lambda: self.btn_palco.configure(state="normal"))
+        fila.vigiar()
         threading.Thread(target=abrir, daemon=True).start()
 
 
@@ -321,13 +353,21 @@ class TournamentWindow(ctk.CTkToplevel):
         
         winner = self.current_match.fighter1_name if fighter_num == 1 else self.current_match.fighter2_name
         
-        # Registra
-        self.tournament.record_match_result(
+        # Registra (MOT-102: na luta selecionada, e conferindo o retorno)
+        registrado = self.tournament.record_match_result(
             winner_name=winner,
             ko_type="KO",
-            duration=0
+            duration=0,
+            match=self.current_match,
         )
-        
+        if not registrado:
+            messagebox.showerror(
+                "Erro",
+                "O vencedor não pôde ser registrado nesta luta "
+                "(sem os dois lutadores definidos).",
+            )
+            return
+
         self.status_label.configure(text=f"✅ Vencedor registrado: {winner}")
         self.current_match = None
         

@@ -768,6 +768,61 @@ gatilhos no Ateliê):
   (`_id_slot`, `candidatos_*_png`, `opcoes_do_png`); a fonte do A/B vem de
   `palco.json → ab.fonte` ou do `WINDIR`.
 
+## 10. Consertos do motor de 14/10 (auditoria `2026-10-11-profunda/consertos/motor.md`)
+
+**Lote 1: o que NÃO muda a luta** (MOT-12, 13, 22–29, 32 código morto, 33,
+102–129). Medido com a cópia do HEAD e a worktree, 16 lutas gravadas
+(`gravar_luta`, seeds 1000–1015): vencedor, duração, HP final e golpes
+**iguais em 16/16**.
+
+- **Som** (o que vai para o vídeo):
+  - o ouvinte é a câmera (`AudioManager.listener_x`, que o Simulador atualiza
+    a cada passo). O cast media a distância contra x = 0: acima de 20 m saía
+    mudo;
+  - o pan não dobra mais o volume (`fv × (2 − |pan|)`); o som posicional leva
+    o ganho constante `audio.GANHO_POSICIONAL` = 1,9;
+  - para o golpe não ficar mais baixo no vídeo (ordem de 14/10 sobre o nó
+    `volume-dos-golpes`), a mistura realça golpes e impactos em
+    `mixagem.REALCE_GOLPES_DB` = +2 dB. Golpe no vídeo, nas 16 lutas, com o
+    config e os wav do Adrian: **+0,68 dB em média** sobre hoje (5 de 16
+    abaixo, pior −1,47 dB). Sem o realce dava −1,0 dB: o cast que voltou a
+    soar pesa na normalização do trecho. O palco Godot toca o volume
+    anotado, sem o realce;
+  - `summon_cast` registrado; o grupo `footstep` deixou de estar vazio;
+  - **fanfarra de vitória** (`builds/som-da-vitoria`): nenhum som do pacote
+    era fanfarra. Ela é sintetizada por `neural_fights/tools/sintetizar_fanfarra.py`
+    → `sounds/arena_victory.wav` (1,41 s, −13,6 dB de média) e entra na
+    categoria "ui" (no config do Adrian, o "ambiente" está em 0,03 e a vitória
+    saía muda);
+  - `sound_config.json` do pacote: saíram as 26 chaves que apontavam para
+    arquivo inexistente (o jogo cai na mesma cadeia de antes). O config do
+    runtime do Adrian não foi tocado.
+- **Live**: quem não pagou é recusado antes de qualquer ADIAR. Vale o
+  primeiro `!arena`. Pago que não coube (cooldown, teto, saturação, alvo
+  morto) vira `RECUSADO` com "reembolso", e o overlay mostra "não coube,
+  reembolsado" (`builds/arena-dois-pagantes`). `!banir`/`!desbanir <nome>`
+  são só de moderador (`builds/banimento-na-live`). O aposentado ganha um
+  lutador novo. O HUD usa o nome atual com a blocklist viva. A saturação não
+  conta a mesma área duas vezes. O journal grava o `viewer_id`. 403 de quota
+  espera e segue. A quota zera à meia-noite do Pacífico.
+- **Torneio**: o resultado vai para a luta SELECIONADA. A chave tem seed
+  (`Tournament(seed=)`; o `random_builds` passa o mesmo número que dava ao
+  `random.seed`, então a chave de cada seed é a de antes). O retry de empate
+  sai da faixa `seed + match_id + tentativa × 1.000.000`; antes colidia com a
+  luta seguinte. `fastest_ko`, `longest_fight` e `most_aggressive` (quem tirou
+  mais vida por segundo) são preenchidos (`builds/estatisticas-do-torneio`).
+- **Gravador**: o ffmpeg que falha (ou mp4 vazio) dá `sucesso: False` com o
+  stderr. O fps precisa dividir 60, e a duração precisa ser > 0. Timeline ou
+  som pedidos que não saíram dão exit 3. A skill_demo grava num `.tmp.mp4`
+  e mata o ffmpeg travado.
+- **Launcher**: a roda do mouse vai ao canvas sob o ponteiro
+  (`theme.registrar_rolagem`). A Forja não arredonda o dano. Corpo e arma
+  aparecem juntos na prévia. A janela cabe na área útil. Fechar no meio de um
+  render mata o Godot (`palco.godot.encerrar_todos`). O resumo do wizard usa o
+  `Personagem`. O passo 6 recarrega as armas. "Sugerir Tamanhos" usa o
+  personagem em edição (e a altura em metros). Os estilos do editor são os do
+  catálogo do banco.
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

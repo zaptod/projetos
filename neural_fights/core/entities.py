@@ -4328,40 +4328,6 @@ class Lutador:
     # SISTEMA DE CHANNELING v8.0 (Para Classes Mágicas)
     # =========================================================================
     
-    def pode_canalizar_magia(self) -> bool:
-        """
-        Verifica se o personagem pode canalizar magias.
-        Apenas classes mágicas têm acesso ao channeling.
-        """
-        classes_magicas = ["Mago", "Piromante", "Criomante", "Necromante", "Feiticeiro"]
-        return any(c in self.classe_nome for c in classes_magicas)
-    
-    def iniciar_canalizacao(self, skill_nome: str, skill_data: dict) -> bool:
-        """
-        Inicia a canalização de uma magia poderosa.
-        
-        Args:
-            skill_nome: Nome da skill a ser canalizada
-            skill_data: Dados da skill
-            
-        Returns:
-            True se a canalização iniciou com sucesso
-            
-        Nota:
-            O GameFeelManager gerencia o estado real da canalização.
-            Este método apenas marca o lutador como "canalizando".
-        """
-        if not self.pode_canalizar_magia():
-            return False
-        
-        # Marca estado de canalização no lutador
-        self.canalizando = True
-        self.skill_canalizando = skill_nome
-        self.tempo_canalizacao = 0.0
-        
-        # O resto é gerenciado pelo GameFeelManager
-        return True
-    
     def interromper_canalizacao(self):
         """Interrompe a canalização atual"""
         channel = getattr(self, "channel_ativo", None)

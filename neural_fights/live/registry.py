@@ -263,6 +263,37 @@ class LiveRegistry:
             ).fetchone()
         return _viewer_de_linha(linha) if linha else None
 
+    def procurar_viewer(self, alvo: str, *, platform: str = "") -> Viewer | None:
+        """Acha o espectador que o moderador citou no chat.
+
+        Aceita o ``viewer_id``, o id da plataforma ou o nome exibido (com ou
+        sem ``@``, sem diferenciar maiusculas). Com nome repetido, prefere a
+        plataforma de quem moderou e, nela, o visto por ultimo.
+        """
+        alvo = str(alvo or "").strip()
+        if alvo.startswith("@"):
+            alvo = alvo[1:].strip()
+        if not alvo:
+            return None
+        plataforma = str(platform or "").strip().lower()
+        with self._lock:
+            linha = self._conexao.execute(
+                "SELECT * FROM viewer WHERE viewer_id = ?", (alvo,)
+            ).fetchone()
+            if linha is None:
+                linha = self._conexao.execute(
+                    """
+                    SELECT * FROM viewer
+                    WHERE platform_user_id = ?
+                       OR lower(display_name) = lower(?)
+                       OR lower(display_name_raw) = lower(?)
+                    ORDER BY (platform = ?) DESC, last_seen_at DESC
+                    LIMIT 1
+                    """,
+                    (alvo, alvo, alvo, plataforma),
+                ).fetchone()
+        return _viewer_de_linha(linha) if linha else None
+
     def definir_banimento(self, viewer_id: str, banido: bool) -> None:
         with self._lock:
             self._conexao.execute(
@@ -338,11 +369,28 @@ class LiveRegistry:
         precisa do nome sanitizado — todo o identity.py existia para isso
         e o HUD nunca o consumiu (o espectador via "@3f9a2c" na barra).
         """
+        # MOT-106 (auditoria de 11/10/2026): lia ``fighter.display_name``, a
+        # copia feita uma vez no ``!entrar``. O espectador que trocava de nome
+        # continuava com o antigo no HUD, e um termo bloqueado depois ficava
+        # na tela. Agora o nome vem do espectador, sanitizado AGORA, com a
+        # blocklist viva.
         with self._lock:
             linhas = self._conexao.execute(
-                "SELECT catalog_name, display_name FROM fighter"
+                """
+                SELECT f.catalog_name, v.display_name_raw, v.viewer_id, v.platform
+                FROM fighter AS f
+                JOIN viewer AS v ON v.viewer_id = f.viewer_id
+                WHERE f.retired_at IS NULL
+                """
             ).fetchall()
-        return {linha[0]: linha[1] for linha in linhas}
+        return {
+            linha["catalog_name"]: self.sanitizar(
+                linha["display_name_raw"],
+                viewer_id=linha["viewer_id"],
+                platform=linha["platform"],
+            ).valor
+            for linha in linhas
+        }
 
     def classificacao(self, limite: int = 20) -> list[dict[str, Any]]:
         """Ranking dos lutadores de espectador, por vitorias e saldo.
@@ -389,13 +437,6 @@ class LiveRegistry:
         return {"wins": linha["wins"], "losses": linha["losses"], "draws": linha["draws"]}
 
     # ------------------------------------------------------------ idempotencia
-
-    def ja_processado(self, event_id: str) -> bool:
-        with self._lock:
-            linha = self._conexao.execute(
-                "SELECT 1 FROM event_journal WHERE event_id = ?", (event_id,)
-            ).fetchone()
-        return linha is not None
 
     def registrar_evento(
         self,
@@ -553,7 +594,18 @@ class LiveRegistry:
             return existente
 
         agora = time.time() if agora is None else float(agora)
-        fighter_id = fighter_id_de(viewer.viewer_id)
+        # MOT-104: o ordinal era sempre 0, e o espectador com lutador
+        # aposentado batia no mesmo ``fighter_id``/``catalog_name`` e levava
+        # IntegrityError para sempre. O ordinal e quantos lutadores ele ja
+        # teve: o novo e outro personagem, e o historico do antigo fica.
+        with self._lock:
+            ordinal = int(
+                self._conexao.execute(
+                    "SELECT COUNT(*) FROM fighter WHERE viewer_id = ?",
+                    (viewer.viewer_id,),
+                ).fetchone()[0]
+            )
+        fighter_id = fighter_id_de(viewer.viewer_id, ordinal)
         catalog_name = catalog_name_de(fighter_id)
         spec = self._gerar_spec(fighter_id, catalog_name, armas)
 

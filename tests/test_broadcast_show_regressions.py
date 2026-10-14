@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from neural_fights.live.broadcast import BroadcastOverlay
 from neural_fights.live.commands import criar_handler
+from neural_fights.live.events import EventKind, ViewerEvent
 from neural_fights.live.registry import LiveRegistry
 from neural_fights.live.session import LiveSession, Matchmaker
 
@@ -83,12 +84,11 @@ class ResultadoCompletoTests(unittest.TestCase):
         handler = criar_handler(
             registry, ao_aplicar=lambda res, ev: recebidos.append((res, ev))
         )
-        evento = SimpleNamespace(
-            event_id="t:1", kind=SimpleNamespace(value="chat"), platform="t",
-            viewer_id="v1", viewer_name="Ana", texto="!entrar",
-            value_units=0, is_moderator=False, is_owner=False,
-            gift_id="", raw_amount=0.0, raw_currency="", sequence=1,
-            timestamp=0.0,
+        # MOT-115: ViewerEvent de verdade (o campo e ``text``); o
+        # SimpleNamespace(texto=...) escondia o "!?" do lower-third.
+        evento = ViewerEvent(
+            event_id="t:1", kind=EventKind.CHAT, platform="t",
+            viewer_id="v1", viewer_name="Ana", text="!entrar", sequence=1,
         )
         handler(SimpleNamespace(sim=None), evento)
         self.assertEqual(len(recebidos), 1)
@@ -103,12 +103,9 @@ class ResultadoCompletoTests(unittest.TestCase):
             raise RuntimeError("overlay morreu")
 
         handler = criar_handler(registry, ao_aplicar=bomba)
-        evento = SimpleNamespace(
-            event_id="t:2", kind=SimpleNamespace(value="chat"), platform="t",
-            viewer_id="v1", viewer_name="Ana", texto="oi",
-            value_units=0, is_moderator=False, is_owner=False,
-            gift_id="", raw_amount=0.0, raw_currency="", sequence=2,
-            timestamp=0.0,
+        evento = ViewerEvent(
+            event_id="t:2", kind=EventKind.CHAT, platform="t",
+            viewer_id="v1", viewer_name="Ana", text="oi", sequence=2,
         )
         # não explode; conversa é ignorada normalmente
         self.assertFalse(handler(SimpleNamespace(sim=None), evento))
@@ -119,11 +116,28 @@ class OverlayDefensivoTests(unittest.TestCase):
         sessao, sim, relogio = sessao_fake()
         overlay = BroadcastOverlay(sessao)
         resultado = SimpleNamespace(aplicado=True, status="APLICADO", detalhe="")
-        evento = SimpleNamespace(viewer_name="Ana_Gamer", texto="!meteoro", value_units=300)
+        evento = ViewerEvent(
+            platform="yt", viewer_id="v1", viewer_name="Ana_Gamer",
+            kind=EventKind.CHAT, text="!meteoro", value_units=300,
+        )
         overlay.notificar_comando(resultado, evento)
         self.assertEqual(len(overlay._lower_thirds), 1)
         self.assertEqual(overlay._lower_thirds[0]["nome"], "Ana_Gamer")
-        self.assertEqual(overlay._lower_thirds[0]["verbo"], "!meteoro")
+        self.assertEqual(overlay._lower_thirds[-1]["verbo"], "!meteoro")
+
+    def test_recusa_com_reembolso_diz_na_tela(self) -> None:
+        sessao, sim, relogio = sessao_fake()
+        overlay = BroadcastOverlay(sessao)
+        resultado = SimpleNamespace(
+            aplicado=False, status="RECUSADO", detalhe="teto_do_round reembolso"
+        )
+        evento = ViewerEvent(
+            platform="yt", viewer_id="v1", viewer_name="Ana",
+            kind=EventKind.GIFT, text="!arena Vulcão", value_units=150,
+        )
+        overlay.notificar_comando(resultado, evento)
+        self.assertIn("reembolsado", overlay._toast_recusa["texto"])
+        self.assertIn("!arena", overlay._toast_recusa["texto"])
 
     def test_overlay_quebrado_nao_derruba_o_passo(self) -> None:
         """A sessão engole a exceção do overlay: o show nunca cai."""

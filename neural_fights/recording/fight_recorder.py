@@ -70,6 +70,8 @@ import argparse  # noqa: E402
 import json  # noqa: E402
 import math  # noqa: E402
 import subprocess  # noqa: E402
+import sys  # noqa: E402
+import tempfile  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import pygame  # noqa: E402
@@ -371,6 +373,40 @@ def _recorte_util(sim, largura: int, altura: int) -> list[int] | None:
     return [int(x0), int(y0), int((x1 - x0) // 2 * 2), int((y1 - y0) // 2 * 2)]
 
 
+def validar_fps_e_duracao(fps: int, max_duracao: float) -> None:
+    """Recusa o que gravaria errado (MOT-121, auditoria de 11/10/2026).
+
+    O motor pensa a 60 Hz e o gravador captura um quadro a cada ``60 / fps``
+    passos: so os divisores de 60 saem em tempo real (24 saia a 0,8x, 50 a
+    0,83x, acima de 60 acelerava). ``fps < 1`` era laco infinito e
+    ``max_duracao <= 0`` devolvia "sucesso" com 0 s.
+    """
+    if isinstance(fps, bool) or not isinstance(fps, int) or fps < 1 or FPS % fps:
+        raise ValueError(f"fps precisa dividir {FPS} (10, 12, 15, 20, 30, 60): {fps!r}")
+    if not (float(max_duracao) > 0):
+        raise ValueError(f"max_duracao precisa ser maior que zero: {max_duracao!r}")
+
+
+def tipo_fps(texto: str) -> int:
+    """``type=`` do argparse para ``--fps``: so divisores de 60."""
+    try:
+        valor = int(texto)
+        validar_fps_e_duracao(valor, 1.0)
+    except ValueError as erro:
+        raise argparse.ArgumentTypeError(str(erro)) from None
+    return valor
+
+
+def tipo_duracao(texto: str) -> float:
+    """``type=`` do argparse para ``--max-duracao``: maior que zero."""
+    try:
+        valor = float(texto)
+        validar_fps_e_duracao(FPS, valor)
+    except ValueError as erro:
+        raise argparse.ArgumentTypeError(str(erro)) from None
+    return valor
+
+
 def _abrir_ffmpeg(saida: Path, largura: int, altura: int, fps: int,
                   crf: int, preset: str) -> subprocess.Popen:
     """Pipe de frames crus para o ffmpeg.
@@ -378,6 +414,10 @@ def _abrir_ffmpeg(saida: Path, largura: int, altura: int, fps: int,
     Mesmo formato de `random_builds/builds/video/renderer.py::_encode_frames`,
     inclusive a trilha silenciosa: manter os segmentos com video E audio e o
     que permite o `concat -c copy` do renderer funcionar depois.
+
+    O stderr vai para um arquivo temporario (MOT-109): um pipe encheria e
+    travaria o ffmpeg, e sem ele a falha (disco cheio, arquivo trancado) era
+    engolida e o gravador dizia sucesso com um mp4 sem ``moov``.
     """
     saida.parent.mkdir(parents=True, exist_ok=True)
     comando = [
@@ -390,7 +430,77 @@ def _abrir_ffmpeg(saida: Path, largura: int, altura: int, fps: int,
         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
         str(saida),
     ]
-    return subprocess.Popen(comando, stdin=subprocess.PIPE, creationflags=NO_WINDOW)
+    erros = tempfile.TemporaryFile()
+    try:
+        processo = subprocess.Popen(comando, stdin=subprocess.PIPE, stderr=erros,
+                                    creationflags=NO_WINDOW)
+    except Exception:
+        erros.close()
+        raise
+    processo.arquivo_de_erros = erros
+    return processo
+
+
+def _stderr_do_ffmpeg(processo) -> str:
+    """Os ultimos 800 caracteres do que o ffmpeg escreveu no stderr."""
+    arquivo = getattr(processo, "arquivo_de_erros", None)
+    if arquivo is None:
+        fluxo = getattr(processo, "stderr", None)
+        try:
+            dados = fluxo.read() if fluxo is not None else b""
+        except Exception:
+            dados = b""
+    else:
+        try:
+            arquivo.seek(0)
+            dados = arquivo.read()
+        except Exception:
+            dados = b""
+    if isinstance(dados, bytes):
+        dados = dados.decode("utf-8", errors="replace")
+    return str(dados or "").strip()[-800:]
+
+
+def _escrever_quadro(processo, dados: bytes) -> None:
+    """Escreve um quadro; pipe quebrado vira RuntimeError com o motivo do ffmpeg."""
+    try:
+        processo.stdin.write(dados)
+    except (BrokenPipeError, OSError) as erro:
+        try:
+            processo.stdin.close()
+        except (OSError, ValueError):
+            pass
+        try:
+            processo.wait(timeout=30)
+        except Exception:
+            pass
+        raise RuntimeError(f"ffmpeg falhou: {_stderr_do_ffmpeg(processo) or erro}") from erro
+
+
+def _fechar_ffmpeg(processo, saida: Path | None) -> str | None:
+    """Fecha o ffmpeg e devolve o erro (``None`` se o mp4 saiu inteiro)."""
+    try:
+        processo.stdin.close()
+    except (OSError, ValueError):
+        pass
+    try:
+        codigo = processo.wait(timeout=120)
+    except subprocess.TimeoutExpired:
+        processo.kill()
+        processo.wait()
+        codigo = "timeout"
+    erro = None
+    if codigo != 0:
+        erro = f"ffmpeg saiu com {codigo}: {_stderr_do_ffmpeg(processo)}"
+    elif saida is not None and (not Path(saida).exists() or Path(saida).stat().st_size == 0):
+        erro = f"ffmpeg saiu com 0 mas o arquivo nao existe ou esta vazio: {saida}"
+    arquivo = getattr(processo, "arquivo_de_erros", None)
+    if arquivo is not None:
+        try:
+            arquivo.close()
+        except Exception:
+            pass
+    return erro
 
 
 def _embutir_som(saida: Path, sons: list, duracao: float) -> dict:
@@ -519,6 +629,7 @@ def gravar_luta(
     from neural_fights.simulation.simulacao import Simulador
     from neural_fights.effects.audio_anotador import VERSAO_SONS, AnotadorDeAudio
 
+    validar_fps_e_duracao(fps_saida, max_duracao)
     saida = Path(saida) if saida is not None else None
     resolucao = parse_resolucao(resolucao)
     match_config = {
@@ -649,7 +760,7 @@ def gravar_luta(
 
             if indice % a_cada == 0:
                 if ffmpeg is not None:
-                    ffmpeg.stdin.write(pygame.image.tobytes(sim.tela, "RGB"))
+                    _escrever_quadro(ffmpeg, pygame.image.tobytes(sim.tela, "RGB"))
                 camera.on_frame(sim, dt_video)
                 if t_video >= proxima_amostra_hp:
                     proxima_amostra_hp = t_video + PASSO_SERIE_HP
@@ -741,21 +852,19 @@ def gravar_luta(
             # Fecha o video ANTES de trocar a trilha: o mp4 so existe inteiro
             # depois que o ffmpeg termina.
             processo, ffmpeg = ffmpeg, None
-            try:
-                processo.stdin.close()
-            except (OSError, ValueError):
-                pass
-            processo.wait()
+            erro_ffmpeg = _fechar_ffmpeg(processo, saida)
+            if erro_ffmpeg is not None:
+                # MOT-109: o codigo de saida era ignorado e um mp4 sem
+                # ``moov`` (trailer que nao gravou) saia como sucesso.
+                resultado["sucesso"] = False
+                resultado["erro"] = erro_ffmpeg
+                return resultado
             if anotador is not None and som_no_video:
                 resultado.update(_embutir_som(saida, resultado["sons"], duracao_video))
         return resultado
     finally:
         if ffmpeg is not None:
-            try:
-                ffmpeg.stdin.close()
-            except (OSError, ValueError):
-                pass
-            ffmpeg.wait()
+            _fechar_ffmpeg(ffmpeg, None)
         sim.close()
 
 
@@ -781,8 +890,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resolucao", default=None, metavar="LxA",
                         help="resolucao nativa da gravacao, ex. 1080x1920 "
                              "(a proporcao decide retrato/paisagem)")
-    parser.add_argument("--fps", type=int, default=30)
-    parser.add_argument("--max-duracao", type=float, default=120.0)
+    parser.add_argument("--fps", type=tipo_fps, default=30,
+                        help="quadros por segundo; precisa dividir 60")
+    parser.add_argument("--max-duracao", type=tipo_duracao, default=120.0)
     parser.add_argument("--sem-hud", action="store_true",
                         help="sem as barras do jogo (o video desenha as suas)")
     parser.add_argument("--crf", type=int, default=20)
@@ -820,6 +930,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.sem_video and not args.saida:
         parser.error("--saida e obrigatorio (ou use --sem-video)")
+    if args.resolucao and parse_resolucao(args.resolucao) is None:
+        # MOT-122: "--resolucao 1080" virava a resolucao padrao em silencio
+        parser.error(f"--resolucao invalida (use LxA, ex. 1080x1920): {args.resolucao}")
     try:
         resultado = gravar_luta(
             p1=args.p1, p2=args.p2,
@@ -842,7 +955,18 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.resultado).write_text(
             json.dumps(resultado, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(resultado, ensure_ascii=False))
-    return 0 if resultado.get("sucesso") else 1
+    if not resultado.get("sucesso"):
+        return 1
+    # MOT-123: a timeline ou o som PEDIDOS que nao sairam davam exit 0.
+    falta = resultado.get("erro_timeline") if args.timeline else None
+    if not falta and args.timeline and resultado.get("timeline") is None:
+        falta = "timeline pedida nao foi gravada"
+    if not falta and not args.sem_som and not args.sem_video and resultado.get("som_no_video") is False:
+        falta = f"som pedido nao entrou no video: {resultado.get('erro_som', '')}".strip()
+    if falta:
+        print(falta, file=sys.stderr)
+        return 3
+    return 0
 
 
 if __name__ == "__main__":

@@ -141,6 +141,11 @@ class AnotadorDeAudio(AudioManager):
     def _iniciar_mixer(self) -> bool:
         return True
 
+    def _garantir_pasta_runtime(self) -> None:
+        # MOT-33: so LER os sons nao cria a pasta de runtime (o
+        # ``arquivos_de_som`` a criava a cada render).
+        return None
+
     def _carregar_do_cache(self, filepath):
         # O jogo decodifica aqui; o anotador so precisa saber que o arquivo
         # existe (resolve_sound_file ja conferiu). Diferenca unica e
@@ -167,9 +172,12 @@ class AnotadorDeAudio(AudioManager):
         finally:
             self._pedido, self._pan = None, 0.0
 
-    def play_positional(self, sound_name: str, pos_x: float, listener_x: float,
+    def play_positional(self, sound_name: str, pos_x: float, listener_x: float | None = None,
                         max_distance: float = 20.0, volume: float = 1.0):
-        self._posicao = (float(pos_x), float(listener_x))
+        if listener_x is None:
+            listener_x = getattr(self, "listener_x", None)
+        # Sem ouvinte o jogo toca sem posicao (MOT-12): nada de ``x`` anotado.
+        self._posicao = None if listener_x is None else (float(pos_x), float(listener_x))
         try:
             super().play_positional(sound_name, pos_x, listener_x,
                                     max_distance=max_distance, volume=volume)
@@ -206,5 +214,36 @@ def arquivos_de_som() -> dict[str, Path]:
 
     A mistura chama isto na hora de renderizar: e assim que trocar um wav (ou
     o ``sound_config.json``) vale para o proximo render sem regravar a luta.
+
+    MOT-33: o registro inteiro era refeito a cada chamada. Agora fica em cache
+    enquanto o config (do runtime e do pacote) e as pastas de som nao mudam
+    (mtime) — trocar um arquivo ou o config invalida na hora.
     """
-    return AnotadorDeAudio(seed=0).arquivos()
+    from neural_fights.effects.audio_paths import (
+        PACKAGE_SOUND_DIR,
+        get_package_config_path,
+        get_runtime_config_path,
+        get_runtime_sound_dir,
+    )
+
+    def _marca(caminho: Path):
+        try:
+            return caminho.stat().st_mtime_ns
+        except OSError:
+            return None
+
+    chave = (
+        str(get_runtime_sound_dir()),
+        _marca(get_runtime_config_path()),
+        _marca(get_package_config_path()),
+        _marca(get_runtime_sound_dir()),
+        _marca(PACKAGE_SOUND_DIR),
+    )
+    em_cache = _CACHE_ARQUIVOS.get("chave")
+    if em_cache != chave or "mapa" not in _CACHE_ARQUIVOS:
+        _CACHE_ARQUIVOS["mapa"] = AnotadorDeAudio(seed=0).arquivos()
+        _CACHE_ARQUIVOS["chave"] = chave
+    return dict(_CACHE_ARQUIVOS["mapa"])
+
+
+_CACHE_ARQUIVOS: dict = {}

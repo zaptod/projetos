@@ -628,15 +628,3 @@ class Câmera:
         self.x += (tx - self.x) * velocidade * dt
         self.y += (ty - self.y) * velocidade * dt
     
-    def esta_visivel(self, world_x, world_y, margem=50):
-        """Verifica se uma posição do mundo está visível na tela"""
-        sx, sy = self.converter(world_x, world_y)
-        return -margem < sx < LARGURA + margem and -margem < sy < ALTURA + margem
-    
-    def get_bounds_mundo(self):
-        """Retorna os limites do mundo visíveis na tela"""
-        min_x = self.x - (LARGURA / 2) / self.zoom
-        max_x = self.x + (LARGURA / 2) / self.zoom
-        min_y = self.y - (ALTURA / 2) / self.zoom
-        max_y = self.y + (ALTURA / 2) / self.zoom
-        return min_x, min_y, max_x, max_y

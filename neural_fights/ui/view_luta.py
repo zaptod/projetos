@@ -9,7 +9,7 @@ import threading
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT,
     COR_TEXTO, COR_TEXTO_DIM, COR_SUCCESS, COR_P1, COR_P2, COR_BORDA,
-    desenhar_lutador,
+    FilaDaThread, desenhar_lutador,
 )
 
 
@@ -346,15 +346,19 @@ class TelaLuta(tk.Frame):
         acao = "Renderizando MP4" if modo == "mp4" else "Abrindo previa Godot"
         self.lbl_progresso_palco.config(text=f"{acao}: exportando timeline...")
 
+        # MOT-117: a thread nao toca no Tk (o ``self.after`` dela dava
+        # RuntimeError com o launcher fechado); o desfecho vai pela fila.
+        fila = self.__dict__.get("_fila_palco")
+        if fila is None:
+            fila = self._fila_palco = FilaDaThread(self)
+        p1, p2, cenario = self.personagem_p1.nome, self.personagem_p2.nome, self.var_cenario.get()
+
         def trabalho():
             try:
-                saida = exportar_palco_selecao(
-                    self.personagem_p1.nome, self.personagem_p2.nome,
-                    self.var_cenario.get(), modo,
-                )
+                saida = exportar_palco_selecao(p1, p2, cenario, modo)
             except (FileNotFoundError, ModuleNotFoundError) as erro:
                 mensagem = f"Dependencia ausente para o palco: {erro}"
-                self.after(0, lambda: self._finalizar_palco(mensagem, erro=True))
+                fila.enviar(lambda: self._finalizar_palco(mensagem, erro=True))
             except Exception as erro:
                 detalhe = str(erro)
                 if "ffmpeg" in detalhe.lower():
@@ -363,11 +367,13 @@ class TelaLuta(tk.Frame):
                     mensagem = f"Godot ausente ou indisponivel: {detalhe}"
                 else:
                     mensagem = detalhe
-                self.after(0, lambda: self._finalizar_palco(mensagem, erro=True))
+                fila.enviar(lambda: self._finalizar_palco(mensagem, erro=True))
             else:
-                self.after(0, lambda: self._finalizar_palco(f"Concluido: {saida}"))
+                fila.enviar(lambda: self._finalizar_palco(f"Concluido: {saida}"))
 
-        threading.Thread(target=trabalho, daemon=True).start()
+        fila.vigiar()
+        self._thread_palco = threading.Thread(target=trabalho, daemon=True)
+        self._thread_palco.start()
 
     def _finalizar_palco(self, mensagem, erro=False):
         self._palco_em_andamento = False
@@ -375,10 +381,6 @@ class TelaLuta(tk.Frame):
         self._atualizar_botao()
         if erro:
             messagebox.showerror("Palco indisponivel", mensagem)
-
-    # Compatibilidade
-    def atualizar_previews(self, event=None):
-        pass
 
 
 # =============================================================================

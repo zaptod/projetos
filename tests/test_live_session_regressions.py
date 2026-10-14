@@ -278,5 +278,90 @@ class SessionGuardTests(unittest.TestCase):
             simulador.close()
 
 
+class RegistroAuditoriaProfundaTests(unittest.TestCase):
+    """MOT-104, MOT-106 e MOT-126 (auditoria de 11/10/2026)."""
+
+    def _armas(self):
+        return [arma.to_dict() for arma in database.carregar_armas()][:5]
+
+    def test_aposentado_ganha_lutador_novo(self) -> None:
+        from neural_fights.live.registry import LiveRegistry
+
+        armas = self._armas()
+        if not armas:
+            raise unittest.SkipTest("sem armas no banco")
+        with LiveRegistry(":memory:") as registry:
+            viewer = registry.registrar_viewer(
+                platform="yt", platform_user_id="v1", display_name_bruto="Fulano"
+            )
+            primeiro = registry.criar_lutador(viewer, armas=armas)
+            self.assertTrue(registry.aposentar_lutador(primeiro.fighter_id))
+            segundo = registry.criar_lutador(viewer, armas=armas)
+            self.assertNotEqual(segundo.fighter_id, primeiro.fighter_id)
+            self.assertNotEqual(segundo.catalog_name, primeiro.catalog_name)
+            self.assertEqual(
+                registry.obter_lutador_ativo(viewer.viewer_id).fighter_id,
+                segundo.fighter_id,
+            )
+
+    def test_hud_usa_nome_atual_e_blocklist_viva(self) -> None:
+        from neural_fights.live.registry import LiveRegistry
+
+        armas = self._armas()
+        if not armas:
+            raise unittest.SkipTest("sem armas no banco")
+        with LiveRegistry(":memory:") as registry:
+            viewer = registry.registrar_viewer(
+                platform="yt", platform_user_id="v1", display_name_bruto="NomeAntigo"
+            )
+            lutador = registry.criar_lutador(viewer, armas=armas)
+            registry.registrar_viewer(
+                platform="yt", platform_user_id="v1", display_name_bruto="NomeNovo"
+            )
+            self.assertEqual(registry.mapa_nomes_exibicao()[lutador.catalog_name], "NomeNovo")
+            registry.bloquear_termo("nomenovo")
+            self.assertNotEqual(
+                registry.mapa_nomes_exibicao()[lutador.catalog_name], "NomeNovo"
+            )
+
+    def test_recording_grava_o_que_sobrou(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from neural_fights.live.sources.replay import RecordingSource
+
+        interna = ScriptedEventSource()
+        with tempfile.TemporaryDirectory() as pasta:
+            caminho = Path(pasta) / "rep.jsonl"
+            fonte = RecordingSource(interna, caminho)
+            fonte.start()
+            interna.push(*[
+                ViewerEvent(
+                    platform="yt", viewer_id=f"v{i}", viewer_name="A",
+                    kind=EventKind.CHAT, text="oi", event_id=f"e{i}",
+                )
+                for i in range(5)
+            ])
+            fonte.stop()
+            linhas = caminho.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(linhas), 5)
+
+    def test_recording_nao_vaza_arquivo_se_a_interna_falha(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from neural_fights.live.sources.replay import RecordingSource
+
+        class Quebrada(ScriptedEventSource):
+            def start(self):
+                raise RuntimeError("caiu")
+
+        with tempfile.TemporaryDirectory() as pasta:
+            fonte = RecordingSource(Quebrada(), Path(pasta) / "rep.jsonl")
+            with self.assertRaises(RuntimeError):
+                fonte.start()
+            self.assertIsNone(fonte._arquivo)
+
+
 if __name__ == "__main__":
     unittest.main()

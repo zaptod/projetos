@@ -14,7 +14,7 @@ from neural_fights.data import ListaDesatualizada, salvar_lista_chars
 from neural_fights.ui.theme import (
     COR_BG, COR_BG_SECUNDARIO, COR_HEADER, COR_ACCENT, COR_SUCCESS, 
     COR_TEXTO, COR_TEXTO_DIM, COR_WARNING, COR_DANGER, CORES_CLASSE, CATEGORIAS_CLASSE,
-    COR_BORDA, desenhar_lutador,
+    COR_BORDA, desenhar_lutador, registrar_rolagem,
 )
 from neural_fights.ui import arte_atelie
 from neural_fights.tools import catalogo_animacoes
@@ -193,7 +193,9 @@ class TelaPersonagens(tk.Frame):
             # Caso contrário, rola o canvas principal
             self.canvas_wizard.yview_scroll(int(-1*(event.delta/120)), "units")
         
-        self.canvas_wizard.bind_all("<MouseWheel>", _on_mousewheel)
+        # MOT-113: so com o ponteiro sobre o wizard (o bind_all da TelaSons,
+        # construida depois, roubava a roda).
+        registrar_rolagem(self.canvas_wizard, _on_mousewheel)
         
         # Botões de navegação
         frame_nav = tk.Frame(self.frame_wizard, bg=COR_BG_SECUNDARIO)
@@ -259,28 +261,45 @@ class TelaPersonagens(tk.Frame):
         self.frame_kit = tk.Frame(self.frame_centro, bg=COR_BG_SECUNDARIO)
         self.frame_kit.pack(fill="x", padx=10, pady=(0, 10))
 
+    def _personagem_do_wizard(self) -> Personagem:
+        """O Personagem que ``salvar_personagem`` gravaria com os dados de agora."""
+        nome_arma = self.dados_char.get("arma") or ""
+        arma_obj = next(
+            (a for a in getattr(self.controller, "lista_armas", []) or [] if a.nome == nome_arma),
+            None,
+        )
+        return Personagem(
+            self.dados_char.get("nome") or "?",
+            self.dados_char["tamanho"],
+            self.dados_char["forca"],
+            self.dados_char["mana"],
+            nome_arma,
+            arma_obj.peso if arma_obj else 0,
+            self.dados_char.get("cor_r", 200),
+            self.dados_char.get("cor_g", 50),
+            self.dados_char.get("cor_b", 50),
+            self.dados_char["classe"],
+            self.dados_char.get("personalidade", "Aleatório"),
+        )
+
     def criar_resumo_stats(self):
         """Cria o resumo de stats do personagem"""
         for widget in self.frame_stats.winfo_children():
             widget.destroy()
         
-        # Calcula stats derivados
-        classe_data = get_class_data(self.dados_char["classe"])
-        vida_base = 100 + (self.dados_char["forca"] * 10)
-        vida_mod = vida_base * classe_data.get("mod_vida", 1.0)
-        mana_base = 50 + (self.dados_char["mana"] * 10)
-        mana_mod = mana_base * classe_data.get("mod_mana", 1.0)
-        velocidade = (10 - self.dados_char["tamanho"] * 2) * classe_data.get("mod_velocidade", 1.0)
-        dano_mod = self.dados_char["forca"] * classe_data.get("mod_forca", 1.0)
-        
+        # MOT-118: os numeros vem do MESMO modelo que o motor usa (um
+        # Personagem montado como em ``salvar_personagem``). As formulas
+        # locais (HP = 100 + forca*10, vel = (10 - tamanho*2)*mod) nao
+        # existiam no motor.
+        p = self._personagem_do_wizard()
         stats = [
             ("Nome", self.dados_char["nome"] or "???"),
             ("Classe", self.dados_char["classe"].split(" (")[0]),  # Pega só o nome
             ("Altura", f"{self.dados_char['tamanho']:.2f}m"),
-            ("HP", f"{vida_mod:.0f}"),
-            ("Mana", f"{mana_mod:.0f}"),
-            ("Dano", f"{dano_mod:.1f}"),
-            ("Velocidade", f"{velocidade:.1f}"),
+            ("HP", f"{p.get_vida_max():.0f}"),
+            ("Mana", f"{p.get_mana_max():.0f}"),
+            ("RES", f"{p.resistencia:.1f}"),
+            ("VEL", f"{p.velocidade:.1f} m/s"),
             ("Arma", self.dados_char["arma"] or "Nenhuma"),
         ]
         
@@ -1117,7 +1136,8 @@ class TelaPersonagens(tk.Frame):
         self.canvas_armas = tk.Canvas(frame_lista_armas, bg=COR_BG_SECUNDARIO, highlightthickness=0, height=300)
         scrollbar = ttk.Scrollbar(frame_lista_armas, orient="vertical", command=self.canvas_armas.yview)
         frame_armas_inner = tk.Frame(self.canvas_armas, bg=COR_BG_SECUNDARIO)
-        
+        self.frame_armas_inner = frame_armas_inner
+
         self.canvas_armas.create_window((0, 0), window=frame_armas_inner, anchor="nw", tags="frame_inner")
         self.canvas_armas.configure(yscrollcommand=scrollbar.set)
         
@@ -1135,6 +1155,7 @@ class TelaPersonagens(tk.Frame):
         # Bind direto no canvas para scroll com mouse
         def _scroll_armas(event):
             self.canvas_armas.yview_scroll(int(-1*(event.delta/120)), "units")
+            return "break"  # o despachante da janela nao rola de novo
         
         self.canvas_armas.bind("<MouseWheel>", _scroll_armas)
         frame_armas_inner.bind("<MouseWheel>", _scroll_armas)
@@ -1232,9 +1253,10 @@ class TelaPersonagens(tk.Frame):
             classe_curta = classe.split(" (")[0]
             self.tree.insert("", "end", values=(p.nome, classe_curta))
         
-        # Atualiza preview se estiver no passo de equipamento
-        if self.passo_atual == 5:
-            self.mostrar_passo(5)
+        # Atualiza a lista de armas se estiver no passo de equipamento (o 6;
+        # MOT-119: o codigo reconstruia o 5 e a arma nova da Forja nao aparecia)
+        if self.passo_atual == 6:
+            self.mostrar_passo(6)
 
     def salvar_personagem(self):
         """Salva o personagem atual"""

@@ -436,31 +436,6 @@ class WeaponAnalyzer:
         
         return dist_segura
     
-    def calcular_angulo_ataque_ideal(self, minha_arma, arma_inimigo, 
-                                      angulo_inimigo: float) -> float:
-        """Calcula melhor ângulo para atacar considerando a arma do inimigo"""
-        p_inimigo = self.analisar_arma(arma_inimigo)
-        
-        if not p_inimigo:
-            return angulo_inimigo  # Ataca de frente
-        
-        # Encontra pontos cegos do inimigo
-        for dist_min, dist_max, arco_cego in p_inimigo.pontos_cegos:
-            if arco_cego >= 90:  # Ponto cego significativo atrás
-                # Ataca pelas costas
-                return (angulo_inimigo + 180) % 360
-        
-        # Para correntes, ataca por dentro
-        if p_inimigo.estilo == WeaponStyle.MELEE_CHAIN:
-            return angulo_inimigo  # Entra na zona morta
-        
-        # Para armas ranged, flanqueia
-        if p_inimigo.estilo in [WeaponStyle.RANGED_BOW, WeaponStyle.RANGED_THROW]:
-            # Ataca em diagonal
-            return (angulo_inimigo + 45) % 360
-        
-        return angulo_inimigo
-    
     def avaliar_posicao_combate(self, minha_arma, arma_inimigo,
                                  distancia: float, angulo_relativo: float) -> Dict:
         """Avalia uma posição de combate"""

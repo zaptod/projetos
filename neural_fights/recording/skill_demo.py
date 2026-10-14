@@ -96,7 +96,11 @@ def _duracao_da_cena(contrato) -> float:
 def gravar_demo(nome: str, *, saida: Path | None = None, seed: int = SEED_DEMO,
                 sem_video: bool = False) -> dict:
     """Grava a demo de UMA skill (ou só encena, com ``sem_video``)."""
-    from neural_fights.recording.fight_recorder import _abrir_ffmpeg
+    from neural_fights.recording.fight_recorder import (
+        _abrir_ffmpeg,
+        _escrever_quadro,
+        _fechar_ffmpeg,
+    )
     from neural_fights.simulation.simulacao import Simulador
     from neural_fights.tools.skill_check import (
         _Observador,
@@ -106,8 +110,6 @@ def gravar_demo(nome: str, *, saida: Path | None = None, seed: int = SEED_DEMO,
     )
     import pygame
 
-    data = get_skill_data(nome)
-    contrato = derivar_contrato(nome)
     resultado = {
         "skill": nome,
         "ok": False,
@@ -116,6 +118,13 @@ def gravar_demo(nome: str, *, saida: Path | None = None, seed: int = SEED_DEMO,
         "consequencia_observada": False,
         "erro": None,
     }
+    if nome not in SKILL_DB:
+        # MOT-122: nome errado virava "skill sentinela" (o get_skill_data
+        # devolve a Nenhuma para nome desconhecido).
+        resultado["erro"] = "skill desconhecida"
+        return resultado
+    data = get_skill_data(nome)
+    contrato = derivar_contrato(nome)
     if contrato.tipo == "NADA":
         resultado["erro"] = "skill sentinela"
         return resultado
@@ -126,6 +135,12 @@ def gravar_demo(nome: str, *, saida: Path | None = None, seed: int = SEED_DEMO,
     caster_nome, alvo_nome = "Demo", "Alvo"
     sim = None
     ffmpeg = None
+    # MOT-110: a demo nova vai para um temporario e so substitui a boa no
+    # fim, se saiu inteira. Antes o ``-y`` truncava a demo anterior assim
+    # que o ffmpeg abria, e um cast recusado deixava um mp4 quebrado que o
+    # manifest (mesmo hash) nunca mais refazia.
+    destino = None
+    temporario = None
     try:
         sim = Simulador(
             match_config={
@@ -197,9 +212,10 @@ def gravar_demo(nome: str, *, saida: Path | None = None, seed: int = SEED_DEMO,
 
         largura, altura = sim.tela.get_size()
         if not sem_video:
-            destino = saida or (PASTA_DEMOS / f"{slug_da_skill(nome)}.mp4")
+            destino = Path(saida or (PASTA_DEMOS / f"{slug_da_skill(nome)}.mp4"))
+            temporario = destino.with_name(destino.stem + ".tmp.mp4")
             ffmpeg = _abrir_ffmpeg(
-                destino, largura, altura, FPS_SAIDA, 20, "veryfast"
+                temporario, largura, altura, FPS_SAIDA, 20, "veryfast"
             )
 
         passo = 1.0 / FPS
@@ -228,7 +244,7 @@ def gravar_demo(nome: str, *, saida: Path | None = None, seed: int = SEED_DEMO,
             observador.amostrar()
 
             if ffmpeg is not None and indice % a_cada == 0:
-                ffmpeg.stdin.write(pygame.image.tobytes(sim.tela, "RGB"))
+                _escrever_quadro(ffmpeg, pygame.image.tobytes(sim.tela, "RGB"))
                 capturados += 1
 
             # Se apesar do colchão o boneco cair (execute), corta curto.
@@ -244,21 +260,26 @@ def gravar_demo(nome: str, *, saida: Path | None = None, seed: int = SEED_DEMO,
         resultado["duracao"] = round(capturados / FPS_SAIDA, 2) if capturados \
             else round(duracao_cena, 2)
         resultado["ok"] = resultado["consequencia_observada"]
-        if ffmpeg is not None:
-            resultado["arquivo"] = str(
-                saida or (PASTA_DEMOS / f"{slug_da_skill(nome)}.mp4")
-            )
         return resultado
     except Exception as exc:
         resultado["erro"] = f"{type(exc).__name__}: {exc}"
         return resultado
     finally:
         if ffmpeg is not None:
-            try:
-                ffmpeg.stdin.close()
-                ffmpeg.wait(timeout=60)
-            except Exception:
-                pass
+            # MOT-110: o ffmpeg travado era abandonado vivo (o TimeoutExpired
+            # era engolido); agora e morto, e o codigo de saida decide.
+            erro_ffmpeg = _fechar_ffmpeg(ffmpeg, temporario)
+            if resultado["ok"] and erro_ffmpeg is None:
+                temporario.replace(destino)
+                resultado["arquivo"] = str(destino)
+            else:
+                if erro_ffmpeg is not None:
+                    resultado["ok"] = False
+                    resultado["erro"] = resultado["erro"] or erro_ffmpeg
+                try:
+                    temporario.unlink(missing_ok=True)
+                except OSError:
+                    pass
         if sim is not None:
             try:
                 sim.close()

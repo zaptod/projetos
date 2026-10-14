@@ -897,16 +897,6 @@ class Arena:
         
         return impacto_max
     
-    def esta_dentro(self, x: float, y: float, margem: float = 0) -> bool:
-        """Verifica se um ponto está dentro da arena"""
-        if self.config.formato == "circular":
-            dx = x - self.centro_x
-            dy = y - self.centro_y
-            return math.hypot(dx, dy) + margem <= self.raio
-        else:
-            return (self.min_x + margem <= x <= self.max_x - margem and
-                    self.min_y + margem <= y <= self.max_y - margem)
-    
     def get_spawn_points(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         """Retorna pontos de spawn para dois lutadores"""
         # P1 na esquerda, P2 na direita

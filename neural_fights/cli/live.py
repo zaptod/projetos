@@ -11,6 +11,7 @@ e sem credencial de plataforma.
 
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 import sys
@@ -34,7 +35,26 @@ def _roster(limite: int | None) -> list[str]:
     nomes = [personagem.nome for personagem in database.carregar_personagens()]
     if len(nomes) < 2:
         raise RuntimeError("sao necessarios ao menos dois personagens para uma live")
-    return nomes[:limite] if limite else nomes
+    corte = nomes[:limite] if limite else nomes
+    if len(corte) < 2:
+        # MOT-122: ``--roster 1`` dava IndexError mais adiante
+        raise RuntimeError("o rodizio precisa de ao menos dois lutadores")
+    return corte
+
+
+def _inteiro_minimo(minimo: int):
+    """``type=`` do argparse: inteiro >= ``minimo`` (MOT-122)."""
+
+    def converter(texto: str) -> int:
+        try:
+            valor = int(texto)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"inteiro invalido: {texto!r}") from None
+        if valor < minimo:
+            raise argparse.ArgumentTypeError(f"precisa ser >= {minimo}: {valor}")
+        return valor
+
+    return converter
 
 
 def _montar_config(nomes: list[str], cenario: str, sem_hud: bool, portrait: bool = False) -> dict[str, Any]:
@@ -96,8 +116,10 @@ def build_parser() -> SafeArgumentParser:
             "na medicao da F3 — variedade gratis; vazio desliga)"
         ),
     )
-    parser.add_argument("--roster", type=int, help="limita quantos lutadores entram no rodizio")
-    parser.add_argument("--max-partidas", type=int, help="encerra apos N partidas")
+    parser.add_argument("--roster", type=_inteiro_minimo(2),
+                        help="limita quantos lutadores entram no rodizio (>= 2)")
+    parser.add_argument("--max-partidas", type=_inteiro_minimo(1),
+                        help="encerra apos N partidas")
     parser.add_argument(
         "--pausa",
         type=float,

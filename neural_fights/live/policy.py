@@ -7,12 +7,19 @@ livre de rede e de janela.
 A ordem de avaliacao e deliberada e vale a pena ler como uma lista de razoes:
 
 1. **banimento** -- decisao de moderacao vem antes de qualquer economia;
-2. **momento** -- comando de proximo round nunca e aplicado no meio de um round;
-3. **cooldown do proprio comando** -- ritmo do show, global a todos;
-4. **cooldown do espectador** -- impede que uma pessoa monopolize a luta;
-5. **teto por round** -- limita quantas vezes o mesmo efeito aparece;
-6. **saturacao** -- teto duro contra o estado vivo, para o motor nao derreter;
-7. **pagamento** -- por ultimo, para que a recusa por regra nunca cobre nada.
+2. **momento** -- comando de proximo round nunca e aplicado no meio de um round
+   (o ADIAR dele so sai depois do pagamento e dos limites);
+3. **pagamento** -- quem nao pagou e recusado ANTES de qualquer ADIAR
+   (MOT-103, 14/10/2026: o ADIAR de quem pagou 0 ia para a fila de graca).
+   Recusa nunca cobra nada;
+4. **cooldown do proprio comando** -- ritmo do show, global a todos;
+5. **cooldown do espectador** -- impede que uma pessoa monopolize a luta;
+6. **teto por round** -- limita quantas vezes o mesmo efeito aparece;
+7. **saturacao** -- teto duro contra o estado vivo, para o motor nao derreter.
+
+Quem pagou e nao coube (ADIAR de cooldown, teto ou saturacao) e recusado
+pelo roteador com o reembolso dito na tela (decisao do Adrian de 14/10/2026,
+``builds/arena-dois-pagantes``).
 
 Moderador escapa de cooldown e teto, nunca de journaling nem de banimento.
 """
@@ -118,28 +125,37 @@ class PolicyEngine:
             return Veredito(Decisao.RECUSAR, "banido")
 
         momento = "ROUND_ATIVO" if round_ativo else "ENTRE_ROUNDS"
+        adiar_por_momento = None
         if momento not in dados["aplicavel_em"]:
             # Comando de proxima partida disparado no meio do round nao e
             # recusa: e exatamente o caso de adiar, e o espectador pagou.
-            if "ENTRE_ROUNDS" in dados["aplicavel_em"]:
-                return Veredito(Decisao.ADIAR, "fora_do_momento", momento)
-            return Veredito(Decisao.RECUSAR, "fora_do_momento", momento)
+            if "ENTRE_ROUNDS" not in dados["aplicavel_em"]:
+                return Veredito(Decisao.RECUSAR, "fora_do_momento", momento)
+            adiar_por_momento = Veredito(Decisao.ADIAR, "fora_do_momento", momento)
 
         if dados.get("somente_moderador") and not privilegiado:
             return Veredito(Decisao.RECUSAR, "somente_moderador")
+
+        # MOT-103 (auditoria de 11/10/2026): o pagamento era conferido por
+        # ultimo, DEPOIS dos ADIAR de limite e saturacao. Quem nao pagou caia
+        # num ADIAR, ia para a fila e escolhia a arena de graca. Um ADIAR
+        # nunca sai para quem nao pagou; a recusa por regra continua sem
+        # cobrar nada.
+        custo = int(dados["custo_units"])
+        if not privilegiado and int(value_units) < custo:
+            return Veredito(Decisao.RECUSAR, "creditos_insuficientes", f"{value_units}/{custo}")
 
         if not privilegiado:
             veredito = self._checar_limites(dados, command_id, viewer_id, agora)
             if veredito is not None:
                 return veredito
 
+        if adiar_por_momento is not None:
+            return adiar_por_momento
+
         veredito = self._checar_saturacao(dados, estado_mundo or {})
         if veredito is not None:
             return veredito
-
-        custo = int(dados["custo_units"])
-        if not privilegiado and int(value_units) < custo:
-            return Veredito(Decisao.RECUSAR, "creditos_insuficientes", f"{value_units}/{custo}")
 
         return Veredito(Decisao.APLICAR)
 
@@ -176,7 +192,14 @@ class PolicyEngine:
     ) -> Veredito | None:
         if dados["efeito"] not in {"AREA_SKILL", "PROJETIL_SKILL"}:
             return None
-        vivas = int(estado_mundo.get("areas", 0)) + self.round.areas_de_espectador
+        # MOT-108: ``estado_mundo["areas"]`` ja conta as areas de espectador
+        # vivas (cada comando cria duas) e o contador do round so cresce;
+        # somar os dois batia o teto com dois ``!meteoro`` ja expirados. O
+        # contador so vale quando nao ha mundo para contar (sem simulador).
+        if "areas" in estado_mundo:
+            vivas = int(estado_mundo["areas"])
+        else:
+            vivas = self.round.areas_de_espectador
         if vivas >= self.saturacao_max:
             return Veredito(Decisao.ADIAR, "saturacao", f"{vivas}")
         return None

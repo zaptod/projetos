@@ -15,7 +15,6 @@ ja no relogio do clipe cortado, que e o que o renderer ve.
 from __future__ import annotations
 
 import json
-import random
 from pathlib import Path
 
 from ..nf_bridge import loader as nf
@@ -514,18 +513,14 @@ class TournamentSession:
         participantes = selecionar_participantes(fonte, quantidade, rng)
         fichas = fichas_do_banco()
 
-        torneio = Tournament(nome)
+        # A chave e embaralhada pelo `Random` do proprio torneio (MOT-124,
+        # 14/10/2026). Ate ali era o `random` GLOBAL, preso aqui com
+        # seed/setstate; `Random(x)` sorteia igual a `random.seed(x)`, entao a
+        # mesma seed continua dando a mesma chave de antes.
+        torneio = Tournament(nome, seed=rng.randrange(2**31))
         torneio.participants = list(participantes)
-        # generate_bracket() embaralha com o `random` GLOBAL do neural_fights:
-        # sem prender o estado global, a mesma seed produziria chaves
-        # diferentes e o torneio deixaria de ser reproduzivel.
-        estado = random.getstate()
-        random.seed(rng.randrange(2**31))
-        try:
-            torneio.generate_bracket()
-            torneio.start_tournament()
-        finally:
-            random.setstate(estado)
+        torneio.generate_bracket()
+        torneio.start_tournament()
 
         gerados = set(personagens_gerados())
         lutas: list[dict] = []

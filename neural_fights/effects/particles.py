@@ -25,29 +25,9 @@ CORES_ENCANTAMENTOS = {
 }
 
 
-# =============================================================================
-# ORCAMENTO DE PARTICULAS (Passe 2 do programa de arte)
-# Nenhuma lista de efeito tinha teto: a unica poda era vida<=0. Este e o
-# contrato central; os passes seguintes pedem permissao por prioridade
-# (impacto > arma > skill > ambiente) antes de spawnar em massa.
-# =============================================================================
-
-TETO_PARTICULAS = 900
-TETO_DECALS = 40
-TETO_VFX_POR_LISTA = 24
-
-
-class ParticleBudget:
-    """Contador simples para spawns em massa dos passes futuros."""
-
-    def __init__(self, teto: int = TETO_PARTICULAS):
-        self.teto = teto
-
-    def permitidas(self, atuais: int, pedido: int, prioridade: int = 2) -> int:
-        """Quantas particulas do pedido cabem. Prioridade 0 (impacto) pode
-        ocupar ate o teto; ambiente (3) para em 70% dele."""
-        limite = self.teto if prioridade <= 1 else int(self.teto * (0.9 if prioridade == 2 else 0.7))
-        return max(0, min(pedido, limite - atuais))
+# O orcamento de particulas mora em ``effects/budget.py`` (TETO_PARTICULAS
+# 260). O ``ParticleBudget``/``TETO_PARTICULAS = 900`` que existia aqui nao
+# tinha nenhum usuario e contradizia aquele teto (MOT-33, 14/10/2026).
 
 
 class Particula:

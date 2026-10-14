@@ -2494,6 +2494,11 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
     os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
     if desenhar and headless:
         raise ValueError("desenhar exige headless=False (o headless nao tem display)")
+    # MOT-121: o mesmo laco do gravador, a mesma guarda (so divisores de 60;
+    # 24 fps saia a 0,8x e com ``passos_por_quadro`` errado na timeline).
+    from neural_fights.recording.fight_recorder import validar_fps_e_duracao
+
+    validar_fps_e_duracao(fps_video, max_duracao)
     import pygame
 
     from neural_fights.simulation.simulacao import Simulador
@@ -2616,7 +2621,10 @@ def build_parser():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--cenario", default="Arena Pequena")
     parser.add_argument("--resolucao", default="1080x1920", metavar="LxA")
-    parser.add_argument("--camera", default="DIRETOR")
+    # MOT-122: "--camera foo" era aceito
+    from neural_fights.recording.fight_recorder import CAMERAS
+
+    parser.add_argument("--camera", default="DIRETOR", choices=CAMERAS)
     parser.add_argument("--camera-largura-min", type=float, default=None)
     parser.add_argument("--camera-espera-zoom", type=float, default=None)
     parser.add_argument("--desenhar", action="store_true",
@@ -2630,8 +2638,15 @@ def build_parser():
 def main(argv=None) -> int:
     from neural_fights.recording import timeline_arquivo
 
-    args = build_parser().parse_args(argv)
-    largura, altura = (int(p) for p in args.resolucao.lower().split("x"))
+    from neural_fights.recording.fight_recorder import parse_resolucao
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    resolucao = parse_resolucao(args.resolucao)
+    if resolucao is None:
+        # MOT-122: "--resolucao 1080" dava traceback
+        parser.error(f"--resolucao invalida (use LxA, ex. 1080x1920): {args.resolucao}")
+    largura, altura = resolucao
     saida = gravar_timeline(
         p1=args.p1, p2=args.p2, seed=args.seed, cenario=args.cenario,
         resolucao=(largura, altura), camera_modo=args.camera,

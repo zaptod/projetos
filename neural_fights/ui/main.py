@@ -2,6 +2,8 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 import ctypes
+import sys
+import threading
 
 from neural_fights.data import database
 
@@ -40,8 +42,18 @@ class SistemaApp(tk.Tk):
         esquerda, topo, largura, altura = area_util_tela(self)
         largura_inicial, altura_inicial = min(1280, largura), min(720, altura)
         self.geometry(f"{largura_inicial}x{altura_inicial}+{esquerda}+{topo}")
-        self.maxsize(largura, altura)
-        self.minsize(min(900, largura), min(620, altura))
+        # MOT-116: a geometria e a do CLIENTE; somada a barra de titulo, a
+        # janela de 720 passava da area util (728 no 1366x768) e o rodape da
+        # Arena ficava atras da barra de tarefas. Mede a moldura e desconta.
+        self.update_idletasks()
+        moldura = max(0, self.winfo_rooty() - self.winfo_y())
+        altura_util = max(200, altura - moldura)
+        self.geometry(f"{largura_inicial}x{min(altura_inicial, altura_util)}+{esquerda}+{topo}")
+        self.maxsize(largura, altura_util)
+        self.minsize(min(900, largura), min(620, altura_util))
+        # MOT-117: fechar com render em andamento deixava o Godot orfao.
+        self.cancelar = threading.Event()
+        self.protocol("WM_DELETE_WINDOW", self._fechar)
         self.configure(bg=COR_FUNDO)
         style = ttk.Style(self)
         style.theme_use("clam")
@@ -75,6 +87,18 @@ class SistemaApp(tk.Tk):
         
         # Referência para janela do torneio
         self.tournament_window = None
+
+    def _fechar(self):
+        """Fecha o launcher sem deixar Godot vivo (MOT-117)."""
+        self.cancelar.set()
+        godot = sys.modules.get("random_builds.builds.palco.godot") or sys.modules.get(
+            "builds.palco.godot")
+        if godot is not None and hasattr(godot, "encerrar_todos"):
+            try:
+                godot.encerrar_todos()
+            except Exception:
+                pass
+        self.destroy()
 
     def recarregar_dados(self):
         """

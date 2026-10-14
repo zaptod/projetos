@@ -417,7 +417,10 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
             result = runner.run_single_match(match)
 
         seeds = [call.kwargs["seed"] for call in run_engine.call_args_list]
-        self.assertEqual(seeds, [107, 108])
+        # MOT-124 (14/10/2026): o retry usava 108, que e a 1a tentativa da
+        # luta 8. A 1a tentativa segue seed + match_id; as outras vao para a
+        # faixa propria (+1.000.000 por tentativa).
+        self.assertEqual(seeds, [107, 1_000_107])
         self.assertTrue(result["success"])
         self.assertEqual(result["winner"], "B")
         self.assertEqual(result["stats"]["attempts"], 2)
@@ -435,7 +438,8 @@ class TournamentEngineIntegrationTests(unittest.TestCase):
             result = runner.run_single_match(match)
 
         seeds = [call.kwargs["seed"] for call in run_engine.call_args_list]
-        self.assertEqual(seeds, [23, 24, 25])
+        # MOT-124: 24 e 25 eram as 1as tentativas das lutas 4 e 5.
+        self.assertEqual(seeds, [23, 1_000_023, 2_000_023])
         self.assertFalse(result["success"])
         self.assertEqual(result["reason"], "draw_retry_exhausted")
         self.assertEqual(result["attempts"], 3)

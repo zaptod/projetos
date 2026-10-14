@@ -44,6 +44,3 @@ def get_fonte_mono(tamanho: int) -> pygame.font.Font:
     return get_fonte(tamanho, familia="Consolas")
 
 
-def limpar_cache() -> None:
-    """Para testes que reinicializam o pygame.font."""
-    _CACHE.clear()

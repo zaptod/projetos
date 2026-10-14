@@ -1159,7 +1159,8 @@ class WeaponAnimator:
             })
 
     def _update_sparks(self, state, dt):
-        state.spark_list = [s for s in state.spark_list if (s.update({"timer": s["timer"] + dt}) or True) and s["timer"] + dt < s["life"]]
+        # MOT-24: a faisca envelhecia DUAS vezes por quadro (o filtro antigo
+        # fazia ``update`` + ``+= dt``) e vivia metade do ``life``.
         for s in state.spark_list:
             s["timer"] += dt
         state.spark_list = [s for s in state.spark_list if s["timer"] < s["life"]]

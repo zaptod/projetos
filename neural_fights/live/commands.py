@@ -23,7 +23,7 @@ from neural_fights.live import effects
 from neural_fights.live.catalog import command_por_gatilho, get_command
 from neural_fights.live.events import EventKind, ViewerEvent
 from neural_fights.live.policy import Decisao, PolicyEngine
-from neural_fights.live.registry import Fighter, LiveRegistry
+from neural_fights.live.registry import Fighter, LiveRegistry, viewer_id_de
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,15 @@ STATUS_DUPLICADO = "DUPLICADO"
 STATUS_IGNORADO = "IGNORADO"
 STATUS_RECUSADO = "RECUSADO"
 STATUS_ERRO = "ERRO"
+
+# Palavra no detalhe da recusa de quem pagou e nao coube; o overlay a mostra.
+MARCA_REEMBOLSO = "reembolso"
+
+# Moderacao (decisao do Adrian de 14/10/2026, ``builds/banimento-na-live``):
+# so moderador (``evento.privilegiado``). Alvo pelo nome que o chat ve ou
+# pelo id do espectador.
+COMANDO_BANIR = "banir"
+COMANDO_DESBANIR = "desbanir"
 
 
 @dataclass(frozen=True)
@@ -94,11 +103,17 @@ class CommandRouter:
         """Ponto unico de entrada. Toda decisao passa pelo journal."""
         # Idempotencia primeiro: uma reconexao reentrega o que ja foi lido, e
         # reprocessar um evento pago cobraria a pessoa duas vezes.
+        try:
+            # MOT-125: o journal gravava viewer_id None em toda linha.
+            viewer_id = viewer_id_de(evento.platform, evento.viewer_id)
+        except ValueError:
+            viewer_id = None
         if not self.registry.registrar_evento(
             event_id=evento.event_id,
             kind=evento.kind.value,
             status="RECEBIDO",
             sequence=evento.sequence,
+            viewer_id=viewer_id,
             value_units=evento.value_units,
         ):
             return ResultadoComando(False, STATUS_DUPLICADO, evento.event_id)
@@ -119,6 +134,8 @@ class CommandRouter:
 
         if verbo == COMANDO_ENTRAR:
             return self.entrar(evento)
+        if verbo in (COMANDO_BANIR, COMANDO_DESBANIR):
+            return self.moderar(evento, argumentos, banir=verbo == COMANDO_BANIR)
 
         command_id = command_por_gatilho(f"{PREFIXO_COMANDO}{verbo}") if verbo else None
         if command_id is None:
@@ -144,6 +161,36 @@ class CommandRouter:
         fighter = self.registry.criar_lutador(viewer)
         detalhe = "ja_registrado" if ja_tinha is not None else fighter.catalog_name
         return ResultadoComando(True, STATUS_APLICADO, detalhe, fighter, COMANDO_ENTRAR)
+
+    def moderar(
+        self,
+        evento: ViewerEvent,
+        argumentos: tuple[str, ...],
+        *,
+        banir: bool,
+    ) -> ResultadoComando:
+        """``!banir <nome>`` / ``!desbanir <nome>``, so para moderador.
+
+        Liga o ``LiveRegistry.definir_banimento`` (que nao tinha chamador) ao
+        chat. Banido nao entra (``!entrar``) e todo comando dele e recusado
+        pela politica (``banido``), antes de qualquer cobranca.
+        """
+        verbo = COMANDO_BANIR if banir else COMANDO_DESBANIR
+        if not evento.privilegiado:
+            return ResultadoComando(False, STATUS_RECUSADO, "somente_moderador", command_id=verbo)
+        alvo = " ".join(argumentos).strip()
+        if not alvo:
+            return ResultadoComando(
+                False, STATUS_RECUSADO, "informe o nome do espectador", command_id=verbo
+            )
+        viewer = self.registry.procurar_viewer(alvo, platform=evento.platform)
+        if viewer is None:
+            return ResultadoComando(
+                False, STATUS_RECUSADO, f"espectador nao encontrado: {alvo}",
+                command_id=verbo,
+            )
+        self.registry.definir_banimento(viewer.viewer_id, banir)
+        return ResultadoComando(True, STATUS_APLICADO, viewer.viewer_id, command_id=verbo)
 
     def executar(
         self,
@@ -197,8 +244,13 @@ class CommandRouter:
         try:
             detalhe = effects.aplicar(self.simulador, command_id, alvo=alvo)
         except effects.EfeitoIndisponivel as exc:
-            # O mundo mudou entre a decisao e a aplicacao. Nada foi cobrado.
-            return ResultadoComando(False, STATUS_ADIADO, str(exc), command_id=command_id)
+            # O mundo mudou entre a decisao e a aplicacao. Nada foi cobrado:
+            # o pagante e recusado com o reembolso dito na tela, como todo
+            # comando pago que nao coube (decisao de 14/10/2026). Antes
+            # terminava ``ADIADO`` sem fila e sem reaplicacao.
+            return ResultadoComando(
+                False, STATUS_RECUSADO, f"{exc} {MARCA_REEMBOLSO}", command_id=command_id
+            )
 
         self.policy.registrar_uso(
             command_id, viewer.viewer_id, custo=int(dados["custo_units"])
@@ -221,18 +273,41 @@ class CommandRouter:
         return ResultadoComando(True, STATUS_APLICADO, f"fila:{payload}", command_id=command_id)
 
     def _adiar(self, command_id, evento, viewer, argumentos, motivo) -> ResultadoComando:
-        """Intencao paga que nao coube agora vira credito do proximo round."""
+        """Intencao paga para a proxima partida vai para a fila; o resto e
+        recusado com reembolso.
+
+        MOT-103 (auditoria de 11/10/2026) e decisao do Adrian de 14/10/2026
+        (``builds/arena-dois-pagantes``: "vale o primeiro; o que nao coube e
+        recusado com reembolso na tela"):
+
+        - so o comando de proxima partida disparado no meio do round
+          (``fora_do_momento``) entra na fila, e agora conta como uso
+          (``registrar_uso``), para o teto do round valer para ele;
+        - cooldown, teto do round e saturacao nao guardam mais nada: antes o
+          ``!curar`` pago terminava ``ADIADO`` sem fila e sem reaplicacao, e o
+          segundo ``!arena`` ia para a fila de graca. Agora e ``RECUSADO``
+          com "reembolso" no detalhe, que o overlay mostra para quem pagou.
+        """
         dados = get_command(command_id)
-        if "ENTRE_ROUNDS" in dados["aplicavel_em"]:
+        if motivo == "fora_do_momento" and "ENTRE_ROUNDS" in dados["aplicavel_em"]:
             payload = self._payload_valido(command_id, argumentos)
-            if payload is not None:
-                self.registry.enfileirar_para_proximo_round(
-                    command_id=command_id, payload=payload, viewer_id=viewer.viewer_id
-                )
+            if payload is None:
                 return ResultadoComando(
-                    False, STATUS_ADIADO, f"{motivo}->fila", command_id=command_id
+                    False, STATUS_RECUSADO, "argumento invalido reembolso",
+                    command_id=command_id,
                 )
-        return ResultadoComando(False, STATUS_ADIADO, motivo, command_id=command_id)
+            self.registry.enfileirar_para_proximo_round(
+                command_id=command_id, payload=payload, viewer_id=viewer.viewer_id
+            )
+            self.policy.registrar_uso(
+                command_id, viewer.viewer_id, custo=int(dados["custo_units"])
+            )
+            return ResultadoComando(
+                False, STATUS_ADIADO, f"{motivo}->fila", command_id=command_id
+            )
+        return ResultadoComando(
+            False, STATUS_RECUSADO, f"{motivo} {MARCA_REEMBOLSO}", command_id=command_id
+        )
 
     # --------------------------------------------------------------- suporte
 
@@ -343,8 +418,10 @@ def criar_preparador(router: CommandRouter):
         for item in router.registry.consumir_fila_do_round():
             dados = get_command(item["command_id"]) if item["command_id"] else {}
             if dados.get("efeito") == "TROCAR_ARENA" and item["payload"]:
-                # Ultimo da fila vence: quem comprou depois teve a palavra final.
-                plano["cenario"] = item["payload"]
+                # Primeiro da fila vence (decisao do Adrian de 14/10/2026,
+                # ``builds/arena-dois-pagantes``). O teto do round ja recusa,
+                # com reembolso, o segundo pagante; isto e a segunda guarda.
+                plano.setdefault("cenario", item["payload"])
         return plano
 
     return preparar

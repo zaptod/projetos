@@ -52,6 +52,16 @@ TETO = 0.75
 # da mais forte e silencio entre golpes, nao "momento ativo".
 JANELA_NIVEL_S = 0.05
 PORTAO_RELATIVO_DB = 40.0
+# Realce dos golpes e impactos NA MISTURA do video (14/10/2026). Com os
+# consertos de som da auditoria (MOT-12: o cast voltou a soar na distancia
+# certa; MOT-13: o pan parou de dobrar o volume), o resto da luta ganhou peso
+# e a normalizacao por trecho abaixava o golpe: medido em 8 lutas com os sons
+# e o config do Adrian, -1,0 dB em media. A ordem (``builds/volume-dos-golpes``
+# + "o golpe nao pode ficar mais baixo no video") pediu compensar: +2,0 dB
+# devolve +0,5 dB em media (6 de 8 lutas iguais ou acima). Fica aqui e nao
+# no volume anotado porque la o teto de 1,0 do pygame come o realce.
+REALCE_GOLPES_DB = 2.0
+CATEGORIAS_REALCADAS = ("golpes", "impactos")
 
 _CACHE: dict[tuple, "np.ndarray"] = {}
 
@@ -126,6 +136,9 @@ def mixar(sons, duracao: float, *, arquivos: dict | None = None,
     buf = np.zeros((total, 2), dtype=np.float32)
     ids, usados, faltando = set(), set(), set()
     fim = float(inicio) + float(duracao)
+    from neural_fights.effects.audio import categoria_do_som
+
+    realce = 10 ** (REALCE_GOLPES_DB / 20.0)
     for som in sons or []:
         try:
             t = float(som["t"])
@@ -134,6 +147,8 @@ def mixar(sons, duracao: float, *, arquivos: dict | None = None,
             pitch = float(som.get("pitch", 1.0) or 1.0)
         except (KeyError, TypeError, ValueError):
             continue
+        if categoria_do_som(chave) in CATEGORIAS_REALCADAS:
+            volume *= realce
         if t >= fim or volume <= 0.0:
             continue
         arquivo = arquivos.get(chave)

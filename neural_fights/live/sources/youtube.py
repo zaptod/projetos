@@ -83,6 +83,49 @@ class ErroDeTransporte(RuntimeError):
     """Falha de rede ou resposta inesperada; sempre recuperavel por backoff."""
 
 
+class ErroDeQuota(ErroDeTransporte):
+    """403 de quota ou de ritmo: espera o intervalo maximo e continua.
+
+    MOT-105 (auditoria de 11/10/2026): todo 403 virava "credencial ruim" e a
+    fonte encerrava, contra a invariante "responder devagar e melhor que
+    morrer com 403" deste modulo.
+    """
+
+
+class ErroDeChat(ErroDeTransporte):
+    """Chat encerrado/inexistente ou ``pageToken`` invalido: refaz chat e token."""
+
+
+# ``errors[0].reason`` da API (documentacao do YouTube Data API v3).
+MOTIVOS_DE_QUOTA = frozenset({"quotaExceeded", "rateLimitExceeded", "dailyLimitExceeded"})
+MOTIVOS_DE_CHAT = frozenset(
+    {"liveChatEnded", "liveChatNotFound", "liveChatDisabled", "pageTokenInvalid"}
+)
+
+
+def _motivo_do_erro(corpo: str) -> str:
+    """``error.errors[0].reason`` do corpo JSON de um HTTPError ('' se nao houver)."""
+    try:
+        dados = json.loads(corpo)
+        erros = (dados.get("error") or {}).get("errors") or []
+        return str((erros[0] or {}).get("reason") or "") if erros else ""
+    except (ValueError, AttributeError, TypeError, IndexError):
+        return ""
+
+
+def _dia_pacifico() -> str:
+    """Data de hoje na meia-noite do Pacifico, quando a quota do Google zera."""
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        from zoneinfo import ZoneInfo
+
+        fuso = ZoneInfo("America/Los_Angeles")
+    except Exception:  # sem tzdata: UTC-8 fixo erra so 1 h no horario de verao
+        fuso = timezone(timedelta(hours=-8))
+    return datetime.now(fuso).date().isoformat()
+
+
 # ------------------------------------------------------------------ credencial
 
 
@@ -268,16 +311,31 @@ class Quota:
 
     limite: int = QUOTA_DIARIA_PADRAO
     gastas: int = 0
+    # MOT-105: a quota e diaria (zera a meia-noite do Pacifico), mas
+    # ``gastas`` nunca voltava a zero e o intervalo ficava em 60 s para sempre.
+    hoje: Callable[[], str] = field(default=_dia_pacifico, repr=False, compare=False)
+    dia: str = ""
+
+    def _virar_o_dia(self) -> None:
+        agora = self.hoje()
+        if not self.dia:
+            self.dia = agora
+        elif agora != self.dia:
+            self.dia = agora
+            self.gastas = 0
 
     @property
     def restantes(self) -> int:
+        self._virar_o_dia()
         return max(0, self.limite - self.gastas)
 
     @property
     def fracao_usada(self) -> float:
+        self._virar_o_dia()
         return min(1.0, self.gastas / self.limite) if self.limite > 0 else 1.0
 
     def gastar(self, unidades: int) -> None:
+        self._virar_o_dia()
         self.gastas += max(0, int(unidades))
 
     def intervalo_ajustado(self, intervalo: float) -> float:
@@ -302,7 +360,13 @@ def _transporte_urllib(url: str, *, dados: bytes | None = None, cabecalhos: Mapp
         with urllib.request.urlopen(requisicao, timeout=timeout) as resposta:
             corpo = resposta.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
-        detalhe = exc.read().decode("utf-8", errors="replace")[:500]
+        corpo_erro = exc.read().decode("utf-8", errors="replace")
+        detalhe = corpo_erro[:500]
+        motivo = _motivo_do_erro(corpo_erro)
+        if motivo in MOTIVOS_DE_QUOTA:
+            raise ErroDeQuota(f"HTTP {exc.code} {motivo}: {detalhe}") from exc
+        if motivo in MOTIVOS_DE_CHAT:
+            raise ErroDeChat(f"HTTP {exc.code} {motivo}: {detalhe}") from exc
         if exc.code in (401, 403):
             raise ErroDeAutenticacao(f"HTTP {exc.code}: {detalhe}") from exc
         raise ErroDeTransporte(f"HTTP {exc.code}: {detalhe}") from exc
@@ -466,6 +530,26 @@ class YouTubeChatSource(EventSource):
                 logger.exception("autenticacao do YouTube falhou; fonte encerrada")
                 self.conectado = False
                 return
+            except ErroDeQuota as exc:
+                # MOT-105: quota/ritmo nao e credencial ruim: espera e segue.
+                self.conectado = False
+                self._contabilizar(erros_conexao=1)
+                logger.warning("quota do YouTube (%s); nova tentativa em %.0fs", exc, INTERVALO_MAXIMO)
+                if self._parar.wait(INTERVALO_MAXIMO):
+                    return
+                continue
+            except ErroDeChat as exc:
+                # MOT-105: chat encerrado ou token invalido repetia o mesmo erro
+                # com o mesmo token para sempre. Refaz o chat e o token.
+                self.conectado = False
+                self._contabilizar(erros_conexao=1)
+                self._live_chat_id = ""
+                self._page_token = ""
+                espera = self.backoff.proxima()
+                logger.warning("chat do YouTube mudou (%s); refazendo em %.1fs", exc, espera)
+                if self._parar.wait(espera):
+                    return
+                continue
             except ErroDeTransporte as exc:
                 self.conectado = False
                 self._contabilizar(erros_conexao=1)
@@ -524,6 +608,8 @@ __all__ = [
     "Backoff",
     "Credenciais",
     "ErroDeAutenticacao",
+    "ErroDeChat",
+    "ErroDeQuota",
     "ErroDeTransporte",
     "Quota",
     "YouTubeChatSource",

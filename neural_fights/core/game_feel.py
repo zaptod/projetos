@@ -1236,13 +1236,6 @@ class GameFeelManager:
             "hit_stop_duracao": self.hit_stop.evento_atual.duracao if self.hit_stop.evento_atual else 0
         }
     
-    def iniciar_canalizacao(self, lutador, skill_nome: str, skill_data: dict) -> bool:
-        """Inicia canalização de magia para um lutador"""
-        channeling = self.channeling_systems.get(lutador)
-        if channeling:
-            return channeling.iniciar_canalizacao(skill_nome, skill_data)
-        return False
-    
     def _processar_magia_liberada(self, lutador, resultado: dict):
         """Processa uma magia que foi liberada (completa ou interrompida)"""
         if resultado["foi_interrumpido"]:

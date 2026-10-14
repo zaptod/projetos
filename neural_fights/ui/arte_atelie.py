@@ -145,6 +145,13 @@ def _marcador(canvas, tipo: str, x: int, y: int, corpo: int) -> None:
 def desenhar(canvas, arte: QuadrosArte, x: int, y: int, *, indice: int = 0,
              limpar: bool = True) -> None:
     """Desenha um quadro ou o marcador neutro; guarda PhotoImage no Canvas."""
+    # MOT-114: uma referencia so por canvas (``_arte_atelie_foto``) fazia a
+    # imagem da arma soltar a do corpo, o GC levava a PhotoImage e a previa do
+    # lutador sumia. Agora uma por posicao/arte; ``limpar`` zera todas.
+    fotos = getattr(canvas, "_arte_atelie_fotos", None)
+    if fotos is None or limpar:
+        fotos = {}
+        canvas._arte_atelie_fotos = fotos
     if limpar:
         canvas.delete("arte")
     if not arte.quadros:
@@ -152,7 +159,7 @@ def desenhar(canvas, arte: QuadrosArte, x: int, y: int, *, indice: int = 0,
         return
     imagem = arte.quadros[indice % len(arte.quadros)]
     foto = ImageTk.PhotoImage(imagem)
-    canvas._arte_atelie_foto = foto
+    fotos[(x, y, id(arte))] = foto
     canvas.create_image(x, y, image=foto, anchor="center", tags="arte")
 
 

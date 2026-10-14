@@ -152,14 +152,25 @@ class RecordingSource(EventSource):
         return self._caminho
 
     def start(self) -> None:
-        self._caminho.parent.mkdir(parents=True, exist_ok=True)
-        self._arquivo = self._caminho.open("a", encoding="utf-8", newline="\n")
+        # MOT-126: a interna sobe ANTES do arquivo abrir; se ela falhar, nao
+        # sobra handle aberto, e se o arquivo nao abrir, a interna para.
         self._interna.start()
+        try:
+            self._caminho.parent.mkdir(parents=True, exist_ok=True)
+            self._arquivo = self._caminho.open("a", encoding="utf-8", newline="\n")
+        except Exception:
+            self._interna.stop()
+            raise
         super().start()
 
     def stop(self, *, timeout: float = 5.0) -> None:
         self._interna.stop(timeout=timeout)
         super().stop(timeout=timeout)
+        # MOT-126: o que ficou na fila da interna (a thread daqui ainda nao
+        # tinha drenado) ia embora sem chegar ao replay.
+        for evento in self._interna.drenar():
+            self._gravar(evento)
+            self._publicar(evento)
         arquivo, self._arquivo = self._arquivo, None
         if arquivo is not None:
             arquivo.close()

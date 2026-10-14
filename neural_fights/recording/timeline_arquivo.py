@@ -30,7 +30,9 @@ Tambem moram aqui o que o LEITOR precisa: ``validar`` (o schema, em codigo),
 from __future__ import annotations
 
 import json
+import os
 import struct
+import uuid
 import zlib
 from pathlib import Path
 
@@ -142,9 +144,17 @@ def salvar(doc: dict, caminho, *, compressao: str | None = None,
     dados = para_bytes(doc)
     if compressao:
         dados = escrever_gcpf(dados, compressao, bloco)
-    temporario = caminho.with_name(caminho.name + ".tmp")
-    temporario.write_bytes(dados)
-    temporario.replace(caminho)
+    # MOT-128: o nome fixo ``<arquivo>.tmp`` era o mesmo para dois gravadores
+    # no mesmo destino, e um trocava o arquivo do outro.
+    temporario = caminho.with_name(
+        f"{caminho.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp"
+    )
+    try:
+        temporario.write_bytes(dados)
+        temporario.replace(caminho)
+    except BaseException:
+        temporario.unlink(missing_ok=True)
+        raise
     return len(dados)
 
 
@@ -386,10 +396,6 @@ def quadro(doc: dict, i: int) -> dict:
         "vivos": vivos,
         "eventos": [e for e in doc.get("eventos") or () if e["i"] == i],
     }
-
-
-def flags_ligadas(valor: int) -> list[str]:
-    return [nome for bit, nome in enumerate(FLAGS) if valor & (1 << bit)]
 
 
 # ------------------------------------------------------------ remapeamento

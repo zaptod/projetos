@@ -36,6 +36,14 @@ logger = logging.getLogger(__name__)
 # ``pygame.mixer.quit()``.
 _CACHE_DE_SONS: dict[str, "pygame.mixer.Sound"] = {}
 
+# MOT-13 (auditoria de 11/10/2026, decisao do Adrian ``builds/volume-dos-golpes``
+# com a ordem de 14/10: "o golpe nao pode ficar mais baixo no video"). O pan
+# somava os dois lados e dobrava o som posicional (``fv * (2 - |pan|)``, com
+# teto 1,0). O pan saiu do volume; este ganho constante devolve ao som
+# posicional o nivel que ele tinha, sem depender do pan e sem o salto em
+# pan = 0. Valor MEDIDO (ver docs/sessoes/builds.md, "Som: pan e ouvinte").
+GANHO_POSICIONAL = 1.9
+
 
 class AudioManager:
     """
@@ -87,6 +95,7 @@ class AudioManager:
         "heal_cast": "skills", "heal_complete": "skills",
         "shield_up": "skills", "shield_block": "skills", "shield_break": "skills",
         "slowmo_whoosh": "skills", "slowmo_return": "skills",
+        "summon_cast": "skills",
         # Movimento
         "jump": "movimento", "footstep": "movimento", "dodge": "movimento",
         "jump_start": "movimento", "jump_land": "movimento",
@@ -94,7 +103,10 @@ class AudioManager:
         "dodge_whoosh": "movimento", "dodge_slide": "movimento",
         # Ambiente
         "wall_hit": "ambiente", "wall_impact_light": "ambiente", "wall_impact_heavy": "ambiente",
-        "ground_impact": "ambiente", "arena_start": "ambiente", "arena_victory": "ambiente",
+        # arena_victory saiu do "ambiente" (0,03 no config do Adrian: a
+        # vitoria ficava muda) para a categoria da interface: e a fanfarra
+        # curta sintetizada de 14/10/2026 (decisao ``builds/som-da-vitoria``).
+        "ground_impact": "ambiente", "arena_start": "ambiente", "arena_victory": "ui",
         "round_start": "ambiente", "round_end": "ambiente",
         # UI
         "ui": "ui", "ui_select": "ui", "ui_confirm": "ui", "ui_back": "ui",
@@ -158,6 +170,9 @@ class AudioManager:
     
     def __init__(self):
         self.enabled = True
+        # MOT-12: onde esta o ouvinte (a camera, em metros). O Simulador
+        # atualiza a cada passo; ``None`` = som sem posicao.
+        self.listener_x: float | None = None
         self.master_volume = 0.7
         self.sfx_volume = 0.8
         self.music_volume = 0.5
@@ -185,8 +200,8 @@ class AudioManager:
             self.sound_dir,
             self.package_sound_dir,
         )
-        os.makedirs(self.sound_dir, exist_ok=True)
-        
+        self._garantir_pasta_runtime()
+
         # Carrega configuração de sons
         self.sound_config = self._load_sound_config()
 
@@ -197,6 +212,10 @@ class AudioManager:
 
         # Carrega/gera sons
         self._setup_sounds()
+
+    def _garantir_pasta_runtime(self) -> None:
+        """A pasta dos sons do Adrian (o jogo grava overrides nela)."""
+        os.makedirs(self.sound_dir, exist_ok=True)
 
     def _iniciar_mixer(self) -> bool:
         """Abre o mixer do pygame; False quando nao ha audio nesta maquina.
@@ -218,12 +237,23 @@ class AudioManager:
         """Carrega configuração de sons personalizada."""
         try:
             config = load_sound_config()
-            if "_volumes" in config:
-                for cat, vol in config["_volumes"].items():
-                    if cat in self.category_volumes:
-                        self.category_volumes[cat] = vol
-                if "master" in config["_volumes"]:
-                    self.master_volume = config["_volumes"]["master"]
+            volumes = config.get("_volumes")
+            if isinstance(volumes, dict):
+                # MOT-33: volume em texto ("1.0") ou fora de 0..1 quebrava o
+                # ``play`` (str * float) ou passava do teto. Cada valor vira
+                # float com clamp; o que nao converte e ignorado com aviso.
+                for cat, vol in volumes.items():
+                    if cat not in self.category_volumes and cat != "master":
+                        continue
+                    try:
+                        valor = max(0.0, min(1.0, float(vol)))
+                    except (TypeError, ValueError):
+                        logger.warning("Volume invalido para %s no config de som: %r", cat, vol)
+                        continue
+                    if cat == "master":
+                        self.master_volume = valor
+                    else:
+                        self.category_volumes[cat] = valor
             return config
         except (OSError, ValueError, TypeError) as exc:
             logger.warning("Configuracao de audio invalida: %s", exc)
@@ -256,14 +286,7 @@ class AudioManager:
     
     def _get_sound_category(self, sound_name: str) -> str:
         """Determina a categoria de um som."""
-        # Tenta correspondência exata primeiro
-        if sound_name in self.SOUND_TO_CATEGORY:
-            return self.SOUND_TO_CATEGORY[sound_name]
-        # Tenta pelo prefixo (nome do grupo)
-        for prefix, cat in self.SOUND_TO_CATEGORY.items():
-            if sound_name.startswith(prefix):
-                return cat
-        return "golpes"  # Default
+        return categoria_do_som(sound_name, self.SOUND_TO_CATEGORY)
     
     def reload_sounds(self):
         """Recarrega todos os sons do disco (útil após configurar no UI)."""
@@ -396,12 +419,23 @@ class AudioManager:
         self._register_sound("stagger")
         self._register_sound("shield_block")
         self._register_sound("shield_break")
+        # MOT-22: o SUMMON pedia "summon_cast", que nunca era registrado (o
+        # cast saia mudo, mesmo com o fallback para energy_blast).
+        self._register_sound("summon_cast")
     
     def _register_sound_group(self, group_name: str, sound_names: List[str]):
         """Registra um grupo de sons variantes"""
         sounds = []
         for name in sound_names:
-            full_name = f"{group_name}_{name}" if not name.startswith(group_name) else name
+            # MOT-22: "step_1" ja e nome completo (tem categoria e fallback);
+            # prefixar virava "footstep_step_1", que nao existe, e o grupo
+            # "footstep" ficava vazio.
+            completo = (
+                name.startswith(group_name)
+                or name in self.SOUND_TO_CATEGORY
+                or name in self.SOUND_FALLBACKS
+            )
+            full_name = name if completo else f"{group_name}_{name}"
             sound = self._load_or_generate_sound(full_name)
             if sound:
                 sounds.append(sound)
@@ -510,50 +544,58 @@ class AudioManager:
             
             # Volume final = base * categoria * sfx * master
             final_volume = volume * category_vol * self.sfx_volume * self.master_volume
-            
-            # Aplica volume e pan
-            if pan != 0.0:
-                # Pan: -1 (esquerda) a 1 (direita)
-                left = final_volume * (1 - max(0, pan))
-                right = final_volume * (1 + min(0, pan))
-                sound.set_volume(min(1.0, left + right))
-            else:
-                sound.set_volume(final_volume)
+
+            # MOT-13 (auditoria de 11/10/2026): o pan somava esquerda e
+            # direita num volume so, ``fv * (2 - |pan|)``: todo som com pan
+            # saia ate 2x mais alto, e havia um salto em pan = 0. O pan agora
+            # nao mexe no volume (fica anotado para quem espacializar); o
+            # ganho que o som posicional tinha virou constante, em
+            # ``play_positional`` (GANHO_POSICIONAL), medido para o golpe
+            # sair no video no mesmo nivel de antes.
+            sound.set_volume(final_volume)
             
             logger.debug("Playing %s [%s] volume=%.2f", actual_name, category, final_volume)
             sound.play()
     
-    def play_positional(self, sound_name: str, pos_x: float, listener_x: float, 
+    def play_positional(self, sound_name: str, pos_x: float, listener_x: float | None = None,
                        max_distance: float = 20.0, volume: float = 1.0):
         """
         Toca som com posicionamento espacial baseado na distância e pan.
-        
+
         Args:
             sound_name: Nome do som
             pos_x: Posição X da fonte do som
-            listener_x: Posição X do ouvinte (câmera)
+            listener_x: Posição X do ouvinte (câmera). ``None`` usa o ouvinte
+                que o Simulador atualiza a cada passo (``self.listener_x``);
+                sem ele, o som toca sem posição (MOT-12).
             max_distance: Distância máxima de audição
             volume: Volume base
         """
         if not self.enabled:
             return
-        
+
+        if listener_x is None:
+            listener_x = getattr(self, "listener_x", None)
+        if listener_x is None:
+            self.play(sound_name, volume * GANHO_POSICIONAL)
+            return
+
         # Calcula distância
         distance = abs(pos_x - listener_x)
-        
+
         # Atenuação por distância
         if distance > max_distance:
             return  # Muito longe
-        
+
         distance_volume = 1.0 - (distance / max_distance)
-        
+
         # Pan baseado na posição
         pan = (pos_x - listener_x) / max_distance
         pan = max(-1.0, min(1.0, pan))  # Clamp
-        
-        self.play(sound_name, volume * distance_volume, pan)
+
+        self.play(sound_name, volume * distance_volume * GANHO_POSICIONAL, pan)
     
-    def play_attack(self, attack_type: str, pos_x: float = 0, listener_x: float = 0,
+    def play_attack(self, attack_type: str, pos_x: float = 0, listener_x: float | None = None,
                      damage: float = 0, is_critical: bool = False):
         """
         Toca som de ataque baseado no tipo e dano.
@@ -620,7 +662,7 @@ class AudioManager:
         else:
             self.play(sound, volume=volume)
     
-    def play_impact(self, damage: float, pos_x: float = 0, listener_x: float = 0, 
+    def play_impact(self, damage: float, pos_x: float = 0, listener_x: float | None = None, 
                    is_critical: bool = False, is_counter: bool = False):
         """Toca som de impacto baseado no dano"""
         if is_counter:
@@ -642,7 +684,7 @@ class AudioManager:
             self.play(sound, volume=volume)
     
     def play_skill(self, skill_type: str, skill_name: str = "", 
-                   pos_x: float = 0, listener_x: float = 0, phase: str = "cast"):
+                   pos_x: float = 0, listener_x: float | None = None, phase: str = "cast"):
         """
         Toca som de skill baseado no tipo.
         
@@ -720,7 +762,7 @@ class AudioManager:
             else:
                 self.play(sound, volume=volume)
     
-    def play_movement(self, movement_type: str, pos_x: float = 0, listener_x: float = 0):
+    def play_movement(self, movement_type: str, pos_x: float = 0, listener_x: float | None = None):
         """Toca som de movimento"""
         sound_map = {
             "jump": "jump_start",
@@ -801,22 +843,37 @@ class AudioManager:
             self.stop_all()
 
 
+def categoria_do_som(sound_name: str, tabela: dict | None = None) -> str:
+    """Categoria de volume de um som (exata, depois por prefixo; padrao golpes).
+
+    Funcao de modulo para a mistura do video (``mixagem``) usar a MESMA regra
+    do jogo sem montar um AudioManager.
+    """
+    tabela = AudioManager.SOUND_TO_CATEGORY if tabela is None else tabela
+    if sound_name in tabela:
+        return tabela[sound_name]
+    for prefix, cat in tabela.items():
+        if sound_name.startswith(prefix):
+            return cat
+    return "golpes"  # Default
+
+
 # Atalhos globais
 def play_sound(sound_name: str, volume: float = 1.0):
     """Atalho para tocar som"""
     AudioManager.get_instance().play(sound_name, volume)
 
-def play_attack_sound(attack_type: str, pos_x: float = 0, listener_x: float = 0,
+def play_attack_sound(attack_type: str, pos_x: float = 0, listener_x: float | None = None,
                       damage: float = 0, is_critical: bool = False):
     """Atalho para som de ataque"""
     AudioManager.get_instance().play_attack(attack_type, pos_x, listener_x, damage, is_critical)
 
-def play_impact_sound(damage: float, pos_x: float = 0, listener_x: float = 0, 
+def play_impact_sound(damage: float, pos_x: float = 0, listener_x: float | None = None, 
                      is_critical: bool = False, is_counter: bool = False):
     """Atalho para som de impacto"""
     AudioManager.get_instance().play_impact(damage, pos_x, listener_x, is_critical, is_counter)
 
 def play_skill_sound(skill_type: str, skill_name: str = "", 
-                    pos_x: float = 0, listener_x: float = 0, phase: str = "cast"):
+                    pos_x: float = 0, listener_x: float | None = None, phase: str = "cast"):
     """Atalho para som de skill"""
     AudioManager.get_instance().play_skill(skill_type, skill_name, pos_x, listener_x, phase)

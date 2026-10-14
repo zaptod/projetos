@@ -152,6 +152,12 @@ def _roster_do_catalogo(catalogo: dict):
     return montar
 
 
+# MOT-124: distancia entre as faixas de seed das tentativas de desempate.
+# Uma chave tem no maximo 255 lutas (256 participantes), entao a tentativa
+# ``a`` da luta ``k`` (``seed + k + a * passo``) nunca cai em outra luta.
+_PASSO_SEED_RETRY = 1_000_000
+
+
 class TournamentState(Enum):
     WAITING = "waiting"
     IN_PROGRESS = "in_progress"
@@ -199,8 +205,14 @@ class Tournament:
         128: "Rodada dos 256"
     }
     
-    def __init__(self, name: str = "Torneio Neural Fights"):
+    def __init__(self, name: str = "Torneio Neural Fights", seed: Optional[int] = None):
         self.name = name
+        # MOT-124: a chave era embaralhada pelo ``random`` global, e dois
+        # torneios iguais davam chaves diferentes. Com ``seed`` a chave sai
+        # de ``random.Random(seed)`` e se repete (e o seed vai para o save);
+        # sem ele continua o ``random`` global, como sempre.
+        self.seed = seed
+        self._agressao: Dict[str, List[float]] = {}
         self.participants: List[str] = []
         self.bracket: List[TournamentRound] = []
         self.state = TournamentState.WAITING
@@ -265,25 +277,23 @@ class Tournament:
         if power == n:
             return
         
-        # Precisa adicionar byes ou truncar
-        if n > power // 2:
-            # Mais próximo de power - adiciona byes
-            byes_needed = power - n
-            for i in range(byes_needed):
-                counter = i + 1
+        # Completa com byes. ``power`` e a menor potencia >= n, entao sempre
+        # ``n > power // 2``: o antigo ramo "trunca" nunca rodava (MOT-129).
+        byes_needed = power - n
+        for i in range(byes_needed):
+            counter = i + 1
+            bye_name = f"BYE_{counter}"
+            while bye_name in self.participants:
+                counter += 1
                 bye_name = f"BYE_{counter}"
-                while bye_name in self.participants:
-                    counter += 1
-                    bye_name = f"BYE_{counter}"
-                self.participants.append(bye_name)
-                self._generated_byes.add(bye_name)
-        else:
-            # Trunca para power // 2
-            self.participants = self.participants[:power // 2]
+            self.participants.append(bye_name)
+            self._generated_byes.add(bye_name)
     
     def shuffle_participants(self):
         """Embaralha os participantes"""
-        random.shuffle(self.participants)
+        seed = self.__dict__.get("seed")
+        rng = random.Random(seed) if seed is not None else random
+        rng.shuffle(self.participants)
         if not self._generated_byes:
             return
 
@@ -300,7 +310,7 @@ class Tournament:
             pairs.append([real.pop(), bye_name])
         while real:
             pairs.append([real.pop(), real.pop()])
-        random.shuffle(pairs)
+        rng.shuffle(pairs)
         self.participants = [name for pair in pairs for name in pair]
     
     def generate_bracket(self) -> bool:
@@ -324,7 +334,8 @@ class Tournament:
             "longest_fight": None,
             "most_aggressive": None,
         }
-        
+        self._agressao = {}
+
         self._adjust_to_power_of_two()
         self.shuffle_participants()
         
@@ -441,13 +452,36 @@ class Tournament:
                 match.ko_type = "BYE"
                 self._advance_winner(match)
     
-    def record_match_result(self, winner_name: str, duration: float = 0.0, 
-                           ko_type: str = "KO", fight_log: List[str] = None):
-        """Registra o resultado de uma luta"""
-        match = self.get_current_match()
+    def record_match_result(self, winner_name: str, duration: float = 0.0,
+                           ko_type: str = "KO", fight_log: List[str] = None,
+                           match: Optional[TournamentMatch] = None,
+                           hp_ratios: Optional[Dict[str, float]] = None):
+        """Registra o resultado de uma luta.
+
+        ``match`` (MOT-102, auditoria de 11/10/2026): a luta que a janela
+        selecionou. Sem ele vale a luta corrente, como sempre. Antes o
+        resultado de "SIMULAR LUTA" de uma luta que nao era a corrente era
+        jogado fora em silencio e a janela escrevia "Vencedor".
+
+        ``hp_ratios`` (opcional): fracao de vida que sobrou a cada lutador
+        (nome -> 0..1). Alimenta o "mais agressivo" das estatisticas.
+        """
+        if match is None:
+            match = self.get_current_match()
+        elif match not in [m for r in self.bracket for m in r.matches]:
+            _console_print("ERRO: a luta informada nao pertence a esta chave!")
+            return False
         if not match:
             return False
-        
+        if (
+            match.completed
+            or match.fighter1_is_bye
+            or match.fighter2_is_bye
+            or "TBD" in (match.fighter1_name, match.fighter2_name)
+        ):
+            _console_print("ERRO: luta concluida, com BYE ou sem os dois lutadores!")
+            return False
+
         if winner_name not in [match.fighter1_name, match.fighter2_name]:
             _console_print(f"ERRO: Vencedor '{winner_name}' nao esta nesta luta!")
             return False
@@ -475,11 +509,15 @@ class Tournament:
         match.completed = True
         
         self.fight_history.append(match)
+        # MOT-102: a luta selecionada pode vir antes da corrente; o historico
+        # (e o save, que exige essa ordem) segue a ordem da chave.
+        self.fight_history.sort(key=lambda m: m.match_id)
         self.stats["total_fights"] += 1
         
         if "KO" in ko_type:
             self.stats["total_kos"] += 1
-        
+        self._atualizar_estatisticas(match, hp_ratios)
+
         # Atualiza próxima rodada
         self._advance_winner(match)
         
@@ -488,6 +526,56 @@ class Tournament:
         
         return True
     
+    def _atualizar_estatisticas(self, match: TournamentMatch, hp_ratios=None) -> None:
+        """Preenche KO mais rapido, luta mais longa e mais agressivo.
+
+        Decisao do Adrian de 14/10/2026 (`builds/estatisticas-do-torneio`:
+        "Preencher"). Ate aqui os tres campos eram sempre ``None``.
+
+        - ``fastest_ko``: menor ``duration`` entre as lutas com "KO" no tipo;
+        - ``longest_fight``: maior ``duration`` entre as lutas reais;
+        - ``most_aggressive``: quem tirou mais vida do adversario por segundo
+          de luta, somando o torneio (fracao de vida tirada / segundos).
+        Duracao 0 (vencedor registrado na mao, sem luta) nao entra em nenhum.
+        """
+        duracao = float(match.duration or 0.0)
+        if duracao <= 0:
+            return
+        if "KO" in match.ko_type:
+            atual = self.stats.get("fastest_ko")
+            self.stats["fastest_ko"] = duracao if atual is None else min(atual, duracao)
+        atual = self.stats.get("longest_fight")
+        self.stats["longest_fight"] = duracao if atual is None else max(atual, duracao)
+
+        if not isinstance(hp_ratios, dict):
+            return
+        agressao = self.__dict__.setdefault("_agressao", {})
+        pares = (
+            (match.fighter1_name, match.fighter2_name),
+            (match.fighter2_name, match.fighter1_name),
+        )
+        for autor, alvo in pares:
+            vida_alvo = hp_ratios.get(alvo)
+            if not isinstance(vida_alvo, (int, float)) or isinstance(vida_alvo, bool):
+                continue
+            tirado = max(0.0, min(1.0, 1.0 - float(vida_alvo)))
+            soma = agressao.setdefault(autor, [0.0, 0.0])
+            soma[0] += tirado
+            soma[1] += duracao
+        self.stats["most_aggressive"] = self._mais_agressivo(agressao)
+
+    @staticmethod
+    def _mais_agressivo(agressao: Dict[str, List[float]]) -> Optional[str]:
+        melhor = None
+        for nome in sorted(agressao):
+            tirado, segundos = agressao[nome]
+            if segundos <= 0:
+                continue
+            taxa = tirado / segundos
+            if melhor is None or taxa > melhor[0]:
+                melhor = (taxa, nome)
+        return melhor[1] if melhor else None
+
     def _advance_winner(self, match: TournamentMatch):
         """Avança o vencedor para a próxima rodada"""
         if match.round_num + 1 >= len(self.bracket):
@@ -706,6 +794,11 @@ class Tournament:
             "current_round": self.current_round,
             "current_match": self.current_match,
             "generated_byes": sorted(self._generated_byes),
+            "seed": self.__dict__.get("seed"),
+            "aggression": {
+                nome: list(valores)
+                for nome, valores in sorted(self.__dict__.get("_agressao", {}).items())
+            },
             "bracket": [],
             "fight_history": [
                 self._serialize_match(match) for match in self.fight_history
@@ -1169,8 +1262,36 @@ class Tournament:
                     "stats.total_kos diverge do fight_history"
                 )
 
+            seed = state.get("seed")
+            if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+                raise database.DataValidationError("seed deve ser nulo ou inteiro")
+            aggression_data = state.get("aggression", {})
+            if not isinstance(aggression_data, dict):
+                raise database.DataValidationError("aggression deve ser um objeto JSON")
+            agressao = {}
+            for nome, valores in aggression_data.items():
+                if (
+                    not isinstance(nome, str)
+                    or not isinstance(valores, list)
+                    or len(valores) != 2
+                    or not all(
+                        isinstance(v, (int, float))
+                        and not isinstance(v, bool)
+                        and math.isfinite(float(v))
+                        and v >= 0
+                        for v in valores
+                    )
+                ):
+                    raise database.DataValidationError(
+                        "aggression deve mapear nome -> [fracao, segundos]"
+                    )
+                agressao[nome] = [float(valores[0]), float(valores[1])]
+
             # Commit em memoria: nenhuma validacao posterior pode deixar o
             # objeto parcialmente restaurado.
+            if "seed" in state:
+                self.seed = seed
+            self._agressao = agressao
             self.name = name
             self.participants = participants
             self.state = tournament_state
@@ -1347,19 +1468,6 @@ class TournamentRunner:
             threading.Thread(target=cleanup_config, daemon=True).start()
         return process
     
-    def run_single_match_visual(self, match: TournamentMatch) -> bool:
-        """Configura e lança uma luta visual"""
-        # Configura o match
-        config_path = self.setup_match_config(
-            match.fighter1_name,
-            match.fighter2_name,
-        )
-        
-        # Lança o simulador
-        self.launch_simulation(config_path)
-        
-        return True
-    
     def run_single_match(self, match: TournamentMatch) -> Dict:
         """Executa uma luta no mesmo motor usado pela apresentação visual."""
         from neural_fights.simulation.headless import run_headless_match
@@ -1387,7 +1495,11 @@ class TournamentRunner:
         engine_results = []
         result = None
         for attempt in range(retry_limit + 1):
-            attempt_seed = initial_seed + attempt
+            # MOT-124: a 2a tentativa da luta k usava ``seed + k + 1``, que
+            # e a 1a tentativa da luta k+1 (a mesma luta repetida). A 1a
+            # tentativa continua ``seed + match_id`` (torneios antigos se
+            # repetem); as seguintes vao para uma faixa propria por tentativa.
+            attempt_seed = initial_seed + attempt * _PASSO_SEED_RETRY
             extras = {}
             if catalogo:
                 # um provedor por tentativa: lutador novo, como o banco faria
@@ -1450,20 +1562,6 @@ class TournamentRunner:
             "engine_results": engine_results,
         }
     
-    def _default_weapon(self):
-        """Retorna dados de arma padrão"""
-        return {
-            "nome": "Espada Padrão",
-            "tipo": "Reta",
-            "dano": 3.0,
-            "peso": 3.0,
-            "raridade": "Comum",
-            "r": 150, "g": 150, "b": 150,
-            "estilo": "Corte (Espada)",
-            "habilidades": [],
-            "encantamentos": []
-        }
-    
     def run_tournament_automated(self, delay_between_fights: float = 1.0):
         """Executa o torneio completo automaticamente"""
         if not self.tournament.start_tournament():
@@ -1492,10 +1590,16 @@ class TournamentRunner:
             
             if result["success"]:
                 winner = result["winner"]
+                stats = result.get("stats") or {}
                 self.tournament.record_match_result(
                     winner_name=winner,
                     duration=result["duration"],
-                    ko_type=result["ko_type"]
+                    ko_type=result["ko_type"],
+                    match=match,
+                    hp_ratios={
+                        match.fighter1_name: stats.get("p1_hp_ratio"),
+                        match.fighter2_name: stats.get("p2_hp_ratio"),
+                    },
                 )
                 _console_print(
                     f"   Vencedor: {winner} "

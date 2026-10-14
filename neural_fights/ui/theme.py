@@ -45,6 +45,93 @@ COR_P1 = "#3498db"
 COR_P2 = "#e94560"
 
 
+class FilaDaThread:
+    """Leva o desfecho de uma thread de trabalho para a thread do Tk.
+
+    MOT-117 (auditoria de 11/10/2026): as threads de render chamavam
+    ``self.after`` direto; com a janela ja destruida isso dava RuntimeError
+    na thread. Aqui a thread so poe uma funcao na fila (``enviar``); quem a
+    chama e a thread do Tk, num ``after`` que para sozinho quando o widget
+    some.
+    """
+
+    INTERVALO_MS = 100
+
+    def __init__(self, widget: tk.Misc):
+        import queue
+
+        self._widget = widget
+        self._fila = queue.SimpleQueue()
+        self._agendado = False
+
+    def enviar(self, funcao) -> None:
+        """Chamado de QUALQUER thread; nunca toca no Tk."""
+        self._fila.put(funcao)
+
+    def vigiar(self) -> None:
+        """Chamado da thread do Tk ao disparar o trabalho."""
+        if not self._agendado:
+            self._agendado = True
+            self._widget.after(self.INTERVALO_MS, self._drenar)
+
+    def _drenar(self) -> None:
+        self._agendado = False
+        try:
+            if not self._widget.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        while True:
+            try:
+                funcao = self._fila.get_nowait()
+            except Exception:
+                break
+            funcao()
+        try:
+            self._widget.after(self.INTERVALO_MS, self._drenar)
+            self._agendado = True
+        except (tk.TclError, RuntimeError):
+            pass
+
+
+def registrar_rolagem(alvo: tk.Misc, ao_rolar) -> None:
+    """Liga a roda do mouse a ``alvo`` so quando o ponteiro esta sobre ele.
+
+    MOT-113 (auditoria de 11/10/2026): cada tela fazia o proprio
+    ``bind_all("<MouseWheel>")`` e o ultimo vencia (a TelaSons, a ultima
+    construida): o wizard de personagens nao rolava e a roda mexia o canvas
+    escondido dos Sons. Agora ha um despachante unico por janela: ele acha o
+    widget sob o ponteiro (``winfo_containing``), sobe pelos pais ate um alvo
+    registrado e chama o ``ao_rolar`` dele.
+    """
+    raiz = alvo.winfo_toplevel()
+    registro = getattr(raiz, "_rolagem_registro", None)
+    if registro is None:
+        registro = {}
+        raiz._rolagem_registro = registro
+
+        def despachar(evento):
+            try:
+                widget = raiz.winfo_containing(evento.x_root, evento.y_root)
+            except (tk.TclError, KeyError):
+                widget = None
+            while widget is not None:
+                funcao = registro.get(str(widget))
+                if funcao is not None:
+                    try:
+                        if widget.winfo_ismapped():
+                            return funcao(evento)
+                    except tk.TclError:
+                        return None
+                    return None
+                widget = getattr(widget, "master", None)
+            return None
+
+        raiz.bind_all("<MouseWheel>", despachar)
+    registro[str(alvo)] = ao_rolar
+    alvo.bind("<Destroy>", lambda _e, nome=str(alvo): registro.pop(nome, None), add="+")
+
+
 class BotaoCanvas(tk.Canvas):
     """Botao leve com borda grossa e hover, sem depender de imagens."""
 

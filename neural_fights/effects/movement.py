@@ -166,6 +166,9 @@ class AfterImageTrail:
             int(self.cor_base[2] * 0.6 + tint[2] * 0.4),
         )
         
+        # Images mais antigas duram mais. MOT-26: a imagem nascia com ``vida``
+        # padrao (maior que ``max_vida``) e o alpha passava de 255.
+        mv = 0.2 + len(self.images) * 0.02
         img = AfterImage(
             x=self.lutador.pos[0],
             y=self.lutador.pos[1],
@@ -175,7 +178,8 @@ class AfterImageTrail:
             cor=self.cor_base,
             cor_tint=cor_misturada,
             tamanho_base=self.lutador.dados.tamanho,
-            max_vida=0.2 + len(self.images) * 0.02  # Images mais antigas duram mais
+            vida=mv,
+            max_vida=mv,
         )
         self.images.append(img)
     

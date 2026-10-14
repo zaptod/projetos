@@ -676,6 +676,14 @@ class AttackAnimationManager:
         cls._instance = None
     
     def __init__(self):
+        # MOT-23: e um singleton (``__new__`` devolve a mesma instancia), mas o
+        # Python chama ``__init__`` de novo a cada ``AttackAnimationManager()``
+        # -- e entities.py faz isso a cada golpe pesado, apagando crateras e o
+        # ppm. So a primeira construcao inicializa; ``reset()`` zera a
+        # instancia e a proxima volta a inicializar.
+        if getattr(self, "_pronto", False):
+            return
+        self._pronto = True
         # Efeitos ativos
         self.weapon_trails: List[WeaponTrailEnhanced] = []
         self.shockwaves: List[ImpactShockwave] = []

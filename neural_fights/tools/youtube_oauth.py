@@ -205,6 +205,13 @@ def _receber_codigo(porta: int) -> str:
                 self.wfile.write(
                     "<h2>Autorizado. Pode voltar para o terminal.</h2>".encode()
                 )
+            elif "error" in params:
+                # MOT-127: ?error=access_denied so respondia "tente de novo"
+                # e o comando esperava para sempre.
+                codigo["error"] = params["error"][0]
+                self.wfile.write(
+                    "<h2>Autorizacao recusada. Pode fechar esta aba.</h2>".encode()
+                )
             else:
                 self.wfile.write(
                     "<h2>Sem codigo na resposta - tente de novo.</h2>".encode()
@@ -214,8 +221,10 @@ def _receber_codigo(porta: int) -> str:
             return
 
     with HTTPServer(("127.0.0.1", porta), Handler) as servidor:
-        while "code" not in codigo:
+        while not codigo:
             servidor.handle_request()
+    if "error" in codigo:
+        raise RuntimeError(f"autorizacao recusada: {codigo['error']}")
     return codigo["code"]
 
 
@@ -323,7 +332,11 @@ def main(argv: list[str] | None = None) -> int:
     safe_print(f"(se nao abrir sozinho, visite: {url})")
     webbrowser.open(url)
 
-    codigo = _receber_codigo(args.porta)
+    try:
+        codigo = _receber_codigo(args.porta)
+    except RuntimeError as erro:
+        safe_print(f"ERRO: {erro}")
+        return 1
     safe_print("Codigo recebido; trocando pelo refresh_token...")
 
     corpo = urllib.parse.urlencode(

@@ -6,8 +6,9 @@ protegem o espectador e a transmissao:
 * o efeito de um gift entra pelos **mesmos** buffers que uma skill, e e drenado
   pela mesma fase do frame;
 * caos e simetrico -- ninguem recebe vantagem que nao comprou;
-* recusa por regra nunca cobra, e intencao paga que nao coube vira credito do
-  proximo round em vez de sumir;
+* recusa por regra nunca cobra, e intencao paga que nao coube e recusada com
+  reembolso dito na tela em vez de sumir (14/10/2026; so o comando de proxima
+  partida disparado no meio do round vai para a fila);
 * comando de proxima partida jamais altera o round em andamento.
 """
 
@@ -175,11 +176,14 @@ class EfeitoAssistTests(unittest.TestCase):
             self.assertEqual(resultado.status, STATUS_RECUSADO)
             self.assertIn("alvo", resultado.detalhe)
 
-    def test_alvo_morto_adia_em_vez_de_cobrar(self) -> None:
+    def test_alvo_morto_recusa_com_reembolso_em_vez_de_cobrar(self) -> None:
+        # 14/10/2026 (builds/arena-dois-pagantes): pago que nao coube e
+        # recusado com reembolso na tela; antes era ADIADO sem fila.
         with cenario() as (sim, router, _relogio, _reg):
             sim.p1.morto = True
             resultado = router.processar(evento("!curar p1"))
-            self.assertEqual(resultado.status, STATUS_ADIADO)
+            self.assertEqual(resultado.status, STATUS_RECUSADO)
+            self.assertIn("reembolso", resultado.detalhe)
             self.assertEqual(router.policy.round.usos_por_comando.get("curar", 0), 0)
 
 
@@ -220,7 +224,8 @@ class EfeitoCaosTests(unittest.TestCase):
         with cenario() as (sim, router, _relogio, _reg):
             sim.p2.morto = True
             resultado = router.processar(evento("!tempestade"))
-            self.assertEqual(resultado.status, STATUS_ADIADO)
+            self.assertEqual(resultado.status, STATUS_RECUSADO)
+            self.assertIn("reembolso", resultado.detalhe)
             self.assertEqual(len(sim.p1.buffer_areas), 0)
 
     def test_caos_nunca_usa_skill_que_beneficia_o_dono(self) -> None:
@@ -264,24 +269,30 @@ class ProximoRoundTests(unittest.TestCase):
             self.assertEqual(registry.fila_pendente(), 0)
 
     def test_fila_e_consumida_em_ordem_e_so_uma_vez(self) -> None:
+        # 14/10/2026 (builds/arena-dois-pagantes): vale o primeiro pagante; o
+        # segundo !arena do mesmo round e recusado com reembolso, nao entra.
         with cenario() as (_sim, router, relogio, registry):
             router.processar(evento("!arena Vulcao", event_id="a"))
             relogio.avancar(400.0)
-            router.processar(evento("!arena Gelo", event_id="b", viewer_id="UC-b"))
+            segundo = router.processar(evento("!arena Gelo", event_id="b", viewer_id="UC-b"))
+            self.assertEqual(segundo.status, STATUS_RECUSADO)
+            self.assertIn("reembolso", segundo.detalhe)
 
             fila = registry.consumir_fila_do_round()
 
-            self.assertEqual([item["payload"] for item in fila], ["Vulcao", "Gelo"])
+            self.assertEqual([item["payload"] for item in fila], ["Vulcao"])
             self.assertEqual(registry.consumir_fila_do_round(), [])
 
 
 class PoliticaTests(unittest.TestCase):
-    def test_cooldown_global_adia_repeticao_imediata(self) -> None:
+    def test_cooldown_global_recusa_repeticao_imediata_com_reembolso(self) -> None:
+        # MOT-103: antes ADIADO sem fila nem reaplicacao (o pago sumia).
         with cenario() as (_sim, router, relogio, _reg):
             self.assertEqual(router.processar(evento("!curar p1", event_id="1")).status, STATUS_APLICADO)
             segundo = router.processar(evento("!curar p1", event_id="2", viewer_id="UC-b"))
-            self.assertEqual(segundo.status, STATUS_ADIADO)
+            self.assertEqual(segundo.status, STATUS_RECUSADO)
             self.assertIn("cooldown_global", segundo.detalhe)
+            self.assertIn("reembolso", segundo.detalhe)
 
             relogio.avancar(get_command("curar")["cooldown_global"] + 0.1)
             terceiro = router.processar(evento("!curar p1", event_id="3", viewer_id="UC-c"))
@@ -401,6 +412,154 @@ class EffectsGuardTests(unittest.TestCase):
         with cenario() as (sim, _router, _relogio, _reg):
             with self.assertRaises(effects.EfeitoIndisponivel):
                 effects.aplicar(sim, "arena")
+
+
+def _router_sem_simulador(relogio=None):
+    registry = LiveRegistry(":memory:")
+    relogio = relogio or RelogioFalso()
+    router = CommandRouter(registry, simulador=None, policy=PolicyEngine(relogio=relogio))
+    return router, registry, relogio
+
+
+class AuditoriaProfundaLiveTests(unittest.TestCase):
+    """MOT-103, MOT-108, MOT-125 e o !banir (auditoria de 11/10/2026)."""
+
+    def test_arena_sem_credito_nao_entra_na_fila_depois_do_pago(self) -> None:
+        router, registry, _ = _router_sem_simulador()
+        custo = get_command("arena")["custo_units"]
+        pago = router.processar(evento("!arena Vulcao", event_id="a1", value_units=custo))
+        self.assertEqual(pago.status, STATUS_APLICADO)
+        gratis = router.processar(
+            evento("!arena Gelo", event_id="a2", viewer_id="UC-b", value_units=0)
+        )
+        self.assertEqual(gratis.status, STATUS_RECUSADO)
+        self.assertIn("creditos_insuficientes", gratis.detalhe)
+        self.assertEqual(registry.fila_pendente(), 1)
+
+        from neural_fights.live.commands import criar_preparador
+
+        plano = criar_preparador(router)(None)
+        self.assertEqual(plano["cenario"], "Vulcao")
+
+    def test_segundo_pagante_da_arena_e_recusado_com_reembolso(self) -> None:
+        router, registry, _ = _router_sem_simulador()
+        custo = get_command("arena")["custo_units"]
+        router.processar(evento("!arena Vulcao", event_id="a1", value_units=custo))
+        segundo = router.processar(
+            evento("!arena Gelo", event_id="a2", viewer_id="UC-b", value_units=custo)
+        )
+        self.assertEqual(segundo.status, STATUS_RECUSADO)
+        self.assertIn("reembolso", segundo.detalhe)
+        self.assertEqual(registry.fila_pendente(), 1)
+
+    def test_preparador_primeiro_pagante_vence(self) -> None:
+        router, registry, _ = _router_sem_simulador()
+        registry.enfileirar_para_proximo_round(command_id="arena", payload="Vulcao")
+        registry.enfileirar_para_proximo_round(command_id="arena", payload="Gelo")
+        from neural_fights.live.commands import criar_preparador
+
+        self.assertEqual(criar_preparador(router)(None)["cenario"], "Vulcao")
+
+    def test_arena_no_meio_do_round_vai_para_a_fila_e_conta_no_teto(self) -> None:
+        relogio = RelogioFalso()
+        policy = PolicyEngine(relogio=relogio)
+        custo = get_command("arena")["custo_units"]
+        veredito = policy.avaliar(
+            "arena", viewer_id="v", value_units=custo, round_ativo=True
+        )
+        # arena vale nos dois momentos: no meio do round ela e aplicada (vai
+        # para a fila pelo escopo ROUND), nunca no frame
+        self.assertTrue(veredito.aplicar)
+        policy.registrar_uso("arena", "v", custo=custo)
+        segundo = policy.avaliar(
+            "arena", viewer_id="w", value_units=custo, round_ativo=True
+        )
+        self.assertTrue(segundo.adiar)
+        self.assertEqual(segundo.motivo, "teto_do_round")
+
+    def test_curar_pago_em_cooldown_vira_recusa_com_reembolso(self) -> None:
+        relogio = RelogioFalso()
+        policy = PolicyEngine(relogio=relogio)
+        custo = get_command("curar")["custo_units"]
+        self.assertTrue(policy.avaliar("curar", viewer_id="a", value_units=custo).aplicar)
+        policy.registrar_uso("curar", "a", custo=custo)
+        relogio.avancar(1.0)
+        veredito = policy.avaliar("curar", viewer_id="b", value_units=custo)
+        self.assertTrue(veredito.adiar)
+
+        router, _registry, _ = _router_sem_simulador(relogio)
+        resultado = router._adiar("curar", None, type("V", (), {"viewer_id": "b"})(), (), veredito.motivo)
+        self.assertEqual(resultado.status, STATUS_RECUSADO)
+        self.assertIn("reembolso", resultado.detalhe)
+
+    def test_proximo_round_fora_do_momento_e_adiado_para_a_fila(self) -> None:
+        router, registry, _ = _router_sem_simulador()
+        viewer = registry.registrar_viewer(platform="youtube", platform_user_id="UC-z")
+        resultado = router._adiar("arena", None, viewer, ("Vulcao",), "fora_do_momento")
+        self.assertEqual(resultado.status, STATUS_ADIADO)
+        self.assertEqual(registry.fila_pendente(), 1)
+        self.assertEqual(router.policy.round.usos_por_comando.get("arena"), 1)
+
+    def test_saturacao_nao_conta_duas_vezes(self) -> None:
+        policy = PolicyEngine(relogio=RelogioFalso())
+        policy.registrar_uso("meteoro", "a")
+        policy.registrar_uso("meteoro", "b")
+        veredito = policy.avaliar(
+            "meteoro", viewer_id="c", value_units=10_000, estado_mundo={"areas": 0}
+        )
+        # o teto do round do meteoro e outro limite; aqui so a saturacao
+        self.assertNotEqual(veredito.motivo, "saturacao")
+
+    def test_saturacao_sem_mundo_usa_o_contador(self) -> None:
+        policy = PolicyEngine(relogio=RelogioFalso(), saturacao_max=2)
+        policy.round.areas_de_espectador = 2
+        veredito = policy.avaliar("meteoro", viewer_id="c", value_units=10_000)
+        self.assertEqual(veredito.motivo, "saturacao")
+
+    def test_journal_guarda_viewer(self) -> None:
+        from neural_fights.live.registry import viewer_id_de
+
+        router, registry, _ = _router_sem_simulador()
+        router.processar(evento("oi", event_id="j1", platform="yt", viewer_id="v1"))
+        linha = registry._conexao.execute(
+            "SELECT viewer_id FROM event_journal WHERE event_id = 'j1'"
+        ).fetchone()
+        self.assertEqual(linha[0], viewer_id_de("yt", "v1"))
+
+    def test_moderador_bane_e_banido_e_recusado(self) -> None:
+        router, registry, _ = _router_sem_simulador()
+        registry.registrar_viewer(
+            platform="youtube", platform_user_id="UC-alvo", display_name_bruto="Troll"
+        )
+        negado = router.processar(evento("!banir Troll", event_id="b1", viewer_id="UC-x"))
+        self.assertEqual(negado.status, STATUS_RECUSADO)
+        self.assertIn("somente_moderador", negado.detalhe)
+
+        ok = router.processar(
+            evento("!banir @troll", event_id="b2", viewer_id="UC-mod", is_moderator=True)
+        )
+        self.assertEqual(ok.status, STATUS_APLICADO)
+        bloqueado = router.processar(
+            evento("!arena Vulcao", event_id="b3", viewer_id="UC-alvo", viewer_name="Troll")
+        )
+        self.assertEqual(bloqueado.status, STATUS_RECUSADO)
+        self.assertIn("banido", bloqueado.detalhe)
+
+        router.processar(
+            evento("!desbanir Troll", event_id="b4", viewer_id="UC-mod", is_moderator=True)
+        )
+        liberado = router.processar(
+            evento("!arena Vulcao", event_id="b5", viewer_id="UC-alvo", viewer_name="Troll")
+        )
+        self.assertEqual(liberado.status, STATUS_APLICADO)
+
+    def test_banir_quem_nao_existe(self) -> None:
+        router, _registry, _ = _router_sem_simulador()
+        r = router.processar(
+            evento("!banir Ninguem", event_id="n1", viewer_id="UC-mod", is_moderator=True)
+        )
+        self.assertEqual(r.status, STATUS_RECUSADO)
+        self.assertIn("nao encontrado", r.detalhe)
 
 
 if __name__ == "__main__":

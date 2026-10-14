@@ -498,5 +498,87 @@ class FronteiraDeRedeTests(unittest.TestCase):
         self.assertEqual(infratores, [], "modulo do motor importou a camada de live")
 
 
+class QuotaEChatAuditoriaTests(unittest.TestCase):
+    """MOT-105 (auditoria de 11/10/2026)."""
+
+    def _http_error(self, codigo, motivo):
+        import io
+        import json as _json
+        import urllib.error
+
+        corpo = _json.dumps({"error": {"errors": [{"reason": motivo}]}}).encode()
+        return urllib.error.HTTPError("http://x", codigo, "erro", {}, io.BytesIO(corpo))
+
+    def test_transporte_classifica_pelo_reason(self) -> None:
+        from unittest import mock
+
+        from neural_fights.live.sources import youtube
+
+        casos = {
+            ("quotaExceeded", 403): youtube.ErroDeQuota,
+            ("rateLimitExceeded", 403): youtube.ErroDeQuota,
+            ("liveChatEnded", 403): youtube.ErroDeChat,
+            ("pageTokenInvalid", 400): youtube.ErroDeChat,
+            ("liveChatNotFound", 404): youtube.ErroDeChat,
+            ("forbidden", 403): youtube.ErroDeAutenticacao,
+        }
+        for (motivo, codigo), esperado in casos.items():
+            with self.subTest(motivo=motivo):
+                erro = self._http_error(codigo, motivo)
+                with mock.patch.object(youtube.urllib.request, "urlopen", side_effect=erro):
+                    with self.assertRaises(esperado):
+                        youtube._transporte_urllib("http://x")
+
+    def test_quota_estourada_nao_encerra_a_fonte(self) -> None:
+        from neural_fights.live.sources.youtube import ErroDeQuota
+
+        fonte, transporte, _r = fonte_de_teste(
+            {"oauth2": RESPOSTA_TOKEN, "videos": ErroDeQuota("quotaExceeded")}
+        )
+        fonte.start()
+        import time as _time
+
+        for _ in range(100):
+            if transporte.chamadas:
+                break
+            _time.sleep(0.01)
+        _time.sleep(0.05)
+        viva = fonte._thread is not None and fonte._thread.is_alive()
+        fonte.stop()
+        self.assertTrue(viva, "403 de quota encerrou a fonte")
+
+    def test_chat_encerrado_refaz_o_chat_e_o_token(self) -> None:
+        from neural_fights.live.sources.youtube import ErroDeChat
+
+        fonte, transporte, _r = fonte_de_teste(
+            {
+                "oauth2": RESPOSTA_TOKEN,
+                "videos": RESPOSTA_VIDEO,
+                "liveChat/messages": ErroDeChat("liveChatEnded"),
+            }
+        )
+        fonte._page_token = "velho"
+        fonte.backoff = Backoff(inicial=0.0, maximo=0.0)
+        fonte.start()
+        import time as _time
+
+        for _ in range(300):
+            if sum("videos" in url for url in transporte.chamadas) >= 2:
+                break
+            _time.sleep(0.01)
+        fonte.stop()
+        self.assertGreaterEqual(sum("videos" in url for url in transporte.chamadas), 2)
+        self.assertEqual(fonte._page_token, "")
+
+    def test_quota_zera_quando_o_dia_vira(self) -> None:
+        dias = ["2026-10-14"]
+        quota = Quota(limite=100, hoje=lambda: dias[0])
+        quota.gastar(90)
+        self.assertGreater(quota.fracao_usada, 0.8)
+        dias[0] = "2026-10-15"
+        self.assertEqual(quota.fracao_usada, 0.0)
+        self.assertEqual(quota.gastas, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

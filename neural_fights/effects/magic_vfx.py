@@ -108,10 +108,16 @@ class MagicParticle:
                 p1 = cam.converter(self.trail_points[i-1][0], self.trail_points[i-1][1])
                 p2 = cam.converter(self.trail_points[i][0], self.trail_points[i][1])
                 cor_trail = (*self.cor, t_alpha)
-                # Desenha linha com alpha
+                # Desenha linha com alpha. MOT-25: a linha ia sempre do canto
+                # superior esquerdo ao inferior direito da superficie, e a
+                # trilha subindo para a direita saia espelhada. Os pontos sao
+                # levados para a superficie pela mesma origem do blit (como
+                # ``impact.DashTrail.draw``).
+                ox, oy = min(p1[0], p2[0]) - 2, min(p1[1], p2[1]) - 2
                 s = pygame.Surface((abs(p2[0]-p1[0])+4, abs(p2[1]-p1[1])+4), pygame.SRCALPHA)
-                pygame.draw.line(s, cor_trail, (2, 2), (abs(p2[0]-p1[0])+2, abs(p2[1]-p1[1])+2), max(1, int(tam * 0.5)))
-                tela.blit(s, (min(p1[0], p2[0])-2, min(p1[1], p2[1])-2))
+                pygame.draw.line(s, cor_trail, (p1[0] - ox, p1[1] - oy), (p2[0] - ox, p2[1] - oy),
+                                 max(1, int(tam * 0.5)))
+                tela.blit(s, (ox, oy))
         
         # Glow externo
         glow_size = int(tam * 2)

@@ -3,6 +3,8 @@ NEURAL FIGHTS - Constantes do Sistema
 Raridades, Tipos de Armas, Encantamentos, Classes, Passivas
 """
 
+import logging
+
 # ============================================================================
 # SISTEMA DE RARIDADE
 # ============================================================================
@@ -108,11 +110,18 @@ LISTA_RARIDADES = ["Comum", "Incomum", "Raro", "Épico", "Lendário", "Mítico"]
 # SISTEMA DE TIPOS DE ARMAS
 # ============================================================================
 
+# MOT-28 (auditoria de 11/10/2026): os ``estilos`` do editor de armas eram
+# rotulos ("Corte (Espada)", "Flail (Mangual)", "Espada↔Lança"...) que o
+# renderer e o animador nao conhecem: a arma criada na Forja caia no desenho
+# padrao do tipo. Agora sao os estilos do catalogo do banco (os mesmos de
+# ``tools/gerador_database.ESTILOS_ARMA``, que ``effects/weapon_render`` desenha);
+# o teste ``test_estilos_do_editor_tem_desenho`` trava as duas listas juntas.
 TIPOS_ARMA = {
     "Reta": {
         "categoria": "Melee",
         "descricao": "Arma linear tradicional (espadas, lanças)",
-        "estilos": ["Corte (Espada)", "Estocada (Lança)", "Contusão (Maça)", "Misto"],
+        "estilos": ["Espada Longa", "Espada Curta", "Montante", "Katana", "Sabre", "Lança",
+                    "Alabarda", "Machado", "Martelo", "Maça", "Foice", "Claymore"],
         "geometria": ["comp_cabo", "comp_lamina", "largura"],
         "mod_dano": 1.0,
         "mod_velocidade": 1.0,
@@ -122,7 +131,7 @@ TIPOS_ARMA = {
     "Dupla": {
         "categoria": "Melee",
         "descricao": "Par de armas que alternam ataques",
-        "estilos": ["Adagas Gêmeas", "Kamas", "Sai", "Garras"],
+        "estilos": ["Adagas Gêmeas", "Sai", "Kamas", "Garras", "Tonfas", "Facas Táticas"],
         "geometria": ["comp_cabo", "comp_lamina", "largura", "separacao"],
         "mod_dano": 0.7,
         "mod_velocidade": 1.5,
@@ -135,7 +144,8 @@ TIPOS_ARMA = {
     "Corrente": {
         "categoria": "Melee",
         "descricao": "Arma com física de corda/corrente",
-        "estilos": ["Kusarigama", "Flail (Mangual)", "Chicote", "Corrente com Peso"],
+        "estilos": ["Kusarigama", "Mangual", "Chicote", "Corrente com Peso", "Meteor Hammer",
+                    "Rope Dart"],
         "geometria": ["comp_corrente", "comp_ponta", "largura_ponta"],
         "mod_dano": 1.1,
         "mod_velocidade": 0.8,
@@ -146,7 +156,8 @@ TIPOS_ARMA = {
     "Arremesso": {
         "categoria": "Ranged",
         "descricao": "Projéteis que podem retornar",
-        "estilos": ["Machado (Não Retorna)", "Faca (Rápida)", "Chakram (Retorna)", "Bumerangue"],
+        "estilos": ["Facas de Arremesso", "Shuriken", "Chakram", "Machados de Arremesso", "Kunai",
+                    "Bumerangue"],
         "geometria": ["tamanho_projetil", "largura", "quantidade"],
         "mod_dano": 0.9,
         "mod_velocidade": 1.2,
@@ -157,7 +168,8 @@ TIPOS_ARMA = {
     "Arco": {
         "categoria": "Ranged",
         "descricao": "Dispara flechas/virotes à distância",
-        "estilos": ["Arco Curto", "Arco Longo", "Besta", "Besta de Repetição"],
+        "estilos": ["Arco Curto", "Arco Longo", "Arco Composto", "Besta Leve", "Besta Pesada",
+                    "Arco Élfico"],
         "geometria": ["tamanho_arco", "forca_arco", "tamanho_flecha"],
         "mod_dano": 1.2,
         "mod_velocidade": 0.7,
@@ -168,7 +180,8 @@ TIPOS_ARMA = {
     "Orbital": {
         "categoria": "Defensive",
         "descricao": "Escudos e drones orbitais",
-        "estilos": ["Defensivo (Escudo)", "Ofensivo (Drone)", "Mágico (Orbe)", "Lâminas Orbitais"],
+        "estilos": ["Escudo Orbital", "Drones de Combate", "Orbes Místicos", "Lâminas Orbitais",
+                    "Cristais Flutuantes", "Sentinelas"],
         "geometria": ["largura", "distancia", "quantidade_orbitais"],
         "mod_dano": 0.5,
         "mod_velocidade": 1.0,
@@ -179,7 +192,8 @@ TIPOS_ARMA = {
     "Mágica": {
         "categoria": "Magic",
         "descricao": "Armas conjuradas/espectrais",
-        "estilos": ["Espadas Espectrais", "Runas Flutuantes", "Tentáculos Sombrios", "Cristais Arcanos"],
+        "estilos": ["Espadas Espectrais", "Runas Flutuantes", "Tentáculos Sombrios", "Cristais Arcanos",
+                    "Lanças de Mana", "Chamas Espirituais"],
         "geometria": ["quantidade", "tamanho", "distancia_max"],
         "mod_dano": 1.3,
         "mod_velocidade": 1.1,
@@ -191,7 +205,8 @@ TIPOS_ARMA = {
     "Transformável": {
         "categoria": "Special",
         "descricao": "Muda de forma durante combate",
-        "estilos": ["Espada↔Lança", "Compacta↔Estendida", "Chicote↔Espada", "Arco↔Lâminas"],
+        "estilos": ["Espada-Lança", "Espada Extensível", "Chicote-Espada", "Arco-Lâminas",
+                    "Bastão Segmentado", "Machado-Martelo"],
         "geometria": ["forma1_cabo", "forma1_lamina", "forma2_cabo", "forma2_lamina", "largura"],
         "mod_dano": 1.15,
         "mod_velocidade": 1.0,
@@ -827,16 +842,38 @@ CLASSES_DATA = {
 # FUNÇÕES HELPERS
 # ============================================================================
 
+_logger_constants = logging.getLogger(__name__)
+_AVISADOS: set = set()
+
+
+def _com_padrao(tabela: dict, chave, padrao: str, o_que: str):
+    """``tabela[chave]``; o padrao, com aviso no log (MOT-33: era calado).
+
+    Um aviso por chave desconhecida, para nao inundar o log de quem chama
+    por quadro.
+    """
+    try:
+        if chave in tabela:
+            return tabela[chave]
+    except TypeError:  # chave nao hashavel
+        pass
+    marca = (o_que, repr(chave))
+    if marca not in _AVISADOS:
+        _AVISADOS.add(marca)
+        _logger_constants.warning("%s desconhecido(a): %r; usando %r", o_que, chave, padrao)
+    return tabela[padrao]
+
+
 def get_raridade_data(raridade):
     """Retorna os dados de uma raridade"""
-    return RARIDADES.get(raridade, RARIDADES["Comum"])
+    return _com_padrao(RARIDADES, raridade, "Comum", "raridade")
 
 
 def get_tipo_arma_data(tipo):
     """Retorna os dados de um tipo de arma"""
-    return TIPOS_ARMA.get(tipo, TIPOS_ARMA["Reta"])
+    return _com_padrao(TIPOS_ARMA, tipo, "Reta", "tipo de arma")
 
 
 def get_class_data(nome_classe):
     """Retorna os dados de uma classe"""
-    return CLASSES_DATA.get(nome_classe, CLASSES_DATA["Guerreiro (Força Bruta)"])
+    return _com_padrao(CLASSES_DATA, nome_classe, "Guerreiro (Força Bruta)", "classe")

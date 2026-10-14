@@ -20,7 +20,7 @@ from neural_fights.effects.audio_paths import (
 )
 from neural_fights.ui.theme import (
     COR_ACCENT, COR_BG as COR_FUNDO, COR_CARD, COR_SUCCESS, COR_TEXTO,
-    COR_WARNING,
+    COR_WARNING, registrar_rolagem,
 )
 
 
@@ -358,7 +358,8 @@ class TelaSons(tk.Frame):
         # Bind mouse wheel
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        registrar_rolagem(canvas, _on_mousewheel)  # MOT-113
+        self.canvas_sons = canvas
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")

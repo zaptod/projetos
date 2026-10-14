@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -53,6 +54,17 @@ def caminho(peca: object, estado: object, animacao: object) -> Path:
     return ANIMACOES / _id(peca, "peca") / _id(estado, "estado") / _id(animacao, "animacao")
 
 
+def _finito(valor: object, campo: str) -> float:
+    """``float(valor)`` exigindo numero finito (MOT-111)."""
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        raise ValueError(f"{campo} precisa ser um numero finito") from None
+    if not math.isfinite(numero):
+        raise ValueError(f"{campo} precisa ser um numero finito")
+    return numero
+
+
 def validar(dados: dict, tamanho: tuple[int, int]) -> dict:
     if not isinstance(dados, dict):
         raise ValueError("animacao.json precisa ser um objeto")
@@ -75,19 +87,31 @@ def validar(dados: dict, tamanho: tuple[int, int]) -> dict:
         fps = float(dados.get("fps"))
     except (TypeError, ValueError):
         raise ValueError("fps precisa ser maior que zero") from None
+    # MOT-111: NaN passava em ``fps <= 0`` e o JSON saia com NaN, que o
+    # JSON.parse do app e o Godot recusam.
+    if not math.isfinite(fps):
+        raise ValueError("fps precisa ser um numero finito")
     if fps <= 0:
         raise ValueError("fps precisa ser maior que zero")
     ancora = dados.get("ancora", {})
     if not isinstance(ancora, dict) or not all(isinstance(ancora.get(k), (int, float)) for k in ("x", "y")):
         raise ValueError("ancora precisa ter x e y")
+    for chave in ("x", "y"):
+        _finito(ancora[chave], f"ancora.{chave}")
     duracoes = dados.get("duracao_por_quadro")
-    if duracoes is not None and (not isinstance(duracoes, dict) or any(
-            not str(k).isdigit() or int(k) >= len(quadros) or float(v) <= 0 for k, v in duracoes.items())):
-        raise ValueError("duracao_por_quadro invalida")
+    if duracoes is not None:
+        if not isinstance(duracoes, dict):
+            raise ValueError("duracao_por_quadro invalida")
+        for k, v in duracoes.items():
+            valor = _finito(v, f"duracao_por_quadro[{k}]")
+            if not str(k).isdigit() or int(k) >= len(quadros) or valor <= 0:
+                raise ValueError("duracao_por_quadro invalida")
+    escala = _finito(dados.get("escala", 1), "escala")
+    rotacao = _finito(dados.get("rotacao", 0), "rotacao")
     resultado = dict(dados)
     resultado.update({"quadros": normalizados, "fps": fps, "loop": bool(dados.get("loop")),
                       "ida_e_volta": bool(dados.get("ida_e_volta")), "ancora": ancora,
-                      "escala": float(dados.get("escala", 1)), "rotacao": float(dados.get("rotacao", 0)),
+                      "escala": escala, "rotacao": rotacao,
                       "espelho": bool(dados.get("espelho")), "gatilho": str(dados.get("gatilho", "")),
                       "versao": int(dados.get("versao", VERSAO))})
     return resultado
@@ -114,7 +138,7 @@ def salvar(peca: object, estado: object, animacao: object, folha: bytes, dados: 
             if origem.is_file():
                 shutil.copy2(origem, destino / nome)
     _atomico(pasta / "folha.png", folha)
-    _atomico(pasta / "animacao.json", json.dumps(contrato, ensure_ascii=False, indent=2).encode("utf-8"))
+    _atomico(pasta / "animacao.json", json.dumps(contrato, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8"))
     return contrato
 
 
@@ -307,14 +331,34 @@ def fatiar_grade(largura: int, altura: int, linhas: int, colunas: int, margem: i
 
 def ajustes() -> dict:
     dados = _json(AJUSTES, {"novas": [], "escondidas": []})
-    dados.setdefault("novas", []); dados.setdefault("escondidas", [])
+    if not isinstance(dados, dict):
+        dados = {}
+    # MOT-112: um arquivo ja estragado (item que nao e dict/str) derrubava a
+    # arvore inteira com AttributeError; a leitura filtra em silencio.
+    novas = dados.get("novas") if isinstance(dados.get("novas"), list) else []
+    escondidas = dados.get("escondidas") if isinstance(dados.get("escondidas"), list) else []
+    dados["novas"] = [n for n in novas if isinstance(n, dict) and n.get("peca") and n.get("estado") and n.get("id")]
+    dados["escondidas"] = [e for e in escondidas if isinstance(e, str)]
     return dados
 
 
 def salvar_ajustes(dados: dict) -> dict:
     if not isinstance(dados, dict): raise ValueError("ajustes invalidos")
-    dados = {"novas": list(dados.get("novas") or []), "escondidas": list(dados.get("escondidas") or [])}
-    _atomico(AJUSTES, json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8"))
+    novas = list(dados.get("novas") or [])
+    escondidas = list(dados.get("escondidas") or [])
+    # MOT-112: o endpoint aceitava qualquer item e o GET da arvore passava a
+    # dar 500 em toda abertura do Atelie.
+    for item in novas:
+        if not isinstance(item, dict):
+            raise ValueError("ajustes invalidos")
+        try:
+            _id(item.get("peca"), "peca"); _id(item.get("estado"), "estado"); _id(item.get("id"), "animacao")
+        except ValueError:
+            raise ValueError("ajustes invalidos") from None
+    if not all(isinstance(e, str) for e in escondidas):
+        raise ValueError("ajustes invalidos")
+    dados = {"novas": novas, "escondidas": escondidas}
+    _atomico(AJUSTES, json.dumps(dados, ensure_ascii=False, indent=2, allow_nan=False).encode("utf-8"))
     return dados
 
 

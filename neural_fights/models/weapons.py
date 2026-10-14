@@ -122,8 +122,10 @@ class Arma:
             else:
                 self.habilidades = []
         else:
-            self.habilidades = habilidades
-        
+            # MOT-33: copia; antes a lista do chamador era a da arma, e
+            # ``adicionar_habilidade`` numa mexia na outra.
+            self.habilidades = list(habilidades)
+
         # Mantém compatibilidade com código antigo
         if self.habilidades:
             first_hab = self.habilidades[0]
@@ -169,16 +171,18 @@ class Arma:
         self.cor_raridade = rar_data["cor"]
         self.efeito_visual = rar_data.get("efeito_visual")
         
-        # Migração de dados antigos
-        tamanho_antigo = float(kwargs.get('tamanho', 0))
-        if self.comp_cabo == 0 and tamanho_antigo > 0:
-            if "Reta" in tipo:
-                self.comp_cabo = tamanho_antigo * 0.3
-                self.comp_lamina = tamanho_antigo * 0.7
-                self.largura = 5
-            else:
-                self.largura = tamanho_antigo
-                self.distancia = 30
+        # Migração de dados antigos (Reta com só ``tamanho``). MOT-29: lia
+        # ``kwargs.get('tamanho')``, mas ``tamanho`` é parâmetro nomeado e
+        # nunca chega em kwargs: a migração nunca rodava. Só a Reta sem
+        # geometria migra; nos outros tipos ``tamanho`` é medida de verdade
+        # (Mágica) e o antigo ramo "senão" sobrescreveria largura/distância.
+        # Medido em 14/10/2026: nenhuma das 159 armas do banco vivo nem do
+        # snapshot cai aqui.
+        tamanho_antigo = float(tamanho or 0)
+        if "Reta" in tipo and self.comp_cabo == 0 and self.comp_lamina == 0 and tamanho_antigo > 0:
+            self.comp_cabo = tamanho_antigo * 0.3
+            self.comp_lamina = tamanho_antigo * 0.7
+            self.largura = self.largura or 5
 
     def get_dano_total(self):
         """Calcula dano total incluindo encantamentos"""
@@ -364,10 +368,14 @@ def sugerir_tamanho_arma(personagem, tipo_arma="Reta"):
     """
     Sugere tamanhos ideais para uma arma baseado no personagem.
     """
-    if personagem is None:
+    # ``Personagem.tamanho`` e a ALTURA em metros (1,70 no wizard). A conta
+    # antiga (``tamanho / 10``) dava 0,17 e espada de 5 cm de cabo, e so nao
+    # aparecia porque a Forja nunca achava personagem (MOT-120, 14/10/2026).
+    # Base 10 (o padrao sem personagem) corresponde a 1,70 m.
+    if personagem is None or not getattr(personagem, "tamanho", None):
         tamanho_base = 10.0
     else:
-        tamanho_base = personagem.tamanho / 10.0
+        tamanho_base = 10.0 * float(personagem.tamanho) / 1.70
     
     sugestoes = {}
     
@@ -435,7 +443,10 @@ def get_escala_visual_arma(arma, personagem):
     
     validacao = validar_arma_personagem(arma, personagem)
     proporcao = validacao["proporcao"]
-    
+
+    # MOT-29: geometria zero dava proporcao 0 e ZeroDivisionError abaixo.
+    if not proporcao or proporcao <= 0:
+        return 1.0
     if proporcao < 0.4:
         return 0.4 / proporcao
     elif proporcao > 1.5:

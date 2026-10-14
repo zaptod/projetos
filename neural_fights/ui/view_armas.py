@@ -5,6 +5,7 @@ Sistema de criação de armas com Wizard guiado
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 import math
+from types import SimpleNamespace
 
 from neural_fights.models import (
     Arma, TIPOS_ARMA, LISTA_TIPOS_ARMA, RARIDADES, LISTA_RARIDADES,
@@ -590,8 +591,11 @@ class TelaArmas(tk.Frame):
         frame_stats.pack(fill="x", pady=5)
         
         tk.Label(frame_stats, text="Dano Base:", bg=COR_BG_SECUNDARIO, fg=COR_TEXTO).grid(row=0, column=0, sticky="w", pady=2)
+        # MOT-107: sem ``resolution`` o Scale anda de 1 em 1, e o ``set(12.5)``
+        # numa janela visivel dispara ``command('13')``: so visitar o passo
+        # arredondava o dano (que vem de ``10 * mod_dano``).
         self.scale_dano = tk.Scale(
-            frame_stats, from_=1, to=50, orient="horizontal",
+            frame_stats, from_=1, to=50, orient="horizontal", resolution=0.1,
             bg=COR_BG_SECUNDARIO, fg=COR_TEXTO, length=250,
             command=lambda v: self.atualizar_dado("dano", float(v))
         )
@@ -629,9 +633,16 @@ class TelaArmas(tk.Frame):
             ).grid(row=i, column=0, sticky="w", pady=2)
             
             val = self.dados_arma["geometria"][key]
-            
+            # MOT-107: geometria fracionaria (arma editada a mao) tambem era
+            # arredondada so por abrir o passo.
+            try:
+                fracionario = float(val) != int(float(val))
+            except (TypeError, ValueError):
+                fracionario = False
+
             scale = tk.Scale(
                 frame_geo, from_=minv, to=maxv, orient="horizontal",
+                resolution=0.1 if fracionario else 1,
                 bg=COR_BG_SECUNDARIO, fg=COR_TEXTO, length=250,
                 command=lambda v, k=key: self.atualizar_geometria(k, float(v))
             )
@@ -656,13 +667,52 @@ class TelaArmas(tk.Frame):
         self.dados_arma["geometria"][key] = valor
         self.atualizar_preview()
 
+    def _personagem_de_referencia(self):
+        """Quem serve de medida para "Sugerir Tamanhos" (MOT-120).
+
+        O codigo lia ``controller.lista_chars``, que nao existe (o atributo e
+        ``lista_personagens``), e a sugestao saia sempre sem personagem. A
+        ordem agora: o personagem em edicao no wizard (se tiver altura); senao
+        o unico do banco; com varios, pergunta qual. Nunca o ``[0]`` fixo.
+        """
+        frames = getattr(self.controller, "frames", {}) or {}
+        tela = frames.get("TelaPersonagens")
+        dados = getattr(tela, "dados_char", None) or {}
+        if dados.get("nome") and dados.get("tamanho"):
+            return SimpleNamespace(nome=dados["nome"], tamanho=float(dados["tamanho"]))
+        lista = list(getattr(self.controller, "lista_personagens", None) or [])
+        if not lista:
+            return None
+        if len(lista) == 1:
+            return lista[0]
+        return self._perguntar_personagem(lista)
+
+    def _perguntar_personagem(self, lista):
+        """Janela curta com um combobox; ``None`` se cancelar."""
+        janela = tk.Toplevel(self)
+        janela.title("Sugerir tamanhos")
+        janela.configure(bg=COR_BG)
+        janela.transient(self.winfo_toplevel())
+        tk.Label(janela, text="Tamanho baseado em qual personagem?",
+                 bg=COR_BG, fg=COR_TEXTO).pack(padx=12, pady=(12, 6))
+        nomes = [p.nome for p in lista]
+        escolha = tk.StringVar(value=nomes[0])
+        ttk.Combobox(janela, textvariable=escolha, values=nomes,
+                     state="readonly", width=32).pack(padx=12, pady=6)
+        resposta = {}
+
+        def confirmar():
+            resposta["nome"] = escolha.get()
+            janela.destroy()
+
+        tk.Button(janela, text="Usar", command=confirmar).pack(pady=(6, 12))
+        janela.grab_set()
+        self.wait_window(janela)
+        return next((p for p in lista if p.nome == resposta.get("nome")), None)
+
     def aplicar_sugestao_geometria(self):
         """Aplica sugestões de tamanho baseadas no personagem selecionado"""
-        # Tenta pegar um personagem para referência
-        personagem = None
-        if hasattr(self.controller, 'lista_chars') and self.controller.lista_chars:
-            personagem = self.controller.lista_chars[0]
-        
+        personagem = self._personagem_de_referencia()
         sugestoes = sugerir_tamanho_arma(personagem, self.dados_arma["tipo"])
         
         for key, valor in sugestoes.items():

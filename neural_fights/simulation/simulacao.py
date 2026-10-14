@@ -905,6 +905,13 @@ class Simulador:
             return
 
         self.cam.atualizar(dt, self.p1, self.p2)
+        # MOT-12 (auditoria de 11/10/2026): o ouvinte do som e a camera. Sem
+        # isto o som de cast era medido contra um ouvinte parado em x=0
+        # (mudo acima de 20 m, metade do volume a 10 m). So escreve no audio;
+        # nada da luta le este valor.
+        audio = getattr(self, "audio", None)
+        if audio is not None:
+            audio.listener_x = self.cam.x / PPM
         # Atualiza sistema de debug de hitbox
         atualizar_debug(dt)
         

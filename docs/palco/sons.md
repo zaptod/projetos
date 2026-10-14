@@ -39,9 +39,15 @@ Uma lista JSON de objetos, na ordem em que o jogo pediu (`t` não decresce):
   `sfx_volume` × `master_volume` × distância, com o teto de 1,0 do pygame. As
   categorias vêm do `_volumes` do `sound_config.json` (no do Adrian, "ambiente"
   está em 0,03 — parede e abertura de arena quase caladas, como ao vivo).
-  Atenção: o jogo ao vivo soma esquerda e direita num volume só quando há pan
-  (`AudioManager.play`), então um som posicional sai até 2× mais alto que o
-  mesmo som sem pan; o `volume` anotado já é esse número final.
+  Desde 14/10/2026 (auditoria, MOT-13) o pan NÃO mexe no volume: antes o jogo
+  somava esquerda e direita (`fv × (2 − |pan|)`, até 2× e com um salto em
+  pan = 0). O som posicional leva um ganho constante (`audio.GANHO_POSICIONAL`
+  = 1,9) e o ouvinte é a câmera (MOT-12: o cast media a distância contra
+  x = 0). Na mistura do vídeo (`mixagem.REALCE_GOLPES_DB` = +2 dB em golpes e
+  impactos) o golpe fica no nível de antes (medido em 16 lutas: +0,7 dB em
+  média). O palco Godot toca o `volume` anotado sem esse realce.
+  `arena_victory` é a fanfarra curta sintetizada (`sounds/arena_victory.wav`,
+  `tools/sintetizar_fanfarra.py`), na categoria "ui".
 - **`pitch`**: 1.0 é o arquivo como é; 1.05 lê 5% mais rápido (mais agudo e
   mais curto, como fita). O jogo ao vivo não tem pitch: a variação existe para
   o vídeo não repetir o mesmo golpe 25 vezes.

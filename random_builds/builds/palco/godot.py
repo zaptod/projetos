@@ -20,6 +20,7 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -48,16 +49,58 @@ def ambiente(cfg: dict | None = None) -> dict:
     return env
 
 
+# MOT-117 (auditoria de 11/10/2026): o launcher fechado no meio de um render
+# deixava o Godot (e o ffmpeg dele) orfaos. Todo Godot que este modulo abre
+# fica aqui enquanto vive; ``encerrar_todos`` mata o que sobrou.
+_PROCESSOS_VIVOS: set = set()
+_TRAVA_PROCESSOS = threading.Lock()
+
+
+def _registrar(processo) -> None:
+    with _TRAVA_PROCESSOS:
+        _PROCESSOS_VIVOS.add(processo)
+
+
+def _esquecer(processo) -> None:
+    with _TRAVA_PROCESSOS:
+        _PROCESSOS_VIVOS.discard(processo)
+
+
+def encerrar_todos() -> int:
+    """Mata todo Godot ainda vivo aberto por este processo; devolve quantos."""
+    with _TRAVA_PROCESSOS:
+        vivos = list(_PROCESSOS_VIVOS)
+        _PROCESSOS_VIVOS.clear()
+    mortos = 0
+    for processo in vivos:
+        try:
+            if processo.poll() is None:
+                processo.kill()
+                mortos += 1
+        except OSError:
+            pass
+    return mortos
+
+
 def _rodar(comando: list, *, timeout: float, cfg: dict) -> tuple[int, str]:
+    # Popen + communicate e o que o ``subprocess.run`` faz por dentro (inclusive
+    # matar no estouro); a diferenca e que o processo fica registrado.
+    processo = subprocess.Popen(
+        [str(c) for c in comando], cwd=str(config.projeto(cfg)), env=ambiente(cfg),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+        errors="replace", creationflags=SEM_JANELA_DE_CONSOLE)
+    _registrar(processo)
     try:
-        processo = subprocess.run(
-            [str(c) for c in comando], cwd=str(config.projeto(cfg)), env=ambiente(cfg),
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=timeout, creationflags=SEM_JANELA_DE_CONSOLE)
-    except subprocess.TimeoutExpired as erro:
-        saida = (erro.stdout or "") if isinstance(erro.stdout, str) else ""
-        raise ErroPalco(f"o Godot passou de {timeout:.0f} s e foi interrompido\n{saida[-800:]}") from erro
-    return processo.returncode, _ANSI.sub("", (processo.stdout or "") + (processo.stderr or ""))
+        try:
+            stdout, stderr = processo.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as erro:
+            processo.kill()
+            stdout, _stderr = processo.communicate()
+            saida = stdout if isinstance(stdout, str) else ""
+            raise ErroPalco(f"o Godot passou de {timeout:.0f} s e foi interrompido\n{saida[-800:]}") from erro
+    finally:
+        _esquecer(processo)
+    return processo.returncode, _ANSI.sub("", (stdout or "") + (stderr or ""))
 
 
 def _mais_novo(pasta: Path) -> float:
@@ -144,6 +187,9 @@ def abrir_previa(timeline, *, cfg: dict | None = None) -> Path:
     )
     if processo.poll() is not None:
         raise ErroPalco(f"o Godot nao abriu a previa (codigo {processo.returncode})")
+    # A previa e uma janela que o Adrian fecha; ela entra no registro para o
+    # launcher nao deixa-la orfa se fechar antes (MOT-117).
+    _registrar(processo)
     return job
 
 

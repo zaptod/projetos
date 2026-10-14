@@ -80,7 +80,9 @@ class BroadcastOverlay:
         """
         agora = self.sessao._relogio()
         nome = _texto_curto(getattr(evento, "viewer_name", "") or "Alguém", 16)
-        verbo = (getattr(evento, "texto", "") or "").strip().split(" ")[0]
+        # MOT-115: o campo do ViewerEvent e ``text``; lendo ``texto`` todo
+        # lower-third saia "!?".
+        verbo = (getattr(evento, "text", "") or "").strip().split(" ")[0]
         if not verbo.startswith("!"):
             verbo = "!?"
 
@@ -91,7 +93,12 @@ class BroadcastOverlay:
             if len(self._lower_thirds) > MAX_LOWER_THIRDS:
                 del self._lower_thirds[0]
         elif getattr(evento, "value_units", 0) > 0:
-            detalhe = _texto_curto(resultado.detalhe, 34)
+            if "reembolso" in (resultado.detalhe or ""):
+                # Pagou e nao coube (decisao do Adrian de 14/10/2026,
+                # ``builds/arena-dois-pagantes``): a tela diz que devolveu.
+                detalhe = "não coube, reembolsado"
+            else:
+                detalhe = _texto_curto(resultado.detalhe, 34)
             self._toast_recusa = {
                 "texto": f"{nome}: {verbo} — {detalhe or resultado.status.lower()}",
                 "ate": agora + DURACAO_TOAST_RECUSA_S,

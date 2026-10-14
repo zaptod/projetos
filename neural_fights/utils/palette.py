@@ -182,11 +182,6 @@ def resolver_elemento(objeto=None, skill_nome: str = "", skill_data: dict | None
 # CLASSES e RARIDADES — fonte única em RGB; o tema Tkinter reexporta em hex.
 # =============================================================================
 
-def hex_to_rgb(valor: str) -> tuple[int, int, int]:
-    v = valor.lstrip("#")
-    return (int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
-
-
 def rgb_to_hex(cor: tuple[int, int, int]) -> str:
     return "#%02x%02x%02x" % (int(cor[0]), int(cor[1]), int(cor[2]))
 
