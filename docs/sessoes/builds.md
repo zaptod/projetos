@@ -146,6 +146,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ⏳ **Lava do Vulcão e do Inferno** — O catálogo promete dano de lava nas arenas Vulcão e Inferno, mas a lava não machuca. O que fazer? `lava-do-vulcao`
 - ⏳ **Som da vitória** — Na vitória hoje toca a abertura da arena, quase muda. Que som deve tocar? `som-da-vitoria`
 - ⏳ **Volume dos golpes depois do conserto** — O som dos golpes estoura porque o pan soma os dois lados (até 1,8x). Consertando, os golpes ficam mais baixos. Você quer ouvir antes de valer nos vídeos? `volume-dos-golpes`
+- ⏳ **Live: !arena com dois pagantes** — Na live, se duas pessoas pagam !arena no mesmo round, qual vale? E o comando pago que cai em cooldown hoje some sem reembolso. `arena-dois-pagantes`
 
 <!-- decisoes:fim -->
 

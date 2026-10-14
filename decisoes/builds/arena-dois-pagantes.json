@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:22.340815",
+  "depende_de": [],
+  "historico": [],
+  "id": "arena-dois-pagantes",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "primeiro-reembolso",
+      "pede_comentario": false,
+      "rotulo": "Vale o primeiro; o que não coube é recusado com reembolso na tela (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ultimo-reembolso",
+      "pede_comentario": false,
+      "rotulo": "Vale o último; o que não coube é reembolsado"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "fila",
+      "pede_comentario": false,
+      "rotulo": "Vale o primeiro; o outro fica guardado até o cooldown passar"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Na live, se duas pessoas pagam !arena no mesmo round, qual vale? E o comando pago que cai em cooldown hoje some sem reembolso.",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Live: !arena com dois pagantes",
+  "vigente": null
+}
