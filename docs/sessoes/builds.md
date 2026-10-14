@@ -141,7 +141,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Launcher: o 'Iniciar batalha' com o visual antigo** — Tirar o pygame do launcher (08/10/2026) `launcher-iniciar-batalha`
 - ✅ **Botão 'Gerar Roster' do torneio** — Gravar num catálogo só do torneio (recomendado) (14/10/2026) `gerar-roster-do-torneio`
 - ✅ **Luta que termina empatada** — Desempatar pelo HP que sobrou (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `empate-persistente`
-- ⏳ **Nome pedido pelo comentarista** — O nome que o público pede para o personagem tem uma regra 'não termina em qualidade' (ex.: não aceita 'João Forte'). Mantém a regra? `nome-pedido-livre`
+- ✅ **Nome pedido pelo comentarista** — Manter a regra (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `nome-pedido-livre`
 - ⏳ **Os 29 traços sem efeito** — 29 traços de personalidade são sorteados para os lutadores mas não fazem nada na luta. O que fazer? `quirks-sem-efeito`
 - ⏳ **Atordoamento e relógio de ataque** — Hoje o atordoamento pausa o relógio de ataque do lutador (muda o ritmo de toda luta). Mantém? `atordoamento-e-relogio`
 - ⏳ **Lava do Vulcão e do Inferno** — O catálogo promete dano de lava nas arenas Vulcão e Inferno, mas a lava não machuca. O que fazer? `lava-do-vulcao`
