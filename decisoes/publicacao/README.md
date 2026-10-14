@@ -17,3 +17,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **YouTube fica 3 horários atrás do TikTok** — YouTube alcança (recomendado) (07/10/2026) `youtube-atras-do-tiktok`
 - ✅ **Build que saiu só no TikTok: levar ao YouTube depois?** — Mesma regra das histórias (recomendado) (13/10/2026) `build-so-no-tiktok`
 - ⏳ **Visibilidade gravada no registro** — Ao publicar uma história, o registro anota sempre 'pública', mesmo se o vídeo subiu privado. O que gravar? `visibilidade-no-ledger`
+- ⏳ **Chave 'postar automático' do TikTok nos builds** — No config dos builds, o TikTok está com 'postar automático: não', mas a grade posta sempre. O que vale? `tiktok-postar-automatico`

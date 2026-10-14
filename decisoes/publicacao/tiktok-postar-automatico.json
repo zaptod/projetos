@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:50.907852",
+  "depende_de": [],
+  "historico": [],
+  "id": "tiktok-postar-automatico",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "É o que já acontece há semanas",
+      "id": "tirar-chave",
+      "pede_comentario": false,
+      "rotulo": "A grade posta; a chave sai (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "vale-a-chave",
+      "pede_comentario": false,
+      "rotulo": "A chave passa a valer (TikTok dos builds para de postar sozinho)"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "No config dos builds, o TikTok está com 'postar automático: não', mas a grade posta sempre. O que vale?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Chave 'postar automático' do TikTok nos builds",
+  "vigente": null
+}
