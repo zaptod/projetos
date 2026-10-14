@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:47:17",
+      "evento": "2026-10-14T08:47:12",
+      "linha": 178,
+      "nota": "resposta sem pedido de origem: publicacao/tiktok-postar-automatico = A grade posta; a chave sai (recomendado)",
+      "opcao": "tirar-chave",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:50.907852",
   "depende_de": [],
