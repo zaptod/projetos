@@ -553,6 +553,22 @@ Fonte: `docs/auditoria/2026-10-11-profunda/consertos/painel-e-vila.md`
   também rolam (com a gaveta aberta o ONDE POSTAR saía da tela); para o
   Publicar caber sem barra com a gaveta fechada, a caixa da descrição foi
   de 8 para 7 linhas (pedia 649 px, a tela tem 639; agora 632).
+  **Reprovado e refeito no mesmo dia** (conferente, caminho do clique):
+  a página montada antes de a janela assentar pedia 338 px, a janela do
+  canvas ficava presa na altura da tela e, quando a página crescia para
+  971, nenhum `<Configure>` chegava — sem barra, roda morta, tabela fora.
+  A altura PEDIDA não gera evento; o `rolavel` agora também confere a cada
+  250 ms (`VIGIA_ROLAVEL_MS`, três `winfo`, cancelado no `<Destroy>`). O
+  teste (`CaminhoDoCliqueTests`) abre na Auditoria, deixa assentar e só
+  então mostra a página, e rola pela roda do mouse; o teste antigo dava
+  verde falso. A Confiabilidade também rola, e o "O QUE OLHAR" virou uma
+  caixa de no máximo 3 linhas com barra própria (14 alertas espremiam a
+  tabela de hoje a 4 px); quando o panorama falha, o carimbo diz que os
+  cartões mostram a leitura ANTERIOR. O PUBLICAR preso mostra
+  "⏳ publicando…" com fundo e letra de desligado.
+- **Reações** voltou a listar: `importer.list_reactions` exige a pasta de
+  assets desde 53155b1 e a página chamava sem ela (TypeError, tabela
+  vazia).
 - **Parar mata a árvore** (PNL-6): `taskkill /T /F` no filho, com `kill()`
   de reserva; os netos (Chrome, ffmpeg) não ficam órfãos.
 - Médios: a conferência do canal que falha aparece na faixa e na gaveta

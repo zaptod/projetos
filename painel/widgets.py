@@ -24,6 +24,9 @@ from .estilo import BORDA, ESPACO, Tema
 # mexe nisto: e quem clica e quem desenha.
 _EM_CURSO = None
 
+# De quanto em quanto a pagina rolavel confere se o conteudo mudou de altura.
+VIGIA_ROLAVEL_MS = 250
+
 
 def botao_em_curso():
     """O botao do painel que esta sendo clicado neste instante, se houver."""
@@ -134,6 +137,7 @@ class Oficina:
             pai, text=texto, command=invocar if acao else None,
             bg=fundo, fg=frente,
             activebackground=realce, activeforeground=frente,
+            disabledforeground=self.tema.texto_apagado,
             font=self.tema.letra("corpo", "bold" if tipo == "primario"
                                  else "normal"),
             relief="flat", bd=0,
@@ -146,6 +150,8 @@ class Oficina:
         # repintou o botao durante o hover (o clique que ativa a vista), a
         # cor nova fica.
         def entrar(_e):
+            if str(alvo.cget("state")) == "disabled":
+                return              # desligado nao acende no hover
             atual = alvo.cget("bg")
             if atual != realce:
                 alvo._bg_antes = atual                      # noqa: SLF001
@@ -180,23 +186,56 @@ class Oficina:
         tela.configure(yscrollcommand=barra.set)
         tela.pack(side="left", fill="both", expand=True)
 
+        visto = {"medidas": None, "vigia": None}
+
         def ajustar(_e=None):
-            largura, altura = tela.winfo_width(), tela.winfo_height()
-            if largura <= 1:
+            try:
+                largura, altura = tela.winfo_width(), tela.winfo_height()
+                if largura <= 1:
+                    return
+                pedida = corpo.winfo_reqheight()
+            except tk.TclError:
                 return
-            pedida = corpo.winfo_reqheight()
+            if visto["medidas"] == (largura, altura, pedida):
+                return
+            visto["medidas"] = (largura, altura, pedida)
             tela.itemconfigure(janela, width=largura,
                                height=max(altura, pedida))
             tela.configure(scrollregion=(0, 0, largura, max(altura, pedida)))
             if pedida > altura:
-                if not barra.winfo_ismapped():
+                if not barra.winfo_manager():
                     barra.pack(side="right", fill="y", before=tela)
-            elif barra.winfo_ismapped():
+            elif barra.winfo_manager():
                 barra.pack_forget()
                 tela.yview_moveto(0)
 
+        # A ALTURA PEDIDA NAO GERA EVENTO. Com a janela do canvas de altura
+        # fixa, o corpo que cresce depois (a pagina montada antes de assentar
+        # pedia 338 px e foi a 971) nao muda de TAMANHO, entao nenhum
+        # <Configure> chega e a barra nunca aparecia -- medido pelo
+        # conferente no caminho do clique, 14/10/2026. Por isso, alem dos
+        # eventos, uma conferencia barata (tres `winfo`) a cada 250 ms, na
+        # thread da interface, cancelada quando a tela morre.
+        def vigiar():
+            visto["vigia"] = None
+            ajustar()
+            try:
+                visto["vigia"] = tela.after(VIGIA_ROLAVEL_MS, vigiar)
+            except tk.TclError:
+                pass
+
+        def parar(_e=None):
+            if visto["vigia"] is not None:
+                try:
+                    tela.after_cancel(visto["vigia"])
+                except tk.TclError:
+                    pass
+                visto["vigia"] = None
+
         tela.bind("<Configure>", ajustar, add="+")
         corpo.bind("<Configure>", ajustar, add="+")
+        tela.bind("<Destroy>", parar, add="+")
+        visto["vigia"] = tela.after_idle(vigiar)
 
         def rolar(evento):
             try:

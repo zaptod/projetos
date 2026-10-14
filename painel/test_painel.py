@@ -1181,6 +1181,27 @@ class ConfiabilidadeTests(unittest.TestCase):
         self.assertIn("não consegui ler", self.pagina.faixa.cget("text"))
         self.assertIn("ilegível", self.app._texto.get("1.0", "end"))
 
+    def test_leitura_que_falha_diz_que_a_tela_e_velha(self):
+        """Os cartoes ficam com a leitura anterior: o carimbo tem de dizer."""
+        self.pagina._desenhar(self.FICHA)
+        self.assertIn("16:41:25", self.pagina.carimbo.cget("text"))
+        self.app._entregar_resumo({"erro": "OSError: X"})
+        carimbo = self.pagina.carimbo.cget("text")
+        self.assertIn("ANTERIOR", carimbo)
+        self.assertIn("16:41:25", carimbo)
+        self.assertEqual(self.app.tema.erro, self.pagina.carimbo.cget("fg"))
+        self.pagina._desenhar(self.FICHA)                  # voltou a ler
+        self.assertNotIn("ANTERIOR", self.pagina.carimbo.cget("text"))
+        self.assertEqual(self.app.tema.texto_fraco,
+                         self.pagina.carimbo.cget("fg"))
+
+    def test_poucos_alertas_sem_barra(self):
+        self.pagina._desenhar(dict(self.FICHA, alertas=["um", "dois"]))
+        self.app.update()
+        self.assertEqual(2, int(self.pagina.alertas.cget("height")))
+        self.assertFalse(self.pagina._barra_alertas.winfo_ismapped())
+        self.assertIn("dois", self.pagina.alertas.get("1.0", "end"))
+
     def test_conferencia_com_erro_aparece(self):
         """PNL-7: o erro da conferencia era jogado fora pelo callback."""
         def tarefa(_funcao, ao_pronto, rotulo=""):
@@ -1391,6 +1412,20 @@ class PublicarTests(_CascaDe):
         self.pagina.pintar_botao()
         self.assertEqual("normal", str(self.pagina.btn_enviar.cget("state")))
 
+    def test_publicando_tem_texto_e_cor_de_desligado(self):
+        self._escolher()
+        botao = self.pagina.btn_enviar
+        with patch.object(self.app.supervisor, "segura", return_value=True):
+            self.pagina.pintar_botao()
+        self.assertIn("publicando", botao.cget("text"))
+        self.assertEqual("disabled", str(botao.cget("state")))
+        self.assertEqual(self.app.tema.superficie_alta, botao.cget("bg"))
+        self.assertEqual(self.app.tema.texto_apagado,
+                         botao.cget("disabledforeground"))
+        self.pagina.pintar_botao()                         # acabou
+        self.assertIn("PUBLICAR", botao.cget("text"))
+        self.assertEqual(self.app.tema.acento, botao.cget("bg"))
+
     def test_historias_quebradas_avisam(self):
         """PNL-8: as historias sumiam da lista sem nenhuma linha de erro."""
         from painel.paginas import publicar
@@ -1426,36 +1461,129 @@ def _rotulos(pai):
     return saida
 
 
-class VideosCabeTests(_CascaDe):
-    """PNL-5: em 1366x697 a tabela de VIDEOS PRONTOS nem era mapeada."""
+def _descendentes(pai):
+    for filho in pai.winfo_children():
+        yield filho
+        yield from _descendentes(filho)
 
-    MODULO = "videos"
-    TAMANHO = "1366x697"
 
-    def _tabelas(self, pai):
-        saida = []
-        for filho in pai.winfo_children():
-            if filho.winfo_class() == "Treeview":
-                saida.append(filho)
-            saida.extend(self._tabelas(filho))
-        return saida
+def _assentar(app, segundos: float) -> None:
+    import time
+    fim = time.monotonic() + segundos
+    while time.monotonic() < fim:
+        app.update()
+        time.sleep(0.03)
 
-    def test_rolando_ate_o_fim_a_tabela_aparece_inteira(self):
-        corpo = self.pagina.corpo
+
+class CaminhoDoCliqueTests(unittest.TestCase):
+    """PNL-5 pelo CAMINHO REAL (reprovado pelo conferente em 14/10/2026).
+
+    A janela abre na Auditoria, ASSENTA, e so entao a pagina rolavel e
+    mostrada -- como no clique do menu. Mostrar a pagina antes de a janela
+    assentar (o que o teste antigo fazia) dava verde falso: a pagina
+    montada cedo pedia 338 px, a janela do canvas ficava presa em 639 e a
+    barra nunca aparecia quando ela crescia para 971.
+    """
+
+    TAMANHO = "1366x705"         # a Criacao maximizada na tela dele
+
+    def _abrir(self, modulo_nome):
+        import importlib
+        from painel.app import Casca
+        from painel.paginas import auditoria, publicar
+        modulo = importlib.import_module(f"painel.paginas.{modulo_nome}")
+        for classe in (auditoria.Pagina, publicar.Pagina):
+            duble = patch.object(classe, "ao_mostrar", lambda _s: None)
+            duble.start()
+            self.addCleanup(duble.stop)
+        app = Casca.criar([auditoria.Pagina, modulo.Pagina])
+        app.geometry(self.TAMANHO)
+        self.addCleanup(self._fechar, app)
+        _assentar(app, 1.0)                   # a janela assenta na Auditoria
+        self.assertEqual("auditoria", app._atual)
+        app.mostrar(modulo.Pagina.chave)      # o mesmo que o clique faz
+        _assentar(app, 1.5)
+        return app, app.paginas[modulo.Pagina.chave]
+
+    @staticmethod
+    def _fechar(app):
+        app.encerrar()
+        app.supervisor.aguardar(60)
+        app.destroy()
+        gc.collect()
+
+    def _conferir_rolagem(self, app, pagina, *, precisa_rolar: bool):
+        corpo = pagina.corpo
         tela = corpo.tela
-        self.app.update()
-        self.assertGreater(corpo.winfo_reqheight(), tela.winfo_height(),
-                           "a pagina nao precisava rolar? (mudou o layout)")
-        tela.yview_moveto(1.0)
-        self.app.update()
-        tabelas = self._tabelas(corpo)
-        self.assertTrue(tabelas)
-        base_da_tela = tela.winfo_rooty() + tela.winfo_height()
-        for tabela in tabelas:
+        pedida, altura = corpo.winfo_reqheight(), tela.winfo_height()
+        if precisa_rolar:
+            self.assertGreater(pedida, altura,
+                               "a pagina nao precisava rolar? (layout mudou)")
+        regiao = [int(float(v)) for v in str(tela.cget("scrollregion")).split()]
+        self.assertGreaterEqual(regiao[3], pedida, "scrollregion velha")
+        barras = [w for w in tela.master.winfo_children()
+                  if w.winfo_class() == "TScrollbar"]
+        self.assertEqual(pedida > altura, bool(barras[0].winfo_ismapped()))
+        if pedida <= altura:
+            return
+        # a RODA DO MOUSE sobre um rotulo da pagina rola ate o fim
+        rotulo = next(w for w in _descendentes(corpo)
+                      if w.winfo_class() == "Label")
+        for _ in range(80):
+            if tela.yview()[1] >= 0.999:
+                break
+            rotulo.event_generate("<MouseWheel>", delta=-120, when="now")
+            app.update()
+        self.assertGreaterEqual(tela.yview()[1], 0.999, tela.yview())
+        app.update()
+        base = tela.winfo_rooty() + altura
+        for tabela in (w for w in _descendentes(corpo)
+                       if w.winfo_class() == "Treeview"):
             self.assertEqual(1, tabela.winfo_ismapped())
             self.assertGreater(tabela.winfo_height(), 60)
             self.assertLessEqual(tabela.winfo_rooty() + tabela.winfo_height(),
-                                 base_da_tela + 1)
+                                 base + 1)
+
+    def test_videos_rola_pelo_clique(self):
+        app, pagina = self._abrir("videos")
+        self._conferir_rolagem(app, pagina, precisa_rolar=True)
+
+    def test_publicar_pelo_clique(self):
+        app, pagina = self._abrir("publicar")
+        self._conferir_rolagem(app, pagina, precisa_rolar=False)
+        # com a gaveta do console aberta, a mesma pagina tem de rolar
+        app._abrir_console()
+        _assentar(app, 0.8)
+        self._conferir_rolagem(app, pagina, precisa_rolar=True)
+
+    def test_historias_pelo_clique(self):
+        app, pagina = self._abrir("historias")
+        self._conferir_rolagem(app, pagina, precisa_rolar=False)
+        app._abrir_console()
+        _assentar(app, 0.8)
+        self._conferir_rolagem(app, pagina, precisa_rolar=True)
+
+    def test_confiabilidade_com_14_alertas_mantem_a_tabela(self):
+        """Com os dados de 14/10 (14 alertas) a tabela ia a 4 px."""
+        app, pagina = self._abrir("confiabilidade")
+        ficha = dict(ConfiabilidadeTests.FICHA,
+                     alertas=[f"alerta numero {n} com um texto de tamanho "
+                              "parecido com o de verdade" for n in range(14)])
+        pagina._desenhar(ficha)
+        _assentar(app, 0.8)
+        tabela = pagina.tabela
+        self.assertEqual(1, tabela.winfo_ismapped())
+        self.assertGreaterEqual(tabela.winfo_height(),
+                                tabela.winfo_reqheight() - 2)
+        from painel.paginas.confiabilidade import ALERTAS_VISIVEIS
+        self.assertEqual(ALERTAS_VISIVEIS,
+                         int(pagina.alertas.cget("height")))
+        self.assertTrue(pagina._barra_alertas.winfo_ismapped())
+        # e a tabela inteira cabe na tela, sem rolar
+        tela = pagina.corpo.tela
+        self.assertLessEqual(tabela.winfo_rooty() + tabela.winfo_height(),
+                             tela.winfo_rooty() + tela.winfo_height() + 1)
+        self._conferir_rolagem(app, pagina, precisa_rolar=False)
 
 
 
@@ -1485,6 +1613,21 @@ class RolavelTests(unittest.TestCase):
         self.assertEqual((0.0, 1.0), tuple(corpo.tela.yview()))
         # `expand` continua valendo: a caixa ocupa a altura toda
         self.assertGreater(caixa.winfo_height(), 300)
+
+    def test_conteudo_que_cresce_depois_ganha_a_barra(self):
+        """O defeito do caminho real: assentou pequeno, cresceu depois, e
+        nenhum <Configure> chegava (a janela do canvas tem altura fixa)."""
+        corpo = self.o.rolavel(self.raiz)
+        tk.Label(corpo, text="pouco").pack()
+        _assentar(self.janela, 0.5)
+        self.assertEqual((0.0, 1.0), tuple(corpo.tela.yview()))
+        for _ in range(30):
+            tk.Label(corpo, text="linha que chegou depois").pack()
+        _assentar(self.janela, 0.6)
+        regiao = [int(float(v)) for v in
+                  str(corpo.tela.cget("scrollregion")).split()]
+        self.assertGreaterEqual(regiao[3], corpo.winfo_reqheight())
+        self.assertLess(corpo.tela.yview()[1], 1.0)
 
     def test_sem_espaco_rola_ate_o_fim(self):
         corpo = self.o.rolavel(self.raiz)
@@ -1524,6 +1667,31 @@ class TamanhoInicialTests(unittest.TestCase):
             app.supervisor.aguardar(60)
             app.destroy()
             gc.collect()
+
+
+class ReacoesTests(unittest.TestCase):
+    def test_lista_le_o_catalogo_da_pasta_de_assets(self):
+        """`list_reactions` exige a pasta desde 53155b1; sem ela, TypeError."""
+        import json
+        import tempfile
+        from painel.paginas import extras
+        raiz = pathlib.Path(tempfile.mkdtemp(prefix="nf-reacoes-"))
+        pasta = raiz / "assets" / "reactions"
+        pasta.mkdir(parents=True)
+        (pasta / "catalog.json").write_text(json.dumps({
+            "next_id": 2, "reactions": [
+                {"id": "r1", "category": "good", "duration": 2.5,
+                 "source": "x.mp4"}]}), encoding="utf-8")
+        with patch.object(extras, "RANDOM_BUILDS", raiz):
+            linhas = extras.Reacoes._ler()
+        self.assertEqual([("r1", "good", "2.5s", "x.mp4")], linhas)
+
+    def test_pasta_sem_catalogo_e_lista_vazia(self):
+        import tempfile
+        from painel.paginas import extras
+        with patch.object(extras, "RANDOM_BUILDS",
+                          pathlib.Path(tempfile.mkdtemp())):
+            self.assertEqual([], extras.Reacoes._ler())
 
 
 class ContasTests(unittest.TestCase):

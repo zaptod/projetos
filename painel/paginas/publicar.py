@@ -461,17 +461,29 @@ class Pagina:
         # Publicacao rodando: o botao continua desligado ate ela acabar, por
         # mais que a selecao ou as caixas mudem (PNL-1).
         preso = self.casca.supervisor.segura(self.btn_enviar)
+        if preso:
+            texto = "⏳  publicando…"
+        elif alvos:
+            texto = "🚀  PUBLICAR NO " + " + ".join(alvos)
+        else:
+            texto = "escolha YouTube e/ou TikTok"
+        ativo = bool(alvos) and not preso
+        # Desligado tem CARA de desligado: o roxo do acento e so do que e
+        # clicavel (lei da interface), e o roxo apagado parecia so mais claro.
         self.btn_enviar.configure(
-            text="🚀  PUBLICAR NO " + " + ".join(alvos) if alvos
-            else "escolha YouTube e/ou TikTok",
-            state="normal" if alvos and not preso else "disabled")
+            text=texto, state="normal" if ativo else "disabled",
+            bg=self.t.acento if ativo else self.t.superficie_alta)
 
     # ------------------------------------------------------------ acoes
     def _rb(self, argumentos: list, rotulo: str, cwd=None,
             botao=None) -> bool:
+        def depois():
+            self.pintar_botao()      # tira o "publicando…" na hora
+            self.recarregar()
+
         return self.casca.supervisor.rodar(
             [PY, "-u", "-X", "utf8"] + argumentos, cwd=cwd or RANDOM_BUILDS,
-            rotulo=rotulo, depois=self.recarregar, botao=botao)
+            rotulo=rotulo, depois=depois, botao=botao)
 
     def enviar(self) -> None:
         item = self.selecionado()
@@ -503,6 +515,7 @@ class Pagina:
             self._rb(["main.py", "publicar", item["id"]] + alvos
                      + ["--visibilidade", self.combo_visibilidade.get()],
                      f"publicar {item['id']}", botao=self.btn_enviar)
+        self.pintar_botao()          # "publicando…" enquanto o processo roda
 
     def no_arquivo(self, qual: str) -> None:
         item = self.selecionado()

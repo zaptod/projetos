@@ -260,10 +260,14 @@ class Reacoes(_Base):
     @staticmethod
     def _ler() -> list:
         from builds.assets import importer
+        # `list_reactions` exige a pasta de assets desde 53155b1; chamado sem
+        # ela estourava TypeError e a tabela ficava vazia. A pasta e a mesma
+        # que o `main.py` usa (`controller.ASSETS`).
         return [(r.get("id", ""), r.get("category", ""),
                  f"{r.get('duration', 0):.1f}s" if r.get("duration") else "",
                  r.get("source", ""))
-                for r in (importer.list_reactions() or [])]
+                for r in (importer.list_reactions(RANDOM_BUILDS / "assets")
+                          or [])]
 
     def _desenhar(self, linhas) -> None:
         if isinstance(linhas, dict):

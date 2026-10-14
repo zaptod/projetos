@@ -22,10 +22,14 @@ e o de conferir o canal, e ele roda no supervisor, fora da interface.
 from __future__ import annotations
 
 import tkinter as tk
+from tkinter import ttk
 
 from .. import estilo
 
 MARCAS = {True: "✓", False: "✕", None: "·"}
+# Quantas linhas de "O QUE OLHAR" aparecem antes de a caixa ganhar barra.
+# Com 4, os dados de 14/10 pediam 642 px numa tela de 639 (medido).
+ALERTAS_VISIVEIS = 3
 ETIQUETAS = {True: "provado", False: "sem_prova", None: "sem_laudo"}
 
 
@@ -39,9 +43,14 @@ class Pagina:
         self.o = casca.oficina
         self.t = casca.tema
         self._dia = ""
+        self._lido = ""
 
     # ------------------------------------------------------------ montar
     def construir(self, pai) -> None:
+        # ROLA quando nao cabe (a gaveta do console aberta come ~140 px): a
+        # tabela de hoje nao pode ser espremida ate sumir.
+        pai = self.o.rolavel(pai)
+        self.corpo = pai
         self.o.titulo(pai, "Confiabilidade — o que saiu, e o que dá para provar")
 
         self.faixa = self.o.rotulo(pai, "lendo…", papel="secao", peso="bold")
@@ -68,9 +77,23 @@ class Pagina:
         self.o.secao(pai, "O que olhar").pack(
             anchor="w", padx=estilo.ESPACO["secao"],
             pady=(estilo.ESPACO["normal"], estilo.ESPACO["pouco"]))
-        self.alertas = self.o.rotulo(pai, "—", cor="texto_fraco",
-                                     justify="left")
-        self.alertas.pack(anchor="w", padx=estilo.ESPACO["secao"])
+        # ALTURA MAXIMA COM ROLAGEM PROPRIA: com os dados de 14/10 vieram 14
+        # alertas, o rotulo crescia sem limite e espremia a tabela de hoje
+        # para 4 px (medido pelo conferente). Ate ALERTAS_VISIVEIS linhas a
+        # caixa cresce; daí em diante aparece a barra dela.
+        caixa = tk.Frame(pai, bg=self.t.fundo)
+        caixa.pack(fill="x", padx=estilo.ESPACO["secao"])
+        self.alertas = tk.Text(
+            caixa, height=1, wrap="word", bg=self.t.fundo,
+            fg=self.t.texto_fraco, font=self.t.letra("corpo"), relief="flat",
+            bd=0, highlightthickness=0, cursor="arrow", padx=0, pady=0)
+        self._barra_alertas = ttk.Scrollbar(caixa, orient="vertical",
+                                            command=self.alertas.yview)
+        self.alertas.configure(yscrollcommand=self._barra_alertas.set)
+        self.alertas.pack(side="left", fill="x", expand=True)
+        self.alertas.bind("<Configure>", self._conferir_barra_dos_alertas,
+                          add="+")
+        self._mostrar_alertas([])
 
         # OS BOTOES SAO EMPACOTADOS ANTES DA TABELA, presos ao rodape. A
         # pagina tem altura fixa (sem rolagem) e o `pack` corta primeiro o
@@ -148,12 +171,53 @@ class Pagina:
             return
         self.recarregar()
 
+    def _mostrar_alertas(self, alertas: list) -> None:
+        caixa = self.alertas
+        caixa.configure(state="normal")
+        caixa.delete("1.0", "end")
+        caixa.insert("1.0", "\n".join(f"•  {a}" for a in alertas) or "nada")
+        caixa.configure(state="disabled",
+                        fg=self.t.aviso if alertas else self.t.texto_fraco,
+                        height=max(1, min(len(alertas), ALERTAS_VISIVEIS)))
+        self._n_alertas = len(alertas)
+        self._barra_dos_alertas(len(alertas) > ALERTAS_VISIVEIS)
+        # Alerta comprido quebra em mais de uma linha: so depois de desenhar
+        # (largura de verdade) da para saber se sobrou texto escondido.
+        caixa.after_idle(self._conferir_barra_dos_alertas)
+
+    def _conferir_barra_dos_alertas(self, _e=None) -> None:
+        caixa = self.alertas
+        try:
+            if caixa.winfo_width() <= 1:
+                return
+            linhas = caixa.count("1.0", "end-1c", "displaylines")
+        except tk.TclError:
+            return
+        linhas = (linhas[0] if isinstance(linhas, tuple) else linhas) or 0
+        visiveis = int(caixa.cget("height"))
+        self._barra_dos_alertas(
+            getattr(self, "_n_alertas", 0) > ALERTAS_VISIVEIS
+            or linhas + 1 > visiveis)
+
+    def _barra_dos_alertas(self, mostrar: bool) -> None:
+        if mostrar and not self._barra_alertas.winfo_manager():
+            self._barra_alertas.pack(side="right", fill="y")
+        elif not mostrar and self._barra_alertas.winfo_manager():
+            self._barra_alertas.pack_forget()
+
     def _desenhar(self, dados) -> None:
         if not isinstance(dados, dict) or dados.get("erro"):
             erro = (dados.get("erro") if isinstance(dados, dict) else None) \
                 or "?"
             self.faixa.configure(text=f"não consegui ler: {erro}"[:160],
                                  fg=self.t.erro)
+            if self._dia:
+                # Cartoes e tabela continuam com a leitura anterior: a tela
+                # tem de DIZER que ela e velha, senao parece a de agora.
+                self.carimbo.configure(
+                    text=f"abaixo, a leitura ANTERIOR (dia {self._dia}, lida "
+                         f"às {self._lido or '?'}) — a de agora falhou",
+                    fg=self.t.erro)
             return
         self._dia = str(dados.get("dia") or "")
         alertas = dados.get("alertas") or []
@@ -174,9 +238,11 @@ class Pagina:
                 text=f"✓ {provado}/{prometido} com prova — nada fora do lugar",
                 fg=self.t.ok)
         quando = str(dados.get("quando") or "")[11:19]
+        self._lido = quando
         self.carimbo.configure(
             text=(f"dia {self._dia}  ·  lido às {quando}"
-                  if self._dia and quando else ""))
+                  if self._dia and quando else ""),
+            fg=self.t.texto_fraco)
 
         # As falhas ficam neste cartao, e nao no de SEM PROVA: falha nao e
         # publicacao — o video nao saiu, entao nao ha o que provar.
@@ -199,9 +265,7 @@ class Pagina:
                            for canal, conf in
                            (dados.get("conferencia") or {}).items()) or "—")
 
-        self.alertas.configure(
-            text="\n".join(f"•  {a}" for a in alertas) or "nada",
-            fg=self.t.aviso if alertas else self.t.texto_fraco)
+        self._mostrar_alertas(alertas)
 
         self.tabela.delete(*self.tabela.get_children())
         for n, pub in enumerate(dados.get("publicacoes") or []):
