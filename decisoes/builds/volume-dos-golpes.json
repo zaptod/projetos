@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:18.995105",
+  "depende_de": [],
+  "historico": [],
+  "id": "volume-dos-golpes",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ouvir-antes",
+      "pede_comentario": false,
+      "rotulo": "Quero ouvir um vídeo antes (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "pode-aplicar",
+      "pede_comentario": false,
+      "rotulo": "Pode aplicar direto"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O som dos golpes estoura porque o pan soma os dois lados (até 1,8x). Consertando, os golpes ficam mais baixos. Você quer ouvir antes de valer nos vídeos?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Volume dos golpes depois do conserto",
+  "vigente": null
+}

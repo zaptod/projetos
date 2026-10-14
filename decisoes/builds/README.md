@@ -53,3 +53,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ⏳ **Atordoamento e relógio de ataque** — Hoje o atordoamento pausa o relógio de ataque do lutador (muda o ritmo de toda luta). Mantém? `atordoamento-e-relogio`
 - ⏳ **Lava do Vulcão e do Inferno** — O catálogo promete dano de lava nas arenas Vulcão e Inferno, mas a lava não machuca. O que fazer? `lava-do-vulcao`
 - ⏳ **Som da vitória** — Na vitória hoje toca a abertura da arena, quase muda. Que som deve tocar? `som-da-vitoria`
+- ⏳ **Volume dos golpes depois do conserto** — O som dos golpes estoura porque o pan soma os dois lados (até 1,8x). Consertando, os golpes ficam mais baixos. Você quer ouvir antes de valer nos vídeos? `volume-dos-golpes`
