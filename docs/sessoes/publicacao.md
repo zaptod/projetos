@@ -67,6 +67,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **h16 p01 só no TikTok desde 16/09** — Subir pelo --so-youtube (07/10/2026) `h16-p01-so-no-tiktok`
 - ✅ **YouTube fica 3 horários atrás do TikTok** — YouTube alcança (recomendado) (07/10/2026) `youtube-atras-do-tiktok`
 - ✅ **Build que saiu só no TikTok: levar ao YouTube depois?** — Mesma regra das histórias (recomendado) (13/10/2026) `build-so-no-tiktok`
+- ⏳ **Visibilidade gravada no registro** — Ao publicar uma história, o registro anota sempre 'pública', mesmo se o vídeo subiu privado. O que gravar? `visibilidade-no-ledger`
 
 <!-- decisoes:fim -->
 

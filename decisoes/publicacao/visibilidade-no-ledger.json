@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:47.771880",
+  "depende_de": [],
+  "historico": [],
+  "id": "visibilidade-no-ledger",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "a-usada",
+      "pede_comentario": false,
+      "rotulo": "A visibilidade que o publicador de fato usou (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "a-do-config",
+      "pede_comentario": false,
+      "rotulo": "A do config"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Ao publicar uma história, o registro anota sempre 'pública', mesmo se o vídeo subiu privado. O que gravar?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Visibilidade gravada no registro",
+  "vigente": null
+}
