@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:25.527242",
+  "depende_de": [],
+  "historico": [],
+  "id": "estatisticas-do-torneio",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "preencher",
+      "pede_comentario": false,
+      "rotulo": "Preencher (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tirar",
+      "pede_comentario": false,
+      "rotulo": "Tirar do arquivo"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O arquivo salvo do torneio tem campos (KO mais rápido, luta mais longa, mais agressivo) que nunca são preenchidos. Preencher ou tirar?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Estatísticas do torneio",
+  "vigente": null
+}
