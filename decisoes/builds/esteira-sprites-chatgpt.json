@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Ordem do Adrian no chat, 14/10/2026: 'Agora que tudo já está mais limpo e organizado quero que você volte a utilizar o ChatGPT para os sprites.'",
+  "criado": "2026-10-14T11:08:09.431326",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "Ordem do Adrian no chat (14/10). Gerador sempre ChatGPT (sem Gemini cobrindo), folhas animadas incluídas, nada entra no jogo sem a aprovação dele na tela de conferência.",
+      "em": "2026-10-14T11:08:10",
+      "opcao": "ligar-chatgpt",
+      "origem": "cli"
+    }
+  ],
+  "id": "esteira-sprites-chatgpt",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ligar-chatgpt",
+      "pede_comentario": false,
+      "rotulo": "Ligar com o ChatGPT gerando tudo (peças e folhas), juiz ChatGPT, aprovação final do Adrian"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter-desligada",
+      "pede_comentario": false,
+      "rotulo": "Manter desligada"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Religar a esteira de sprites (desligada em 02/10) usando o ChatGPT?",
+  "projeto": "builds",
+  "situacao": "decidida",
+  "titulo": "Esteira de sprites de volta, com o ChatGPT",
+  "vigente": {
+    "comentario": "Ordem do Adrian no chat (14/10). Gerador sempre ChatGPT (sem Gemini cobrindo), folhas animadas incluídas, nada entra no jogo sem a aprovação dele na tela de conferência.",
+    "em": "2026-10-14T11:08:10",
+    "opcao": "ligar-chatgpt"
+  }
+}
