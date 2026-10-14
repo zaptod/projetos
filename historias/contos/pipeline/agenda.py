@@ -50,6 +50,17 @@ CONFIG = RAIZ / "config" / "agenda.json"
 # (`rodar_faixas`), que e o que o bot, o app e o painel enxergam como "rodada
 # em andamento"; cada faixa segura a sua (`trava_da_faixa`).
 TRAVA = "historias__auto"
+# O SERVICO DO DIA (metrica, tempos, conferencia) tem trava PROPRIA desde
+# 14/10/2026. Ele morava so dentro da rodada que pega `TRAVA`: em 13/10 uma
+# rodada presa desde 12/10 11:41 segurou a trava o dia inteiro, os quinze
+# disparos sairam com "ja tem uma rodada em andamento" e nem a metrica nem a
+# conferencia rodaram — sem uma linha no diario. Agora o disparo que acha a
+# rodada ocupada faz o servico pendente ele mesmo, sob esta trava.
+TRAVA_DO_SERVICO = "historias__servico_do_dia"
+# Fora da rodada o servico so comeca com a proxima postagem a pelo menos
+# isto: ele segura o perfil do TikTok (~8 min por canal) e levou 43 min em
+# 12/10 (07:02 -> 07:45). Comecar as 09:02 cruzaria o post das 09:37.
+MARGEM_DO_SERVICO_MIN = 60
 # Horas aceitas no config: hora cheia, 0 a 23.
 HORAS_VALIDAS = range(24)
 
@@ -1282,6 +1293,73 @@ def _sem_trabalho(plano: dict, config: dict, agora, log) -> dict:
             "fora da janela", "modo": plano.get("modo")}
 
 
+def _proxima_postagem(agora):
+    """O proximo horario da grade (datetime) a partir de `agora`."""
+    from builds import grade
+
+    for delta in (0, 1, 2):
+        dia = (agora + timedelta(days=delta)).date()
+        horarios = sorted(datetime(dia.year, dia.month, dia.day, h, m)
+                          for h, m in grade.GRADE)
+        for post in horarios:
+            if post >= agora:
+                return post
+    return None
+
+
+def _servico_fora_da_rodada(plano: dict, headless: bool, log) -> bool:
+    """O disparo achou a rodada OCUPADA: faz o servico do dia, se pendente.
+
+    O servico (metrica pela API e pelo Studio, conferencia pela API) nao usa
+    o navegador do LLM nem o das imagens, e no paralelo de 06/10 ja rodava
+    ao lado da outra faixa trabalhando. So espera a postagem: segura o
+    perfil do TikTok, e o post das :37 nao pode achar o perfil ocupado.
+    """
+    efetivo = plano.get("config") or {}
+    if not efetivo.get("servico_do_dia"):
+        return False
+    agora = _relogio()
+    post = _proxima_postagem(agora)
+    if post is not None and (post - agora) < timedelta(
+            minutes=MARGEM_DO_SERVICO_MIN):
+        log(f"[auto] a rodada em andamento segura a trava e o servico do dia "
+            f"esta pendente, mas a postagem das {post:%H:%M} esta perto; o "
+            "proximo disparo faz.")
+        return False
+    log("[auto] a rodada em andamento segura a trava e o servico do dia "
+        "(metrica e conferencia) nao rodou hoje: faco ele aqui.")
+    return _servico_do_dia(efetivo, headless, log)
+
+
+# O porque de cada saida, para o aviso de coleta parada dizer a causa.
+_POR_QUE_NAO_COLETOU = {
+    "ja rodando": "a rodada pesada segura a trava historias__auto desde "
+                  "antes do servico do dia",
+    "pausado": "a pipeline das historias esta PAUSADA (o servico do dia "
+               "mora nela)",
+    "agenda desligada": "a agenda das historias esta desligada (o servico "
+                        "do dia mora nela)",
+}
+
+
+def _vigiar_a_coleta(resultado: dict, log) -> None:
+    """Disparo que SAI sem trabalhar pergunta se a metrica do dia existe.
+
+    Ausencia vira evento: a coleta que nao roda nao escreve nada, entao quem
+    passa aqui de hora em hora (venha trabalhar ou nao) e quem acusa. Uma
+    linha de erro por dia esperado (`metricas.avisar_coleta_atrasada`).
+    """
+    try:
+        from builds.publicar import metricas
+        metricas.avisar_coleta_atrasada(
+            _relogio(), log=log,
+            contexto=_POR_QUE_NAO_COLETOU.get(
+                str((resultado or {}).get("motivo") or ""), ""))
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[auto] nao consegui conferir a coleta de metricas: "
+            f"{type(exc).__name__}: {exc}")
+
+
 def _lancar_faixa(gerador: str, headless: bool = False):
     """Abre `main.py auto --gerador X` num processo proprio (sem janela).
 
@@ -1329,16 +1407,21 @@ def rodar_faixas(*, config: dict | None = None, headless: bool = False,
     log = _diario(destino, tela)
     log(f"[auto] disparo das {agora:%H:%M} (duas historias em paralelo: "
         f"{' e '.join(lista)})")
+
+    def _sai(resultado: dict) -> dict:
+        _vigiar_a_coleta(resultado, log)
+        return resultado
+
     if not config.get("ativo", True):
         log("[auto] a agenda esta desligada (`ativo: false`). Nada a fazer.")
-        return {"feito": "nada", "motivo": "agenda desligada"}
+        return _sai({"feito": "nada", "motivo": "agenda desligada"})
     if controle.pausado_para():
         log("[auto] a pipeline esta PAUSADA (pagina Vila). Saindo sem criar "
             "nada; o proximo disparo tenta de novo.")
-        return {"feito": "nada", "motivo": "pausado"}
+        return _sai({"feito": "nada", "motivo": "pausado"})
     plano = planejar(config, agora)
     if not plano.get("fazer"):
-        return _sem_trabalho(plano, config, agora, log)
+        return _sai(_sem_trabalho(plano, config, agora, log))
     if plano.get("modo") != "livre":
         log(f"[auto] modo {plano['modo']}: {plano.get('por_que')}.")
 
@@ -1349,7 +1432,9 @@ def rodar_faixas(*, config: dict | None = None, headless: bool = False,
     with travas.trava(TRAVA, esperar=0.0) as minha:
         if not minha:
             log("[auto] ja tem uma rodada em andamento. Saindo.")
-            return {"feito": "nada", "motivo": "ja rodando"}
+            servico = _servico_fora_da_rodada(plano, headless, log)
+            return _sai({"feito": "nada", "motivo": "ja rodando",
+                         "servico_do_dia": servico})
         vivos, fim, codigos, lancadas, ocupadas = {}, {}, {}, {}, set()
         while True:
             for gerador in lista:
@@ -1432,14 +1517,20 @@ def rodar(*, config: dict | None = None, headless: bool = False,
     log(f"[auto] disparo das {agora:%H:%M}"
         + (f" (faixa do {gerador})" if gerador else ""))
 
+    def _sai(resultado: dict) -> dict:
+        # A faixa nao vigia: quem vigia e o supervisor (`rodar_faixas`).
+        if not gerador:
+            _vigiar_a_coleta(resultado, log)
+        return resultado
+
     if not config.get("ativo", True):
         log("[auto] a agenda esta desligada (`ativo: false`). Nada a fazer.")
-        return {"feito": "nada", "motivo": "agenda desligada"}
+        return _sai({"feito": "nada", "motivo": "agenda desligada"})
 
     if controle.pausado_para():
         log("[auto] a pipeline esta PAUSADA (pagina Vila). Saindo sem criar "
             "nada; o proximo disparo tenta de novo.")
-        return {"feito": "nada", "motivo": "pausado"}
+        return _sai({"feito": "nada", "motivo": "pausado"})
 
     if gerador:
         # O GERADOR DA FAIXA PRIMEIRO: fora de cota, a faixa nao escreve um
@@ -1454,7 +1545,7 @@ def rodar(*, config: dict | None = None, headless: bool = False,
     # perdida que roda quando o PC volta de manha tambem cai aqui.
     plano = planejar(config, agora)
     if not plano.get("fazer"):
-        return _sem_trabalho(plano, config, agora, log)
+        return _sai(_sem_trabalho(plano, config, agora, log))
     if plano.get("modo") != "livre":
         log(f"[auto] modo {plano['modo']}: {plano.get('por_que')}.")
 
@@ -1466,7 +1557,11 @@ def rodar(*, config: dict | None = None, headless: bool = False,
                 "navegador e pela mesma conta do PicassoIA."
                 if not gerador else
                 f"[auto] a faixa do {gerador} ja esta rodando. Saindo.")
-            return {"feito": "nada", "motivo": "ja rodando"}
+            if gerador:
+                return {"feito": "nada", "motivo": "ja rodando"}
+            servico = _servico_fora_da_rodada(plano, headless, log)
+            return _sai({"feito": "nada", "motivo": "ja rodando",
+                         "servico_do_dia": servico})
         # Daqui para baixo mora o trabalho de verdade, e e onde o `print` das
         # bibliotecas de navegador aparece. Ele vai para o diario: num console
         # do Agendador ele TRAVA o processo, e no diario ele vira o unico
@@ -1626,7 +1721,27 @@ def _kwargs_da_conferencia(funcao, log) -> dict:
     return kwargs
 
 
-def _servico_do_dia(config: dict, headless: bool, log) -> None:
+def _servico_do_dia(config: dict, headless: bool, log) -> bool:
+    """O servico do dia, sob `TRAVA_DO_SERVICO`. `True` = rodou agora.
+
+    Quem chama: a rodada (`_trabalhar`) ou o disparo que achou a rodada
+    ocupada (`_servico_fora_da_rodada`). A trava propria impede os dois de
+    coletar ao mesmo tempo; a pendencia e conferida DE NOVO dentro dela,
+    porque o outro pode ter acabado enquanto este esperava a vez.
+    """
+    from builds import travas
+
+    with travas.trava(TRAVA_DO_SERVICO, esperar=0.0) as minha:
+        if not minha:
+            log("[auto] o servico do dia ja esta rodando em outro processo.")
+            return False
+        if not servico_pendente(_relogio()):
+            return False
+        _servico_do_dia_sem_trava(config, headless, log)
+        return True
+
+
+def _servico_do_dia_sem_trava(config: dict, headless: bool, log) -> None:
     """O servico do 1o disparo do dia. Nunca derruba a rodada: e servico.
 
     Era da madrugada (`_servico_da_noite`, 13 a 29/09/2026); com o pesado de

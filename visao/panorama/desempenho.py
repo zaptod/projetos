@@ -14,8 +14,6 @@ CLI despejado num log.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 
 def _publicados_de(modulo) -> list:
     try:
@@ -115,16 +113,27 @@ def publicado() -> dict:
     }
 
 
-def _quando_atualizou() -> str:
+def _quando_atualizou(marca=...) -> str:
+    """A coleta boa MAIS VELHA entre as partes, ou "" se alguma nunca teve.
+
+    Era o mtime do `*.json` mais novo de `_metricas` — e a marca do dia mora
+    ali e e regravada ate quando a coleta falha: a tela dizia "atualizado
+    hoje" com a coleta morta (auditoria 11/10/2026, SCR-P7). Agora sai de
+    `ultimo_ok` de cada parte; a mais velha manda, porque e a que esta
+    sendo apresentada como nova.
+    """
     try:
         from builds.publicar import metricas
-        pasta = Path(metricas.PASTA)
-        arquivos = sorted(pasta.glob("*.json"),
-                          key=lambda p: p.stat().st_mtime, reverse=True)
-        if not arquivos:
-            return ""
-        from datetime import datetime
-        return datetime.fromtimestamp(
-            arquivos[0].stat().st_mtime).isoformat(timespec="minutes")
+        marca = metricas.ler_marca() if marca is ... else marca
+        fichas = metricas.partes_da_marca(marca)
+        datas = []
+        for canal, plataforma in metricas.partes():
+            ficha = fichas.get(metricas.nome_da_parte(canal, plataforma))
+            ultimo = (ficha or {}).get("ultimo_ok") if isinstance(
+                ficha, dict) else None
+            if not ultimo:
+                return ""
+            datas.append(str(ultimo))
+        return min(datas)[:16] if datas else ""
     except Exception:
         return ""

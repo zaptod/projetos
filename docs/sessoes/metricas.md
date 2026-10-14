@@ -59,8 +59,9 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 <!-- decisoes:fim -->
 
 Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
-de novo em 28/09 (madrugada e noite) e em 05/10 (a conferência no serviço do
-dia, §3) está com a data e a hora. Onde um número da fotografia
+de novo em 28/09 (madrugada e noite), em 05/10 (a conferência no serviço do
+dia, §3) e em 14/10 (a coleta que nem rodou em 13/10, §3) está com a data e
+a hora. Onde um número da fotografia
 não reproduziu, está dito. O que eu não medi está marcado como **não medi**,
 nunca preenchido por suposição.
 
@@ -77,6 +78,8 @@ nunca preenchido por suposição.
 | o que saiu, quando, visibilidade | os dois `publicados.jsonl` | MEDIDO |
 | ledger × canal | `*/outputs/_conferencia/<dia>.json` | MEDIDO |
 | a coleta da noite deu certo? | `random_builds/outputs/_metricas/_atualizado_em.json` (marca do dia, por parte) | MEDIDO |
+| o serviço do dia (métrica, tempos, conferência) rodou hoje? | `historias/outputs/_servico_do_dia.json` (`data`) | MEDIDO |
+| a coleta de hoje nem rodou? | linha de erro `metricas` com `[coleta parada AAAA-MM-DD]` no diário | MEDIDO (desde 14/10) |
 | noite sem conferência, canal parado, `youtube_id` | `builds.publicar.sinais` (a conta), gravado na ficha da conferência | MEDIDO |
 | "dias de estoque" | `ferramentas/postar.py: estoque()` | **SUPOSTO** (divisão; ver §5) |
 
@@ -418,6 +421,71 @@ A marca conta **vídeo, não linha** (`dd9b122`): `videos` são ids distintos
 (um arquivo por id) e `linhas` as linhas do ledger. Antes dizia 126 com 121
 arquivos em disco, porque há linhas repetidas para o mesmo id.
 
+### A coleta que nem rodou: 13/10 (medido em 14/10, só leitura)
+
+O que o disco dizia em 14/10 ~03:30: arquivo mais novo de `_metricas` às
+**12/10 07:45:21**, marca `dia-2026-10-12` completa (builds 252, builds_tiktok
+242, historias 272, historias_tiktok 276); `historias/outputs/_servico_do_dia.json`
+com `"data": "2026-10-12"`; **nenhuma** linha das fábricas `metricas` ou
+`conferencia` no `atividade.jsonl` em 13/10. Não era falha da coleta: ela
+**não foi chamada**.
+
+A causa, pelo `historias/outputs/_logs/auto_20261012.txt` e `auto_20261013.txt`:
+
+- a rodada das 07:02 de 12/10 (pid 4332) fez o serviço (07:05–07:45),
+  emendou passos, começou a `historia_00074` às 11:41 e **ficou presa** no
+  Gemini (última linha dela: 13:09 de 12/10, `escrevendo... 814s (0 chars)`,
+  e `socket.send() raised exception` às 13:13). Segurou `historias__auto`
+  até o PC cair: evento 6008 (desligamento inesperado) às 22:18 de 13/10. Às
+  02:42 de 14/10 a rodada nova registrou "a passada de imagens ... (pid 4332)
+  morreu sem registrar o fim";
+- `Historias_auto_07` de 13/10 terminou com **0x800710E0** (o Agendador recusou
+  iniciar; não há linha "disparo das 07:02" no log);
+- de 08:02 a 19:02, os **12 disparos** escreveram "servico do dia pendente" e
+  logo depois "ja tem uma rodada em andamento. Saindo"; 22:24 e 23:02 saíram
+  "fora da janela".
+
+O serviço do dia morava só dentro da rodada que pega a trava pesada. E o
+único alarme de "dia sem conferência" é escrito pela própria conferência,
+que estava no mesmo serviço: ausência não escrevia linha.
+
+O que mudou (14/10):
+
+- **`TRAVA_DO_SERVICO`** (`historias__servico_do_dia`): o serviço roda sob
+  trava própria e confere a pendência dentro dela. O disparo que acha a
+  rodada ocupada faz o serviço pendente ele mesmo
+  (`agenda._servico_fora_da_rodada`), desde que a próxima postagem esteja a
+  pelo menos **60 min** (`MARGEM_DO_SERVICO_MIN`; o serviço levou 43 min em
+  12/10 e segura o perfil do TikTok). Em 13/10 teria rodado às 08:02.
+- **Vigia de todo disparo que sai sem trabalhar** (trava ocupada, fora da
+  janela, pausa, agenda desligada): `metricas.avisar_coleta_atrasada`. Parte
+  atrasada = nem tentou nem teve coleta boa no dia esperado
+  (`sinais.noite_esperada`, o mesmo relógio da conferência: 10:02). Vira
+  **uma** linha de erro `metricas` por dia esperado, com a causa
+  ("a rodada pesada segura a trava historias__auto ..."); a memória é o
+  próprio diário (`[coleta parada AAAA-MM-DD]`). Diário que não abre = avisa
+  de novo (repetir é o erro barato). Vigia que levanta = linha de erro.
+  Parte que tentou e falhou não entra: ela já avisou pelo caminho do erro.
+- **Zero não é coleta boa.** Parte que volta `vazio` depois de ter medido
+  (`videos_no_ultimo_ok > 0`) vira `erro` (`ColetaVazia`), não fecha o dia e
+  avisa; `vazio` nunca renova `ultimo_ok`. Antes, ledger ilegível dava
+  "metricas do dia atualizadas" e o relatório das 22:30 ficava sem alerta
+  (medido no teste com o código velho: 0 alertas).
+- **`desempenho.atualizado_em`** sai do `ultimo_ok` mais velho entre as
+  partes ("" se alguma nunca coletou), e não do mtime da marca, que é
+  regravada até com erro (auditoria 11/10, SCR-P7).
+
+Testes: `random_builds/tests/test_coleta_parada_regressions.py`,
+`historias/tests/test_servico_fora_da_rodada_regressions.py` (o 13/10:
+`test_o_13_10_coleta_mesmo_com_a_rodada_presa` falha no código velho com
+`['dia-2026-10-13'] != []`) e
+`visao/tests/test_metrica_zero_no_relatorio_regressions.py`.
+
+**Não resolvido aqui:** por que a rodada ficou presa 31 h sem nenhum vigia
+derrubá-la (é das histórias); o serviço marcado como feito com etapa que
+falhou (auditoria HIS-8: a métrica que falha às 07:05 não é repetida no
+mesmo dia — avisa, mas só tenta de novo amanhã).
+
 ### O TikTok: a lista inteira (28/09)
 
 `tiktok_metricas.coletar` parava em 50 ou 60 posts toda noite (17 a 28/09):
@@ -505,6 +573,12 @@ a versão nova repete na rodada seguinte.
   falta" aparecia como `✓ 5/5`. Agora o resumo leva a grade, o alerta diz os
   horários que faltaram, e a linha do cartão é `builds: ✕ grade 5/10 · ledger
   ✓ 5/5` — o ✓ exige as duas coisas.
+- **Coleta pendurada em quem pega a trava.** Em 13/10 a métrica e a
+  conferência não rodaram porque uma rodada de histórias presa desde 12/10
+  segurava `historias__auto`; nada falhou, então nada foi escrito. Medidor
+  que só fala quando roda é surdo para o dia em que não roda. Conserto: o
+  serviço com trava própria e o vigia de todo disparo (§3, "A coleta que nem
+  rodou").
 - **Marca gravada com a coleta morta.** Onze noites (17 a 28/09) com o YouTube
   falhando e a marca dizendo "feito". Marca que se grava sem olhar o
   resultado é medidor verde. Conserto: marca por parte (§3).
@@ -600,5 +674,6 @@ ainda mede?
 | `*/outputs/_metricas*/` | `metricas.atualizar` e `tiktok_metricas.coletar`, chamados pela grade e pela madrugada | uma passada por dia, em um lugar só; conferir não é coletar |
 | `*/outputs/_conferencia/<dia>.json` | `conferencia.salvar`, na rodada da noite (e o botão do painel) | a leitura do dia (`ultima`) é o que o painel e o bot mostram; `avisos` e `rodadas` são a memória da noite |
 | `_metricas/_atualizado_em.json` (marca do dia) | `metricas.atualizar_uma_vez_por_dia` | a marca decide o que a próxima rodada tenta; o panorama só a lê |
+| `historias/outputs/_servico_do_dia.json` e a trava `historias__servico_do_dia` | `agenda._servico_do_dia` (a rodada ou o disparo que acha a rodada ocupada) | é das histórias; a métrica só depende de ele rodar, e o vigia (`avisar_coleta_atrasada`) acusa quando não roda |
 | `rascunhos_aceitos.json` | só uma pessoa, por `--aceitar-rascunhos` | é decisão, não medida |
 | grade e horários | `builds.grade` (fonte única) | três cópias da grade já fizeram relatório dar meta batida por engano |

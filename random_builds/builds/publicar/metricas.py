@@ -991,6 +991,18 @@ def atualizar_uma_vez_por_dia(log=print, agora=None,
         anterior = fichas.get(nome) or {}
         ficha, _videos = coletar_parte(canal, plataforma, log=log)
         ficha["chave"] = hoje
+        antes = int(anterior.get("videos_no_ultimo_ok") or 0)
+        if ficha["estado"] == "vazio" and antes > 0:
+            # ZERO DEPOIS DE TER MEDIDO NAO E "NADA PARA MEDIR". O ledger nao
+            # perde publicacao: 0 linha com id onde ontem havia 252 e ledger
+            # ilegivel, caminho errado (rodar de uma worktree aponta para
+            # outro `outputs/`) ou Studio em branco. Como `vazio`, a parte
+            # contava como feita e a noite fechava "atualizada" com nada
+            # coletado — o medidor verde de 27/09 de novo.
+            ficha["estado"] = "erro"
+            ficha["erro"] = (f"ColetaVazia: 0 videos, e a ultima coleta boa "
+                             f"mediu {antes} (ledger ilegivel ou caminho "
+                             "errado?)")
         if ficha["estado"] == "erro":
             mesma_noite = (anterior.get("chave") == hoje
                            and anterior.get("estado") == "erro")
@@ -1009,9 +1021,15 @@ def atualizar_uma_vez_por_dia(log=print, agora=None,
                     " — a noite fica pendente e a proxima rodada tenta de novo",
                     canal=canal)
             ficha["avisado"] = tipo
-        else:
+        elif ficha["estado"] == "ok":
             ficha["ultimo_ok"] = ficha["quando"]
             ficha["videos_no_ultimo_ok"] = ficha["videos"]
+        else:
+            # `vazio` nao e coleta boa: nao mediu nada. Renovar `ultimo_ok`
+            # aqui fazia o painel dizer "metrica de hoje" sem um numero novo.
+            for campo in ("ultimo_ok", "videos_no_ultimo_ok"):
+                if anterior.get(campo):
+                    ficha[campo] = anterior[campo]
         fichas[nome] = ficha
         # GRAVADA A CADA PARTE: se a rodada for derrubada no meio, o que ja
         # deu certo nao e coletado de novo.
@@ -1104,6 +1122,125 @@ def ler_marca() -> dict | None:
     except (OSError, ValueError):
         return None
     return dados if isinstance(dados, dict) else None
+
+
+# ------------------------------------------------- a coleta que NEM RODOU
+# 13/10/2026: nenhum arquivo novo em `_metricas` e nenhuma linha da fabrica
+# `metricas` no diario. A coleta mora no servico do dia das historias, que so
+# roda na rodada que pega a trava `historias__auto`; uma rodada presa desde
+# 12/10 11:41 (Gemini sem resposta) segurou a trava ate o PC cair, e os
+# quinze disparos do dia sairam com "ja tem uma rodada em andamento". A
+# coleta que FALHA escreve erro (acima); a que nao roda nao escreve nada —
+# ausencia nao era evento. Agora e: quem dispara de hora em hora pergunta
+# aqui, e a resposta vira UMA linha de erro por dia esperado.
+MARCA_DO_ATRASO = "[coleta parada"
+
+
+def _dia_de(texto) -> date | None:
+    try:
+        return date.fromisoformat(str(texto or "")[:10])
+    except ValueError:
+        return None
+
+
+def coleta_atrasada(marca, agora: datetime | None = None, *,
+                    limite: str | None = None) -> dict | None:
+    """`None` = em dia. Senao `{esperada, partes, ultimo_ok, ilegivel}`. Pura.
+
+    `esperada` e o ultimo dia cuja coleta ja devia ter acontecido: o mesmo
+    relogio da conferencia (`sinais.noite_esperada`, 1o disparo da janela +
+    3 h = 10:02). Uma parte esta ATRASADA quando nem tentou nesse dia
+    (`quando`) nem tem coleta boa dele (`ultimo_ok`). A parte que tentou e
+    falhou ja avisou pelo caminho do erro; aqui e so a que sumiu.
+
+    Caso zero: marca `{}` (nunca coletou) = as quatro atrasadas; `None`
+    (nao li a marca) = `ilegivel`, que tambem acende.
+    """
+    from . import sinais
+
+    agora = agora or datetime.now()
+    esperada = sinais.noite_esperada(agora, limite=limite)
+    if marca is None:
+        return {"esperada": esperada, "partes": [], "ultimo_ok": None,
+                "ilegivel": True}
+    fichas = partes_da_marca(marca)
+    atrasadas, boas = [], []
+    for canal, plataforma in partes():
+        nome = nome_da_parte(canal, plataforma)
+        ficha = fichas.get(nome) if isinstance(fichas.get(nome), dict) else {}
+        ultimo = _dia_de(ficha.get("ultimo_ok"))
+        tentou = _dia_de(ficha.get("quando"))
+        if ficha.get("ultimo_ok"):
+            boas.append(str(ficha["ultimo_ok"]))
+        if (ultimo is None or ultimo < esperada) and (
+                tentou is None or tentou < esperada):
+            atrasadas.append(nome)
+    if not atrasadas:
+        return None
+    return {"esperada": esperada, "partes": atrasadas,
+            "ultimo_ok": max(boas) if boas else None, "ilegivel": False}
+
+
+def texto_do_atraso(atraso: dict, contexto: str = "") -> str:
+    esperada = atraso["esperada"]
+    marca = f"{MARCA_DO_ATRASO} {esperada.isoformat()}]"
+    if atraso.get("ilegivel"):
+        corpo = ("nao consegui ler a marca da coleta (_atualizado_em.json); "
+                 f"nao sei se as metricas de {esperada:%d/%m} foram coletadas")
+    else:
+        ultimo = atraso.get("ultimo_ok")
+        desde = (f"ultima coleta boa {ultimo[8:10]}/{ultimo[5:7]} "
+                 f"{ultimo[11:16]}" if ultimo else "nenhuma coleta boa "
+                 "registrada")
+        corpo = (f"coleta de metricas de {esperada:%d/%m} NAO RODOU: "
+                 f"{', '.join(atraso['partes'])} sem tentativa nesse dia "
+                 f"({desde})")
+    return f"{marca} {corpo}" + (f" — {contexto}" if contexto else "")
+
+
+def avisar_coleta_atrasada(agora: datetime | None = None, *,
+                           contexto: str = "", log=print, marca=...,
+                           eventos=...) -> str | None:
+    """Coleta atrasada vira UMA linha de erro (fabrica `metricas`) por dia.
+
+    Devolve o texto avisado, ou `None` (em dia, ou ja avisado). Quem chama e
+    o disparo de hora em hora das historias, venha ele trabalhar ou nao; por
+    isso nunca levanta e so le o diario quando ha atraso.
+
+    UMA VEZ: o diario e a memoria (a linha leva `[coleta parada AAAA-MM-DD]`).
+    Diario que nao abre conta como "nao avisei" — repetir o alarme e o erro
+    barato; calar e o caro.
+    """
+    from .. import atividade
+
+    try:
+        marca = ler_marca() if marca is ... else marca
+        atraso = coleta_atrasada(marca, agora)
+        if atraso is None:
+            return None
+        chave = f"{MARCA_DO_ATRASO} {atraso['esperada'].isoformat()}]"
+        if eventos is ...:
+            from . import sinais
+            eventos = sinais.ler_diario()
+        for evento in eventos or ():
+            if (isinstance(evento, dict)
+                    and evento.get("fabrica") == "metricas"
+                    and chave in str(evento.get("detalhe") or "")):
+                return None
+        texto = texto_do_atraso(atraso, contexto)
+        canal = (atraso["partes"][0].split("_")[0] if atraso["partes"]
+                 else "builds")
+        atividade.registrar("metricas", atividade.ERRO, texto, canal=canal)
+        log(f"[metricas] {texto}")
+        return texto
+    except Exception as exc:                                  # noqa: BLE001
+        # O VIGIA QUE QUEBRA NAO PODE VIRAR SILENCIO: seria o "em dia" de
+        # graca. Vira erro no diario (o apurador investiga codigo quebrado).
+        texto = (f"nao consegui conferir se a coleta de metricas rodou: "
+                 f"{type(exc).__name__}: {exc}")
+        log(f"[metricas] {texto}")
+        atividade.registrar("metricas", atividade.ERRO, texto)
+        return None
 
 
 def atualizar_tudo(log=print) -> dict:
