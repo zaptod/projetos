@@ -152,7 +152,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Moderação da live** — Ligar a um comando de moderador (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `banimento-na-live`
 - ✅ **Esteira de sprites de volta, com o ChatGPT** — Ligar com o ChatGPT gerando tudo (peças e folhas), juiz ChatGPT, aprovação final do Adrian (14/10/2026) · “Ordem do Adrian no chat (14/10). Gerador sempre ChatGPT (sem Gemini cobrindo), folhas animadas incluídas, nada entra no jogo sem a aprovação dele na tela de conferência.” `esteira-sprites-chatgpt`
 - ✅ **Sprite-base aprovado vai para a biblioteca** — Fica na biblioteca (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).” `base-aprovado-na-biblioteca`
-- ⏳ **Sprite-base rejeitado depois das folhas** — Se um sprite-base é descartado ou refeito depois que folhas saíram dele, o que acontece com essas folhas? `base-rejeitado-depois`
+- ✅ **Sprite-base rejeitado depois das folhas** — Folhas não aprovadas voltam a refazer com o base novo (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).” `base-rejeitado-depois`
 
 <!-- decisoes:fim -->
 
