@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:55:50.455604",
+  "depende_de": [],
+  "historico": [],
+  "id": "empate-persistente",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Ganha quem tem mais vida",
+      "id": "desempate-hp",
+      "pede_comentario": false,
+      "rotulo": "Desempatar pelo HP que sobrou (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "mostrar-empate",
+      "pede_comentario": false,
+      "rotulo": "Mostrar 'empate' no vídeo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "descartar",
+      "pede_comentario": false,
+      "rotulo": "Descartar a luta e sortear outra"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Hoje, quando a luta empata, o código inventa vitória do primeiro lutador. O que fazer no empate?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Luta que termina empatada",
+  "vigente": null
+}
