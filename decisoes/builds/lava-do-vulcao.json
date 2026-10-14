@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:45:40",
+      "evento": "2026-10-14T08:45:34",
+      "linha": 169,
+      "nota": "resposta sem pedido de origem: builds/lava-do-vulcao = Ligar o dano da lava (recomendado)",
+      "opcao": "ligar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:10.572437",
   "depende_de": [],
