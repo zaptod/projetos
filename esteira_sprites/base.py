@@ -32,6 +32,14 @@ De onde vem o desenho do base de uma folha (`referencia`), nesta ordem:
 3. o base que o JUIZ aprovou (`juiz_aprovou`): ficha em `a_conferir` com a
    ultima tentativa do fluxo novo, veredito sem defeito grave e portao limpo.
    Nao espera o Adrian: ele aprova o base e as folhas juntos na conferencia.
+
+Base rejeitado DEPOIS das folhas (decisao builds/base-rejeitado-depois,
+14/10/2026 = "refazer"): quando o Adrian manda refazer ou descarta um base de
+onde folhas ja sairam, as folhas que ele ainda nao aprovou (em voo, no juiz,
+`a_conferir`, `refazer`) voltam a `refazer` e esperam o base NOVO; as que ele
+aprovou ficam (`rejeitar`). A folha guarda a versao do base que usou
+(`versao` no `base` da tentativa = quantas tentativas a ficha do base tinha);
+a ficha do base guarda `versao_rejeitada`, e nada ate ela serve mais.
 """
 from __future__ import annotations
 
@@ -39,6 +47,7 @@ import json
 import re
 from pathlib import Path, PurePosixPath
 
+from ias import correio
 from PIL import Image
 
 # Marca das tentativas pedidas no fluxo novo (mestra anexada; folha com base).
@@ -237,10 +246,16 @@ def referencia(folha: dict, itens: list[dict] | None = None) -> dict | None:
             return {"base_id": bid, "origem": "atelie", "fonte": str(achada), "recorte": "atelie"}
     # 2. o que o Adrian aprovou: o base, ou uma folha irma (o primeiro quadro)
     dados_base = ficha.ler(bid)
-    if dados_base and dados_base.get("estado") in APROVADO_PELO_ADRIAN and _limpo(dados_base):
+    novo = versao(dados_base) > versao_rejeitada(dados_base)
+    if (dados_base and dados_base.get("estado") in APROVADO_PELO_ADRIAN and _limpo(dados_base)
+            and novo):
         return {"base_id": bid, "origem": "aprovado_pelo_adrian", "fonte": str(_limpo(dados_base)),
-                "recorte": "inteiro"}
-    for irma in irmas:
+                "recorte": "inteiro", "versao": versao(dados_base)}
+    # o Adrian rejeitou o base depois das folhas: so o base NOVO serve. A folha
+    # irma aprovada e a arte da biblioteca sao o desenho velho (decisao
+    # builds/base-rejeitado-depois)
+    rejeitado = versao_rejeitada(dados_base) > 0
+    for irma in [] if rejeitado else irmas:
         d = ficha.ler(irma["id"])
         if d and d.get("estado") in APROVADO_PELO_ADRIAN and _limpo(d):
             return {"base_id": bid, "origem": "folha_aprovada_pelo_adrian", "de": irma["id"],
@@ -248,13 +263,108 @@ def referencia(folha: dict, itens: list[dict] | None = None) -> dict | None:
     # a peca do objeto ja esta na biblioteca sem ficha (arte que ele pos la): o
     # `lote` nunca a pede (`ja_feito`), entao sem isto as folhas dela esperariam
     # para sempre
-    na_biblioteca = _na_biblioteca(base_item)
+    na_biblioteca = None if rejeitado else _na_biblioteca(base_item)
     if na_biblioteca:
         return {"base_id": bid, "origem": "biblioteca", "fonte": str(na_biblioteca), "recorte": "inteiro"}
     # 3. o base que o juiz aprovou
-    if juiz_aprovou(dados_base):
-        return {"base_id": bid, "origem": "juiz", "fonte": str(_limpo(dados_base)), "recorte": "inteiro"}
+    if juiz_aprovou(dados_base) and novo:
+        return {"base_id": bid, "origem": "juiz", "fonte": str(_limpo(dados_base)), "recorte": "inteiro",
+                "versao": versao(dados_base)}
     return None
+
+
+# ------------------------------------------------------------- base rejeitado depois
+# Decisao builds/base-rejeitado-depois (14/10/2026) = "refazer".
+ORIGENS_DA_FICHA = ("juiz", "aprovado_pelo_adrian")      # o desenho veio da ficha do base
+FOLHA_EM_ABERTO = ("pedido", "gerado", "limpo", "medido", "julgado", "a_conferir", "refazer")
+MOTIVO_BASE_NOVO = ("o sprite-base do personagem foi refeito: desenhe EXATAMENTE o personagem "
+                    "do sprite-base NOVO anexado (imagem 2)")
+ERRO_BASE_VELHO = "o Adrian rejeitou o sprite-base desta folha: ela espera o base novo"
+
+
+def versao(dados: dict | None) -> int:
+    """A versao do base = quantas tentativas a ficha dele tem (a ultima e a que vale)."""
+    return len((dados or {}).get("tentativas") or [])
+
+
+def versao_rejeitada(dados: dict | None) -> int:
+    """Ate que versao o Adrian rejeitou o base (0 = nunca)."""
+    return int((dados or {}).get("versao_rejeitada") or 0)
+
+
+def velho(sprite_base: dict | None) -> bool:
+    """A folha usou uma versao do base que o Adrian rejeitou depois.
+
+    So conta o desenho que veio da ficha do base (juiz ou Adrian); o Atelie,
+    a folha irma e a biblioteca nao sao o base rejeitado. Sem `versao` (pedida
+    antes de 14/10 tarde) = uma das velhas."""
+    if not sprite_base or sprite_base.get("origem") not in ORIGENS_DA_FICHA:
+        return False
+    from . import ficha
+    limite = versao_rejeitada(ficha.ler(str(sprite_base.get("base_id") or "")))
+    return limite > 0 and int(sprite_base.get("versao") or 0) <= limite
+
+
+def cancelar_pendentes(tentativa: dict, erro: str) -> bool:
+    """Cancela no correio o que a tentativa ainda nao recebeu (gerar ou julgar). Idempotente."""
+    from .pedir import GERADOR
+    parou = False
+    for caixa, mid in ((tentativa.get("caixa") or GERADOR, tentativa.get("correio_id")),
+                       (tentativa.get("juiz_caixa"), tentativa.get("juiz_id"))):
+        if not caixa or not mid:
+            continue
+        mensagem = correio.uma(caixa, mid) or {}
+        if mensagem.get("situacao") == "pendente":
+            correio.atualizar(caixa, mid, situacao="falhou", categoria="interrompida", erro=erro)
+            parou = True
+    return parou
+
+
+def rejeitar(dados_base: dict, acao: str, itens: list[dict] | None = None) -> list[str]:
+    """O Adrian mandou refazer (ou descartou) o base: grava a versao rejeitada e
+    manda a `refazer` as folhas que sairam dela e que ele ainda nao aprovou.
+
+    A folha volta a `refazer` sem gastar tentativa (`contar_desde` = todas: o
+    teto recomeca com o base novo) e com `espera_base`; o `pedir` dela da
+    `BaseFaltando` ate o base novo passar no juiz. O que estava pendente no
+    correio (gerar, julgar) e cancelado. Devolve os ids das folhas que voltaram."""
+    from . import config, ficha
+    bid = str(dados_base.get("item_id") or "")
+    itens = itens if itens is not None else config.itens()
+    folhas = mapa(itens).get(bid, [])
+    if not folhas or not dados_base.get("tentativas"):
+        return []                          # peca que nao e base, ou base nunca pedido
+    v = max(versao(dados_base), versao_rejeitada(dados_base))
+    dados_base["versao_rejeitada"] = v
+    voltaram = []
+    for fid in folhas:
+        d = ficha.ler(fid)
+        if not d or d.get("estado") not in FOLHA_EM_ABERTO or not d.get("tentativas"):
+            continue                       # sem ficha, aprovada pelo Adrian ou descartada: fica
+        t = d["tentativas"][-1]
+        sb = t.get("base") or {}
+        if sb.get("base_id") != bid or sb.get("origem") not in ORIGENS_DA_FICHA:
+            continue                       # nao saiu deste base (Atelie, folha irma, biblioteca)
+        if int(sb.get("versao") or 0) > v:
+            continue
+        era = d.get("estado")
+        cancelar_pendentes(t, ERRO_BASE_VELHO)
+        t["base_velho"] = True
+        if era != "refazer":
+            # o motivo do proximo pedido; num `refazer` que ja estava (o Adrian
+            # pediu outra mudanca, o correio falhou) o motivo dele fica
+            t["motivo"] = MOTIVO_BASE_NOVO
+        d["contar_desde"] = len(d["tentativas"])
+        d["espera_base"] = {"base_id": bid, "versao_velha": int(sb.get("versao") or 0),
+                            "acao": acao, "em": ficha.agora()}
+        d["estado"] = "refazer"
+        ficha.registrar(d, "estado", de=era, para="refazer", motivo=ERRO_BASE_VELHO)
+        ficha.registrar(d, "base_rejeitado", base=bid, versao=sb.get("versao"), acao=acao)
+        ficha.gravar(d)
+        voltaram.append(fid)
+    ficha.registrar(dados_base, "base_rejeitado", acao=acao, versao=v, folhas=voltaram)
+    ficha.gravar(dados_base)
+    return voltaram
 
 
 IMAGENS = (".png", ".webp")
@@ -310,14 +420,17 @@ def preparar(folha: dict, pasta: Path, numero: int, anterior: dict | None = None
 
     `base_<n>.png` (transparente: o juiz) e `base_<n>_chroma.png` (sobre o fundo
     chroma da folha: o gerador). Sem referencia agora, reaproveita o base da
-    tentativa anterior (o juiz pedindo refazer); sem nenhum, `BaseFaltando`."""
+    tentativa anterior (o juiz pedindo refazer); sem nenhum, `BaseFaltando`.
+    O base anterior que o Adrian rejeitou depois (`velho`) nao se reaproveita."""
     from . import prompt
     ref = referencia(folha)
     if ref is None:
-        if (anterior and anterior.get("caminho") and Path(anterior["caminho"]).is_file()
+        if (anterior and not velho(anterior)
+                and anterior.get("caminho") and Path(anterior["caminho"]).is_file()
                 and anterior.get("anexo") and Path(anterior["anexo"]).is_file()):
             return dict(anterior, reaproveitado=True)
-        raise BaseFaltando(f"{folha['id']}: a folha espera o sprite-base "
+        novo = " NOVO" if anterior and velho(anterior) else ""
+        raise BaseFaltando(f"{folha['id']}: a folha espera o sprite-base{novo} "
                            f"({id_do_base(folha, _itens())}) ser aprovado pelo juiz")
     pasta.mkdir(parents=True, exist_ok=True)
     desenho = _primeiro_quadro(ref)

@@ -83,8 +83,41 @@ Ainda em aberto:
   `efeitos/folhas/<id>.png` + cena; Vila: `habitantes/<ia>/base.png`). Ninguém
   carrega esse arquivo; se o Adrian não quiser o base na biblioteca, a
   conferência precisa de um "aprovar só como referência".
-- Se o Adrian descartar ou mandar refazer um base depois que folhas saíram dele,
-  as folhas já pedidas continuam com o base velho.
+
+### Base rejeitado depois das folhas (decisão `builds/base-rejeitado-depois` = "refazer", 14/10)
+
+Quando o Adrian manda **refazer** ou **descarta** um sprite-base (app ou
+`aprovar.refazer`/`descartar`) depois que folhas saíram dele, `base.rejeitar`:
+
+1. grava na ficha do base `versao_rejeitada` = quantas tentativas ela tinha
+   (a versão do base é o número de tentativas da ficha dele) e um evento
+   `base_rejeitado` com as folhas que voltaram;
+2. cada folha **que o Adrian ainda não aprovou** (`pedido`, `gerado`, `limpo`,
+   `medido`, `julgado`, `a_conferir`, `refazer`) cuja última tentativa usou o
+   desenho da ficha do base (origem `juiz` ou `aprovado_pelo_adrian`) até essa
+   versão vai a `refazer` com `espera_base`; o pendente no correio (gerar ou
+   julgar) é cancelado. **Não gasta tentativa**: nenhuma tentativa nova, e
+   `contar_desde` = todas (o teto recomeça com o base novo). O motivo do
+   próximo pedido vira `base.MOTIVO_BASE_NOVO`, exceto se ela já estava em
+   `refazer` (o motivo do Adrian ou o erro do correio ficam);
+3. `aprovado`, `na_biblioteca` e `descartado` **não mudam**; nem as folhas cujo
+   base veio do Ateliê, de uma folha irmã ou da biblioteca (não saíram dele).
+
+A folha guarda a versão que usou: `tentativas[-1].base.versao` (sem o campo =
+pedida antes disto = uma das velhas). Enquanto o base novo não passa no juiz,
+`base.referencia` dá `None` (o base rejeitado também desliga a folha irmã
+aprovada e a arte da biblioteca, que são o desenho velho; só o Ateliê, o base
+novo aprovado pelo Adrian ou o base novo aprovado pelo juiz servem) e o
+`preparar` não reaproveita o base velho: o `refazer` da folha espera
+(`BaseFaltando`, "espera o sprite-base NOVO"). Quando o juiz aprova o base
+novo, o `avancar` repede as folhas com ele e o `pedir` tira o `espera_base`
+(evento `base_novo`).
+
+Base **descartado** com folhas esperando o novo: o descarte do Adrian, que
+normalmente fica fora, não vale para ele; o `lote` pede o base de novo (senão
+as folhas esperavam para sempre). Se ele descartar também as folhas, ninguém
+espera e o base fica fora. O `lote --seco` mostra a linha
+`# folhas que esperam o sprite-base NOVO` quando há alguma.
 
 ## Religada com o ChatGPT gerando tudo (14/10/2026)
 
@@ -243,6 +276,10 @@ arte grande da IA.
   (`correio.CHATS`); o ChatGPT recebe.
 - Ficha sem `fluxo: base_v1` na última tentativa é do fluxo antigo: não anda
   e é refeita. Teste que monta ficha à mão em produção precisa desse campo.
+- Base que já foi para a biblioteca (`na_biblioteca`) e depois o Adrian manda
+  refazer: as folhas esperam o novo (a biblioteca não serve mais de
+  referência), mas o `aprovar` do base novo vai dar `FileExistsError`, porque
+  nunca sobrescreve. Tirar o arquivo velho à mão antes de aprovar.
 - No inventário do palco, 28 itens têm o campo `fundo` diferente do fundo que o
   prompt e a limpeza usam (a regra por palavra-chave manda). A Vila evita isso
   com `chroma` explícito.

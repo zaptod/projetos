@@ -95,21 +95,38 @@ def _pedivel(item: dict) -> bool:
     existente = ficha.ler(item["id"])
     if existente and existente.get("estado") in JA_NA_ESTEIRA:
         return False
-    if existente and existente.get("estado") == "descartado" and _descarte_do_adrian(existente):
+    if (existente and existente.get("estado") == "descartado" and _descarte_do_adrian(existente)
+            and not esperam_base_novo(item["id"])):
+        # o descarte do Adrian fica fora; o de um sprite-base com folhas
+        # esperando o base NOVO nao (decisao builds/base-rejeitado-depois):
+        # sem isto elas esperavam para sempre
         return False
     # o Adrian fez pelo Atelie, ou a arte ja esta na biblioteca
     return not ja_feito.motivo(item)
 
 
+def esperam_base_novo(base_id: str) -> list[str]:
+    """As folhas em `refazer` que esperam o base NOVO (o Adrian rejeitou o velho)."""
+    saida = []
+    for fid in base.mapa(config.itens()).get(base_id, []):
+        d = ficha.ler(fid)
+        if d and d.get("estado") == "refazer" and (d.get("espera_base") or {}).get("base_id") == base_id:
+            saida.append(fid)
+    return saida
+
+
 def _folha_espera_base(folha: dict) -> bool:
     """A folha vai precisar de um base: vai ser pedida, ou esta parada esperando
-    um (do fluxo antigo, ou em `refazer` sem nenhum base anexado antes)."""
+    um (do fluxo antigo, em `refazer` sem nenhum base anexado antes, ou em
+    `refazer` esperando o base novo depois que o Adrian rejeitou o velho)."""
     if _pedivel(folha):
         return True
     dados = ficha.ler(folha["id"])
     if not dados:
         return False
     if _fora_do_fluxo(dados):
+        return True
+    if dados.get("estado") == "refazer" and dados.get("espera_base"):
         return True
     return (dados.get("estado") == "refazer"
             and not any(t.get("base") for t in dados.get("tentativas") or []))
@@ -230,18 +247,8 @@ MOTIVO_DO_CANCELAMENTO = {
 
 def _parar_fora_do_fluxo(dados: dict) -> bool:
     """Cancela no correio o que ainda nao foi feito (gerar ou julgar). Idempotente."""
-    t = _ultima(dados)
     erro = MOTIVO_DO_CANCELAMENTO.get(_fora_do_fluxo(dados), MOTIVO_DO_CANCELAMENTO["sem_anexo"])
-    parou = False
-    for caixa, mid in ((t.get("caixa") or GERADOR, t.get("correio_id")),
-                       (t.get("juiz_caixa"), t.get("juiz_id"))):
-        if not caixa or not mid:
-            continue
-        mensagem = correio.uma(caixa, mid) or {}
-        if mensagem.get("situacao") == "pendente":
-            correio.atualizar(caixa, mid, situacao="falhou", categoria="interrompida", erro=erro)
-            parou = True
-    return parou
+    return base.cancelar_pendentes(_ultima(dados), erro)
 
 
 def _refazer_no_fluxo(item_id: str, dados: dict) -> bool:
@@ -433,6 +440,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"# fora do fluxo (o ciclo refaz PRIMEIRO, sem gastar tentativa): "
                   f"{', '.join(fora) or 'nenhuma'}")
             print(f"# folhas {args.prioridade} que esperam o sprite-base: {len(ESPERAM_BASE)}")
+            novo = [i["id"] for i in config.itens()
+                    if (d := ficha.ler(i["id"])) and d.get("estado") == "refazer" and d.get("espera_base")]
+            if novo:
+                print(f"# folhas que esperam o sprite-base NOVO (o Adrian rejeitou o velho): "
+                      f"{', '.join(novo)}")
     elif args.comando == "avancar":
         print(avancar())
     elif args.comando == "ciclo":

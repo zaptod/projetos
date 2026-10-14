@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 from painel.sprites import exportar, fundo_auto, receita
 
-from . import config, ficha, prompt
+from . import base, config, ficha, prompt
 from .pedir import marcar
 
 
@@ -104,6 +104,9 @@ def refazer(item_id: str, motivo: str) -> dict:
     dados["estado"] = "refazer"
     ficha.registrar(dados, "refazer", motivo=motivo)
     ficha.gravar(dados)
+    # um sprite-base refeito depois que folhas sairam dele: as que o Adrian nao
+    # aprovou esperam o base novo (decisao builds/base-rejeitado-depois)
+    base.rejeitar(dados, "refazer")
     return dados
 
 
@@ -114,4 +117,5 @@ def descartar(item_id: str) -> dict:
     dados["estado"] = "descartado"
     ficha.registrar(dados, "descartado")
     ficha.gravar(dados)
+    base.rejeitar(dados, "descartar")
     return dados

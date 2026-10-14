@@ -762,3 +762,161 @@ def test_caso_zero_nada_a_pedir_nao_finge_sucesso(ambiente, monkeypatch, capsys)
     with pytest.raises(pedir.SemMestra):
         pedir.pedir("so_folha_base")
     assert pedidos == []
+
+
+# ------------------------------------------- base rejeitado DEPOIS das folhas
+# Decisao builds/base-rejeitado-depois (14/10/2026) = "refazer": as folhas que
+# o Adrian nao aprovou voltam a refazer e esperam o base novo; as aprovadas ficam.
+
+FOLHAS_DO_BONECO = ("andar", "pular", "cair", "soco", "chute", "giro", "queda")
+
+
+def _boneco(ambiente) -> None:
+    """Um lutador parado (o base) e 7 folhas dele, no inventario do teste."""
+    itens = [{"id": "boneco", "nome_arquivo": "lutadores/boneco.png", "descricao": "lutador boneco",
+              "tipo": "peca", "prioridade": "P1", "ordem": 1}]
+    itens += [{"id": f"boneco_{n}", "nome_arquivo": f"lutadores/boneco_{n}.png",
+               "descricao": f"boneco: {n}", "tipo": "folha", "prioridade": "P1", "ordem": 2 + k}
+              for k, n in enumerate(FOLHAS_DO_BONECO)]
+    config.INVENTARIO.write_text(json.dumps({"itens": itens}), encoding="utf-8")
+
+
+def _juiz_aprova_o_base(item_id: str, limpo: Path) -> dict:
+    """A ultima tentativa do base passa no juiz (veredito sem grave, portao limpo)."""
+    from esteira_sprites import base
+    d = ficha.ler(item_id)
+    t = d["tentativas"][-1]
+    t.update({"fluxo": base.FLUXO, "caminhos": {"limpo": str(limpo)},
+              "veredito": {"defeitos": [{"o_que": "x", "gravidade": "leve"}], "notas": {}}})
+    d["estado"] = "a_conferir"
+    return ficha.gravar(d)
+
+
+def test_base_refeito_manda_as_folhas_nao_aprovadas_esperarem_o_base_novo(ambiente, monkeypatch):
+    from esteira_sprites import __main__ as cli, aprovar, base
+    _boneco(ambiente)
+    pedidos = _correio_de_imagem(monkeypatch)
+    base_aprovado_pelo_juiz("boneco", imagem(ambiente / "base_v1.png"))
+    for n in FOLHAS_DO_BONECO:
+        pedir.pedir(f"boneco_{n}")
+    # a folha guarda QUAL versao do base usou
+    assert {ficha.ler(f"boneco_{n}")["tentativas"][-1]["base"]["versao"] for n in FOLHAS_DO_BONECO} == {1}
+    # cada folha num ponto da esteira
+    limpo = str(imagem(ambiente / "folha.png", folha=True))
+
+    def por(n, estado, **t):
+        d = ficha.ler(f"boneco_{n}")
+        d["estado"] = estado
+        d["tentativas"][-1]["caminhos"] = {"limpo": limpo}
+        d["tentativas"][-1].update(t)
+        return ficha.gravar(d)
+    por("pular", "julgado", juiz_id="j-pular", juiz_caixa="chatgpt")       # no juiz
+    por("cair", "a_conferir")                                               # esperando o Adrian
+    aprovar.refazer("boneco_soco", "braço maior")                           # o Adrian pediu mudanca
+    por("chute", "aprovado")                                                # aprovada pelo Adrian
+    por("giro", "na_biblioteca")                                            # aprovada e exportada
+    aprovar.descartar("boneco_queda")                                       # descartada por ele
+    ficas = {n: ficha.ler(f"boneco_{n}") for n in ("chute", "giro", "queda")}
+    # com a folha irma aprovada pelo Adrian, a referencia vem dela (o 1º quadro)
+    assert base.referencia(config.item("boneco_andar"))["origem"] == "folha_aprovada_pelo_adrian"
+    pendentes = {"m1", "j-pular"}
+    monkeypatch.setattr(cli.correio, "uma", lambda caixa, mid: {"situacao": "pendente" if mid in pendentes
+                                                                else "respondida"})
+    cancelados = []
+    monkeypatch.setattr(cli.correio, "atualizar", lambda caixa, mid, **k: cancelados.append((mid, k)))
+    antes = len(pedidos)
+    # o Adrian manda refazer o BASE depois que as folhas sairam dele
+    dados_base = aprovar.refazer("boneco", "o rosto esta errado")
+    assert dados_base["estado"] == "refazer" and dados_base["versao_rejeitada"] == 1
+    voltaram = [e for e in dados_base["historico"] if e["tipo"] == "base_rejeitado"][-1]["folhas"]
+    assert voltaram == ["boneco_andar", "boneco_pular", "boneco_cair", "boneco_soco"]
+    for n in ("andar", "pular", "cair", "soco"):
+        d = ficha.ler(f"boneco_{n}")
+        assert d["estado"] == "refazer" and d["espera_base"]["base_id"] == "boneco"
+        assert d["espera_base"]["versao_velha"] == 1 and d["tentativas"][-1]["base_velho"] is True
+        # nao gasta tentativa: nenhuma tentativa nova e o teto recomeca com o base novo
+        assert len(d["tentativas"]) == 1 and juiz.tentativas_contadas(d) == 0
+    assert ficha.ler("boneco_andar")["tentativas"][-1]["motivo"] == base.MOTIVO_BASE_NOVO
+    assert ficha.ler("boneco_soco")["tentativas"][-1]["motivo"] == "braço maior"   # o do Adrian fica
+    # o que estava pendente no correio (gerar a folha em voo, julgar a do juiz) foi cancelado
+    assert {mid for mid, _ in cancelados} == {"m1", "j-pular"}
+    assert all(k["situacao"] == "falhou" and k["categoria"] == "interrompida" for _, k in cancelados)
+    # as aprovadas pelo Adrian e a descartada nao mudam nada
+    for n, d in ficas.items():
+        assert ficha.ler(f"boneco_{n}") == d, n
+    assert len(pedidos) == antes                                            # nada pedido ainda
+    # nenhuma folha e pedida ate o base NOVO passar no juiz: nem pela folha irma
+    # aprovada (o desenho velho), nem reaproveitando o base anterior
+    assert base.referencia(config.item("boneco_andar")) is None
+    with pytest.raises(base.BaseFaltando, match="sprite-base NOVO"):
+        pedir.pedir("boneco_andar")
+    monkeypatch.setattr(cli, "colher", lambda *_: False)
+    monkeypatch.setattr(cli, "colher_juiz", lambda *_: False)
+    cli.avancar()                                                           # repede so o base
+    assert [p["anexos"] for p in pedidos[antes:]] == [[str(config.mestra())]]
+    assert ficha.ler("boneco")["estado"] == "pedido" and len(ficha.ler("boneco")["tentativas"]) == 2
+    for _ in range(2):
+        cli.avancar()                                                       # base em voo: folhas esperam
+    assert len(pedidos) == antes + 1 and ficha.ler("boneco_andar")["estado"] == "refazer"
+    assert "boneco_andar" not in cli.lote("P1", 99, seco=True)
+    # o juiz aprova o base novo: as folhas sao pedidas com ele (versao 2)
+    _juiz_aprova_o_base("boneco", imagem(ambiente / "base_v2.png"))
+    cli.avancar()
+    assert len(pedidos) == antes + 1 + 4
+    for n in ("andar", "pular", "cair", "soco"):
+        d = ficha.ler(f"boneco_{n}")
+        t = d["tentativas"][-1]
+        assert d["estado"] == "pedido" and "espera_base" not in d
+        assert t["base"]["origem"] == "juiz" and t["base"]["versao"] == 2 and not base.velho(t["base"])
+        assert juiz.tentativas_contadas(d) == 1
+        assert any(e["tipo"] == "base_novo" for e in d["historico"])
+    assert "braço maior" in ficha.ler("boneco_soco")["tentativas"][-1]["prompt"]
+    for n, d in ficas.items():
+        assert ficha.ler(f"boneco_{n}")["estado"] == d["estado"], n
+
+
+def test_base_descartado_depois_e_pedido_de_novo_so_se_folhas_esperam(ambiente, monkeypatch):
+    from esteira_sprites import __main__ as cli, aprovar, base
+    _correio_de_imagem(monkeypatch)
+    base_aprovado_pelo_juiz("folha_teste_base", imagem(ambiente / "base.png"))
+    pedir.pedir("folha_teste")
+    d = ficha.ler("folha_teste")
+    d["estado"] = "a_conferir"
+    ficha.gravar(d)
+    aprovar.descartar("folha_teste_base")
+    folha = ficha.ler("folha_teste")
+    assert folha["estado"] == "refazer" and folha["espera_base"]["acao"] == "descartar"
+    assert cli.esperam_base_novo("folha_teste_base") == ["folha_teste"]
+    # o descarte do Adrian fica fora, MENOS o do base com folhas esperando o novo
+    assert cli.lote("P1", 9, seco=True)[0] == "folha_teste_base"
+    assert base.referencia(config.item("folha_teste")) is None
+    # o Adrian descarta a folha tambem: ninguem espera, o base fica fora
+    aprovar.descartar("folha_teste")
+    assert cli.esperam_base_novo("folha_teste_base") == []
+    assert "folha_teste_base" not in cli.lote("P1", 9, seco=True)
+
+
+def test_base_rejeitado_caso_zero(ambiente, monkeypatch, capsys):
+    """Memoria relatorio-verde-que-mente: base sem folhas, peca comum, base sem tentativa."""
+    from esteira_sprites import __main__ as cli, aprovar, base
+    monkeypatch.setattr(cli.correio, "atualizar", lambda *a, **k: pytest.fail("nada a cancelar"))
+    # 1. base aprovado pelo juiz, nenhuma folha dele com ficha
+    base_aprovado_pelo_juiz("folha_teste_base", imagem(ambiente / "base.png"))
+    dados = aprovar.refazer("folha_teste_base", "outro rosto")
+    assert dados["estado"] == "refazer" and dados["versao_rejeitada"] == 1
+    assert [e["folhas"] for e in dados["historico"] if e["tipo"] == "base_rejeitado"] == [[]]
+    assert ficha.ler("folha_teste") is None and cli.esperam_base_novo("folha_teste_base") == []
+    # 2. peca que nao e base de ninguem: nada muda alem do refazer de sempre
+    peca = ficha.nova(config.item("fogo_teste"))
+    peca["estado"] = "a_conferir"
+    peca["tentativas"] = [{"fluxo": base.FLUXO, "caminhos": {}}]
+    ficha.gravar(peca)
+    assert "versao_rejeitada" not in aprovar.refazer("fogo_teste", "maior")
+    assert "versao_rejeitada" not in aprovar.descartar("fogo_teste")
+    # 3. base sem tentativa nenhuma e inventario vazio nao quebram
+    assert base.rejeitar({"item_id": "folha_teste_base", "tentativas": []}, "refazer") == []
+    assert base.rejeitar({"item_id": "x", "tentativas": [{}]}, "refazer", itens=[]) == []
+    assert base.velho(None) is False and base.velho({"origem": "atelie", "base_id": "x"}) is False
+    # 4. o seco nao ganha linha nova quando ninguem espera o base novo
+    assert cli.main(["--inventario", str(config.INVENTARIO), "lote", "--prioridade", "P1", "--seco"]) == 0
+    assert "NOVO" not in capsys.readouterr().out

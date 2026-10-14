@@ -56,6 +56,11 @@ def pedir(item_id: str, defeitos: str = "", prompt_pronto: str = "") -> dict:
         sprite_base = base.preparar(item, ficha.caminho(item_id).parent, numero, anterior)
         anexos.append(sprite_base["anexo"])
         rotulos.append(prompt.ANEXO_BASE)
+        espera = dados.pop("espera_base", None)
+        if espera:
+            # o base que o Adrian rejeitou foi refeito e passou: a folha anda com ele
+            ficha.registrar(dados, "base_novo", base=sprite_base.get("base_id"),
+                            versao=sprite_base.get("versao"), versao_velha=espera.get("versao_velha"))
     texto = prompt.com_anexos(prompt_pronto.strip() or prompt.montar(item, defeitos), rotulos)
     caixa = gerador_do(item)
     mensagem = correio.pedir_imagem(caixa, texto, proporcao="1:1", anexos=anexos)
