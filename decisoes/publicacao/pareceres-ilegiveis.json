@@ -3,7 +3,14 @@
   "contexto": "Conserto do veto que falhava aberto (auditoria 11/10).",
   "criado": "2026-10-14T03:21:03.193992",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+      "em": "2026-10-14T08:47:16",
+      "opcao": "sai-marcada",
+      "origem": "cli"
+    }
+  ],
   "id": "pareceres-ilegiveis",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Se o arquivo com os pareceres das histórias estiver corrompido ou trancado, toda parte fica 'retida'. Hoje, para o horário não ficar vazio, sai uma parte marcada 'a conferir'. Prefere que nesse caso nada saia?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Quando o arquivo de pareceres não abre",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+    "em": "2026-10-14T08:47:16",
+    "opcao": "sai-marcada"
+  }
 }
