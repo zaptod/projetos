@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:34.213697",
+  "depende_de": [],
+  "historico": [],
+  "id": "plano-com-menos-partes",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Não perde o trabalho já feito",
+      "id": "mais-curta",
+      "pede_comentario": false,
+      "rotulo": "Sai mais curta (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "descartar",
+      "pede_comentario": false,
+      "rotulo": "Descarta e pede de novo"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Quando o plano da série volta do LLM com menos partes que o pedido, o que fazer?",
+  "projeto": "historias",
+  "situacao": "pendente",
+  "titulo": "Série que veio com menos partes",
+  "vigente": null
+}
