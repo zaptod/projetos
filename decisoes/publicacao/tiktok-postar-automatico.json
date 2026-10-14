@@ -3,7 +3,14 @@
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:50.907852",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+      "em": "2026-10-14T08:47:12",
+      "opcao": "tirar-chave",
+      "origem": "cli"
+    }
+  ],
   "id": "tiktok-postar-automatico",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "No config dos builds, o TikTok está com 'postar automático: não', mas a grade posta sempre. O que vale?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Chave 'postar automático' do TikTok nos builds",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+    "em": "2026-10-14T08:47:12",
+    "opcao": "tirar-chave"
+  }
 }
