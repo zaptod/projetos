@@ -15,4 +15,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Vila repaginada: qual estilo?** — Mesmo estilo do Neural (cartoon, contorno escuro) (recomendado) (02/10/2026) `vila-estilo-novo`
 - ✅ **Vila: forma dos habitantes** — Bolinha do Neural (02/10/2026) `vila-habitante-forma`
 - ✅ **Folhas de sprite com o ChatGPT ocupado pelas histórias** — O Gemini cobre quando o ChatGPT está ocupado (02/10/2026) `folhas-chatgpt-ocupado`
-- ⏳ **Botões do PicassoIA e do Digen no painel** — A página Vídeos ainda tem 'Login no PicassoIA', 'Login no Digen' e 'Vídeo do payoff (Digen)', depois de você ter tirado os dois da roda. Tirar? `botoes-picasso-digen`
+- ✅ **Botões do PicassoIA e do Digen no painel** — Tirar os botões (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `botoes-picasso-digen`
