@@ -3,7 +3,14 @@
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:55:50.455604",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+      "em": "2026-10-14T08:45:17",
+      "opcao": "desempate-hp",
+      "origem": "cli"
+    }
+  ],
   "id": "empate-persistente",
   "midias": [],
   "opcoes": [
@@ -34,7 +41,11 @@
   },
   "pergunta": "Hoje, quando a luta empata, o código inventa vitória do primeiro lutador. O que fazer no empate?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Luta que termina empatada",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+    "em": "2026-10-14T08:45:17",
+    "opcao": "desempate-hp"
+  }
 }
