@@ -67,6 +67,7 @@ Fonte: `decisoes/app-e-bot/` e `decisoes/geral/`. **Decisão vigente do Adrian m
 - ✅ **Reiniciar serviços sozinho quando o código muda?** — Só quando pedido: entrega aplicada ou comando reiniciar (recomendado) (13/10/2026) `reinicio-por-codigo-velho`
 - ✅ **O ramo main está 945 commits atrás** — main recebe o ramo refactor/arquitetura (recomendado) (13/10/2026) `main-recebe-o-ramo`
 - ✅ **Enviar o ramo ao GitHub (push)?** — Enviar main e refactor/arquitetura (recomendado) (13/10/2026) `enviar-ao-github`
+- ⏳ **Quando o PC religa** — Depois de religar, nada sobe (nem o bot que avisaria) até alguém entrar no Windows. O que fazer? `pc-religado`
 
 **App e bot**
 - ✅ **Quem publica pelo celular** — Só o app (28/09/2026) `quem-publica-pelo-celular`
