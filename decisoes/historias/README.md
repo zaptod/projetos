@@ -19,3 +19,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Gemini sem o modelo forte pode escrever roteiro?** — Pular para o próximo provedor (DeepSeek/ChatGPT) e avisar no Telegram (recomendado) (13/10/2026) `gemini-sem-pro-escreve`
 - ⏳ **Série que veio com menos partes** — Quando o plano da série volta do LLM com menos partes que o pedido, o que fazer? `plano-com-menos-partes`
 - ⏳ **Imagem de referência entre geradores** — Existe um módulo morto que passava a imagem de referência de um gerador para outro. Volta ou apaga? `imagem-de-referencia`
+- ⏳ **Prévia de meia resolução do Gemini** — Quando o original da imagem do Gemini não baixa, hoje fica a prévia com metade da resolução (47 de 89 imagens em 12/10). Aceitar ou gerar de novo? `previa-do-gemini`

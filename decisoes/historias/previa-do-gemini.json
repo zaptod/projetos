@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:44.252504",
+  "depende_de": [],
+  "historico": [],
+  "id": "previa-do-gemini",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Não gasta cota",
+      "id": "aceitar-marcada",
+      "pede_comentario": false,
+      "rotulo": "Aceitar, marcada como 'prévia' (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Gasta cota e tempo",
+      "id": "gerar-de-novo",
+      "pede_comentario": false,
+      "rotulo": "Recusar e gerar de novo"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Quando o original da imagem do Gemini não baixa, hoje fica a prévia com metade da resolução (47 de 89 imagens em 12/10). Aceitar ou gerar de novo?",
+  "projeto": "historias",
+  "situacao": "pendente",
+  "titulo": "Prévia de meia resolução do Gemini",
+  "vigente": null
+}
