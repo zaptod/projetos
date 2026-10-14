@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T16:01:57",
+      "evento": "2026-10-14T16:00:58",
+      "linha": 186,
+      "nota": "resposta sem pedido de origem: builds/base-rejeitado-depois = Folhas não aprovadas voltam a refazer com o base novo (recomendado)",
+      "opcao": "refazer",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Hoje as folhas já pedidas continuam com o base velho.",
   "criado": "2026-10-14T16:00:16.353117",
   "depende_de": [],
