@@ -313,6 +313,7 @@ class Supervisor:
         self.assembleia_em = None
         self.trabalho = {}
         self.reinicio_pedido = set()
+        self.ultima_recusa = {}
         self.estado = {n: {"situacao": "parado", "pid": None, "desde": None,
                            "reinicios_24h": 0, "reinicios": [], "ultimo_erro": "",
                            "codigo_velho": False, "reinicio_pedido": False,
@@ -466,16 +467,20 @@ class Supervisor:
             return "ok" if estado.get("situacao") not in ("parado", "nunca") else "ruim"
         return "ok"
 
-    def seguro(self, nome, processos=None):
+    def seguro(self, nome, processos=None, *, janela=True):
+        """(ok, motivo). `janela=False` para SUBIR um servico que caiu: a lei
+        da janela e contra derrubar quem esta vivo, e o app fora do ar meia
+        hora em cada um dos 10 horarios seria pior que o defeito."""
         processos = self.processos() if processos is None else processos
         if publicacao_rodando(processos):
             return False, "publicacao em andamento"
         agora = self.relogio()
         # D3 (Grimorio, 13/10/2026): nunca dentro da janela das postagens,
         # `post-12` a `post+18` min da grade. A publicacao em voo continua acima.
-        dentro, texto = self.janela(agora)
-        if dentro:
-            return False, texto
+        if janela:
+            dentro, texto = self.janela(agora)
+            if dentro:
+                return False, texto
         if nome == "carteiro" and self.carteiro().get("situacao") == "entregando":
             # 02/10 00:04: um pedido condenado segurou o carteiro velho por 7 min
             # e o Adrian: "ele nunca vai parar de rodar". Espera no maximo
@@ -513,7 +518,7 @@ class Supervisor:
             except ValueError:
                 pass
         if ficha.get("reinicio_seguro") and not forcar:
-            ok, espera = self.seguro(nome)
+            ok, espera = self.seguro(nome, janela=False)
             if not ok:
                 estado.update(situacao="reiniciando", motivo_espera=espera)
                 return False
@@ -582,6 +587,10 @@ class Supervisor:
             self.evento(nome, "codigo_velho", "codigo mudou desde o inicio; reinicio so quando pedido")
         if nome in self.reinicio_pedido:
             self.velho_desde.setdefault(nome, self.relogio())
+            recusa = self.ultima_recusa.get(nome) or {}
+            if recusa.get("tipo") == "morte" and \
+                    (self.relogio() - recusa["em"]).total_seconds() < RELIGADA_MIN_S:
+                return      # o velho nao morreu ha pouco: nao trava o pulso 15 s de novo agora
             ultima = self.religado_por_codigo.get(nome)
             if ultima is not None:
                 passou = (self.relogio() - ultima).total_seconds()
@@ -626,10 +635,13 @@ class Supervisor:
                         # recusado pelo momento (janela, publicacao, carteiro):
                         # fica PEDIDO e sai no pulso em que for seguro; o
                         # comando nao e "executado" (auditoria, item 4)
-                        self.reinicio_pedido.add(valor)
-                        motivo = self.estado[valor].get("motivo_espera") or "momento não seguro"
-                        self.aplicar(comando["id"], nota=f"pendente: {motivo}")
-                        self.evento(str(valor), "comando", f"{nome} pendente: {motivo}")
+                        motivo = self._deixar_pendente(valor)
+                        desfecho = "pendente" if valor in self.reinicio_pedido else "recusado"
+                        if desfecho == "pendente":
+                            self.aplicar(comando["id"], nota=f"pendente: {motivo}")
+                        else:
+                            self.aplicar(comando["id"], recusado=motivo)
+                        self.evento(str(valor), "comando", f"{nome} {desfecho}: {motivo}")
                         continue
                 else:
                     self._executar_acao(valor)
@@ -767,54 +779,92 @@ class Supervisor:
     def reiniciar_tudo(self):
         for nome in self.servicos:
             if not self.reiniciar_servico(nome):
-                self.reinicio_pedido.add(nome)
+                self._deixar_pendente(nome)
 
     def _esperar_morrer(self, nome, pids):
         """Espera os pids sumirem da lista de processos (ate MORTE_PRAZO_S);
         devolve os que continuaram vivos."""
         padrao = re.compile(self.servicos[nome]["assinatura"], re.I)
-        prazo = int(MORTE_PRAZO_S / MORTE_PASSO_S)
+        prazo = max(1, int(MORTE_PRAZO_S / MORTE_PASSO_S))
         vivos = set(pids)
         for _ in range(prazo):
-            atuais = {p["pid"] for p in self.processos() if padrao.search(p["comando"])}
-            vivos &= atuais
-            if not vivos:
-                return []
+            lista = self.processos()
+            # lista vazia e a consulta do Windows que falhou (01/10), nao
+            # prova de que morreu: espera e olha de novo
+            if lista:
+                vivos &= {p["pid"] for p in lista if padrao.search(p["comando"])}
+                if not vivos:
+                    return []
             self.dormir(MORTE_PASSO_S)
         return sorted(vivos)
+
+    def _recusar(self, nome, tipo, motivo):
+        """Reinicio que nao aconteceu: `tipo` e "momento" (janela, publicacao,
+        carteiro: tenta de novo quando for seguro), "morte" (o velho nao
+        morreu, sem permissao?) ou "subir" (matou e o novo nao subiu)."""
+        self.ultima_recusa[nome] = {"tipo": tipo, "motivo": motivo, "em": self.relogio()}
+        if tipo == "momento":
+            self.estado[nome].update(situacao="reiniciando", motivo_espera=motivo)
+        else:
+            self.estado[nome]["motivo_espera"] = motivo
+            self.evento(nome, "reinicio_falhou", motivo)
+        if tipo == "subir":
+            # o velho ja morreu: o novo, quando o pulso o religar por
+            # "ausente", ja nasce com o codigo novo; nada mais a pedir
+            self.reinicio_pedido.discard(nome)
+            self.estado[nome]["reinicio_pedido"] = False
+        return False
+
+    def _deixar_pendente(self, nome):
+        """Depois de um `reiniciar_servico` recusado: fica PEDIDO (o pulso
+        refaz quando for seguro) salvo quando o velho ja morreu. Devolve o
+        motivo para quem precisa contar a alguem."""
+        recusa = self.ultima_recusa.get(nome) or {}
+        if recusa.get("tipo") in ("momento", "morte"):
+            self.reinicio_pedido.add(nome)
+            self.estado[nome]["reinicio_pedido"] = True
+        return recusa.get("motivo") or self.estado[nome].get("motivo_espera") or "momento não seguro"
 
     def reiniciar_servico(self, nome, *, forcar=False, processos=None):
         """Mata o(s) processo(s) adotado(s) DE VERDADE antes de subir outro.
 
         Recusado (janela das postagens, publicacao em voo, carteiro
-        entregando) devolve False com `motivo_espera` preenchido; quem chamou
-        decide se deixa pendente. 12/10/2026: o carteiro velho seguiu vivo ao
-        lado do novo porque ninguem conferia se o `taskkill` tinha surtido
-        efeito.
+        entregando) devolve False com `motivo_espera` preenchido e o porque em
+        `ultima_recusa[nome]`; quem chamou decide se deixa pendente.
+        12/10/2026: o carteiro velho seguiu vivo ao lado do novo porque
+        ninguem conferia se o `taskkill` tinha surtido efeito.
         """
         estado = self.estado[nome]
+        self.ultima_recusa.pop(nome, None)
         processos = self.processos() if processos is None else processos
         if not forcar:
             ok, espera = self.seguro(nome, processos)
             if not ok:
-                estado.update(situacao="reiniciando", motivo_espera=espera)
-                return False
+                return self._recusar(nome, "momento", espera)
         padrao = re.compile(self.servicos[nome]["assinatura"], re.I)
+        # TODOS os que casam: um duplicado de antes tambem sai, senao o
+        # religar soma mais um ao lado dele
         pids = [p["pid"] for p in processos if padrao.search(p["comando"])]
         if pids:
-            for pid in pids:
-                self.parar(pid)
+            try:
+                for pid in pids:
+                    self.parar(pid)
+            except OSError as exc:
+                return self._recusar(nome, "morte", f"sem permissão para parar o processo velho: {exc}")
             vivos = self._esperar_morrer(nome, pids)
             if vivos:
-                for pid in vivos:                 # segunda tentativa, e sem subir outro
-                    self.parar(pid)
-                estado.update(situacao="reiniciando",
-                              motivo_espera=f"o processo velho ({', '.join(map(str, vivos))}) não morreu")
-                self.evento(nome, "reinicio_falhou", estado["motivo_espera"])
-                return False
+                try:
+                    for pid in vivos:             # segunda tentativa, e sem subir outro
+                        self.parar(pid)
+                except OSError:
+                    pass
+                return self._recusar(nome, "morte",
+                                     f"o processo velho ({', '.join(map(str, vivos))}) não morreu "
+                                     "(sem permissão para matá-lo?); não subi outro ao lado")
             estado["pid"] = None
         if not self.religar(nome, "pedido", forcar=True):
-            return False
+            return self._recusar(nome, "subir", f"parei o velho mas o novo não subiu: "
+                                                f"{estado.get('ultimo_erro') or 'erro desconhecido'}")
         self.religado_por_codigo[nome] = self.relogio()
         self.reinicio_pedido.discard(nome)
         self.velho_desde.pop(nome, None)

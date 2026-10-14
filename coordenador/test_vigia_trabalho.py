@@ -495,13 +495,24 @@ def test_o_resumo_vai_para_o_estado_do_coordenador():
 
 def test_o_supervisor_chama_o_cerebro_e_reinicia_o_pedido_no_momento_seguro():
     relogio, chamadas, parou, iniciou = Relogio(), [], [], []
+    vivos = [{"pid": 1, "comando": "app"}, {"pid": 4, "comando": "System"}]
+
+    def parar(pid):                    # o taskkill de mentira mata de verdade
+        parou.append(pid)
+        vivos[:] = [p for p in vivos if p["pid"] != pid]
+
+    def iniciar(_ficha):
+        iniciou.append(2)
+        vivos.append({"pid": 2, "comando": "app"})
+        return 2
     s = Supervisor(servicos={"app": {"nome": "app", "assinatura": "app", "comando": ["app"],
                                      "cwd": ".", "log": "x.log", "janela": "oculta",
                                      "modulos": [], "reinicio_seguro": True}},
-                   relogio=relogio, processos=lambda: [{"pid": 1, "comando": "app"}],
+                   relogio=relogio, processos=lambda: list(vivos),
                    porta=lambda: True, git=lambda *_: False, avisar=lambda *_: None,
-                   gravar=lambda _: None, log=lambda _: None, parar=parou.append,
-                   iniciar=lambda _: iniciou.append(2) or 2,
+                   gravar=lambda _: None, log=lambda _: None, parar=parar,
+                   iniciar=iniciar, janela=lambda _agora: (False, ""), dormir=lambda _s: None,
+                   carregar=lambda: {}, pendentes=lambda: [],
                    comandos=lambda: [], aplicar=lambda *a, **k: None,
                    cerebro=lambda **kw: chamadas.append(sorted(kw)), em_fundo=lambda n, f: f())
     s.pulso()

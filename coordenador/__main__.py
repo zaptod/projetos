@@ -110,20 +110,53 @@ def montar() -> Supervisor:
     return s
 
 
+def resumo_dos_servicos(estado: dict) -> str:
+    """A linha de `status --curto`. Desde a D3 o codigo velho nao reinicia
+    sozinho, entao a linha diz QUEM esta velho e quem ja tem reinicio pedido.
+    (Ate 13/10 lia `codigo_velho` na raiz do estado, que nunca existiu: dizia
+    "código atual" sempre.)"""
+    servicos = estado.get("servicos") if isinstance(estado, dict) else None
+    servicos = servicos if isinstance(servicos, dict) else {}
+    velhos = sorted(n for n, s in servicos.items() if isinstance(s, dict) and s.get("codigo_velho"))
+    pedidos = sorted(n for n, s in servicos.items() if isinstance(s, dict) and s.get("reinicio_pedido"))
+    if not velhos and not pedidos:
+        return "serviços: código atual"
+    partes = []
+    if velhos:
+        partes.append("código velho em " + ", ".join(velhos))
+    if pedidos:
+        partes.append("reinício pedido: " + ", ".join(pedidos))
+    return "serviços: " + "; ".join(partes)
+
+
 def reiniciar_pela_linha_de_comando(servico, supervisor=None, pendente=None, saida=print):
     """`python -m coordenador reiniciar <svc>`: recusado pelo momento (janela
     das postagens, publicacao em voo, carteiro entregando) NAO imprime "ok":
     diz o motivo, deixa o pedido em disco para o coordenador residente e sai
     com 2. Ate 13/10/2026 imprimia "ok" e saia 0 sem reiniciar nada."""
-    s = supervisor or Supervisor()
-    if s.reiniciar_servico(servico):
+    try:
+        s = supervisor or Supervisor()
+        feito = s.reiniciar_servico(servico)
+    except Exception as exc:                  # noqa: BLE001 - a CLI conta, nao estoura
+        saida(f"não reiniciei o {servico}: {type(exc).__name__}: {exc}")
+        return 3
+    if feito:
         saida("ok")
         return 0
-    motivo = s.estado[servico].get("motivo_espera") or "momento não seguro"
-    (pendente or pedir_reinicio_pendente)(servico)
-    saida(f"não reiniciei o {servico}: {motivo}; ficou pendente, o coordenador "
-          "reinicia quando a janela fechar")
-    return 2
+    recusa = s.ultima_recusa.get(servico) or {}
+    motivo = recusa.get("motivo") or s.estado[servico].get("motivo_espera") or "momento não seguro"
+    if recusa.get("tipo") == "subir":
+        # o velho morreu e o novo nao subiu: o coordenador residente religa
+        # o ausente sozinho; nao ha reinicio a deixar pendente
+        saida(f"não reiniciei o {servico}: {motivo}")
+        return 3
+    try:
+        (pendente or pedir_reinicio_pendente)(servico)
+        resto = "ficou pendente; o coordenador reinicia quando for seguro"
+    except OSError as exc:
+        resto = f"e nem consegui deixar pendente ({exc})"
+    saida(f"não reiniciei o {servico}: {motivo}; {resto}")
+    return 2 if recusa.get("tipo", "momento") == "momento" else 3
 
 
 def main(argv=None):
@@ -210,8 +243,7 @@ def main(argv=None):
                 quem = (p.get("registro") or {}).get("delegado") or p.get("trabalhador") or "-"
                 print(f"{p['id']} | {p.get('titulo', '')[:55]} | {p.get('situacao')} | {quem} | "
                       f"{p.get('motivo') or ''}")
-            velho = bool(ler_estado().get("codigo_velho"))
-            print("serviços: código velho" if velho else "serviços: código atual")
+            print(resumo_dos_servicos(ler_estado()))
         else:
             import json
             print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))

@@ -26,11 +26,35 @@ def ficha(nome="app", seguro=False):
                    "reinicio_seguro": seguro}}
 
 
+class Mundo:
+    """Processos de mentira em que `parar` MATA (o pid some da lista) e
+    `iniciar` faz nascer: sem isso, `reiniciar_servico` (que confere a morte
+    do velho antes de subir o novo) esperaria um morto que nunca morre."""
+    def __init__(self, *processos):
+        # o Windows nunca lista vazio: lista vazia e consulta que falhou
+        self.lista = [{"pid": 4, "comando": "System"}] + [dict(p) for p in processos]
+        self.parou, self.iniciou, self.proximo = [], [], 100
+
+    def processos(self):
+        return [dict(p) for p in self.lista]
+
+    def parar(self, pid):
+        self.parou.append(pid)
+        self.lista = [p for p in self.lista if p["pid"] != pid]
+
+    def iniciar(self, ficha):
+        pid, self.proximo = self.proximo, self.proximo + 1
+        self.iniciou.append(pid)
+        self.lista.append({"pid": pid, "comando": " ".join(ficha["comando"])})
+        return pid
+
+
 def supervisor(**mais):
     relogio = mais.pop("relogio", Relogio())
     opcoes = {"porta": lambda: True, "carteiro": lambda: {"situacao": "ocioso"},
               "git": lambda *_: False, "avisar": lambda *_: None, "gravar": lambda _: None,
-              "log": lambda _: None}
+              "log": lambda _: None, "janela": lambda _agora: (False, ""),
+              "dormir": lambda _s: None, "carregar": lambda: {}, "pendentes": lambda: []}
     opcoes.update(mais)
     return Supervisor(servicos=opcoes.pop("servicos", ficha()), relogio=relogio,
                       **opcoes), relogio
@@ -81,23 +105,28 @@ def test_religa_com_espera_crescente_e_limite_avisa():
     assert avisos
 
 
-def test_codigo_velho_espera_publicacao_e_depois_reinicia():
-    processos = [[{"pid": 10, "comando": "app"}, {"pid": 20, "comando": "postar.py"}],
-                 [{"pid": 10, "comando": "app"}]]
-    parou, iniciou = [], []
-    s, _ = supervisor(processos=lambda: processos.pop(0), git=lambda *_: True,
-                      parar=parou.append, iniciar=lambda _: iniciou.append(11) or 11)
+def test_reinicio_pedido_com_codigo_velho_espera_publicacao_e_depois_reinicia():
+    # D3 (13/10): o codigo velho sozinho nao reinicia; o PEDIDO espera a
+    # publicacao em voo acabar e entao reinicia
+    mundo = Mundo({"pid": 10, "comando": "app"}, {"pid": 20, "comando": "postar.py"})
+    s, _ = supervisor(processos=mundo.processos, git=lambda *_: True,
+                      parar=mundo.parar, iniciar=mundo.iniciar)
     s.pulso()
     assert s.estado["app"]["codigo_velho"]
-    assert not parou
+    s.pedir_reinicio("app")
     s.pulso()
-    assert parou == [10] and iniciou == [11]
+    assert not mundo.parou and s.estado["app"]["motivo_espera"] == "publicacao em andamento"
+    mundo.lista = [p for p in mundo.lista if p["pid"] != 20]      # a publicacao acabou
+    s.pulso()
+    assert mundo.parou == [10] and mundo.iniciou == [100]
+    assert "app" not in s.reinicio_pedido
 
 
-def test_carteiro_entregando_adia_codigo_velho():
+def test_carteiro_entregando_adia_reinicio_pedido():
     parou = []
     s, _ = supervisor(servicos=ficha("carteiro", True), processos=lambda: [{"pid": 10, "comando": "carteiro"}],
                       git=lambda *_: True, carteiro=lambda: {"situacao": "entregando"}, parar=parou.append)
+    s.pedir_reinicio("carteiro")
     s.pulso()
     assert s.estado["carteiro"]["motivo_espera"] == "carteiro entregando"
     assert not parou
@@ -107,13 +136,15 @@ def test_carteiro_entregando_espera_no_maximo_dez_minutos(monkeypatch):
     # 02/10 00:04: "ele nunca vai parar de rodar" - a espera tem teto.
     from coordenador import supervisor as mod
     monkeypatch.setattr(mod.Supervisor, "_interromper_entrega", lambda self: None)
-    parou = []
-    s, relogio = supervisor(servicos=ficha("carteiro", True), processos=lambda: [{"pid": 10, "comando": "carteiro"}],
-                            git=lambda *_: True, carteiro=lambda: {"situacao": "entregando"}, parar=parou.append)
+    mundo = Mundo({"pid": 10, "comando": "carteiro"})
+    s, relogio = supervisor(servicos=ficha("carteiro", True), processos=mundo.processos,
+                            git=lambda *_: True, carteiro=lambda: {"situacao": "entregando"},
+                            parar=mundo.parar, iniciar=mundo.iniciar)
+    s.pedir_reinicio("carteiro")
     s.pulso()
-    assert not parou
+    assert not mundo.parou
     relogio.andar(mod.ESPERA_ENTREGA_S + 1); s.pulso()
-    assert parou == [10]
+    assert mundo.parou == [10] and mundo.iniciou == [100]
 
 
 def test_proibido_para_delegados_sem_parar_servico():
@@ -382,20 +413,21 @@ def test_codigo_so_conta_depois_de_90_s_sem_salvar(tmp_path):
 
 def test_no_maximo_uma_religada_por_codigo_a_cada_2_min():
     from coordenador import supervisor as mod
-    parou, iniciou = [], []
-    s, relogio = supervisor(processos=lambda: [{"pid": 10 + len(iniciou), "comando": "app"}],
-                            git=lambda *_: True, parar=parou.append,
-                            iniciar=lambda _: iniciou.append(1) or 10 + len(iniciou))
+    mundo = Mundo({"pid": 10, "comando": "app"})
+    s, relogio = supervisor(processos=mundo.processos, git=lambda *_: True,
+                            parar=mundo.parar, iniciar=mundo.iniciar)
+    s.pedir_reinicio("app")
     s.pulso()
-    assert len(iniciou) == 1                                  # a primeira religa na hora
+    assert len(mundo.iniciou) == 1                            # a primeira religa na hora
+    s.pedir_reinicio("app")                                   # outra entrega aplicada logo depois
     for _ in range(int(mod.RELIGADA_MIN_S // mod.PULSO_S) - 1):
         relogio.andar(mod.PULSO_S)
         s.pulso()
-    assert len(iniciou) == 1
+    assert len(mundo.iniciou) == 1
     assert "no máximo uma vez" in s.estado["app"]["motivo_espera"]
     relogio.andar(mod.PULSO_S * 2)
     s.pulso()
-    assert len(iniciou) == 2
+    assert len(mundo.iniciou) == 2
 
 
 def test_parar_poupa_a_bandeja_do_tailscale():

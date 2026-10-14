@@ -240,23 +240,28 @@ def test_o_validador_so_recusa_a_entrega_vazia():
 
 def test_o_momento_seguro_e_sem_publicacao_em_voo_e_nao_tem_horario():
     """Desde 03/10 ("NÃO FICA ESPERANDO HORÁRIO") o vigia nao espera a janela da
-    postagem para aplicar: so a publicacao em voo barra (conferente, 05/10)."""
+    postagem para aplicar: so a publicacao em voo barra (conferente, 05/10).
+
+    O REINICIO de servico e outra conversa: D3 (13/10/2026) voltou a janela
+    `post-12 .. post+18` ao `supervisor.seguro` (etapa 2 da reforma)."""
     from datetime import datetime
 
-    def sup(processos):
+    def sup(processos, quando=datetime(2026, 10, 5, 17, 30)):
         return supervisor.Supervisor(
             servicos={"app": {"nome": "app", "assinatura": "app", "comando": ["app"],
                               "cwd": ".", "log": "x.log", "janela": "oculta",
                               "modulos": [], "reinicio_seguro": True}},
-            relogio=lambda: datetime(2026, 10, 5, 17, 55),      # 2 min antes do post das 17:57
+            relogio=lambda: quando,
             processos=lambda: processos, porta=lambda: True, git=lambda *_: False,
             avisar=lambda *_: None, gravar=lambda _: None, log=lambda _: None,
             parar=lambda *_: None, iniciar=lambda _: 1, comandos=lambda: [],
-            aplicar=lambda *a, **k: None)
+            aplicar=lambda *a, **k: None, carregar=lambda: {}, pendentes=lambda: [])
 
     assert sup([]).seguro("") == (True, "")
     ok, motivo = sup([{"pid": 7, "comando": "python ferramentas/postar.py"}]).seguro("")
     assert not ok and "publicacao" in motivo
+    ok, motivo = sup([], datetime(2026, 10, 5, 17, 55)).seguro("")   # 2 min antes do post das 17:57
+    assert not ok and "janela das postagens" in motivo
     assert delegar.PADRAO_CONFIG["janela_sem_aplicar"] is None
     texto = _texto()
     assert "sem publicação em voo; não espera horário" in texto

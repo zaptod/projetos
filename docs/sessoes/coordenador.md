@@ -9,7 +9,9 @@ contrata da fila: só `MesaPedidos.passo` despacha. No chat, registre com
 `delegar criar` exige `--pedido ID`. A exceção manual `--fora-da-porta MOTIVO`
 fica anotada no diário do pedido.
 
-O coordenador e o processo local que mantem app, bot, carteiro e Vila flutuante vivos sem depender de uma janela do VS Code. Ele adota processos ja existentes pela linha de comando, registra o estado em `%LOCALAPPDATA%\neural-fights\coordenador\estado.json` e so reinicia codigo velho fora das janelas de postagem e de uma publicacao real.
+O coordenador e o processo local que mantem app, bot, carteiro e Vila flutuante vivos sem depender de uma janela do VS Code. Ele adota processos ja existentes pela linha de comando, registra o estado em `%LOCALAPPDATA%\neural-fights\coordenador\estado.json` e religa quem cai (mesmo dentro da janela das postagens).
+
+**Um gerente so (etapa 2, D3 de 13/10/2026):** codigo velho so MARCA (`codigo_velho` no estado, `status --curto` diz quem); o reinicio acontece quando e PEDIDO — o vigia aplicou uma entrega (`pedir_reinicio`), o app mandou `servico_reiniciar` ou alguem rodou `coordenador reiniciar <svc>` — e nunca de `post-12` a `post+18` min de um horario da grade (`grade.minuto(h)`), nem com publicacao em voo. `reiniciar_servico` mata TODOS os processos que casam a assinatura e so sobe o novo depois de ver o velho sumir da lista (ate 15 s); se ele nao morre, nao sobe irmao. `reinicios_24h` e o pedido pendente sobrevivem ao coordenador subir de novo (lidos do `estado.json`), e `estado.json` e gravado por temporario + replace com ate 10 tentativas.
 
 Para instalar a tarefa (uma vez, em um prompt do usuario):
 
@@ -26,6 +28,11 @@ python -m coordenador status
 python -m coordenador status --curto
 python -m coordenador reiniciar app
 ```
+
+`reiniciar` so imprime `ok` (codigo 0) quando reiniciou. Recusado pelo momento
+(janela, publicacao, carteiro entregando) diz o motivo, deixa o pedido em
+`reinicios_pendentes.json` para o residente e sai com 2; velho que nao morre
+(sem permissao?) ou novo que nao sobe sai com 3.
 
 `status --curto` e o retrato para handoff: le os pedidos, incluindo o registro
 do trabalhador (PID conferido, prova e espera), sem varrer fichas de delegados.
