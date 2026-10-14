@@ -21,7 +21,6 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -128,19 +127,40 @@ class Video:
                 "capa": str(self.capa) if self.capa else None}
 
 
-@lru_cache(maxsize=1)
+_NOMES: frozenset | None = None
+
+
 def _nomes_no_banco() -> frozenset[str] | None:
     """Quem esta no banco do neural_fights AGORA. `None` se nao deu para ler.
 
     So os nomes, e uma vez so: `pendencias_da_build` roda por build e
     `fichas_do_banco` ainda monta o kit de cada personagem.
+
+    SO A LEITURA QUE DEU CERTO FICA GUARDADA (PUB-5, 14/10/2026). Com
+    `lru_cache`, uma falha unica guardava o `None` ate o app ou o bot
+    reiniciar, e toda build sem estreia dizia "estreia nao gravada"
+    (tarefa) em vez de "estreia impossivel" (lapide). Agora a falha devolve
+    `None` sem guardar, e a chamada seguinte le de novo.
     """
+    global _NOMES
+    if _NOMES is not None:
+        return _NOMES
     try:
         from ..nf_bridge import loader as nf
         _, personagens = nf.database.carregar_database()
-        return frozenset(p["nome"] for p in personagens if p.get("nome"))
+        _NOMES = frozenset(p["nome"] for p in personagens if p.get("nome"))
     except Exception:
         return None
+    return _NOMES
+
+
+def _esquecer_nomes() -> None:
+    global _NOMES
+    _NOMES = None
+
+
+# Quem usava `lru_cache` chamava `cache_clear` (os testes): continua valendo.
+_nomes_no_banco.cache_clear = _esquecer_nomes
 
 
 def _falta_estreia(pasta: Path) -> str:

@@ -157,9 +157,29 @@ def _mais_perto(pontos, ideal: float, minimo: float, maximo: float,
     return min(cabem, key=lambda p: abs(p - ideal))
 
 
+def _fatias_validas(fatias, limite: float) -> bool:
+    """Toda fatia entre `MINIMO_S` e o teto (com a margem)."""
+    return all(MINIMO_S - 1e-9 <= fim - ini <= limite + MARGEM_S + 1e-9
+               for ini, fim in fatias)
+
+
 def pedacos(duracao: float, limite: float = LIMITE_PADRAO_S,
             pontos=None, notas: dict | None = None) -> list:
-    """[(início, fim)] — os cortes, equilibrados e em fronteira de cena."""
+    """[(início, fim)] — os cortes, equilibrados e em fronteira de cena.
+
+    NENHUMA FATIA ABAIXO DE `MINIMO_S` NEM ACIMA DO TETO (PUB-4, 14/10/2026).
+    Medido no codigo de antes: `pedacos(598.7, pontos=[159.7, 384.5, 417.6])`
+    dava 7 fatias, uma de 11,36 s; em 20 000 sorteios (semente 2), 7 fatias
+    abaixo do minimo — a pior com -51,34 s — e 3 acima do teto. A escolha de
+    um corte podia passar do ponto ideal do seguinte, e o recurso "corta no
+    ideal" caia ANTES do corte anterior. Agora cada corte fica numa janela
+    que deixa o resto caber: pelo menos `MINIMO_S` depois do anterior e no
+    maximo `limite` depois dele, e o que sobra precisa caber nos pedacos
+    restantes (nem mais curto que o minimo, nem mais longo que o teto). Sem
+    janela, mais pedacos; sem nada ate `MAX_PEDACOS`, fatias iguais no
+    relogio. Com o conserto, o caso acima da 4 fatias (159,7 / 139,65 /
+    149,675 / 149,675 s).
+    """
     duracao = float(duracao)
     limite = max(float(limite) - MARGEM_S, MINIMO_S * 2)
     if duracao <= limite + MARGEM_S:
@@ -172,23 +192,31 @@ def pedacos(duracao: float, limite: float = LIMITE_PADRAO_S,
         alvo = duracao / quantos
         for i in range(1, quantos):
             ideal = alvo * i
+            restam = quantos - i           # pedacos depois deste corte
+            minimo = max(anterior + MINIMO_S, duracao - limite * restam)
+            maximo = min(anterior + limite, duracao - MINIMO_S * restam)
+            if minimo > maximo:
+                break                      # nao cabe com este numero
             escolha = _mais_perto(
-                pontos, ideal,
-                minimo=anterior + MINIMO_S,
-                maximo=min(anterior + limite, duracao - MINIMO_S),
+                pontos, ideal, minimo=minimo, maximo=maximo,
                 notas=notas, tolerancia=alvo * TOLERANCIA_GANCHO)
             if escolha is None:
                 # Sem fronteira utilizável (cena mais longa que o limite, ou
-                # vídeo sem plano): corta no ponto ideal mesmo.
-                escolha = min(ideal, anterior + limite, duracao - MINIMO_S)
+                # vídeo sem plano): corta no ponto ideal, dentro da janela.
+                escolha = min(max(ideal, minimo), maximo)
             cortes.append(escolha)
             anterior = escolha
-        marcos = [0.0] + cortes + [duracao]
-        fatias = list(zip(marcos, marcos[1:]))
-        if all(fim - ini <= limite + MARGEM_S for ini, fim in fatias):
-            return fatias
+        else:
+            marcos = [0.0] + cortes + [duracao]
+            fatias = list(zip(marcos, marcos[1:]))
+            if _fatias_validas(fatias, limite):
+                return fatias
         quantos += 1        # nenhuma fronteira serviu: mais pedaços, menores
-    return fatias
+    # NO RELOGIO, como ultimo recurso: fatias iguais (so acontece se nem
+    # `MAX_PEDACOS` cabe — video de mais de ~35 min).
+    quantos = min(MAX_PEDACOS, max(2, math.ceil(duracao / limite)))
+    marcos = [duracao * i / quantos for i in range(quantos)] + [duracao]
+    return list(zip(marcos, marcos[1:]))
 
 
 # ------------------------------------------------------------------ cortar

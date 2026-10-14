@@ -620,7 +620,13 @@ def _parecer_da_ia(alvo, roteiro: dict, laudo: dict) -> str:
         _linha(f"[parecer] {alvo.id}: a IA reprovou, mas a passada de "
                "conserto ja foi gasta; sai assim.")
         return ""
-    ficha = parecer.lembrado(alvo)
+    try:
+        ficha = parecer.lembrado(alvo)
+    except Exception as exc:                                   # noqa: BLE001
+        # Ilegivel: BARRA (e nao derruba a rodada inteira, que era o que a
+        # excecao fazia ate 14/10/2026). Normalmente `_retencao` ja reteve.
+        return (f"{alvo.id}: nao consegui ler os pareceres da IA "
+                f"({type(exc).__name__}); nao sai sem saber se foi vetada")
     if ficha and not ficha.get("aprovado"):
         motivos = "; ".join(ficha.get("motivos") or [])[:300]
         _linha(f"[parecer] {alvo.id}: veto ja registrado em "
@@ -772,6 +778,45 @@ def _consertada(alvo) -> bool:
     return _situacao_do_parecer(alvo) == CONSERTADA
 
 
+# O VETO QUE FALHAVA ABERTO (auditoria de 11/10/2026, verificada em 14/10).
+# Desde 11/10 `parecer._lembretes` levanta quando `_pareceres.json` esta
+# ilegivel ou trancado, em vez de virar `{}` — mas todo leitor da publicacao
+# engolia a excecao e respondia "sem parecer": `_veto_lembrado` dava "",
+# `_retencao` dava "" (a `situacao_do_video` do parecer tambem engole), e no
+# ultimo recurso fora de ordem (`adiadas`) a parte reprovada saia LIMPA, sem
+# marca. Agora "nao sei ler os pareceres" e RETIDA: so sai quando o horario
+# ficaria vazio, e sai marcada `[qualidade]` na lista a conferir — a mesma
+# classe do "ninguem assistiu". O aviso vai ao diario uma vez por rodada.
+_PARECERES_AVISADOS: list = []
+
+
+def _pareceres_ilegiveis(alvo) -> str:
+    """O motivo quando o arquivo dos pareceres NAO se le; "" quando se le.
+
+    A pergunta e feita pela leitura que levanta (`parecer.lembrado`), e nao
+    pelas que engolem. Nunca levanta.
+    """
+    try:
+        from contos.publicar import parecer
+        parecer.lembrado(alvo)
+        return ""
+    except Exception as exc:                                   # noqa: BLE001
+        motivo = f"{type(exc).__name__}: {exc}"[:160]
+    if not _PARECERES_AVISADOS:
+        _PARECERES_AVISADOS.append(motivo)
+        texto = (f"nao consegui ler os pareceres da IA ({motivo}); toda parte "
+                 "de historia fica RETIDA (so sai se o horario ficaria vazio, "
+                 "e marcada a conferir) ate o arquivo voltar a se ler")
+        _linha(f"[postar] {texto}")
+        try:
+            from builds import atividade
+            atividade.registrar("publicacao", atividade.ERRO, texto,
+                                "historias", etapa="publicar.parecer")
+        except Exception:                                      # noqa: BLE001
+            pass
+    return motivo
+
+
 def _retencao(alvo) -> str:
     """Por que a parte fica RETIDA; `""` quando nao fica.
 
@@ -800,6 +845,10 @@ def _retencao(alvo) -> str:
     de 05/10/2026, 12:32 (`historias/reolhar-depois-do-conserto`, opcao
     "nao" — uma passada so; a consertada so ganha prioridade).
     """
+    ilegivel = _pareceres_ilegiveis(alvo)
+    if ilegivel:
+        return (f"{alvo.id}: nao consegui ler os pareceres da IA "
+                f"({ilegivel}); fica retida enquanto o arquivo nao se ler")
     situacao = _situacao_do_parecer(alvo)
     if situacao == CONSERTADA:
         return (f"{alvo.id}: a IA reprovou, o reparo refez as cenas e "
@@ -1227,11 +1276,13 @@ class ParteMeioNoAr(RuntimeError):
 def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
     """`catalogo.publicar_youtube`, com a guarda da parte meio no ar.
 
-    `provas` ganha um laudo por pedaco que SUBIU (o laco do catalogo so o
-    acrescenta depois que `publicar_como_configurado` volta). Se a chamada
-    levantar com laudos novos na lista, algum arquivo ja foi entregue ao
-    Studio: levanta `ParteMeioNoAr` e marca a parte "a conferir" no YouTube.
-    Sem laudo novo, a excecao original sobe intacta (nada foi entregue;
+    `provas` ganha um laudo por pedaco TENTADO, antes da chamada (desde o
+    PUB-1, 14/10/2026); o do pedaco que caiu leva `falhou`. Os outros foram
+    entregues: se a chamada levantar com algum entregue, levanta
+    `ParteMeioNoAr` e marca a parte "a conferir" no YouTube. Se so o pedaco
+    que caiu tinha o CLIQUE dado (`clicou`), a parte vai a lista "a conferir"
+    e a excecao original sobe — quem chama ve o `clicou` no laudo e nao repoe.
+    Sem entregue e sem clique, a excecao sobe intacta (nada foi entregue;
     repetir nao duplica, e a reposicao por rede segue valendo).
     """
     from contos.publicar import catalogo
@@ -1239,8 +1290,17 @@ def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
     try:
         return catalogo.publicar_youtube(alvo, visibilidade, provas=provas)
     except Exception as exc:                                   # noqa: BLE001
-        entregues = provas[antes:]
+        novos = provas[antes:]
+        entregues = [p for p in novos if not (p or {}).get("falhou")]
+        clicou = any((p or {}).get("clicou") and (p or {}).get("falhou")
+                     for p in novos)
         if not entregues:
+            if clicou:
+                _garantir_marca(
+                    "historias", alvo.id, "youtube",
+                    f"cliquei em publicar no YouTube e algo falhou depois "
+                    f"({type(exc).__name__}): a parte pode estar no ar — "
+                    f"confira no canal.", etapa="publicar.youtube.clique")
             raise
         erro = f"{type(exc).__name__}: {exc}"[:300]
         ids = [str((p or {}).get("youtube_id") or "?") for p in entregues]
@@ -1251,20 +1311,65 @@ def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
                  f"a parte: o pedaco no ar subiria de novo. Precisa de uma "
                  f"pessoa no canal; tirar esta marca devolve a parte INTEIRA "
                  f"a fila (todos os pedacos).")
-        try:
-            from builds.publicar import desfecho
-            desfecho.marcar_para_conferir(
-                "historias", alvo.id, PREFIXO_DO_PEDACO + texto, "youtube",
-                etapa="publicar.youtube.pedaco", erro=True,
-                aviso=f"{alvo.id}: {texto}")
-        except Exception as marca:                             # noqa: BLE001
-            # A marca e a guarda da PROXIMA rodada; a desta e a propria
-            # `ParteMeioNoAr` (nao repoe). `marcar_para_conferir` ja avisou
-            # no diario quando a trava ou o arquivo falharam.
-            _linha(f"[postar] {alvo.id}: NAO consegui por na lista a "
-                   f"conferir do YouTube ({type(marca).__name__}); a proxima "
-                   f"rodada pode subir o pedaco de novo.")
+        # A marca e a guarda da PROXIMA rodada; a desta e a propria
+        # `ParteMeioNoAr` (nao repoe). Se o disco recusar, a marca fica na
+        # memoria e vai para a ficha da trava (`_garantir_marca`).
+        _garantir_marca("historias", alvo.id, "youtube",
+                        PREFIXO_DO_PEDACO + texto,
+                        etapa="publicar.youtube.pedaco",
+                        aviso=f"{alvo.id}: {texto}")
         raise ParteMeioNoAr(texto, erro=erro, ids=ids) from exc
+
+
+def _garantir_marca(canal: str, alvo_id: str, destino: str, estado: str, *,
+                    etapa: str, aviso: str | None = None) -> bool:
+    """O CLIQUE QUE SAIU vira marca "a conferir" — ou, no minimo, nao some.
+
+    PUB-1 (auditoria de 11/10/2026, verificada em 14/10): o publicador ja
+    tenta a marca quando algo falha depois do clique, mas a falha DELA (trava
+    `<destino>_a_conferir` ocupada 20 s, disco) era engolida, e nada duravel
+    guardava o clique: o video voltava a fila no horario seguinte. Aqui:
+
+      1. `desfecho.marcar_para_conferir` de novo (idempotente: se o
+         publicador ja marcou, nao repete nada; ela mesma tenta duas vezes);
+      2. se o disco recusar, a marca fica na memoria desta execucao
+         (`desfecho.lembrar_sem_marca`, somada por `desfecho.marcas` — a
+         rodada nao escolhe o video de novo) e `_em_voo` a leva para a ficha
+         da trava; a rodada seguinte a grava ANTES de escolher, ou nao
+         publica (`_pousar_sem_marca`);
+      3. avisa (diario e Telegram).
+
+    True quando a marca esta no disco. Nunca levanta.
+    """
+    try:
+        from builds.publicar import desfecho
+    except Exception:                                          # noqa: BLE001
+        return False
+    try:
+        desfecho.marcar_para_conferir(canal, alvo_id, estado, destino,
+                                      aviso=aviso, etapa=etapa, erro=True)
+        return True
+    except Exception as exc:                                   # noqa: BLE001
+        desfecho.lembrar_sem_marca(canal, alvo_id, estado, destino)
+        if _DONA:
+            _DONA["sem_marca"] = _marcas_so_na_memoria()
+            _pulsar(forcar=True)
+        _avisar(f"{alvo_id}: o clique no {destino} saiu e a marca 'a "
+                f"conferir' NAO gravou ({type(exc).__name__}: {exc})"[:300]
+                + ". Esta rodada nao o escolhe de novo; a seguinte grava a "
+                "marca antes de publicar, ou nao publica. Confira o canal.")
+        return False
+
+
+def _marcas_so_na_memoria() -> list:
+    """As marcas "a conferir" que o disco recusou nesta execucao. Nunca levanta."""
+    try:
+        from builds.publicar import desfecho
+        return [m for m in desfecho.sem_marca_no_disco()
+                if m.get("canal") in ("historias", "builds")
+                and m.get("destino") in ("youtube", "tiktok") and m.get("alvo")]
+    except Exception:                                          # noqa: BLE001
+        return []
 
 
 # ------------------------------------------- parte que so saiu no TikTok
@@ -1617,6 +1722,14 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         ficha["youtube_meio_no_ar"] = True
         ficha["youtube_erro"] = meio_no_ar.erro
         ficha["youtube_ids_no_ar"] = meio_no_ar.ids
+    if falha_yt and any((p or {}).get("clicou") and (p or {}).get("falhou")
+                        for p in provas):
+        # O CLIQUE JA TINHA SAIDO (PUB-1, 14/10/2026): o laudo do pedaco que
+        # caiu esta em `provas` desde antes da chamada. Repor no mesmo horario
+        # seria subir de novo (`_derrubados_pela_rede` respeita), mesmo que a
+        # mensagem tenha cara de rede; a marca "a conferir" ja foi tentada
+        # por `_subir_parte_no_youtube`.
+        ficha["youtube_clicou"] = True
     if not tiktok_agora:
         # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
         ficha["tiktok"] = ""
@@ -2864,7 +2977,14 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
         # A EXCECAO NAO PULA A CLASSIFICACAO: se o clique ja tinha saido (o
         # `laudo` guarda isso), o video precisa ir para "a conferir" mesmo
-        # que o erro tenha vindo depois.
+        # que o erro tenha vindo depois — e a marca que nao grava nao some
+        # (`_garantir_marca`, PUB-1).
+        if laudo.get("clicou"):
+            _garantir_marca("historias", alvo.id, "tiktok",
+                            f"cliquei em publicar no TikTok e algo falhou "
+                            f"depois ({type(exc).__name__}): o post pode "
+                            f"estar no ar — confira no perfil.",
+                            etapa="publicar.tiktok.clique")
         return ""
     # O REGISTRO E AQUI, e nao dentro do `tiktok.publicar`. La ele chama
     # `metricas.registrar_publicado(canal="historias")`, que DESCARTA tudo que
@@ -3617,6 +3737,136 @@ def proximo_build(config=None, *, marcar: bool = False):
     return None
 
 
+# --------------------------------------------- build que so saiu no TikTok
+# A DIVIDA DO YOUTUBE DOS BUILDS (decisao do Adrian `publicacao/build-so-no-
+# tiktok`, 13/10/2026: "mesma regra das historias" — "o YouTube sobe o build
+# devido no proximo horario, junto com o novo, ate zerar"). Quando o YouTube
+# dos builds caia e o TikTok confirmava, a reposicao subia OUTRO build no
+# YouTube (`_builds_prontos` conta qualquer destino como publicado), e o
+# primeiro ficava so no TikTok para sempre: fora da fila, da recuperacao (que
+# so trata privados) e da reserva. Agora ele e divida: o YouTube do horario
+# sobe ELE, o TikTok leva `proximo_build()`, e o YouTube sobe tambem o build
+# novo do TikTok (`_alcance_do_youtube_dos_builds`, como `_alcance_do_youtube`
+# das historias, decisao `youtube-atras-do-tiktok`).
+#
+# SO DESTA DATA EM DIANTE (a da decisao). Medido no ledger em 14/10/2026,
+# 02:22: 3 builds so no TikTok, nenhum desde 13/10 — o mais novo e o
+# `duelo_00076:duelo:celular` (12/10 16:31); os outros dois sao de antes de
+# 10/09 (`CORTE_DO_TIKTOK`, gordura). Para incluir o de 12/10, mova a data.
+CORTE_DA_DIVIDA_DOS_BUILDS = "2026-10-13"
+
+
+def _divida_do_youtube_dos_builds() -> tuple:
+    """(build que o YouTube deve, quando ele saiu no TikTok, motivos).
+
+    Sem divida: `(None, "", motivos)`, com o motivo de cada build devido que
+    nao pode sair agora. Nunca levanta: sem a resposta, o YouTube segue com a
+    fila normal (o orfao de antes, e nao o horario vazio).
+
+    Divida e o build com linha PUBLICADA (`_saiu`) no TikTok a partir de
+    `CORTE_DA_DIVIDA_DOS_BUILDS` e nenhuma no YouTube; o mais antigo primeiro.
+    Os crivos sao os da fila (`_builds_prontos` e `proximo_build`), menos o
+    "ja publicado em qualquer destino": o mp4 ainda no catalogo, sem
+    pendencia, titulo fora do ar no YouTube, fora da lista "a conferir" do
+    YouTube, teto da geracao no YouTube e audio que nao e mudo.
+    """
+    try:
+        return _procurar_divida_dos_builds()
+    except Exception as exc:                                   # noqa: BLE001
+        return None, "", [f"nao consegui procurar a divida do YouTube dos "
+                          f"builds ({type(exc).__name__}: {exc})"[:160]]
+
+
+def _procurar_divida_dos_builds() -> tuple:
+    from builds.publicar import catalogo as C
+    from builds.publicar import metricas
+
+    publicados = metricas.publicados()
+    no_youtube = {str(l.get("video_id") or "") for l in publicados
+                  if str(l.get("plataforma") or "youtube").lower() == "youtube"
+                  and _saiu(l)}
+    devidas: dict = {}
+    for l in publicados:
+        quando = str(l.get("quando") or "")
+        vid = str(l.get("video_id") or "")
+        if (l.get("plataforma") != "tiktok" or not _saiu(l)
+                or quando < CORTE_DA_DIVIDA_DOS_BUILDS
+                or not vid or vid in no_youtube):
+            continue
+        if vid not in devidas or quando < devidas[vid]:
+            devidas[vid] = quando
+    if not devidas:
+        return None, "", []
+
+    motivos: list = []
+    no_catalogo = {v.id: v for v in C.listar()}
+    try:
+        cheias = _fontes_cheias_hoje(publicados, "youtube")
+    except Exception:                                          # noqa: BLE001
+        cheias = set()                 # "nao sei" nao barra (ver a tabela)
+    for vid, quando in sorted(devidas.items(), key=lambda d: (d[1], d[0])):
+        v = no_catalogo.get(vid)
+        if v is None:
+            motivo = "o mp4 nao esta mais no catalogo"
+        elif getattr(v, "pendencias", None):
+            motivo = "pendencia: " + "; ".join(v.pendencias)[:100]
+        elif titulo_repetido(v, "builds", "youtube"):
+            motivo = "o titulo ja esta no ar no YouTube (ledger)"
+        elif not _sem_a_conferir([v], "builds"):
+            motivo = "esta na lista 'a conferir' do YouTube"
+        elif str(v.id).split(":")[0] in cheias:
+            motivo = (f"a geracao ja saiu {TETO_POR_FONTE_NO_DIA}x hoje no "
+                      "YouTube")
+        else:
+            motivo = _audio_mudo(v)
+        if not motivo:
+            return v, quando, motivos
+        motivos.append(f"{vid}: {motivo}")
+    return None, "", motivos
+
+
+def _alcance_do_youtube_dos_builds(ficha: dict, alvo) -> None:
+    """Sobe ao YouTube tambem o build novo que o TikTok levou no horario com
+    divida — "junto com o novo, ate zerar" (decisao `build-so-no-tiktok`)."""
+    from builds.publicar import metricas
+
+    if not _cabe_antes_do_proximo("a segunda subida do YouTube dos builds"):
+        ficha["youtube_alcance"] = {"pulado": "sem tempo antes do horario "
+                                              "seguinte"}
+        return
+    try:
+        no_ar = any(str(l.get("video_id") or "") == alvo.id and _saiu(l)
+                    and str(l.get("plataforma") or "youtube") == "youtube"
+                    for l in metricas.publicados())
+    except Exception:                                          # noqa: BLE001
+        no_ar = True                   # sem ledger, nao arrisca duplicar
+    if no_ar:
+        _linha(f"[postar] builds: alcance do YouTube nao repete {alvo.id}.")
+        return
+    if not _sem_a_conferir([alvo], "builds"):
+        return
+    if not _sem_fonte_cheia([alvo], "builds"):
+        ficha["youtube_alcance"] = {"pulado": "teto por geracao"}
+        return
+    alcance = {"alvo": alvo.id, "titulo": alvo.titulo, "url": ""}
+    ficha["youtube_alcance"] = alcance
+    laudo: dict = {}
+    try:
+        alcance["url"] = _youtube_dos_builds(alvo, laudo)
+    except Exception as exc:                                   # noqa: BLE001
+        alcance["falhou"] = f"{type(exc).__name__}: {exc}"[:200]
+        if laudo.get("clicou"):
+            alcance["clicou"] = True
+            _garantir_marca("builds", alvo.id, "youtube",
+                            f"cliquei em publicar no YouTube e algo falhou "
+                            f"depois ({alcance['falhou'][:120]}): o video pode "
+                            f"estar no ar — confira no Studio.",
+                            etapa="publicar.youtube.clique")
+        _linha(f"[postar] builds: segunda subida do YouTube falhou "
+               f"({alcance['falhou']}); {alvo.id} continua devendo o "
+               "YouTube.")
+
+
 def postar_build(*, so_ver: bool = False) -> dict:
     # Uma guarda por DESTINO, igual as historias: o YouTube ter saido nesta
     # hora nao pode cancelar o TikTok.
@@ -3647,13 +3897,34 @@ def postar_build(*, so_ver: bool = False) -> dict:
         _anotar_falha_do_tiktok(ficha, falha_tk)
         ficha["feito"] = _tiktok_confirmado(ficha["tiktok"])
         return ficha
-    alvo = proximo_build(marcar=not so_ver)
-    if alvo is None:
-        return {"canal": "builds", "feito": False,
-                "motivo": "nao ha video pendente"}
+    # A DIVIDA DO YOUTUBE VEM ANTES DA FILA (decisao `build-so-no-tiktok`,
+    # 13/10/2026, ver `CORTE_DA_DIVIDA_DOS_BUILDS`): o build que saiu so no
+    # TikTok sobe no YouTube deste horario, e o TikTok leva o proximo da fila
+    # — que ja pula o devido, porque ele conta como publicado pelo TikTok.
+    divida, divida_quando, motivos_da_divida = _divida_do_youtube_dos_builds()
+    for motivo in motivos_da_divida[:3]:
+        _linha(f"[postar] builds: divida do YouTube que nao sai agora — "
+               f"{motivo}"[:200])
+    if divida is not None:
+        alvo, tk_alvo = divida, None
+        if tiktok_agora and not ja_tk:
+            tk_alvo = proximo_build(marcar=not so_ver)
+        _linha(f"[postar] builds: o YouTube deve {divida.id} (saiu no TikTok "
+               f"em {divida_quando[:16]}); sobe ele"
+               + (f", e o TikTok leva {tk_alvo.id}" if tk_alvo else "") + ".")
+    else:
+        alvo = proximo_build(marcar=not so_ver)
+        if alvo is None:
+            return {"canal": "builds", "feito": False,
+                    "motivo": "nao ha video pendente"}
+        tk_alvo = alvo
     if so_ver:
-        return {"canal": "builds", "feito": False, "veria": alvo.id,
-                "titulo": alvo.titulo, "motivo": "so vendo"}
+        veria = {"canal": "builds", "feito": False, "veria": alvo.id,
+                 "titulo": alvo.titulo, "motivo": "so vendo"}
+        if divida is not None:
+            veria["youtube_devido"] = divida_quando
+            veria["veria_tiktok"] = tk_alvo.id if tk_alvo else ""
+        return veria
     # `publicar_como_configurado` JA REGISTRA — e a porta unica, e o registro
     # mora dentro dela justamente para nenhum chamador esquecer. Chamar
     # `registrar_publicado` aqui de novo gravava a MESMA publicacao duas
@@ -3679,9 +3950,17 @@ def postar_build(*, so_ver: bool = False) -> dict:
     ficha = {"canal": "builds", "feito": bool(url), "alvo": alvo.id,
              "titulo": alvo.titulo, "url": url}
     if falha_yt and laudo_yt.get("clicou"):
-        # O CLIQUE JA TINHA SAIDO: o video pode estar no ar (o `youtube_web`
-        # ja o pos na lista "a conferir"). Repor seria subir de novo.
+        # O CLIQUE JA TINHA SAIDO: o video pode estar no ar. Repor seria
+        # subir de novo. O `youtube_web` ja tentou a marca "a conferir"; se
+        # ela nao gravou, `_garantir_marca` tenta de novo e, no pior caso,
+        # guarda o clique na memoria e na ficha da trava (PUB-1, 14/10/2026:
+        # ate aqui so este horario sabia do clique, e o seguinte reescolhia).
         ficha["youtube_clicou"] = True
+        _garantir_marca("builds", alvo.id, "youtube",
+                        f"cliquei em publicar no YouTube e algo falhou depois "
+                        f"({falha_yt[:120]}): o video pode estar no ar como "
+                        f"publicado ou RASCUNHO — confira no Studio.",
+                        etapa="publicar.youtube.clique")
     # A VALVULA APARECE NO RELATORIO. "Libera o menos pior com aviso" so
     # funciona se o aviso for somavel: sem esta marca, a excecao vira rotina
     # silenciosa e ninguem descobre que ela virou regra.
@@ -3693,20 +3972,36 @@ def postar_build(*, so_ver: bool = False) -> dict:
         ficha["youtube_falhou"] = True
         if cota:
             ficha["cota_youtube"] = True
+    if divida is not None:
+        ficha["youtube_devido"] = divida_quando
     if not tiktok_agora:
         # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
         ficha["tiktok"] = ""
         ficha["tiktok_fora_da_grade"] = True
         _linha("[postar] builds: este horario nao e da grade do TikTok.")
+    elif ja_tk:
+        # O TikTok deste horario ja saiu; a marca e a que `_juntar_reposicao`
+        # usa para juntar o YouTube reposto na ficha de antes.
+        ficha["tiktok"] = ""
+        ficha["so_youtube"] = True
+    elif tk_alvo is None:
+        # O YouTube levou a divida e a fila nao tem outro build para o TikTok.
+        ficha["tiktok"] = ""
+        ficha["tiktok_sem_parte"] = True
     else:
         falha_tk: dict = {}
-        ficha["tiktok"] = "" if ja_tk else _tiktok_dos_builds(alvo, falha_tk)
-        if ja_tk:
-            ficha["so_youtube"] = True
+        if tk_alvo is not alvo:
+            ficha.update({"tiktok_alvo": tk_alvo.id,
+                          "tiktok_titulo": tk_alvo.titulo})
+        ficha["tiktok"] = _tiktok_dos_builds(tk_alvo, falha_tk)
         _anotar_falha_do_tiktok(ficha, falha_tk)
     if _tiktok_confirmado(ficha["tiktok"]):
         ficha["feito"] = True
     _registrar_valvula(ficha)
+    # "Junto com o novo, ate zerar": a falha do TikTok nao segura este envio.
+    if (divida is not None and url and tk_alvo is not None
+            and tk_alvo is not alvo):
+        _alcance_do_youtube_dos_builds(ficha, tk_alvo)
     return ficha
 
 
@@ -3779,6 +4074,12 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
             if laudo.get("clicou"):
                 falha["clicou"] = True
         _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
+        if laudo.get("clicou"):
+            _garantir_marca("builds", alvo.id, "tiktok",
+                            f"cliquei em publicar no TikTok e algo falhou "
+                            f"depois ({type(exc).__name__}): o post pode "
+                            f"estar no ar — confira no perfil.",
+                            etapa="publicar.tiktok.clique")
         estado = ""
     return estado
 
@@ -4809,6 +5110,14 @@ def _em_voo(canal: str, alvo_id: str, destino: str):
         yield
     finally:
         _DONA["em_voo"] = None
+        # O CLIQUE SEM MARCA VAI PARA A FICHA (PUB-1, 14/10/2026): a marca "a
+        # conferir" que o disco recusou dentro deste voo (no publicador ou em
+        # `_garantir_marca`) so existe na memoria deste processo; gravada
+        # aqui, a rodada seguinte a grava antes de escolher (`_pousar_sem_
+        # marca`). Todo caminho que sobe video passa por um dos quatro funis.
+        pendentes = _marcas_so_na_memoria()
+        if pendentes or _DONA.get("sem_marca"):
+            _DONA["sem_marca"] = pendentes
         # O POUSO GRAVA DUAS VEZES (conferente do f79a894, 06/10/2026). A
         # `.bak` e sempre a gravacao ANTERIOR: com uma gravacao so, ela
         # guardava o ultimo "clicou" JA CONFIRMADO, e se a principal se
@@ -4938,7 +5247,8 @@ def _voo_anterior() -> tuple:
     if problema:
         _avisar_ficha_invalida(problema)
     if estado == "sei":
-        return True, voo, dona or {"em_voo": voo}, ""
+        return True, voo, dona or {"em_voo": voo,
+                                   "sem_marca": _sem_marca_crua(principal)}, ""
     estado_b, voo_b, dona_b, problema_b = _voo_da_ficha(reserva)
     if estado == "ausente" and estado_b == "ausente":
         return True, None, None, ""
@@ -4948,7 +5258,9 @@ def _voo_anterior() -> tuple:
                    f"anterior ({reserva.name}).")
         # `pela_reserva`: a `.bak` e uma gravacao ATRAS da que se perdeu, e o
         # voo dela e o MINIMO que aconteceu (`_pousar_voo_perdido`).
-        return True, voo_b, dict(dona_b or {"em_voo": voo_b},
+        return True, voo_b, dict(dona_b or {"em_voo": voo_b,
+                                            "sem_marca": _sem_marca_crua(
+                                                reserva)},
                                  pela_reserva=True), ""
     return False, None, None, (
         f"a ficha da rodada anterior ({principal}) "
@@ -4958,6 +5270,16 @@ def _voo_anterior() -> tuple:
            else f"tambem nao serve ({problema_b})")
         + "; nao da para saber se havia video no ar e este horario NAO "
         "publicou. Confira os canais e apague as duas fichas para liberar")
+
+
+def _sem_marca_crua(caminho) -> list:
+    """O `sem_marca` de uma ficha que NAO validou (lido cru). `[]` se nao ha."""
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+    except Exception:                                          # noqa: BLE001
+        return []
+    lista = dados.get("sem_marca") if isinstance(dados, dict) else None
+    return list(lista) if isinstance(lista, list) else []
 
 
 def _voo_da_ficha_invalida(caminho=None) -> tuple:
@@ -5235,6 +5557,47 @@ def _pousar_voo_perdido(anterior: dict | None) -> bool:
     return True
 
 
+def _pousar_sem_marca(anterior: dict | None) -> bool:
+    """As marcas "a conferir" que a rodada anterior NAO conseguiu gravar.
+
+    A rodada anterior deu o clique, algo falhou depois e o disco recusou a
+    marca (PUB-1, 14/10/2026); ela guardou a marca na ficha da trava
+    (`sem_marca`, ver `_garantir_marca` e `_em_voo`). Aqui, ANTES de qualquer
+    escolha, a marca e gravada. True quando nao ha nada ou todas gravaram;
+    False quando alguma NAO gravou — e entao esta rodada nao publica, e a
+    ficha velha fica para a proxima tentar (como `_pousar_voo_perdido`).
+    Entrada torta (nao e dicionario, canal ou destino desconhecido) e
+    ignorada com aviso: nao da para marcar o que nao se sabe o que e.
+    """
+    pendentes = (anterior or {}).get("sem_marca") or []
+    if not isinstance(pendentes, list) or not pendentes:
+        return True
+    from builds.publicar import desfecho
+    for item in pendentes:
+        if not (isinstance(item, dict)
+                and item.get("canal") in ("historias", "builds")
+                and item.get("destino") in ("youtube", "tiktok")
+                and isinstance(item.get("alvo"), str) and item.get("alvo")):
+            _linha(f"[postar] marca pendente torta na ficha anterior, "
+                   f"ignorada: {item!r}"[:200])
+            continue
+        texto = (f"a rodada anterior clicou em publicar {item['alvo']} no "
+                 f"{item['destino']} e NAO conseguiu gravar a marca a "
+                 f"conferir; gravei agora: pode estar no ar — confira")
+        try:
+            desfecho.marcar_para_conferir(
+                item["canal"], item["alvo"],
+                str(item.get("estado") or texto)[:200], item["destino"],
+                aviso=texto, etapa="publicar.rodada", erro=True)
+        except Exception as exc:                               # noqa: BLE001
+            _avisar(f"a rodada anterior clicou em publicar {item['alvo']} no "
+                    f"{item['destino']} sem gravar a marca a conferir, e de "
+                    f"novo ela NAO gravou ({type(exc).__name__}: {exc}) — "
+                    "este horario nao publica (repetir e pior que nao postar)")
+            return False
+    return True
+
+
 @contextmanager
 def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
     """`with _trava_da_rodada() as vez:` — `vez["minha"]` diz se publica.
@@ -5301,7 +5664,7 @@ def _trava_da_rodada(esperar: float | None = None, tipo: str = "rodada"):
         if not sei:
             vez["minha"] = False
             vez["voo_preso"] = bloqueio
-        elif _pousar_voo_perdido(anterior):
+        elif _pousar_voo_perdido(anterior) and _pousar_sem_marca(anterior):
             _gravar_dona(tipo)
         else:
             vez["minha"] = False      # a ficha velha fica: a proxima tenta

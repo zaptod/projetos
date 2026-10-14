@@ -199,6 +199,14 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    `desfecho.marcar_para_conferir`), que tira o vídeo da fila e da
    recuperação; o aviso diz "pode ter saído público — confira". Se a marca
    não grava, a rodada **não publica** e a ficha velha fica para a próxima.
+   **Clique sem marca** (PUB-1, 14/10): o clique saiu, algo falhou depois e
+   a própria marca "a conferir" também falhou. `marcar_para_conferir` tenta
+   duas vezes (`TENTATIVAS_DA_MARCA`); a que não grava fica na **memória da
+   execução** (`desfecho.lembrar_sem_marca`, somada por `desfecho.marcas` —
+   a mesma rodada não escolhe o vídeo de novo), `_garantir_marca` e o
+   `_em_voo` a levam para a ficha da trava (`sem_marca`), e a rodada
+   seguinte a grava **antes de escolher** (`_pousar_sem_marca`) — ou não
+   publica, como no voo perdido.
    Nada recomeça a menos de 20 min do horário seguinte — também a
    recuperação e a reserva (`_cabe_antes_do_proximo`). As tarefas `NeuralFights_postar_*`
    têm `ExecutionTimeLimit` de **2 h** (`LIMITE_DA_TAREFA`,
@@ -273,6 +281,9 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Ordem das partes **no destino** | `_em_ordem_no_destino` — pergunta ao TikTok, não ao ledger |
 | Parte barrada segura as seguintes | `proxima_historia` (`bloqueadas`/`adiadas`) |
 | "A conferir" (clique sem confirmação; e áudio mudo, com `estado` começando por `[audio] `) | `desfecho.a_conferir`/`marcas` + `postar._sem_a_conferir`/`_com_as_raizes`. Só a marca `[audio] ` sai sozinha (`desfecho.soltar_marca` com prefixo); a de clique só por conferência humana |
+| Clique dado e exceção depois, nos dois publicadores (PUB-1, 14/10) | `youtube_web._depois_do_clique` e, desde 14/10, `tiktok.publicar` (antes o TikTok não marcava nada na exceção pós-clique) chamam `desfecho.resolver`. Marca que não grava: 2 tentativas, memória da execução (`desfecho._SEM_MARCA`, somada em `marcas`), `postar._garantir_marca` (nos 4 funis e no `postar_build`) e ficha da trava `sem_marca` → `_pousar_sem_marca` na rodada seguinte, antes da escolha. Nas histórias, `catalogo.publicar_youtube` põe o laudo em `provas` **antes** da chamada (o do pedaço que caiu leva `falhou`): a ficha ganha `youtube_clicou` e não é reposta como "rede". Teste `historias/tests/test_clique_sem_marca_postar_regressions.py`, `random_builds/tests/test_clique_sem_marca_regressions.py` |
+| Build que saiu só no TikTok (dívida do YouTube dos builds, decisão `build-so-no-tiktok`, 13/10) | `postar._divida_do_youtube_dos_builds`, chamada por `postar_build` antes da fila: o build com linha de TikTok desde `CORTE_DA_DIVIDA_DOS_BUILDS` (2026-10-13) e sem YouTube, o mais antigo primeiro, sobe no YouTube; o TikTok leva `proximo_build()`; e o YouTube sobe também o build novo do TikTok (`_alcance_do_youtube_dos_builds`, "junto com o novo, até zerar"). Crivos: catálogo, pendência, título no YouTube, "a conferir" do YouTube, teto da geração no YouTube, áudio mudo. Reposição no mesmo horário: `so_youtube` + `_juntar_reposicao`. Medido em 14/10 02:22: 3 builds só no TikTok, **nenhum** desde 13/10 (o mais novo, `duelo_00076`, é de 12/10 16:31 — fora do corte). Teste `historias/tests/test_divida_dos_builds_regressions.py` |
+| `_pareceres.json` ilegível ou trancado (14/10) | `postar._pareceres_ilegiveis` (pergunta por `parecer.lembrado`, que levanta): a parte vira **retida** em `_retencao` (só sai se o horário ficaria vazio, marcada `[qualidade]`), não sai nas `adiadas`, e `_parecer_da_ia` barra em vez de derrubar a rodada. Diário 1x por rodada. Antes os leitores engoliam e respondiam "sem parecer". `qualidade.liberado` (parte Histórias) ainda engole — é do painel/agenda, não da publicação. Teste `historias/tests/test_veto_ilegivel_regressions.py` |
 | Espera de processamento e confirmação | `youtube_web.py`, `tiktok.py`; veredito em `desfecho.classificar` |
 | Texto que não entrou no campo (título, descrição, legenda) | `escrita.escrever` + `escrita.estado`, chamados por `youtube_web._escrever` e `tiktok._escrever_legenda`; foto da falha em `random_builds\outputs\_publicar\telas\` |
 | Contador de estoque = funil da escolha | `postar._builds_prontos` (usado por `proximo_build`, `pendentes_por_canal`, `estoque_por_formato`) |
@@ -285,7 +296,7 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 | Página do YouTube/TikTok que não abre | `identity.browser.abrir_pagina` (3 tentativas: a aba de sempre com `domcontentloaded` 90 s, depois aba nova com `commit` 60 s; a aba que falhou é fechada assim que a nova existe, e na falha final sobra uma só) e `ir_para` (mesma aba, para quem tem ouvinte nela); `tiktok._abrir`/`youtube_web._abrir` levantam `"infraestrutura: ..."`, que `desfecho.classificar` não conta contra o vídeo |
 | Studio que abre em branco, ou envio que não abre (YouTube) | `youtube_web.falha_da_montagem` (sempre `infraestrutura:`) e `falha_do_envio` (`infraestrutura:` **só** se abrir+montar levou `PAGINA_LENTA_S` = 60 s ou mais; diálogo sem campo em página rápida é tela, e a frase pede o `--sondar` — na sonda real o campo nasce junto com o diálogo); `_abrir_dialogo_de_upload` espera mais `ESPERA_DIALOGO_CARREGANDO_S` (60 s) com o diálogo na tela, e o que cobre o Criar (`_parede_no_criar`) é lido, fotografado e fechado com ESC antes do clique (prazo `CLIQUE_CRIAR_S` = 10 s). O laudo leva `abertura_s` (só abrir+montar) e `envio_nao_abriu`. Testes por comportamento de `publicar()` em `test_parede_no_criar_regressions` (`PublicarLigacaoTests`) |
 | Parte em pedaços com pedaço já no YouTube | `postar._subir_parte_no_youtube` (a porta dos 3 caminhos do postar: rodada, `--so-youtube`, `--tudo`): pedaço entregue e o seguinte caiu → `ParteMeioNoAr` (mensagem sem o erro original, que fica em `youtube_erro`), marca `[pedaco] ` na lista "a conferir" do YouTube (só uma pessoa tira) e a ficha `youtube_meio_no_ar`, que `_derrubados_pela_rede` e `_publicar_canal` respeitam: o canal **não** é reposto no horário. `historias/main.py publicar` e `serie.py` chamam o catálogo direto e não passam por ela |
-| Parte de história que saiu só no TikTok (dívida do YouTube, decisão `youtube-caiu-depois-do-tiktok`, 06/10) | `postar._divida_do_youtube`, chamada por `postar_historia` antes da fila quando o YouTube do horário ainda não saiu: a parte com linha de TikTok desde `CORTE_DA_DIVIDA_DO_YOUTUBE` (2026-10-05: medido em 06/10, 23:59, eram 4 partes só no TikTok — h16 p01 de 16/09, fora do corte (decisão `h16-p01-so-no-tiktok`, 07/10: subir pelo `--so-youtube`); h54 p01 de 05/10 23:50, h54 p02 e h60 p01 de 06/10. Com 06/10 a h54 p01 ficava de fora e a p02 nunca saía, pela ordem; as de 28/09 são do `--so-youtube`) e sem YouTube, com as anteriores já no YouTube, a de menor parte primeiro, sobe no YouTube; o TikTok leva `proxima_historia()` (ficha com `youtube_devido` e `tiktok_alvo`). Guardas: ledger, título no YouTube, "a conferir" do YouTube (o pedaço no ar **não** vira dívida), render, catálogo, teto por fonte no YouTube e vistoria — sem o parecer da IA, e sem a válvula: a devida RETIDA sobe mesmo havendo parte limpa (decisão `divida-retida-fura-valvula`, 07/10) e fica "a conferir" no YouTube. A que não passa vai ao log e o YouTube segue a fila. Reposição no mesmo horário: `so_youtube` + `_juntar_reposicao` dão uma ficha só. Teste `historias/tests/test_divida_do_youtube_regressions.py` |
+| Parte de história que saiu só no TikTok (dívida do YouTube, decisão `youtube-caiu-depois-do-tiktok`, 06/10; para builds, ver a linha "Build que saiu só no TikTok") | `postar._divida_do_youtube`, chamada por `postar_historia` antes da fila quando o YouTube do horário ainda não saiu: a parte com linha de TikTok desde `CORTE_DA_DIVIDA_DO_YOUTUBE` (2026-10-05: medido em 06/10, 23:59, eram 4 partes só no TikTok — h16 p01 de 16/09, fora do corte (decisão `h16-p01-so-no-tiktok`, 07/10: subir pelo `--so-youtube`); h54 p01 de 05/10 23:50, h54 p02 e h60 p01 de 06/10. Com 06/10 a h54 p01 ficava de fora e a p02 nunca saía, pela ordem; as de 28/09 são do `--so-youtube`) e sem YouTube, com as anteriores já no YouTube, a de menor parte primeiro, sobe no YouTube; o TikTok leva `proxima_historia()` (ficha com `youtube_devido` e `tiktok_alvo`). Guardas: ledger, título no YouTube, "a conferir" do YouTube (o pedaço no ar **não** vira dívida), render, catálogo, teto por fonte no YouTube e vistoria — sem o parecer da IA, e sem a válvula: a devida RETIDA sobe mesmo havendo parte limpa (decisão `divida-retida-fura-valvula`, 07/10) e fica "a conferir" no YouTube. A que não passa vai ao log e o YouTube segue a fila. Reposição no mesmo horário: `so_youtube` + `_juntar_reposicao` dão uma ficha só. Teste `historias/tests/test_divida_do_youtube_regressions.py` |
 | Legenda do TikTok comida pelo editor | `escrita.escrever` pausa `PAUSA_DEPOIS_DO_ENTER_S` (0,25 s) depois de limpar e de cada Enter; `tiktok._escrever_legenda` tenta 3 modos (`MODOS_DA_LEGENDA`: digitada, colada, digitada devagar) e só escreve depois do envio a 100% (`_esperar_envio`, "Enviado （…MB）" com parêntese de largura cheia — `_sem_acento` faz NFKC antes do NFD —, teto 120 s) |
 | Capa recusada pela conta (403) | `youtube.definir_capa` + `capa_bloqueada`: o 403 marca a conta em `<runtime>/capa_bloqueada.json`, a capa não é pedida de novo no mesmo dia (revalida 1x/dia) e o diário ganha 1 aviso quando o bloqueio começa. Short não procura miniatura no Studio (`youtube_web._e_short`) |
 | Estágio do processamento no Studio | `youtube_web._classificar_rodape`: só o **rodapé** do diálogo classifica (seletor, ou o trecho em volta da contagem regressiva) e vai ao laudo. O último estágio legível vai ao passo, ao laudo (`ultimo_estagio_legivel`) e ao ERRO do diário, mas **não decide o clique**: `desconhecida` no estouro do teto publica (regra de 16/09) — `subindo`/`processando` lidos AGORA continuam segurando |
@@ -723,9 +734,10 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
     Studio publicaria "onde abrir"). → ausente = vazio; trancado = 3
     tentativas; JSON partido = cópia `.corrompido` e **levanta** (nada é
     gravado por cima); gravação por `.tmp` + `os.replace` sob as travas
-    `contas_json`/`pareceres_json`; `renomear` grava o registro ANTES de
-    mover a pasta; `escolher` limpa o nome como `adicionar`; `lembrar` não
-    derruba o parecer, mas o que não gravou vai ao diário como ERRO.
+    `contas_json`/`pareceres_json`; `escolher` limpa o nome como
+    `adicionar`; `lembrar` não derruba o parecer, mas o que não gravou vai
+    ao diário como ERRO. (`renomear` gravava o registro antes de mover a
+    pasta, sem desfazer — consertado em 14/10, PUB-3: ver abaixo.)
   - *Parte em 2 Shorts com o 2º caindo* (`catalogo.publicar_youtube`): nada
     era registrado e a próxima execução subia o pedaço 1 de novo (prova:
     `uploads = [p01#1, p01#1, p01#2]`, 1 linha). → `PublicacaoParcial`
@@ -756,11 +768,36 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   `historias/tests/test_conserto_publicacao_1110_regressions.py`, e os
   acréscimos em `test_trava_do_ledger_regressions`,
   `test_youtube_publicar_assim_regressions`, `test_vistoria_memo_regressions`
-  e `remoto/test_remoto`. **Ficou aberto**: o build que saiu só no TikTok
-  (decisão `build-so-no-tiktok`, pendente no Grimório) e, nas histórias, a
-  reposição no mesmo horário depois de um clique no YouTube seguido de
-  exceção (a marca "a conferir" protege o horário seguinte; a ficha de
-  histórias ainda não leva `youtube_clicou`).
+  e `remoto/test_remoto`. **Ficou aberto** (e foi fechado em 14/10, abaixo):
+  o build que saiu só no TikTok e, nas histórias, a reposição no mesmo
+  horário depois de um clique no YouTube seguido de exceção.
+- **Verificação de 14/10/2026** (`docs/auditoria/2026-10-11-profunda/
+  consertos/publicacao.md`, 7 abertos + o veto que falhava aberto), cada
+  um com teste que falhava no HEAD `d6aedb45`:
+  - *PUB-1, clique sem marca* (alto): ver §1 ("Clique sem marca") e a linha
+    da tabela do §2. O TikTok também não marcava nada na exceção depois do
+    clique — agora marca, dentro de `tiktok.publicar`.
+  - *PUB-2, build só no TikTok*: a dívida dos builds (§2).
+  - *PUB-3, `contas.renomear`*: a pasta move **primeiro**; o registro só
+    grava se ela moveu (senão `RuntimeError` "feche o Chrome desse perfil",
+    nada muda); registro que não grava devolve a pasta. Medido no HEAD com
+    um arquivo aberto na pasta: `PermissionError`, registro em
+    `historinhas`, pasta em `tiktok__canal2`. Teste
+    `random_builds/tests/test_contas_renomear_regressions.py`.
+  - *PUB-4, `cortes.pedacos`*: cada corte numa janela que deixa o resto
+    caber (≥ `MINIMO_S`, ≤ teto); sem janela, mais pedaços; sem nada até
+    `MAX_PEDACOS`, fatias iguais. Medido no HEAD: `pedacos(598.7, [159.7,
+    384.5, 417.6])` dava 7 fatias, uma de 11,36 s; 20 000 sorteios
+    (semente 2): 7 abaixo do mínimo (a pior −51,34 s) e 3 acima do teto.
+    Agora 4 fatias (159,7/139,65/149,675/149,675) e 0 ruins. Teste
+    `random_builds/tests/test_cortes_fatias_regressions.py`.
+  - *PUB-5*: `catalogo._nomes_no_banco` só guarda a leitura que deu certo.
+  - *PUB-6*: `contas.conformidade` cobra conta própria só de
+    `CANAIS_PUBLICANDO` (`builds`, `historias`); o `zombie` entra quando
+    estrear.
+  - *PUB-7*: a chave do memo dos trechos pretos leva `PRETO_AREA`,
+    `PRETO_PIXEL`, `PRETO_MIN_S` e `PRETO_FPS`.
+  - *Veto com `_pareceres.json` ilegível*: retida, não "sem parecer" (§2).
 
 ## 5. O estado de hoje (27/09/2026)
 

@@ -723,24 +723,45 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         # de que o clique saiu era a frase de retorno, e uma excecao apaga a
         # frase: o video voltaria para a fila e seria reenviado, duplicando.
         laudo["clicou"] = True
-        passo("publicar clicado; confirmando...")
-        estado = _confirmar_publicacao(page, passo)
-        passo(estado)
-        laudo["upload_s"] = round(time.monotonic() - comeco_do_upload, 1)
-        laudo["confirmacao_extra"] = "confirmacao extra" in estado
-        if confirmado(estado):
-            laudo["estado"] = "publicado"
-            laudo["confirmado"] = True
-            # O TikTok nao devolve URL nem id aqui; o registro vale para
-            # saber O QUE ja foi publicado e onde (a metrica de retencao
-            # segue sendo so do YouTube).
-            from . import metricas
-            metricas.registrar_publicado(
-                video, estado, "tiktok", canal=canal,
-                extra={"prova": [dict(laudo)],
-                       "prova_ok": metricas.prova_ok(laudo)})
-        else:
-            laudo["estado"] = "sem_confirmacao"
+        try:
+            passo("publicar clicado; confirmando...")
+            estado = _confirmar_publicacao(page, passo)
+            passo(estado)
+            laudo["upload_s"] = round(time.monotonic() - comeco_do_upload, 1)
+            laudo["confirmacao_extra"] = "confirmacao extra" in estado
+            if confirmado(estado):
+                laudo["estado"] = "publicado"
+                laudo["confirmado"] = True
+                # O TikTok nao devolve URL nem id aqui; o registro vale para
+                # saber O QUE ja foi publicado e onde (a metrica de retencao
+                # segue sendo so do YouTube).
+                from . import metricas
+                metricas.registrar_publicado(
+                    video, estado, "tiktok", canal=canal,
+                    extra={"prova": [dict(laudo)],
+                           "prova_ok": metricas.prova_ok(laudo)})
+            else:
+                laudo["estado"] = "sem_confirmacao"
+        except Exception as exc:                               # noqa: BLE001
+            # O CLIQUE JA SAIU (PUB-1, 14/10/2026). Como no
+            # `youtube_web._depois_do_clique`: a excecao depois do clique
+            # (Chrome fechando na confirmacao, `progresso` levantando) nao
+            # passava por `desfecho.resolver`, e so a ficha da rodada sabia
+            # do clique — o horario seguinte, a recuperacao e a reserva
+            # escolhiam o video de novo. Aqui e o funil de todos os caminhos.
+            if not laudo.get("confirmado"):
+                laudo["estado"] = "sem_confirmacao"
+            try:
+                desfecho.resolver(
+                    canal, video,
+                    f"cliquei em publicar no TikTok e algo falhou depois "
+                    f"({type(exc).__name__}): o post pode estar no ar — "
+                    f"confira no perfil.", laudo)
+            except Exception:                                  # noqa: BLE001
+                # `marcar_para_conferir` ja avisou no diario e guardou a
+                # marca na memoria desta execucao; sobe a excecao original.
+                pass
+            raise
         # A CLASSIFICACAO MORA AQUI, e nao em quem chama. Ela vivia dentro do
         # `postar.py`, e o `main.py publicar <id> --tiktok --postar` — que e
         # o `/publicar` do bot e o botao do app — chama esta funcao DIRETO:

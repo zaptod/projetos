@@ -194,7 +194,11 @@ class PublicacaoParcialTests(unittest.TestCase):
         exc = caso.exception
         self.assertEqual(["https://youtu.be/ID1"], exc.urls)
         self.assertEqual([{"estado": "publicado", "youtube_id": "ID1"}], exc.provas)
-        self.assertEqual(exc.provas, provas)
+        # Desde o PUB-1 (14/10/2026) o laudo de cada pedaco entra em `provas`
+        # ANTES da chamada; o que caiu leva `falhou` e nao e "entregue".
+        self.assertEqual(exc.provas, provas[:1])
+        self.assertEqual(2, len(provas))
+        self.assertIn("TargetClosed", provas[1]["falhou"])
         self.assertIn("TargetClosed", str(exc))
         self.assertIn("1 pedaco(s)", str(exc))
 
@@ -377,6 +381,19 @@ class FichasDeBuildsTests(unittest.TestCase):
                                    "titulo": "Duelo"})()
         self.m._build_por_id = lambda vid: self.alvo
         self.m.proximo_build = lambda marcar=True: self.alvo
+        # A divida dos builds (14/10/2026) le o ledger REAL: fora daqui.
+        self.m._divida_do_youtube_dos_builds = lambda: (None, "", [])
+        # E o clique sem confirmacao vira marca "a conferir" pelo funil
+        # (PUB-1, 14/10/2026): numa lista TEMPORARIA, nunca na real.
+        from builds.publicar import desfecho
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        antes = desfecho.arquivo_a_conferir
+        self.addCleanup(setattr, desfecho, "arquivo_a_conferir", antes)
+        desfecho.arquivo_a_conferir = (
+            lambda canal, p="tiktok": Path(pasta.name) / f"{canal}_{p}.json")
+        self.addCleanup(desfecho._SEM_MARCA.clear)
+        self.m._mandar_no_telegram = lambda texto: None
 
     def _horario(self, youtube=None, tiktok=None):
         self.m.publicou_neste_horario = (

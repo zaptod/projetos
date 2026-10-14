@@ -539,7 +539,16 @@ class QueDestinoARedeDerrubouTests(unittest.TestCase):
         self.assertEqual([], self.m._derrubados_pela_rede(r))
 
     def test_o_clique_chega_a_ficha(self):
-        from builds.publicar import tiktok
+        import tempfile
+        from builds.publicar import desfecho, tiktok
+        # Desde o PUB-1 (14/10/2026) o funil grava a marca "a conferir" do
+        # clique: ela vai para uma lista TEMPORARIA, nunca para a real.
+        pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(pasta.cleanup)
+        _trocar(self, desfecho, "arquivo_a_conferir",
+                lambda canal, p="tiktok": Path(pasta.name) / f"{canal}_{p}.json")
+        self.addCleanup(desfecho._SEM_MARCA.clear)
+        self.m._mandar_no_telegram = lambda texto: None
         alvo = type("V", (), {"id": "g1:build:celular"})()
         self.m._build_ja_no_tiktok = lambda _vid: False
         self.m._linha = lambda *_a, **_k: None

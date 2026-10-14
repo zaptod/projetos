@@ -146,6 +146,8 @@ class YouTubeCaidoNaoDerrubaTikTokTests(unittest.TestCase):
         self.m = _postar()
         self.m.publicou_neste_horario = lambda *a, **k: None
         self.m._tiktok_neste_horario = lambda agora=None: True
+        # A divida dos builds (14/10/2026) le o ledger REAL: fora daqui.
+        self.m._divida_do_youtube_dos_builds = lambda: (None, "", [])
         self.avisos = []
         self.m.avisar_limite_diario = lambda texto: self.avisos.append(texto)
         _trocar(self, tiktok, "confirmado", lambda estado: estado == "publicado no TikTok")

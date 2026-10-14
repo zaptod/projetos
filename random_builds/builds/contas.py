@@ -47,6 +47,13 @@ CANAIS = {
     "geral": "Vale para tudo (quando o canal não tem conta própria)",
 }
 
+# Os canais que PUBLICAM hoje: so deles `conformidade()` cobra conta propria
+# (PUB-6, 14/10/2026). O `zombie` ainda nao publica e gerava 3 alertas que
+# nunca apagavam — o "TUDO DENTRO DO PADRAO" da auditoria de contas nunca
+# aparecia. Ele entra aqui quando estrear; `CANAIS` fica igual, para o app
+# poder escolher conta para ele antes disso.
+CANAIS_PUBLICANDO = ("builds", "historias")
+
 # Servicos com login. `tipo` diz o que e a credencial:
 #   perfil    -> uma pasta de Chrome (o login mora no cookie)
 #   oauth     -> um arquivo de credencial (client_id/secret/refresh_token)
@@ -302,11 +309,36 @@ def renomear(servico: str, antigo: str, novo: str) -> dict:
         identidades = dados.setdefault("identidades", {}).setdefault(servico, {})
         if antigo in identidades:
             identidades[limpo] = identidades.pop(antigo)
-        _gravar(dados)
-        if origem.exists() and not alvo.exists():
-            alvo.parent.mkdir(parents=True, exist_ok=True)
-            origem.rename(alvo)
+        # A PASTA PRIMEIRO, O REGISTRO SO SE ELA MOVEU (PUB-3, 14/10/2026).
+        # Ate aqui o registro era gravado e a pasta movida depois, sem
+        # desfazer: com o Chrome aberto naquele perfil o `rename` do Windows
+        # da `PermissionError`, o registro ja dizia o nome novo e `perfil()`
+        # apontava (e criava, vazia) uma pasta sem login — o proximo upload
+        # pedia login no meio da fila. Agora: a pasta nao move -> nada muda e
+        # o erro diz por que; o registro nao grava -> a pasta volta.
+        mover = origem.exists() and not alvo.exists()
+        if mover:
+            try:
+                alvo.parent.mkdir(parents=True, exist_ok=True)
+                origem.rename(alvo)
+            except OSError as exc:
+                raise RuntimeError(
+                    f"nao renomeei: a pasta {origem} esta em uso "
+                    f"({type(exc).__name__}: {exc}); feche o Chrome desse "
+                    "perfil e tente de novo. Nada mudou.") from exc
             movidos.append(str(alvo))
+        try:
+            _gravar(dados)
+        except Exception:
+            if mover:
+                try:
+                    alvo.rename(origem)
+                except OSError as volta:
+                    raise RuntimeError(
+                        f"o registro nao gravou e a pasta {alvo} NAO voltou "
+                        f"para {origem} ({volta}); mova-a de volta a mao — o "
+                        f"registro ainda diz {antigo!r}.") from volta
+            raise
     return {"servico": servico, "de": antigo, "para": limpo, "movidos": movidos}
 
 
@@ -336,9 +368,7 @@ def conformidade() -> list[dict]:
                     "servico": servico, "tipo": "canais no mesmo destino",
                     "detalhe": f"{', '.join(produtos)} publicam em "
                                f"{identificador}"})
-        for canal in CANAIS:
-            if canal == "geral":
-                continue
+        for canal in CANAIS_PUBLICANDO:
             nome = ativa(servico, canal)
             # 3. canal que publica caindo na queda padrao
             if not explicita(servico, canal):

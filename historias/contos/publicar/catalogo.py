@@ -308,11 +308,20 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
     urls, laudos = [], []
     for pedaco in cortes.preparar(video, limite=cortes.limite(config), log=log):
         laudo: dict = {}
+        # O LAUDO ENTRA EM `provas` ANTES DA CHAMADA (PUB-1, 14/10/2026): o
+        # publicador escreve `clicou` nele no instante do clique, e so assim
+        # quem chama sabe, na excecao, que o clique saiu. Ate aqui ele so era
+        # anexado depois do sucesso, e o clique seguido de erro "de rede"
+        # era reposto no mesmo horario. O pedaco que falhou leva `falhou`:
+        # quem chama separa os entregues dele.
+        if provas is not None:
+            provas.append(laudo)
         try:
             url = youtube.publicar_como_configurado(
                 pedaco, visibilidade=visibilidade, canal="historias",
                 agendar_para=agendar_para, config=config, log=log, prova=laudo)
         except Exception as exc:
+            laudo["falhou"] = f"{type(exc).__name__}: {exc}"[:300]
             # O PEDACO ANTERIOR JA ESTA NO CANAL (11/10/2026). Ate aqui a
             # excecao subia muda: `serie.publicar` nao registrava nada e a
             # rodada seguinte subia o pedaco 1 DE NOVO (medido na prova da
@@ -324,8 +333,6 @@ def publicar_youtube(video: Video, visibilidade: str | None = None, *,
             raise
         urls.append(url)
         laudos.append(laudo)
-        if provas is not None:
-            provas.append(laudo)
     return " | ".join(u for u in urls if u)
 
 

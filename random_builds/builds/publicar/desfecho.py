@@ -191,7 +191,15 @@ def marcas(canal: str = "historias", plataforma: str = "tiktok") -> dict:
             if minha is False:
                 raise NaoConsegviLer(
                     f"a trava {nome_da_trava(plataforma)} esta ocupada")
-            return dict(_ler(caminho))
+            dados = dict(_ler(caminho))
+            # A MARCA QUE NAO GRAVOU CONTINUA VALENDO NESTA EXECUCAO (PUB-1,
+            # 14/10/2026): quem le a lista e o funil de toda escolha (fila,
+            # divida, recuperacao, reserva), entao o clique sem marca no disco
+            # nao volta a ser escolhido enquanto este processo viver.
+            for vid, marca in (_SEM_MARCA.get(str(caminho)) or {}).items():
+                dados.setdefault(vid, {k: marca[k] for k in
+                                       ("quando", "estado", "plataforma")})
+            return dados
     except (ValueError, OSError) as exc:
         _avisar(canal, texto=(
             f"nao consegui ler {caminho.name} ({type(exc).__name__}). A "
@@ -209,11 +217,84 @@ class NaoConsegviMarcar(RuntimeError):
     """
 
 
+# O CLIQUE QUE NAO GANHOU MARCA (PUB-1, auditoria de 11/10/2026, verificada
+# em 14/10). O clique saiu, algo falhou depois, e a propria marca "a
+# conferir" tambem falhou (trava ocupada 20 s, disco): ate aqui a falha era
+# engolida e nada guardava o clique — o video voltava a fila no horario
+# seguinte e subia de novo. Agora: (1) a marca e tentada de novo
+# (`TENTATIVAS_DA_MARCA`); (2) a que nao gravou fica nesta memoria, que
+# `marcas` soma a lista do disco — a mesma execucao nunca escolhe o video de
+# novo; (3) o `postar.py` leva a memoria para a ficha da trava da rodada
+# (`sem_marca_no_disco`), e a rodada seguinte grava a marca ANTES de escolher
+# qualquer coisa — ou nao publica. Chave: o caminho da lista (um por canal e
+# destino), para os testes com lista temporaria nao se misturarem.
+TENTATIVAS_DA_MARCA = 2
+PAUSA_ENTRE_TENTATIVAS_S = 1.0
+_SEM_MARCA: dict = {}
+
+
+def _chave_da_memoria(canal: str, plataforma: str) -> str:
+    try:
+        return str(arquivo_a_conferir(canal, plataforma))
+    except Exception:                                          # noqa: BLE001
+        return f"{canal}|{plataforma}"
+
+
+def lembrar_sem_marca(canal: str, video_id: str, estado: str,
+                      plataforma: str = "tiktok") -> None:
+    """Guarda NA MEMORIA desta execucao a marca que o disco recusou.
+
+    Nunca levanta: e o ultimo recurso de quem ja nao conseguiu gravar.
+    """
+    if not video_id:
+        return
+    try:
+        memoria = _SEM_MARCA.setdefault(_chave_da_memoria(canal, plataforma),
+                                        {})
+        memoria.setdefault(str(video_id), {
+            "quando": datetime.now().isoformat(timespec="seconds"),
+            "estado": str(estado or "")[:200], "plataforma": plataforma,
+            "canal": canal})
+    except Exception:                                          # noqa: BLE001
+        pass
+
+
+def _esquecer_sem_marca(canal: str, video_id: str, plataforma: str) -> None:
+    memoria = _SEM_MARCA.get(_chave_da_memoria(canal, plataforma))
+    if memoria:
+        memoria.pop(str(video_id), None)
+
+
+def sem_marca_no_disco() -> list:
+    """[{canal, alvo, destino, estado}] das marcas que so existem na memoria.
+
+    E o que o `postar.py` grava na ficha da trava da rodada para a rodada
+    seguinte (outro processo, memoria vazia) gravar antes de escolher.
+    """
+    saida = []
+    for memoria in _SEM_MARCA.values():
+        for vid, marca in memoria.items():
+            saida.append({"canal": marca.get("canal", ""), "alvo": vid,
+                          "destino": marca.get("plataforma", ""),
+                          "estado": marca.get("estado", "")})
+    return saida
+
+
+class _MarcaNaoGravou(Exception):
+    """Falha que vale tentar de novo (trava ocupada, disco)."""
+
+
 def marcar_para_conferir(canal: str, video_id: str, estado: str,
                          plataforma: str = "tiktok", *,
                          aviso: str | None = None, etapa: str | None = None,
                          erro: bool = True) -> bool:
     """Tira da fila e AVISA. Erro no diario, nao aviso no log.
+
+    NOVA TENTATIVA E MEMORIA (PUB-1, 14/10/2026): trava ocupada ou disco que
+    recusa e tentado `TENTATIVAS_DA_MARCA` vezes; se nenhuma gravar, a marca
+    fica na memoria desta execucao (`lembrar_sem_marca`, que `marcas` soma) e
+    a funcao LEVANTA como antes — quem chama sabe que o disco nao tem a marca.
+    O arquivo ilegivel nao e tentado de novo: ali o erro e de conteudo.
 
     `aviso`, `etapa` e `erro` existem para quem marca POR OUTRO MOTIVO que o
     clique sem confirmacao (o audio mudo, desde 28/09/2026): o texto padrao
@@ -233,6 +314,50 @@ def marcar_para_conferir(canal: str, video_id: str, estado: str,
     """
     if not video_id:
         return False
+    import time
+    ultimo = None
+    for tentativa in range(max(1, TENTATIVAS_DA_MARCA)):
+        try:
+            gravou = _gravar_marca(canal, video_id, estado, plataforma)
+        except NaoConsegviMarcar:
+            # Arquivo ilegivel: `_gravar_marca` ja avisou. Tentar de novo nao
+            # conserta conteudo; a memoria segura esta execucao.
+            lembrar_sem_marca(canal, video_id, estado, plataforma)
+            raise
+        except (_MarcaNaoGravou, OSError) as exc:
+            # OSError tambem da propria trava (pasta das travas inacessivel):
+            # antes subia cru, sem aviso no diario.
+            ultimo = exc
+            if tentativa + 1 < TENTATIVAS_DA_MARCA:
+                time.sleep(PAUSA_ENTRE_TENTATIVAS_S)
+            continue
+        _esquecer_sem_marca(canal, video_id, plataforma)
+        if not gravou:
+            return True                  # ja avisado; nao repete no diario
+        _avisar(canal, ref=video_id, etapa=etapa, atividade_erro=erro,
+                texto=aviso or (
+                    f"{video_id}: cliquei em publicar no {plataforma} e nao "
+                    f"veio confirmacao. Pode estar no ar — NAO reenvio sozinho "
+                    f"para nao duplicar. Precisa de conferencia no perfil."))
+        return True
+    lembrar_sem_marca(canal, video_id, estado, plataforma)
+    motivo = (str(ultimo) if isinstance(ultimo, _MarcaNaoGravou)
+              else f"{type(ultimo).__name__}: {ultimo}")
+    _avisar(canal, ref=video_id, texto=(
+        f"{video_id}: NAO consegui gravar a marca de 'a conferir' do "
+        f"{plataforma} em {TENTATIVAS_DA_MARCA} tentativas ({motivo}). O video "
+        f"pode estar no ar e NAO esta bloqueado no disco — so na memoria "
+        f"desta execucao; confira antes da proxima rodada."))
+    raise NaoConsegviMarcar(motivo)
+
+
+def _gravar_marca(canal: str, video_id: str, estado: str,
+                  plataforma: str) -> bool:
+    """Uma tentativa de gravar. True = gravou; False = ja estava marcado.
+
+    `_MarcaNaoGravou` (vale tentar de novo) para trava ocupada e disco;
+    `NaoConsegviMarcar` (nao vale) para o arquivo ilegivel, ja avisado.
+    """
     import os
     from .. import travas
     caminho = arquivo_a_conferir(canal, plataforma)
@@ -242,10 +367,8 @@ def marcar_para_conferir(canal: str, video_id: str, estado: str,
     with travas.trava(nome_da_trava(plataforma),
                       esperar=ESPERA_DA_TRAVA_S) as minha:
         if minha is False:
-            _avisar(canal, ref=video_id, texto=(
-                f"{video_id}: a trava {nome_da_trava(plataforma)} nao veio; "
-                f"NAO marquei. O video pode estar no ar e nao esta bloqueado."))
-            raise NaoConsegviMarcar("a trava esta ocupada")
+            raise _MarcaNaoGravou(
+                f"a trava {nome_da_trava(plataforma)} esta ocupada")
         try:
             dados = _ler(caminho)
         except ValueError as exc:
@@ -286,7 +409,7 @@ def marcar_para_conferir(canal: str, video_id: str, estado: str,
                     and str(anterior.get("estado") or "").startswith("[audio] ")
                     and not str(estado or "").startswith("[audio] "))
         if anterior is not None and not promover:
-            return True                  # ja avisado; nao repete no diario
+            return False                 # ja marcado
         dados[video_id] = {
             "quando": datetime.now().isoformat(timespec="seconds"),
             "estado": str(estado)[:200], "plataforma": plataforma}
@@ -297,16 +420,7 @@ def marcar_para_conferir(canal: str, video_id: str, estado: str,
                            encoding="utf-8")
             os.replace(tmp, caminho)
         except OSError as exc:
-            _avisar(canal, ref=video_id, texto=(
-                f"{video_id}: NAO consegui gravar a marca de 'a conferir' "
-                f"({type(exc).__name__}). O video pode estar no ar e NAO esta "
-                f"bloqueado — confira antes da proxima rodada."))
-            raise NaoConsegviMarcar(str(exc)) from exc
-    _avisar(canal, ref=video_id, etapa=etapa, atividade_erro=erro,
-            texto=aviso or (
-                f"{video_id}: cliquei em publicar no {plataforma} e nao veio "
-                f"confirmacao. Pode estar no ar — NAO reenvio sozinho para "
-                f"nao duplicar. Precisa de conferencia no perfil."))
+            raise _MarcaNaoGravou(f"{type(exc).__name__}: {exc}") from exc
     return True
 
 
@@ -329,6 +443,10 @@ def soltar_marca(canal: str, video_id: str, plataforma: str = "tiktok", *,
     import os
     from .. import travas
     caminho = arquivo_a_conferir(canal, plataforma)
+    memoria = _SEM_MARCA.get(str(caminho)) or {}
+    if str((memoria.get(str(video_id)) or {}).get("estado") or "").startswith(
+            prefixo):
+        memoria.pop(str(video_id), None)     # a mesma regra vale na memoria
     with travas.trava(nome_da_trava(plataforma),
                       esperar=ESPERA_DA_TRAVA_S) as minha:
         if minha is False:

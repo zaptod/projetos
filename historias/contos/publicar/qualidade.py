@@ -529,7 +529,11 @@ def erros_de_preto(caminho: Path, layout: str, explicar=None) -> dict:
         real = caminho.resolve()
     except OSError:
         return {"erros": [], "avisos": [], "trechos": None, "s": 0.0}
-    chave = f"{real}|{info.st_mtime_ns}|{info.st_size}|{layout}"
+    # O CRITERIO ENTRA NA CHAVE (PUB-7, 14/10/2026): sem ele, mudar
+    # `PRETO_AREA`/`PRETO_PIXEL` nao media de novo nada ja medido ate o mp4
+    # ser re-renderizado. As entradas antigas morrem sozinhas (medidas 1x).
+    chave = (f"{real}|{info.st_mtime_ns}|{info.st_size}|{layout}"
+             f"|{PRETO_AREA}|{PRETO_PIXEL}|{PRETO_MIN_S}|{PRETO_FPS}")
     # So o que mora em outputs/ vai para o disco: arquivo de teste (pasta
     # temporaria) nunca escreve no memo de verdade.
     try:

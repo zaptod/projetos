@@ -74,6 +74,10 @@ class PedacoNoArTests(unittest.TestCase):
         # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
         self.m._divida_do_youtube = lambda: (None, "", [])
         self.marcas = {}
+        # A marca que "nao grava" fica na memoria do processo (PUB-1,
+        # 14/10/2026); entre testes ela vazaria para quem le a mesma lista.
+        self.addCleanup(desfecho._SEM_MARCA.clear)
+        self.m._mandar_no_telegram = lambda texto: None
         _trocar(self, desfecho, "marcar_para_conferir",
                 lambda canal, vid, estado, plataforma="tiktok", **k:
                 self.marcas.setdefault(plataforma, {}).update({vid: estado})

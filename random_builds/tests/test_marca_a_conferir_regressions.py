@@ -44,6 +44,12 @@ class MarcaTests(unittest.TestCase):
         self.addCleanup(setattr, atividade, "registrar", atividade.registrar)
         self.diario = []
         atividade.registrar = lambda *a, **k: self.diario.append(a)
+        # A marca que nao grava fica na memoria do processo (PUB-1,
+        # 14/10/2026); entre testes ela vazaria para quem le o mesmo caminho.
+        self.addCleanup(desfecho._SEM_MARCA.clear)
+        self.addCleanup(setattr, desfecho, "PAUSA_ENTRE_TENTATIVAS_S",
+                        desfecho.PAUSA_ENTRE_TENTATIVAS_S)
+        desfecho.PAUSA_ENTRE_TENTATIVAS_S = 0.0
 
     # ------------------------------------------------ 1: o que se perdia
     def test_arquivo_cortado_NAO_apaga_as_marcas_antigas(self):
