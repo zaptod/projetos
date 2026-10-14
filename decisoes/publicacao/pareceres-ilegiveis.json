@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:47:20",
+      "evento": "2026-10-14T08:47:16",
+      "linha": 180,
+      "nota": "resposta sem pedido de origem: publicacao/pareceres-ilegiveis = Sai uma parte marcada 'a conferir' (recomendado)",
+      "opcao": "sai-marcada",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Conserto do veto que falhava aberto (auditoria 11/10).",
   "criado": "2026-10-14T03:21:03.193992",
   "depende_de": [],
