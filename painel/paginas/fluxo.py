@@ -55,6 +55,12 @@ class Pagina:
         self._alerta = self.o.rotulo(pai, "", cor="aviso", peso="bold")
         self._alerta.pack(anchor="w", padx=estilo.ESPACO["secao"],
                           pady=(estilo.ESPACO["normal"], 0))
+        # Rotulo PROPRIO para o erro de leitura da tabela: dividindo o
+        # `_alerta`, o pulso de 4 s o apagava e deixava a cor vermelha no
+        # alerta seguinte (PNL-16). So entra na tela quando ha erro.
+        self._erro_leitura = self.o.rotulo(pai, "", cor="erro", peso="bold")
+        self._erro_leitura_pack = dict(anchor="w", padx=estilo.ESPACO["secao"],
+                                       after=self._alerta)
 
         topo = tk.Frame(pai, bg=self.t.fundo)
         topo.pack(fill="x", padx=estilo.ESPACO["secao"],
@@ -110,44 +116,80 @@ class Pagina:
             lambda: regra.snapshot(limite=14), self._desenhar_tabela,
             rotulo="fluxo")
 
+    def ilegivel(self, erro: str) -> None:
+        """O panorama inteiro nao veio: os cartoes dizem, em vez de zerar."""
+        for cartao in self._cartoes.values():
+            cartao.configure(text=f"não consegui ler:\n{erro}"[:90],
+                             fg=self.t.erro)
+        self._alerta.configure(text="", fg=self.t.aviso)
+
     def atualizar(self, resumo: dict) -> None:
-        """Os cartoes de cima vem do agregador, nao de leitura propria."""
-        saude = resumo.get("saude") or {}
-        inventario = resumo.get("inventario") or {}
-        qualidade = resumo.get("qualidade") or {}
+        """Os cartoes de cima vem do agregador, nao de leitura propria.
+
+        Familia que falhou (`{"erro": ...}`) ou faltou diz "não consegui
+        ler" no cartao dela, em vez de "0 na fila" (PNL-3).
+        """
+        if not isinstance(resumo, dict) or resumo.get("erro"):
+            self.ilegivel((resumo or {}).get("erro", "?")
+                          if isinstance(resumo, dict) else "?")
+            return
+
+        def familia(nome):
+            valor = resumo.get(nome)
+            if not isinstance(valor, dict):
+                return {}, "não veio"
+            if valor.get("erro"):
+                return {}, str(valor["erro"])
+            return valor, None
+
+        saude, erro_saude = familia("saude")
+        inventario, erro_inv = familia("inventario")
+        qualidade, erro_qual = familia("qualidade")
+
+        def pintar(chave, erro, texto):
+            if erro:
+                self._cartoes[chave].configure(
+                    text=f"não consegui ler:\n{erro}"[:90], fg=self.t.erro)
+            else:
+                self._cartoes[chave].configure(text=texto,
+                                               fg=self.t.texto_fraco)
 
         fila = saude.get("fila") or {}
-        self._cartoes["fila"].configure(
-            text=f"{fila.get('pending', 0)} na fila · "
-                 f"{fila.get('running', 0)} gerando · "
-                 f"{fila.get('failed', 0)} com falha\n"
-                 f"{len(saude.get('trabalhando') or [])} fábrica(s) "
-                 "trabalhando agora")
+        pintar("fila", erro_saude,
+               f"{fila.get('pending', 0)} na fila · "
+               f"{fila.get('running', 0)} gerando · "
+               f"{fila.get('failed', 0)} com falha\n"
+               f"{len(saude.get('trabalhando') or [])} fábrica(s) "
+               "trabalhando agora")
 
         chaves = inventario.get("chaves") or {}
         banco = inventario.get("banco") or {}
-        self._cartoes["torneio"].configure(
-            text=f"{chaves.get('prontos', '—')} build(s) com vídeo pronto\n"
-                 f"banco: {banco.get('personagens', '—')} personagens, "
-                 f"{banco.get('armas', '—')} armas")
+        pintar("torneio", erro_inv,
+               f"{chaves.get('prontos', '—')} build(s) com vídeo pronto\n"
+               f"banco: {banco.get('personagens', '—')} personagens, "
+               f"{banco.get('armas', '—')} armas")
 
         ledger = qualidade.get("ledger") or {}
         arena = inventario.get("arena") or {}
-        self._cartoes["arena"].configure(
-            text=f"{arena.get('lutas', '—')} luta(s) registradas\n"
-                 f"campeão: {ledger.get('campeao') or '—'}")
+        pintar("arena", erro_inv or erro_qual,
+               f"{arena.get('lutas', '—')} luta(s) registradas\n"
+               f"campeão: {ledger.get('campeao') or '—'}")
 
         alertas = saude.get("alertas") or []
+        # A cor volta SEMPRE para a do alerta: o erro de leitura tem rotulo
+        # proprio e nao pode tingir o alerta seguinte.
         self._alerta.configure(
-            text=("⚠  " + alertas[0]) if alertas else "")
+            text=("⚠  " + alertas[0]) if alertas else "", fg=self.t.aviso)
 
     def _desenhar_tabela(self, dados: dict) -> None:
         if not isinstance(dados, dict) or dados.get("erro"):
-            self._alerta.configure(
+            self._erro_leitura.configure(
                 text=f"não consegui ler o fluxo: "
-                     f"{(dados or {}).get('erro', '?')}",
-                fg=self.t.erro)
+                     f"{(dados or {}).get('erro', '?') if isinstance(dados, dict) else '?'}")
+            self._erro_leitura.pack(**self._erro_leitura_pack)
             return
+        self._erro_leitura.configure(text="")
+        self._erro_leitura.pack_forget()
         geracoes = dados.get("geracoes") or []
         self._por_id = {g["generation_id"]: g for g in geracoes}
 

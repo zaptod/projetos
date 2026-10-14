@@ -1092,12 +1092,27 @@ class Janela(tk.Tk):
         if self._cena is None or not self._vivo:
             return
         # So anima o que se ve: janela recolhida pelo Windows nao desenha.
-        if self.state() == "normal" and self.winfo_viewable():
-            try:
+        try:
+            if self.state() == "normal" and self.winfo_viewable():
                 self._cena.passo()
-            except tk.TclError:
-                return
-        self._animacao = self.after(self._intervalo(), self._animar)
+        except tk.TclError:
+            return                      # a janela morreu: nada a reagendar
+        except Exception as erro:                           # noqa: BLE001
+            # Um quadro que estoura (arte de fora corrompida) nao pode
+            # congelar a Vila ate ela ser reaberta (PNL-20): avisa uma vez
+            # e o proximo quadro vem do mesmo jeito.
+            texto = f"animação falhou: {type(erro).__name__}: {erro}"[:90]
+            if texto != getattr(self, "_erro_da_animacao", None):
+                self._erro_da_animacao = texto
+                self._dica_padrao = texto
+                try:
+                    self._dica(None)
+                except Exception:                           # noqa: BLE001
+                    pass
+        try:
+            self._animacao = self.after(self._intervalo(), self._animar)
+        except tk.TclError:
+            self._animacao = None
 
     # ------------------------------------------------------------- dados
     def _drenar(self) -> None:

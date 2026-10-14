@@ -28,15 +28,36 @@ def _resumo_vazio(*_args, **_kwargs):
 
 
 def setUpModule():
-    global _duble_panorama
+    global _dubles, _pasta_processos, _env_antes
+    import tempfile
     # `Casca._pedir_resumo()` importa panorama dentro da thread de fundo.
     # Dublar esta porta cobre todas as paginas que abrem uma Casca aqui.
-    _duble_panorama = patch("panorama.resumo", side_effect=_resumo_vazio)
-    _duble_panorama.start()
+    # O Fluxo (`ao_mostrar`) le `snapshot` e o freio le `controle.estado`:
+    # sem dubles, os testes liam a maquina de verdade (PNL-19).
+    _dubles = [
+        patch("panorama.resumo", side_effect=_resumo_vazio),
+        patch("builds.pipeline.fluxo.snapshot",
+              return_value={"geracoes": []}),
+        patch("builds.identity.controle.estado",
+              return_value={"situacao": "rodando", "pausas": {},
+                            "parada": None, "resumo": "rodando normalmente"}),
+    ]
+    for duble in _dubles:
+        duble.start()
+    # As fichas de "ja esta rodando" das janelas (PNL-1) ficam numa pasta
+    # descartavel, nunca no runtime de verdade.
+    _pasta_processos = tempfile.mkdtemp(prefix="nf-painel-processos-")
+    _env_antes = os.environ.get("NF_PAINEL_PROCESSOS")
+    os.environ["NF_PAINEL_PROCESSOS"] = _pasta_processos
 
 
 def tearDownModule():
-    _duble_panorama.stop()
+    for duble in _dubles:
+        duble.stop()
+    if _env_antes is None:
+        os.environ.pop("NF_PAINEL_PROCESSOS", None)
+    else:
+        os.environ["NF_PAINEL_PROCESSOS"] = _env_antes
 
 
 class PanoramaDubladoTests(unittest.TestCase):
@@ -47,6 +68,14 @@ class PanoramaDubladoTests(unittest.TestCase):
         self.assertEqual(PANORAMA_VAZIO, dados)
         dados["saude"]["fila"] = "alterado"
         self.assertEqual({}, panorama.resumo()["saude"])
+
+    def test_snapshot_e_controle_dublados(self):
+        from unittest.mock import MagicMock
+
+        from builds.identity import controle
+        from painel.paginas import fluxo
+        self.assertIsInstance(fluxo.regra.snapshot, MagicMock)
+        self.assertIsInstance(controle.estado, MagicMock)
 
 
 class TemaTests(unittest.TestCase):
@@ -184,9 +213,20 @@ class FreioDaPipelineTests(unittest.TestCase):
         gc.collect()
 
     def test_a_faixa_existe_na_janela_de_criacao(self):
+        from painel.app import ALVOS_DO_FREIO
         self.assertTrue(hasattr(self.app, "_pipeline_estado"))
-        self.assertEqual(("tudo", "picasso", "digen"),
-                         self.app._pipeline_alvo.cget("values"))
+        self.assertEqual(ALVOS_DO_FREIO,
+                         tuple(self.app._pipeline_alvo.cget("values")))
+
+    def test_combo_tem_os_alvos_da_cli(self):
+        """PNL-23: o combo nao oferecia "correio", que a CLI aceita."""
+        escolhas = ComandosDaUITests._choices_do_provedor()
+        self.assertTrue(escolhas, "nao li os choices do argparse")
+        for sub in ("pausar", "retomar", "identity pausar",
+                    "identity retomar"):
+            self.assertEqual(set(escolhas[sub]),
+                             set(self.app._pipeline_alvo.cget("values")),
+                             sub)
 
     def test_a_faixa_mostra_o_estado_lido_do_disco(self):
         self.app._entregar_pipeline(
@@ -198,6 +238,35 @@ class FreioDaPipelineTests(unittest.TestCase):
     def test_estado_ilegivel_nao_derruba_a_faixa(self):
         self.app._entregar_pipeline(None)
         self.app._entregar_pipeline("qualquer coisa")
+
+    def test_leitura_que_falha_nao_vira_rodando(self):
+        """FALHA: o `controle` estourou. Antes: "● rodando" em verde."""
+        self.app._entregar_pipeline({"erro": "OSError: trancado"})
+        texto = self.app._pipeline_estado.cget("text")
+        self.assertNotIn("rodando", texto)
+        self.assertNotIn("●", texto)
+        self.assertIn("ilegível", texto)
+        self.assertIn("trancado", texto)
+        self.assertEqual(self.app.tema.erro,
+                         self.app._pipeline_estado.cget("fg"))
+        self.app._entregar_pipeline({})
+        self.assertIn("ilegível", self.app._pipeline_estado.cget("text"))
+
+    def test_rodando_de_verdade_continua_verde(self):
+        """O caso normal: `situacao` lida = o que a faixa mostra."""
+        self.app._entregar_pipeline({"situacao": "rodando",
+                                     "resumo": "rodando normalmente"})
+        self.assertIn("● rodando", self.app._pipeline_estado.cget("text"))
+        self.assertEqual(self.app.tema.ok,
+                         self.app._pipeline_estado.cget("fg"))
+
+    def test_encerrar_desliga_o_pulso_da_pipeline(self):
+        """PNL-17: o pulso do freio seguia agendado depois de fechar."""
+        pulso = self.app._pulso_pipeline
+        self.assertTrue(pulso._ligado)
+        self.app.encerrar()
+        self.assertFalse(pulso._ligado)
+        self.assertIsNone(pulso._agendado)
 
     # NAO criar uma segunda Casca aqui para testar a janela sem freio: dois
     # interpretadores Tk no MESMO processo deixam a thread da janela anterior
@@ -447,36 +516,30 @@ class ComandosDaUITests(unittest.TestCase):
     CLI_DA_PAGINA = {"historias.py": "historias", "mimetizar.py": "mimetizar"}
     CLI_PADRAO = "random_builds"
 
+    @classmethod
+    def _choices_do_provedor(cls) -> dict:
+        """{subcomando: choices de --provedor} do `random_builds/main.py`."""
+        import argparse
+        parser = cls._parser_do_cli("random_builds")
+        if parser is None:
+            return {}
+        saida = {}
+
+        def andar(p, prefixo):
+            for acao in p._actions:
+                if isinstance(acao, argparse._SubParsersAction):
+                    for nome, sub in acao.choices.items():
+                        andar(sub, f"{prefixo} {nome}".strip())
+                elif "--provedor" in acao.option_strings and acao.choices:
+                    saida[prefixo] = tuple(acao.choices)
+        andar(parser, "")
+        return saida
+
     @staticmethod
     def _flags_do_cli(projeto: str = "random_builds") -> dict:
         """{subcomando: {bandeiras aceitas}} lendo o argparse REAL."""
         import argparse
-        import runpy
-        import sys
-
-        capturado = {}
-        original = argparse.ArgumentParser.parse_args
-
-        def espiao(self, *a, **k):
-            capturado["parser"] = self
-            raise SystemExit(0)
-
-        raiz = pathlib.Path(__file__).resolve().parents[1] / projeto
-        if not (raiz / "main.py").is_file():
-            return {}
-        argv, cwd = sys.argv, os.getcwd()
-        argparse.ArgumentParser.parse_args = espiao
-        sys.argv = ["main.py", "--help"]
-        os.chdir(raiz)
-        try:
-            runpy.run_path(str(raiz / "main.py"), run_name="__main__")
-        except SystemExit:
-            pass
-        finally:
-            argparse.ArgumentParser.parse_args = original
-            sys.argv, _ = argv, os.chdir(cwd)
-
-        parser = capturado.get("parser")
+        parser = ComandosDaUITests._parser_do_cli(projeto)
         if parser is None:
             return {}
         mapa = {}
@@ -493,6 +556,37 @@ class ComandosDaUITests(unittest.TestCase):
                             o for ac in spf._actions for o in ac.option_strings}
                 mapa[nome] = flags
         return mapa
+
+    @staticmethod
+    def _parser_do_cli(projeto: str = "random_builds"):
+        """O `ArgumentParser` REAL do `main.py` do projeto (ou None)."""
+        import argparse
+        import runpy
+        import sys
+
+        capturado = {}
+        original = argparse.ArgumentParser.parse_args
+
+        def espiao(self, *a, **k):
+            capturado["parser"] = self
+            raise SystemExit(0)
+
+        raiz = pathlib.Path(__file__).resolve().parents[1] / projeto
+        if not (raiz / "main.py").is_file():
+            return None
+        argv, cwd = sys.argv, os.getcwd()
+        argparse.ArgumentParser.parse_args = espiao
+        sys.argv = ["main.py", "--help"]
+        os.chdir(raiz)
+        try:
+            runpy.run_path(str(raiz / "main.py"), run_name="__main__")
+        except SystemExit:
+            pass
+        finally:
+            argparse.ArgumentParser.parse_args = original
+            sys.argv, _ = argv, os.chdir(cwd)
+
+        return capturado.get("parser")
 
     DISPAROS = ("rodar", "_rb", "rb", "_rodar")
 
@@ -648,6 +742,165 @@ class SupervisorTests(unittest.TestCase):
             import time
             time.sleep(0.03)
         self.assertTrue(any("ZeroDivisionError" in l for l in self.linhas))
+
+
+# Um filho inofensivo: so dorme. Nenhum teste daqui dispara comando do
+# projeto (publicar, gerar, login) -- o que se prova e o supervisor.
+DORME = ["-c", "import time; time.sleep({s})"]
+
+
+class UmPorRotuloTests(unittest.TestCase):
+    """PNL-1: o duplo clique em PUBLICAR abria DOIS processos.
+
+    `main.py publicar` nao olha se ja publicou; o mesmo video podia subir
+    duas vezes. Um rotulo vivo (nesta janela OU em outra do painel) recusa
+    o segundo disparo, e o botao fica desligado enquanto o processo roda.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        # UM Tk para a classe: cada `tk.Tk()` a mais e mais uma chance de o
+        # Tcl desta maquina falhar ao carregar (ver `conftest.py`).
+        cls.raiz = tk.Tk()
+        cls.raiz.withdraw()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.raiz.destroy()
+
+    def setUp(self):
+        import sys
+        import tempfile
+        from painel.processos import Registro
+        self.py = sys.executable
+        self.pasta = tempfile.mkdtemp(prefix="nf-registro-")
+        self.linhas = []
+        self.sups = []
+        self.botoes = []
+        self.sup = self._supervisor(Registro(self.pasta))
+        self.addCleanup(self._fechar)
+
+    def _supervisor(self, registro):
+        sup = Supervisor(self.raiz, registro=registro,
+                         ao_registrar=lambda t, _c: self.linhas.append(t))
+        self.sups.append(sup)
+        return sup
+
+    def _fechar(self):
+        for sup in self.sups:
+            sup.parar_tudo()
+            sup.encerrar()
+        for botao in self.botoes:
+            botao.destroy()
+
+    def _ate(self, condicao, limite=15.0):
+        import time
+        fim = time.monotonic() + limite
+        while time.monotonic() < fim:
+            self.raiz.update()
+            if condicao():
+                return True
+            time.sleep(0.03)
+        return False
+
+    def _dorme(self, segundos):
+        return [self.py] + [a.format(s=segundos) for a in DORME]
+
+    def test_rotulo_vivo_nao_dispara_de_novo(self):
+        self.assertTrue(self.sup.rodar(self._dorme(3), rotulo="x"))
+        self.assertFalse(self.sup.rodar(self._dorme(3), rotulo="x"))
+        self.assertEqual(1, self.sup.ativos)
+        self.assertTrue(any("já está rodando" in l and "x" in l
+                            for l in self.linhas), self.linhas)
+
+    def test_outra_janela_tambem_recusa(self):
+        """Duas janelas = dois supervisores; o que os une e a pasta."""
+        from painel.processos import Registro
+        outra = self._supervisor(Registro(self.pasta))
+        self.assertTrue(self.sup.rodar(self._dorme(3), rotulo="publicar g1"))
+        self.assertFalse(outra.rodar(self._dorme(3), rotulo="publicar g1"))
+        self.assertEqual(0, outra.ativos)
+        self.assertTrue(any("outra janela" in l for l in self.linhas))
+
+    def test_rotulo_diferente_roda_junto(self):
+        self.assertTrue(self.sup.rodar(self._dorme(3), rotulo="publicar g1"))
+        self.assertTrue(self.sup.rodar(self._dorme(3), rotulo="publicar g2"))
+        self.assertEqual(2, self.sup.ativos)
+
+    def test_depois_de_acabar_pode_de_novo(self):
+        self.assertTrue(self.sup.rodar(self._dorme(0), rotulo="x"))
+        self.assertTrue(self._ate(lambda: any("terminou" in l
+                                              for l in self.linhas)))
+        self.assertFalse(self.sup.rodando("x"))
+        self.assertTrue(self.sup.rodar(self._dorme(0), rotulo="x"))
+
+    def test_ficha_de_processo_morto_nao_trava(self):
+        """Painel que caiu deixa ficha; PID morto nao pode travar o botao."""
+        import json
+        import subprocess
+        from painel.processos import Registro
+        morto = subprocess.Popen(self._dorme(0))
+        morto.wait()
+        registro = Registro(self.pasta)
+        registro.reservar("x")
+        registro.gravar("x", morto.pid)
+        arquivo = registro._arquivo("x")
+        self.assertEqual(morto.pid,
+                         json.loads(arquivo.read_text("utf-8"))["pid"])
+        self.assertIsNone(registro.ocupado("x"))
+        self.assertTrue(self.sup.rodar(self._dorme(0), rotulo="x"))
+
+    def test_botao_fica_desligado_ate_o_fim(self):
+        o = Oficina(estilo.OFICINA)
+        botao = o.botao(self.raiz, "PUBLICAR",
+                        lambda: self.sup.rodar(self._dorme(1),
+                                               rotulo="publicar g1"))
+        self.botoes.append(botao)
+        botao.invoke()
+        self.assertEqual("disabled", str(botao.cget("state")))
+        self.assertTrue(self.sup.segura(botao))
+        # Clicar de novo (o duplo clique) nao abre outro processo.
+        botao.invoke()
+        self.assertEqual(1, self.sup.ativos)
+        self.assertTrue(self._ate(lambda: str(botao.cget("state"))
+                                  == "normal"))
+        self.assertFalse(self.sup.segura(botao))
+
+    def test_botao_explicito_e_o_que_desliga(self):
+        o = Oficina(estilo.OFICINA)
+        alvo = o.botao(self.raiz, "alvo")
+        self.botoes.append(alvo)
+        self.sup.rodar(self._dorme(1), rotulo="y", botao=alvo)
+        self.assertEqual("disabled", str(alvo.cget("state")))
+        self.assertTrue(self._ate(lambda: str(alvo.cget("state"))
+                                  == "normal"))
+
+    def test_parar_mata_os_netos(self):
+        """PNL-6: `kill()` deixava Chrome/ffmpeg orfaos."""
+        import os as _os
+        import subprocess
+        import tempfile
+        from painel.processos import processo_vivo
+        arquivo = _os.path.join(tempfile.mkdtemp(), "neto.pid")
+        codigo = (
+            "import subprocess, sys, time\n"
+            "neto = subprocess.Popen([sys.executable, '-c', "
+            "'import time; time.sleep(60)'])\n"
+            f"open({arquivo!r}, 'w').write(str(neto.pid))\n"
+            "time.sleep(60)\n")
+        self.sup.rodar([self.py, "-c", codigo], rotulo="pai")
+        self.assertTrue(self._ate(lambda: _os.path.exists(arquivo)
+                                  and open(arquivo).read().strip()))
+        neto = int(open(arquivo).read())
+        self.assertTrue(processo_vivo(neto))
+        self.assertEqual(1, self.sup.parar_tudo())
+        self.assertTrue(self._ate(lambda: not processo_vivo(neto), 10))
+        if _os.name == "nt":
+            lista = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {neto}", "/NH"],
+                capture_output=True, text=True).stdout
+            self.assertNotIn(str(neto), lista)
+        self.assertTrue(any("encerrei a árvore" in l for l in self.linhas))
 
 
 class PeriodicoTests(unittest.TestCase):
@@ -904,6 +1157,426 @@ class ConfiabilidadeTests(unittest.TestCase):
         paginas = janelas._paginas_de_criacao()
         self.assertEqual([auditoria.Pagina, confiabilidade.Pagina],
                          paginas[:2])
+
+    # --- PNL-3 e PNL-7: leitura que falha nao e dia calmo -----------------
+    def test_ficha_vazia_nao_e_nada_fora_do_lugar(self):
+        """ZERO: nada publicado hoje. Nao e verde, e nao e erro."""
+        self.pagina._desenhar({})
+        texto = self.pagina.faixa.cget("text")
+        self.assertNotIn("nada fora do lugar", texto)
+        self.assertNotIn("✓", texto)
+        self.assertNotEqual(self.app.tema.ok, self.pagina.faixa.cget("fg"))
+
+    def test_familia_ausente_e_falha_de_leitura(self):
+        """FALHA: o panorama veio sem a familia. Antes: `{}` -> "✓ 0/0"."""
+        from painel.paginas import confiabilidade
+        with patch("panorama.resumo", return_value={"saude": {}}):
+            self.assertIn("erro", confiabilidade._ler())
+        self.pagina.atualizar({"saude": {}})
+        self.assertIn("não consegui ler", self.pagina.faixa.cget("text"))
+        self.assertEqual(self.app.tema.erro, self.pagina.faixa.cget("fg"))
+
+    def test_panorama_ilegivel_chega_a_pagina(self):
+        self.app._entregar_resumo({"erro": "OSError: X"})
+        self.assertIn("não consegui ler", self.pagina.faixa.cget("text"))
+        self.assertIn("ilegível", self.app._texto.get("1.0", "end"))
+
+    def test_conferencia_com_erro_aparece(self):
+        """PNL-7: o erro da conferencia era jogado fora pelo callback."""
+        def tarefa(_funcao, ao_pronto, rotulo=""):
+            ao_pronto({"erro": "HttpError: token expirado"})
+        with patch.object(self.app.supervisor, "tarefa", side_effect=tarefa):
+            self.pagina.conferir()
+        self.assertIn("token expirado", self.pagina.faixa.cget("text"))
+        self.assertEqual(self.app.tema.erro, self.pagina.faixa.cget("fg"))
+        self.assertIn("token expirado", self.app._texto.get("1.0", "end"))
+
+    def test_conferencia_que_deu_certo_recarrega(self):
+        chamadas = []
+
+        def tarefa(_funcao, ao_pronto, rotulo=""):
+            chamadas.append(rotulo)
+            if rotulo == "conferencia":
+                ao_pronto({"builds": {"estado": "limpo"}})
+        with patch.object(self.app.supervisor, "tarefa", side_effect=tarefa):
+            self.pagina.conferir()
+        self.assertEqual(["conferencia", "confiabilidade"], chamadas)
+
+
+class _CascaDe(unittest.TestCase):
+    """Uma Casca com UMA pagina, fechada do jeito seguro."""
+
+    MODULO = ""
+    TAMANHO = "1366x740"
+
+    def setUp(self):
+        import importlib
+        from painel.app import Casca
+        modulo = importlib.import_module(f"painel.paginas.{self.MODULO}")
+        self.app = Casca.criar([modulo.Pagina])
+        self.app.geometry(self.TAMANHO)
+        self.app.update()
+        # A leitura de fundo do `ao_mostrar` chega DEPOIS e reescreve a
+        # tela: espera ela assentar antes de o teste comecar a desenhar.
+        import time
+        self.app.supervisor.aguardar(30)
+        fim = time.monotonic() + 10
+        while not self.app.supervisor._fila.empty() \
+                and time.monotonic() < fim:
+            self.app.update()
+            time.sleep(0.03)
+        self.app.update()
+        self.pagina = next(iter(self.app.paginas.values()))
+        self.addCleanup(self._fechar)
+
+    def _fechar(self):
+        self.app.encerrar()
+        self.app.supervisor.aguardar(60)
+        self.app.destroy()
+        gc.collect()
+
+    def gaveta(self) -> str:
+        return self.app._texto.get("1.0", "end")
+
+
+class PlacarComErroTests(_CascaDe):
+    """PNL-3: o `{"erro": ...}` do panorama virava "0 problema(s)" calmo."""
+
+    MODULO = "vila"
+
+    def test_panorama_ilegivel_nao_vira_placar_zero(self):
+        """FALHA: a leitura inteira estourou."""
+        self.app._entregar_resumo({"erro": "OSError: disco ocupado"})
+        placar = self.pagina.lbl_placar.cget("text")
+        self.assertNotIn("0 problema(s)", placar)
+        self.assertNotIn("0 publicados", placar)
+        self.assertIn("não consegui ler", placar)
+        self.assertIn("disco ocupado", placar)
+        self.assertEqual(self.app.tema.erro, self.pagina.lbl_placar.cget("fg"))
+        self.assertIn("ilegível", self.gaveta())
+
+    def test_o_mesmo_erro_nao_enche_a_gaveta(self):
+        for _ in range(3):
+            self.app._entregar_resumo({"erro": "OSError: disco ocupado"})
+        self.assertEqual(1, self.gaveta().count("ilegível"))
+
+    def test_dia_zerado_de_verdade_mostra_zero(self):
+        """ZERO: tudo lido, nada aconteceu. Isso e 0, sem cor de erro."""
+        self.app._entregar_resumo(_resumo_vazio())
+        placar = self.pagina.lbl_placar.cget("text")
+        self.assertIn("📤 0 publicados", placar)
+        self.assertIn("0 problema(s)", placar)
+        self.assertNotIn("não li", placar)
+        self.assertEqual(self.app.tema.texto, self.pagina.lbl_placar.cget("fg"))
+
+    def test_familia_que_falha_vira_interrogacao(self):
+        """FALHA de uma familia so: as outras seguem, a dela vira "?"."""
+        resumo = _resumo_vazio()
+        resumo["desempenho"] = {"erro": "OSError: ledger trancado"}
+        self.app._entregar_resumo(resumo)
+        placar = self.pagina.lbl_placar.cget("text")
+        self.assertIn("📤 ? publicados", placar)
+        self.assertIn("0 problema(s)", placar)       # a qualidade foi lida
+        self.assertIn("não li: desempenho", placar)
+        self.assertEqual(self.app.tema.erro, self.pagina.lbl_placar.cget("fg"))
+
+    def test_volta_ao_normal_depois_do_erro(self):
+        self.app._entregar_resumo({"erro": "OSError: X"})
+        self.app._entregar_resumo(_resumo_vazio())
+        self.assertIn("0 publicados", self.pagina.lbl_placar.cget("text"))
+        self.assertEqual(self.app.tema.texto, self.pagina.lbl_placar.cget("fg"))
+
+
+class FluxoTests(_CascaDe):
+    MODULO = "fluxo"
+
+    def test_erro_sobrevive_ao_pulso(self):
+        """PNL-16: o pulso de 4 s apagava o erro de leitura da tabela."""
+        self.pagina._desenhar_tabela({"erro": "OSError: X"})
+        self.pagina.atualizar(_resumo_vazio())
+        self.app.update()
+        self.assertIn("X", self.pagina._erro_leitura.cget("text"))
+        self.assertTrue(self.pagina._erro_leitura.winfo_ismapped())
+        # e o alerta seguinte nao herda a cor de erro
+        resumo = _resumo_vazio()
+        resumo["saude"] = {"alertas": ["fila parada"]}
+        self.pagina.atualizar(resumo)
+        self.assertEqual(self.app.tema.aviso, self.pagina._alerta.cget("fg"))
+
+    def test_leitura_boa_limpa_o_erro(self):
+        self.pagina._desenhar_tabela({"erro": "OSError: X"})
+        self.pagina._desenhar_tabela({"geracoes": []})
+        self.app.update()
+        self.assertEqual("", self.pagina._erro_leitura.cget("text"))
+        self.assertFalse(self.pagina._erro_leitura.winfo_ismapped())
+
+    def test_cartao_zero_e_cartao_ilegivel(self):
+        """ZERO = "0 na fila"; FALHA = "não consegui ler", nunca zero."""
+        self.pagina.atualizar(_resumo_vazio())
+        self.assertIn("0 na fila", self.pagina._cartoes["fila"].cget("text"))
+        resumo = _resumo_vazio()
+        resumo["saude"] = {"erro": "OSError: fila trancada"}
+        self.pagina.atualizar(resumo)
+        texto = self.pagina._cartoes["fila"].cget("text")
+        self.assertNotIn("0 na fila", texto)
+        self.assertIn("fila trancada", texto)
+        self.app._entregar_resumo({"erro": "OSError: tudo"})
+        self.assertIn("não consegui ler",
+                      self.pagina._cartoes["arena"].cget("text"))
+
+
+class PublicarTests(_CascaDe):
+    MODULO = "publicar"
+
+    def setUp(self):
+        from painel.paginas import publicar
+        # Sem ler o catalogo de verdade ao abrir a pagina.
+        duble = patch.object(publicar.Pagina, "ao_mostrar", lambda _s: None)
+        duble.start()
+        self.addCleanup(duble.stop)
+        super().setUp()
+
+    def _escolher(self, fonte="builds"):
+        item = {"id": "generation_00999:build:celular:A", "fonte": fonte,
+                "origem": "build", "titulo": "t", "perfil": "celular",
+                "caminho": "", "descricao": "", "pendencias": []}
+        self.pagina._itens = {item["id"]: item}
+        self.pagina.tabela.insert("", "end", iid=item["id"],
+                                  values=("", "t", "9:16", "—", "—"))
+        self.pagina.tabela.selection_set(item["id"])
+        return item
+
+    def _enviar(self, yt: bool, tt: bool, fonte="builds"):
+        item = self._escolher(fonte)
+        self.pagina.var_yt.set(yt)
+        self.pagina.var_tt.set(tt)
+        with patch.object(self.app.supervisor, "rodar",
+                          return_value=True) as rodar:
+            self.pagina.enviar()
+        self.assertEqual(1, rodar.call_count)
+        return item, rodar.call_args
+
+    def test_tiktok_marcado_manda_postar(self):
+        """PNL-2: a legenda diz que posta; o comando tem que dizer tambem."""
+        item, chamada = self._enviar(yt=False, tt=True)
+        argumentos = chamada.args[0]
+        self.assertIn("--tiktok", argumentos)
+        self.assertIn("--postar", argumentos)
+        self.assertIn("posta de verdade",
+                      " ".join(w.cget("text") for w in _rotulos(
+                          self.pagina.btn_enviar.master)))
+        self.assertEqual(f"publicar {item['id']}", chamada.kwargs["rotulo"])
+        self.assertIs(self.pagina.btn_enviar, chamada.kwargs["botao"])
+
+    def test_so_youtube_nao_manda_postar(self):
+        _item, chamada = self._enviar(yt=True, tt=False)
+        self.assertNotIn("--postar", chamada.args[0])
+
+    def test_historia_nao_recebe_postar(self):
+        """`historias/main.py publicar` ja posta e nao conhece `--postar`."""
+        _item, chamada = self._enviar(yt=False, tt=True, fonte="historias")
+        self.assertIn("--tiktok", chamada.args[0])
+        self.assertNotIn("--postar", chamada.args[0])
+
+    def test_postar_e_aceito_pelo_cli_de_builds(self):
+        flags = ComandosDaUITests._flags_do_cli("random_builds")
+        self.assertIn("--postar", flags.get("publicar", set()))
+
+    def test_botao_preso_nao_volta_ao_trocar_a_selecao(self):
+        """PNL-1: `pintar_botao` religava o PUBLICAR no meio do upload."""
+        self._escolher()
+        with patch.object(self.app.supervisor, "segura", return_value=True):
+            self.pagina.pintar_botao()
+        self.assertEqual("disabled", str(self.pagina.btn_enviar.cget("state")))
+        self.pagina.pintar_botao()
+        self.assertEqual("normal", str(self.pagina.btn_enviar.cget("state")))
+
+    def test_historias_quebradas_avisam(self):
+        """PNL-8: as historias sumiam da lista sem nenhuma linha de erro."""
+        from painel.paginas import publicar
+        with patch.object(publicar.catalogo_builds, "listar", return_value=[]), \
+                patch("contos.publicar.catalogo.resumo",
+                      side_effect=RuntimeError("catalogo x quebrado")), \
+                patch.object(publicar.Pagina, "_publicados",
+                             return_value={}):
+            dados = self.pagina._ler()
+        self.assertIn("avisos", dados)
+        self.assertTrue(any("catalogo x quebrado" in a
+                            for a in dados["avisos"]))
+        self.pagina._desenhar(dados)
+        self.app.update()
+        self.assertIn("catalogo x quebrado",
+                      self.pagina.lbl_aviso.cget("text"))
+        self.assertTrue(self.pagina.lbl_aviso.winfo_ismapped())
+        self.assertIn("histórias não carregaram", self.gaveta())
+
+    def test_sem_aviso_o_rotulo_some(self):
+        self.pagina._desenhar({"itens": [], "publicados": {}, "avisos": []})
+        self.app.update()
+        self.assertFalse(self.pagina.lbl_aviso.winfo_ismapped())
+
+
+def _rotulos(pai):
+    """Todos os Label dentro de `pai` (recursivo)."""
+    saida = []
+    for filho in pai.winfo_children():
+        if filho.winfo_class() == "Label":
+            saida.append(filho)
+        saida.extend(_rotulos(filho))
+    return saida
+
+
+class VideosCabeTests(_CascaDe):
+    """PNL-5: em 1366x697 a tabela de VIDEOS PRONTOS nem era mapeada."""
+
+    MODULO = "videos"
+    TAMANHO = "1366x697"
+
+    def _tabelas(self, pai):
+        saida = []
+        for filho in pai.winfo_children():
+            if filho.winfo_class() == "Treeview":
+                saida.append(filho)
+            saida.extend(self._tabelas(filho))
+        return saida
+
+    def test_rolando_ate_o_fim_a_tabela_aparece_inteira(self):
+        corpo = self.pagina.corpo
+        tela = corpo.tela
+        self.app.update()
+        self.assertGreater(corpo.winfo_reqheight(), tela.winfo_height(),
+                           "a pagina nao precisava rolar? (mudou o layout)")
+        tela.yview_moveto(1.0)
+        self.app.update()
+        tabelas = self._tabelas(corpo)
+        self.assertTrue(tabelas)
+        base_da_tela = tela.winfo_rooty() + tela.winfo_height()
+        for tabela in tabelas:
+            self.assertEqual(1, tabela.winfo_ismapped())
+            self.assertGreater(tabela.winfo_height(), 60)
+            self.assertLessEqual(tabela.winfo_rooty() + tabela.winfo_height(),
+                                 base_da_tela + 1)
+
+
+
+class RolavelTests(unittest.TestCase):
+    """`Oficina.rolavel`: rola so quando nao cabe, e estica quando cabe."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.janela = tk.Tk()
+        cls.janela.geometry("600x400")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.janela.destroy()
+
+    def setUp(self):
+        self.raiz = tk.Frame(self.janela)
+        self.raiz.pack(fill="both", expand=True)
+        self.addCleanup(self.raiz.destroy)
+        self.o = Oficina(estilo.OFICINA)
+
+    def test_com_espaco_sobrando_nao_rola_e_estica(self):
+        corpo = self.o.rolavel(self.raiz)
+        caixa = tk.Frame(corpo, height=50, bg="red")
+        caixa.pack(fill="both", expand=True)
+        self.raiz.update()
+        self.assertEqual((0.0, 1.0), tuple(corpo.tela.yview()))
+        # `expand` continua valendo: a caixa ocupa a altura toda
+        self.assertGreater(caixa.winfo_height(), 300)
+
+    def test_sem_espaco_rola_ate_o_fim(self):
+        corpo = self.o.rolavel(self.raiz)
+        for _ in range(30):
+            tk.Label(corpo, text="linha").pack()
+        fim = tk.Label(corpo, text="FIM")
+        fim.pack()
+        self.raiz.update()
+        self.assertLess(corpo.tela.yview()[1], 1.0)
+        corpo.tela.yview_moveto(1.0)
+        self.raiz.update()
+        base = corpo.tela.winfo_rooty() + corpo.tela.winfo_height()
+        self.assertLessEqual(fim.winfo_rooty() + fim.winfo_height(), base + 1)
+
+
+class TamanhoInicialTests(unittest.TestCase):
+    """PNL-4: a janela nascia no `minsize` (1000x600) e cortava botoes."""
+
+    def test_abre_do_tamanho_da_tela(self):
+        from painel import janelas
+        from painel.paginas import auditoria
+        with patch.object(auditoria.Pagina, "ao_mostrar", lambda _s: None):
+            app = janelas.montar("criacao")
+        try:
+            app.update()
+            self.assertTrue(app.state() == "zoomed"
+                            or app.winfo_width() >= 1300,
+                            f"{app.winfo_width()}x{app.winfo_height()} "
+                            f"({app.state()})")
+            # Quem pede tamanho (a --prova, os testes) ganha o que pediu.
+            app.geometry("1200x650")
+            app.update()
+            self.assertEqual("normal", app.state())
+            self.assertEqual(1200, app.winfo_width())
+        finally:
+            app.encerrar()
+            app.supervisor.aguardar(60)
+            app.destroy()
+            gc.collect()
+
+
+class ContasTests(unittest.TestCase):
+    def _entrar(self, servico):
+        from unittest.mock import MagicMock
+
+        from painel.paginas import contas
+        pagina = contas.Pagina.__new__(contas.Pagina)
+        pagina.tabela = MagicMock()
+        pagina.tabela.selection.return_value = [f"{servico}|historias"]
+        pagina.combo = MagicMock()
+        pagina.combo.get.return_value = "principal"
+        with patch.object(contas.contas_reg, "ativa",
+                          return_value="principal"), \
+                patch.object(contas.Pagina, "_abrir") as abrir, \
+                patch.object(contas.messagebox, "showinfo") as aviso:
+            pagina.entrar()
+        return abrir, aviso
+
+    def test_grok_vai_para_llm_login(self):
+        """PNL-15: o grok caia no `identity login`, que o recusa."""
+        from painel.paginas import contas
+        abrir, _aviso = self._entrar("grok")
+        self.assertEqual(1, abrir.call_count)
+        argumentos, cwd = abrir.call_args.args[0], abrir.call_args.args[1]
+        self.assertEqual(["main.py", "llm", "login", "--provedor", "grok"],
+                         argumentos)
+        self.assertEqual(contas.HISTORIAS, cwd)
+
+    def test_os_logins_do_llm_sao_os_do_cli(self):
+        from painel.paginas import contas
+        parser = ComandosDaUITests._parser_do_cli("historias")
+        self.assertIsNotNone(parser)
+        import argparse
+        escolhas = None
+        for acao in parser._actions:
+            if isinstance(acao, argparse._SubParsersAction):
+                llm = acao.choices.get("llm")
+                for sub in llm._actions:
+                    if "--provedor" in sub.option_strings:
+                        escolhas = tuple(sub.choices)
+        self.assertEqual(set(escolhas), set(contas.LOGIN_PELO_LLM))
+
+    def test_servico_sem_login_avisa_em_vez_de_disparar(self):
+        abrir, aviso = self._entrar("servico_inventado")
+        self.assertEqual(0, abrir.call_count)
+        self.assertEqual(1, aviso.call_count)
+
+    def test_identity_continua_indo_para_identity(self):
+        abrir, _aviso = self._entrar("digen")
+        self.assertEqual(["main.py", "identity", "login", "--provedor",
+                          "digen", "--canal", "historias"],
+                         abrir.call_args.args[0])
 
 
 if __name__ == "__main__":

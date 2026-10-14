@@ -196,6 +196,29 @@ def por_whisper(video: Path, destino: Path, *, modelo: str = "small",
     return destino.is_file()
 
 
+def _transcricao_valida(destino: Path, video_id: str) -> bool:
+    """O video ja tem texto de verdade?
+
+    So o `.srt` existir nao basta (PNL-13): um `.srt` vazio, so com
+    `WEBVTT`, ou sem o `.json` ao lado (gravacao interrompida) pulava o
+    video para sempre — so o `--refazer` de tudo contornava.
+    """
+    srt = Path(destino) / f"{video_id}.srt"
+    if not (Path(destino) / f"{video_id}.json").is_file():
+        return False
+    try:
+        texto = srt.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return False
+    return any("-->" in linha for linha in texto.splitlines())
+
+
+def _gravar_inteiro(caminho: Path, texto: str) -> None:
+    temporario = caminho.with_name(caminho.name + ".tmp")
+    temporario.write_text(texto, encoding="utf-8")
+    temporario.replace(caminho)
+
+
 def transcrever(canal_id: str, *, limite: int = 0, refazer: bool = False,
                 modelo: str = "small", log=print) -> dict:
     """Transcreve o que esta em disco e ainda nao tem texto."""
@@ -208,7 +231,7 @@ def transcrever(canal_id: str, *, limite: int = 0, refazer: bool = False,
     catalogo = {v["id"]: v for v in _canal.videos(pasta)}
     prontos = sorted(_baixar.baixados(pasta))
     alvos = prontos if refazer else [
-        vid for vid in prontos if not (destino / f"{vid}.srt").is_file()]
+        vid for vid in prontos if not _transcricao_valida(destino, vid)]
     if limite and limite > 0:
         alvos = alvos[:limite]
 
@@ -255,8 +278,9 @@ def transcrever(canal_id: str, *, limite: int = 0, refazer: bool = False,
 
         medida = _medida(pasta, video_id)
         stats = estatisticas(falas, medida.get("duracao_s", 0.0))
-        (destino / f"{video_id}.srt").write_text(para_srt(falas),
-                                                 encoding="utf-8")
+        # `.tmp` + `replace`: um processo morto no meio nao deixa um `.srt`
+        # pela metade, que antes ja contava como "transcrito".
+        _gravar_inteiro(destino / f"{video_id}.srt", para_srt(falas))
         (destino / f"{video_id}.txt").write_text(para_texto(falas),
                                                  encoding="utf-8")
         (destino / f"{video_id}.json").write_text(

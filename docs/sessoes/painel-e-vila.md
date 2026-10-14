@@ -506,6 +506,76 @@ Neural", habitante `vila-habitante-forma` = bolinha) já aprovava arte para
   código (`test_vila_fofa.py`) rodam com a arte apontada para uma pasta
   vazia (`setUpModule`).
 
+## 6e. Consertos da auditoria profunda (14/10/2026)
+
+Fonte: `docs/auditoria/2026-10-11-profunda/consertos/painel-e-vila.md`
+(PNL-1 a PNL-23). O que mudou e vale como regra daqui para a frente:
+
+- **Um processo por rótulo** (PNL-1). O clique duplo em PUBLICAR abria
+  dois `main.py publicar`, e nada a jusante olha se já publicou. Agora
+  `Supervisor.rodar` recusa um rótulo que já tem processo vivo — nesta
+  janela **ou em outra do painel** — e escreve "já está rodando (…): <rótulo>
+  — não abri outro" na gaveta. O que une as janelas (processos diferentes)
+  é uma ficha por rótulo em `%LOCALAPPDATA%\neural-fights\painel\processos\`
+  (`processos.Registro`, `{nome, pid, criado}`; `NF_PAINEL_PROCESSOS` muda a
+  pasta, e os testes usam uma descartável). A ficha vale enquanto o
+  **filho** vive, não a janela: painel que cai no meio de um upload não
+  libera o botão das outras. PID reciclado não trava (o nascimento do
+  processo é conferido), ficha de processo morto é apagada na hora. Não usa
+  `builds.travas`. O rótulo do Publicar é `publicar <id>` para builds e
+  histórias, sem o destino.
+- **O botão que dispara fica desligado** até o processo dele acabar.
+  `Oficina.botao` marca qual botão está sendo clicado
+  (`widgets.botao_em_curso`) e o `rodar` desliga esse; `botao=` explícito
+  (o Publicar passa o `btn_enviar`) ou `botao=False`. O `pintar_botao` do
+  Publicar não religa o botão preso (`supervisor.segura`).
+- **TikTok pelo Publicar posta** (PNL-2): a legenda já dizia "posta de
+  verdade, sem confirmação" (decisão de 31/08) e o comando saía sem
+  `--postar`. Builds ganham `--postar`; histórias não (o `historias/main.py
+  publicar` já posta e não conhece a bandeira).
+- **Leitura que falha não é dia calmo** (PNL-3). `_entregar_resumo` não
+  entrega mais o `{"erro"}` como se fosse resumo: chama `pagina.ilegivel()`
+  e escreve "panorama ilegível" na gaveta (uma vez por erro novo). Vila,
+  Fluxo e Confiabilidade separam **zero** (lido, nada aconteceu: "0") de
+  **falha** (família com `erro` ou ausente: "?" no número dela, "não li:
+  desempenho", cor de erro). A faixa do freio mostra "? pipeline ilegível"
+  em vez de "● rodando" quando o `controle` estoura. A Confiabilidade sem
+  publicação diz "· 0 publicação hoje — nada medido ainda", não "✓ 0/0"
+  em verde; família ausente é erro.
+- **A janela abre do tamanho da tela** (PNL-4): `state("zoomed")` no fim
+  da `Casca`; quem pede `geometry` depois (a `--prova`, os testes) sai do
+  maximizado e ganha o que pediu. Medido: maximizada na tela dele dá
+  1366×705.
+- **Página que rola** (PNL-5): `Oficina.rolavel(pai)` (Canvas + barra que
+  só aparece quando falta altura; com espaço sobrando, o `expand` continua
+  esticando). Vídeos de Build pede ~970 px e a tela tem ~640: agora rola, e
+  a tabela VÍDEOS PRONTOS aparece inteira no fim. Publicar e Histórias
+  também rolam (com a gaveta aberta o ONDE POSTAR saía da tela); para o
+  Publicar caber sem barra com a gaveta fechada, a caixa da descrição foi
+  de 8 para 7 linhas (pedia 649 px, a tela tem 639; agora 632).
+- **Parar mata a árvore** (PNL-6): `taskkill /T /F` no filho, com `kill()`
+  de reserva; os netos (Chrome, ffmpeg) não ficam órfãos.
+- Médios: a conferência do canal que falha aparece na faixa e na gaveta
+  (PNL-7); histórias que não carregam viram aviso em cima da tabela do
+  Publicar (PNL-8); o Guia não grava `proximo` se a mensagem falhou
+  (PNL-9). Baixos: Grok entra pelo `llm login` (PNL-15); erro de leitura
+  do Fluxo tem rótulo próprio e o alerta volta à cor de aviso (PNL-16);
+  `encerrar()` desliga o pulso do freio (PNL-17); o hover não apaga a
+  vista ativa da Oficina (PNL-18); os testes da casca dublam `snapshot` e
+  `controle.estado` (PNL-19); `.json` de folha com grade corrompida vira
+  1×1 e a animação da Vila reagenda mesmo se um quadro estourar (PNL-20);
+  `wscript` sem `//B` entra nos problemas do selo (PNL-21); arte nova
+  limpa todo o cache de imagem da cena, emote incluído (PNL-22); o combo do
+  freio tem `correio` (`app.ALVOS_DO_FREIO`, teste lendo o argparse,
+  PNL-23). Mimetizar (PNL-10 a 14): catálogo com aba que falhou fica
+  `completo: false` e o status diz "INCOMPLETO"; o yt-dlp calado é
+  interrompido pelo prazo e por `silencio_s` (600 s, `coleta.json` pode
+  mudar); corte do ffmpeg interrompido marca `amostra_parcial` e só conta
+  o trecho lido; `.srt` vazio ou sem `.json` volta para a fila; dois
+  `criar_canal` juntos não colidem.
+- **Fora daqui, de propósito:** os botões do PicassoIA/Digen da página
+  Vídeos esperam decisão do Adrian no Grimório e não foram tocados.
+
 ## 6b. O Guia das IAs (29/09/2026)
 
 Pedido do Adrian às 01:55: "cria uma interface gráfica flutuante pra eu
@@ -586,8 +656,11 @@ recolhida, IA escolhida a mão).
   `--gif` grava 5 s, `--medir-cpu SEG` mede a CPU. A `--prova` **não** passa pelo
   mutex: abre uma segunda janela de propósito, e é a forma segura de olhar sem
   mexer na do dono.
-- Testes desta parte (272, todos pelo `discover` do painel):
-  `painel/test_painel.py` (40), `painel/test_flutuante.py` (88, com a
+- Testes desta parte (363 pelo `python -m pytest painel` em 14/10/2026;
+  a lista abaixo é a de 28/09, os números por arquivo mudaram):
+  `painel/test_painel.py` (82 desde 14/10: um processo por rótulo, parar a
+  árvore, zero contra falha no placar/freio/confiabilidade, Publicar com
+  `--postar`, Vídeos rolando em 1366×697), `painel/test_flutuante.py` (88, com a
   caixa-preta e o WM_CLOSE de verdade), `painel/test_tarefa_da_vila.py` (19,
   o instalador, a guarda do `.cmd` rodada pelo `cmd` e o "não acorda o PC"),
   `painel/test_vila_fofa.py` (40, com a escala, a Vila dobrada e a deitada

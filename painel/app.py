@@ -45,6 +45,10 @@ LARGURA_BARRA_ESTREITA = 56
 # Abaixo disto a barra lateral vira so icone. A tela dele tem 1366 de largura.
 LIMITE_ESTREITO = 1000
 
+# Os alvos do freio de mao: os MESMOS `choices` de `main.py pausar/retomar
+# --provedor` (ha teste lendo o argparse). Faltava o "correio" (PNL-23).
+ALVOS_DO_FREIO = ("tudo", "correio", "digen", "picasso")
+
 
 class Casca(tk.Tk):
     """A janela. Recebe as paginas prontas — nao sabe o que elas fazem."""
@@ -64,6 +68,8 @@ class Casca(tk.Tk):
     def __init__(self, classes: list, *, tema: str = "oficina",
                  titulo: str = "Neural Fights", pipeline: bool = False):
         super().__init__()
+        self._tamanho_pedido = False
+        self._erro_do_resumo = None
         self.tema = estilo.tema(tema)
         self.oficina = Oficina(self.tema)
         self.title(titulo)
@@ -99,6 +105,44 @@ class Casca(tk.Tk):
         self.bind("<Escape>", lambda _e: self._fechar_console())
         if self._paginas:
             self.mostrar(next(iter(self._paginas)))
+        self._abrir_do_tamanho_da_tela()
+
+    # ------------------------------------------------------------ tamanho
+    def _abrir_do_tamanho_da_tela(self) -> None:
+        """Abre ocupando a tela, e nao no `minsize` (PNL-4).
+
+        A area de conteudo e montada por `place` e nao pede tamanho: sem
+        isto a janela nascia em 1000x600 e a Publicar perdia o cartao ONDE
+        POSTAR, a Videos a tabela. Quem pede um tamanho depois (`--prova`,
+        os testes) ganha o que pediu: `geometry` desfaz o maximizado.
+        """
+        if self._tamanho_pedido:
+            return
+        try:
+            self.state("zoomed")
+            return
+        except tk.TclError:
+            pass
+        try:
+            self.update_idletasks()
+            largura = self.winfo_screenwidth()
+            altura = max(600, self.winfo_screenheight() - 71)
+            tk.Tk.wm_geometry(self, f"{largura}x{altura}+0+0")
+        except tk.TclError:
+            pass
+
+    def wm_geometry(self, newGeometry=None):             # noqa: N803
+        """Pedir tamanho e sair do maximizado: senao o pedido nao vale."""
+        if newGeometry is not None:
+            self._tamanho_pedido = True
+            try:
+                if self.state() == "zoomed":
+                    self.state("normal")
+            except tk.TclError:
+                pass
+        return super().wm_geometry(newGeometry)
+
+    geometry = wm_geometry
 
     # ------------------------------------------------------------ layout
     def _montar(self) -> None:
@@ -190,7 +234,7 @@ class Casca(tk.Tk):
                 compacto=True).pack(side="right", padx=(estilo.ESPACO["meio"], 0))
         o.botao(linha, "Pausar", lambda: self._pipeline("pausar"),
                 compacto=True).pack(side="right", padx=(estilo.ESPACO["meio"], 0))
-        self._pipeline_alvo = o.combo(linha, ["tudo", "picasso", "digen"],
+        self._pipeline_alvo = o.combo(linha, list(ALVOS_DO_FREIO),
                                       "tudo", largura=8)
         self._pipeline_alvo.pack(side="right", padx=(estilo.ESPACO["meio"], 0))
 
@@ -202,9 +246,20 @@ class Casca(tk.Tk):
         self.supervisor.tarefa(ler, self._entregar_pipeline, rotulo="pipeline")
 
     def _entregar_pipeline(self, dados) -> None:
-        if not isinstance(dados, dict) or not hasattr(self, "_pipeline_estado"):
+        if not hasattr(self, "_pipeline_estado"):
             return
-        situacao = dados.get("situacao") or "rodando"
+        # Leitura que falhou NAO e "● rodando" em verde: era o que a faixa
+        # dizia quando o `controle` estourava (`.get("situacao") or
+        # "rodando"`). Nao conseguir ler nunca e calma.
+        if not isinstance(dados, dict) or dados.get("erro") \
+                or not dados.get("situacao"):
+            motivo = (dados.get("erro") if isinstance(dados, dict) else None) \
+                or "sem estado"
+            self._pipeline_estado.configure(
+                text=f"? pipeline ilegível — não consegui ler: {motivo}"[:110],
+                fg=self.tema.erro)
+            return
+        situacao = dados["situacao"]
         marca = {"rodando": "●", "pausado": "⏸", "parando": "⏹"}.get(situacao, "●")
         cor = {"rodando": self.tema.ok, "pausado": self.tema.aviso,
                "parando": self.tema.erro}.get(situacao, self.tema.texto_fraco)
@@ -371,9 +426,28 @@ class Casca(tk.Tk):
         self.supervisor.tarefa(ler, self._entregar_resumo, rotulo="panorama")
 
     def _entregar_resumo(self, dados) -> None:
+        """Entrega o panorama a pagina visivel -- ou diz que nao leu.
+
+        O `{"erro": ...}` do `Supervisor.tarefa` chegava as paginas como se
+        fosse um resumo, e todo `.get(...) or {}` virava "0 publicados · 0
+        problema(s)": a leitura quebrada parecia um dia calmo (PNL-3).
+        """
         pagina = self._paginas.get(self._atual or "")
         if pagina is None:
             return
+        if not isinstance(dados, dict) or dados.get("erro"):
+            erro = (dados.get("erro") if isinstance(dados, dict)
+                    else f"resposta inesperada: {type(dados).__name__}")
+            if erro != self._erro_do_resumo:
+                # Uma linha por erro NOVO: o pulso e de 4 s e repetir a
+                # mesma frase enterraria o resto da gaveta.
+                self._registrar(f"[painel] panorama ilegível: {erro}", "erro")
+            self._erro_do_resumo = erro
+            ilegivel = getattr(pagina, "ilegivel", None)
+            if ilegivel:
+                ilegivel(erro)
+            return
+        self._erro_do_resumo = None
         atualizar = getattr(pagina, "atualizar", None)
         if atualizar:
             atualizar(dados)
@@ -412,6 +486,10 @@ class Casca(tk.Tk):
             except Exception:                               # noqa: BLE001
                 pass
         self._pulso.desligar()
+        if self._pulso_pipeline is not None:
+            # Sem isto o freio seguia lendo o disco depois de fechar, e o
+            # `after` caia numa janela morta ("invalid command name") (PNL-17).
+            self._pulso_pipeline.desligar()
         self.supervisor.encerrar()
 
 

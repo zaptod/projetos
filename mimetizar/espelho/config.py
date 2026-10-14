@@ -75,8 +75,20 @@ def proximo_id() -> str:
 
 
 def criar_canal() -> tuple:
-    """Reserva a proxima pasta de canal. Devolve (canal_id, pasta)."""
-    canal_id = proximo_id()
-    pasta = OUTPUTS / canal_id
-    pasta.mkdir(parents=True, exist_ok=False)
-    return canal_id, pasta
+    """Reserva a proxima pasta de canal. Devolve (canal_id, pasta).
+
+    O `mkdir(exist_ok=False)` E a reserva: duas absorcoes ao mesmo tempo
+    (o duplo clique do painel fazia isso) escolhiam o mesmo id e a segunda
+    morria com `FileExistsError` (PNL-14). Quem perde a corrida tenta o
+    proximo id.
+    """
+    for _tentativa in range(50):
+        canal_id = proximo_id()
+        pasta = OUTPUTS / canal_id
+        try:
+            pasta.mkdir(parents=True, exist_ok=False)
+        except FileExistsError:
+            continue
+        return canal_id, pasta
+    raise RuntimeError("nao consegui reservar uma pasta de canal em 50 "
+                       f"tentativas (em {OUTPUTS})")

@@ -92,12 +92,15 @@ class CenaFofa:
         habitantes prontos vao para o lixo e sao desenhados de novo."""
         vista = arte_pronta.conferir()
         if self._cache.get("arte_vista", vista) != vista:
-            for chave in [c for c in self._cache
-                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p", "prop")]:
+            # TODA imagem pronta sai, nao so mundo/personagem/predio: o
+            # emote, o pato, o gato, o passaro e os enfeites tambem perguntam
+            # ao `arte_pronta` primeiro, e ficavam com a arte velha ate a Vila
+            # reabrir (PNL-22). As chaves-tupla do cache sao todas imagens.
+            for chave in [c for c in self._cache if isinstance(c, tuple)]:
                 del self._cache[chave]
-            for chave in [c for c in self._fotos
-                          if isinstance(c, tuple) and c and c[0] in ("mundo", "p", "prop")]:
+            for chave in [c for c in self._fotos if isinstance(c, tuple)]:
                 del self._fotos[chave]
+            arte.emote.cache_clear()
             self._imagem_atual.clear()
             self._atualizar_noite(forcar=True)
         self._cache["arte_vista"] = vista

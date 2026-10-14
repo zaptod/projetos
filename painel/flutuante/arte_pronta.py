@@ -464,16 +464,26 @@ def folha(nome_arquivo: str) -> Folha | None:
     if img is None:
         return None
     anim = _animacao(nome_arquivo)
-    grade = anim.get("grade") or meta(nome_arquivo).get("grade") or [1, 1]
-    colunas, linhas = max(1, int(grade[0])), max(1, int(grade[1]))
+    # O `.json` vem de fora (a esteira). Grade ou ciclo corrompido vira a
+    # folha inteira num quadro so, em vez de uma excecao que congelava a
+    # animacao da Vila ate ela ser reaberta (PNL-20).
+    try:
+        grade = anim.get("grade") or meta(nome_arquivo).get("grade") or [1, 1]
+        colunas, linhas = max(1, int(grade[0])), max(1, int(grade[1]))
+    except (TypeError, ValueError, IndexError, AttributeError):
+        colunas, linhas = 1, 1
     ciclos, ordem = {}, []
-    for c in anim.get("ciclos") or []:
-        if not isinstance(c, dict) or not c.get("nome"):
-            continue
-        ciclos[c["nome"]] = {"quadros": [int(q) for q in c.get("quadros") or [0]],
-                             "fps": float(c.get("fps") or 1),
-                             "loop": bool(c.get("loop", True))}
-        ordem.append(c["nome"])
+    try:
+        for c in anim.get("ciclos") or []:
+            if not isinstance(c, dict) or not c.get("nome"):
+                continue
+            ciclos[c["nome"]] = {
+                "quadros": [int(q) for q in c.get("quadros") or [0]],
+                "fps": float(c.get("fps") or 1),
+                "loop": bool(c.get("loop", True))}
+            ordem.append(c["nome"])
+    except (TypeError, ValueError, AttributeError):
+        ciclos, ordem = {}, []
     if not ciclos:
         ciclos = {"tudo": {"quadros": list(range(colunas * linhas)),
                            "fps": 4.0, "loop": True}}

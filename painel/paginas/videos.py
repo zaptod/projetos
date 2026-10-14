@@ -40,6 +40,11 @@ class Pagina:
 
     # ------------------------------------------------------------ montar
     def construir(self, pai) -> None:
+        # ROLA: os cinco blocos nao cabem na tela dele (1366x768) nem com a
+        # janela maximizada, e o `pack` cortava a tabela de VIDEOS PRONTOS
+        # sem erro nenhum (PNL-5).
+        pai = self.o.rolavel(pai)
+        self.corpo = pai
         self.o.titulo(pai, "Vídeos de Build — roletas e edição automática")
 
         colunas = tk.Frame(pai, bg=self.t.fundo)

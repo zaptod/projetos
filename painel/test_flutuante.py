@@ -893,6 +893,18 @@ class TarefasOcultas(unittest.TestCase):
                                       existe=self._existe_tudo)
         self.assertEqual(oculta["alvo"], "E:\\projetos\\postar.cmd")
 
+    def test_wscript_sem_B_entra_nos_problemas(self):
+        """PNL-21: sem //B um erro de script abre caixa na tela dele."""
+        from painel.flutuante import tarefas
+        tarefa = {"Nome": "NeuralFights_x", "Acoes": 1,
+                  "Executa": "wscript.exe",
+                  "Argumentos": '"C:/nf/oculto.vbs" "C:/nf/postar.cmd"'}
+        resumo = tarefas.examinar([tarefa], existe=lambda _p: True)
+        self.assertIs(resumo["ok"], False)
+        self.assertEqual(1, len(resumo["problemas"]))
+        self.assertIn("//B", resumo["problemas"][0]["motivo"])
+        self.assertNotIn("✓", resumo["selo"])
+
     def test_lancador_ou_cmd_sumido_e_quebrada(self):
         from painel.flutuante import tarefas
         sem_vbs = tarefas.examinar_uma(

@@ -88,7 +88,11 @@ def do_canal(canal_id: str) -> dict:
         "preset": (pasta / "preset" / "roteiro.json").is_file(),
         "pasta": str(pasta),
         "etapas": estado.ler(pasta)["etapas"],
+        # Catalogo antigo (sem a chave) conta como completo: so o que foi
+        # MEDIDO como falho e acusado.
+        "abas_faltando": list(cabecalho.get("abas_faltando") or []),
     }
+    dados["completo"] = not dados["abas_faltando"]
     dados["proximo_passo"] = proximo_passo(dados)
     return dados
 
@@ -106,6 +110,13 @@ def proximo_passo(dados: dict) -> str:
     total = dados["n_videos"]
     if not total:
         return "main.py canal <url>   (o catalogo saiu vazio)"
+    faltando = dados.get("abas_faltando") or []
+    if faltando:
+        # Uma aba que falhou (rede, yt-dlp) deixou videos de fora: o resto
+        # do fluxo andaria sobre um acervo pela metade (PNL-10).
+        url = dados.get("url") or "<url>"
+        return (f"catálogo INCOMPLETO (faltou: {', '.join(faltando)}) — "
+                f"recatalogar: main.py canal {url}")
     if dados["completos"] < total:
         faltam = total - dados["completos"]
         return f"main.py absorver {canal_id}   ({faltam} sem as 2 fichas)"

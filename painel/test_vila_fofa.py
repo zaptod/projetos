@@ -638,6 +638,34 @@ class Cena(unittest.TestCase):
         self.cena._clique(type("E", (), longe)())
         self.assertEqual(clicados, ["picasso"])
 
+    def test_emote_novo_entra_sem_reiniciar(self):
+        """PNL-22: arte nova limpava mundo/personagem e esquecia o emote.
+
+        O `arte.emote` tem `lru_cache` e a cena guarda o emote pronto em
+        ("emote", ...): os dois tem de sair quando a assinatura da pasta
+        de arte muda, senao o balao velho fica ate a Vila reabrir.
+        """
+        from unittest import mock
+        predios = _ocioso()
+        predios["youtube"] = {"status": "erro", "balao": "❗ cota",
+                              "contas": []}
+        self.cena.aplicar(predios)                  # desenha o emote ❗
+        arte.emote("x")
+        self.assertGreater(arte.emote.cache_info().currsize, 0)
+        velhos = {c: v for c, v in self.cena._cache.items()
+                  if isinstance(c, tuple)}
+        self.assertTrue(any(c[0] == "emote" for c in velhos))
+        self.cena._cache["arte_vista"] = "assinatura velha"
+        with mock.patch.object(arte_pronta, "conferir",
+                               return_value="assinatura nova"):
+            self.cena._conferir_arte()
+        self.assertEqual(0, arte.emote.cache_info().currsize)
+        # o que voltou ao cache (o mundo e redesenhado na hora) e NOVO
+        for chave, valor in self.cena._cache.items():
+            if chave in velhos:
+                self.assertIsNot(velhos[chave], valor, chave)
+        self.assertEqual("assinatura nova", self.cena._cache["arte_vista"])
+
     def test_noite_pelo_relogio(self):
         from datetime import datetime
         self.assertTrue(e_noite(datetime(2026, 9, 17, 22)))

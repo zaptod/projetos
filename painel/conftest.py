@@ -18,7 +18,11 @@ def raiz_tk():
     raiz.destroy()
 
 
-TK_SEM_BIBLIOTECA = ("init.tcl", "tcl_findLibrary")
+# 14/10/2026: a terceira variante, o `tk.tcl` lido pela metade ("This
+# probably means that tk wasn't installed properly"), apareceu no meio da
+# suite com outros pytest rodando na maquina — mesmo ambiente, mesma causa.
+TK_SEM_BIBLIOTECA = ("init.tcl", "tcl_findLibrary",
+                     "tk wasn't installed properly")
 
 
 def _falha_ao_iniciar_tk(erro):

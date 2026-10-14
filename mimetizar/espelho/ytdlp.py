@@ -76,15 +76,48 @@ def rodar(argumentos: list, *, timeout: float = 900.0) -> tuple:
     return proc.returncode, proc.stdout or "", proc.stderr or ""
 
 
+SILENCIO_S = 600.0
+
+
+def _ler_linhas(fluxo, fila) -> None:
+    """THREAD: passa cada linha do yt-dlp para a fila; None = acabou."""
+    try:
+        for linha in fluxo:
+            fila.put(linha)
+    except (OSError, ValueError):
+        pass
+    finally:
+        fila.put(None)
+
+
+def _duracao(segundos: float) -> str:
+    if segundos >= 3600:
+        return f"{segundos / 3600:.1f}h"
+    if segundos >= 60:
+        return f"{segundos / 60:.0f}min"
+    return f"{segundos:.1f}s"
+
+
 def rodar_streaming(argumentos: list, ao_linha=None, *,
-                    timeout: float = 86400.0) -> int:
+                    timeout: float = 86400.0,
+                    silencio_s: float | None = SILENCIO_S) -> int:
     """Roda mostrando a saida enquanto ela sai. Devolve o codigo.
 
     `rodar` acima segura tudo ate o fim, e para um download de tres horas
     isso significa uma tela parada por tres horas — indistinguivel de travado.
     Aqui cada linha chega na hora. `--newline` (quem chama poe) e o que faz o
     yt-dlp separar o progresso por quebra de linha em vez de `\\r`.
+
+    OS PRAZOS VALEM COM O PROCESSO CALADO (PNL-11). Antes o `timeout` so
+    entrava no `wait()`, DEPOIS de o `for linha in stdout` acabar: um yt-dlp
+    vivo e mudo prendia a coleta para sempre. Agora uma thread le o stdout
+    e o laco daqui confere o relogio a cada segundo. Passou do `timeout`
+    total, ou de `silencio_s` sem nenhuma linha, mata e devolve 124.
     """
+    import queue
+    import threading
+    import time
+
     exigir()
     if ao_linha is None:
         ao_linha = print
@@ -95,15 +128,42 @@ def rodar_streaming(argumentos: list, ao_linha=None, *,
             errors="replace", bufsize=1, creationflags=NO_WINDOW)
     except OSError as exc:
         raise NaoInstalado(f"nao consegui executar o yt-dlp: {exc}") from exc
+    fila: queue.Queue = queue.Queue()
+    leitor = threading.Thread(target=_ler_linhas, args=(proc.stdout, fila),
+                              daemon=True)
+    leitor.start()
+    inicio = ultima = time.monotonic()
+    passo = max(0.05, min(1.0, float(timeout) / 4,
+                          float(silencio_s or 1.0) / 4))
     try:
-        for linha in proc.stdout:
-            texto = linha.rstrip()
-            if texto:
-                ao_linha(texto)
-        return proc.wait(timeout=timeout)
+        while True:
+            try:
+                linha = fila.get(timeout=passo)
+            except queue.Empty:
+                linha = ""
+            else:
+                if linha is None:
+                    break
+                ultima = time.monotonic()
+                texto = linha.rstrip()
+                if texto:
+                    ao_linha(texto)
+            agora = time.monotonic()
+            if agora - inicio > timeout:
+                proc.kill()
+                ao_linha(f"[yt-dlp] passou de {_duracao(timeout)} e foi "
+                         "interrompido.")
+                return 124
+            if silencio_s and agora - ultima > silencio_s:
+                proc.kill()
+                ao_linha(f"[yt-dlp] {_duracao(silencio_s)} sem dizer nada; "
+                         "interrompido.")
+                return 124
+        restante = max(1.0, timeout - (time.monotonic() - inicio))
+        return proc.wait(timeout=restante)
     except subprocess.TimeoutExpired:
         proc.kill()
-        ao_linha(f"[yt-dlp] passou de {timeout / 3600:.1f}h e foi interrompido.")
+        ao_linha(f"[yt-dlp] passou de {_duracao(timeout)} e foi interrompido.")
         return 124
     except KeyboardInterrupt:
         # Ctrl+C no meio de um acervo: mata o filho e devolve o controle. O
@@ -111,8 +171,24 @@ def rodar_streaming(argumentos: list, ao_linha=None, *,
         proc.kill()
         raise
     finally:
-        if proc.stdout:
-            proc.stdout.close()
+        if proc.poll() is None:
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        try:
+            proc.wait(timeout=5)
+        except (subprocess.SubprocessError, OSError):
+            pass
+        # Fechar o stdout com a thread ainda lendo trava no lock do buffer
+        # (um neto, o ffmpeg, pode segurar o cano aberto depois do kill).
+        # A thread e daemon e acaba sozinha quando o cano fechar.
+        leitor.join(timeout=2)
+        if proc.stdout and not leitor.is_alive():
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
 
 
 def json_de(argumentos: list, *, timeout: float = 900.0) -> dict:

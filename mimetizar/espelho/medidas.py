@@ -64,8 +64,12 @@ def cortes(caminho: Path, cfg: dict) -> dict:
         raise NaoMediu(f"a deteccao de cena falhou: {erro.strip()[-300:]}")
     brutos = [round(float(t), 2) for t in _TEMPO.findall(erro)]
     instantes = _juntar_transicoes(brutos, float(cfg.get("corte_min_s") or 0.4))
+    # `ate_s`: ate onde o ffmpeg chegou com certeza. So importa quando ele foi
+    # cortado (124): o ultimo `pts_time` visto e um piso honesto do trecho
+    # lido; sem nenhum, nao se sabe ate onde leu.
     return {"cortes": len(instantes), "instantes": instantes,
-            "deteccoes_cruas": len(brutos), "parcial": codigo == 124}
+            "deteccoes_cruas": len(brutos), "parcial": codigo == 124,
+            "ate_s": max(brutos) if brutos else None}
 
 
 def _juntar_transicoes(instantes: list, minimo: float = 0.4) -> list:
@@ -190,11 +194,24 @@ def medir_video(caminho: Path, *, cfg: dict | None = None,
 
     analisado = min(float(cfg.get("amostra_s") or 0) or sonda["duracao_s"],
                     sonda["duracao_s"])
+    motivo_parcial = ""
+    if planos.get("parcial"):
+        # O ffmpeg foi cortado no prazo (124). Contar a duracao inteira como
+        # lida inventava `cortes_por_min` baixo e gravava a ficha como
+        # completa (PNL-12). Sem saber ate onde leu, nao mede: a etapa
+        # reagenda o video.
+        if planos.get("ate_s") is None:
+            raise NaoMediu("a deteccao de cena passou do prazo sem dizer até "
+                           "onde leu; aumente `timeout_por_video_s` ou "
+                           "`amostra_s` em config/medidas.json")
+        analisado = min(analisado, float(planos["ate_s"]))
+        motivo_parcial = "timeout"
     minutos = max(analisado / 60.0, 1e-6)
     medida = {
         "arquivo": caminho.name,
         "analisado_s": round(analisado, 2),
-        "amostra_parcial": analisado < sonda["duracao_s"] - 0.5,
+        "amostra_parcial": bool(motivo_parcial)
+                           or analisado < sonda["duracao_s"] - 0.5,
         **sonda,
         "audio": som,
         "cor": paleta,
@@ -207,6 +224,8 @@ def medir_video(caminho: Path, *, cfg: dict | None = None,
         "plano_medio_s": round(analisado / (planos["cortes"] + 1), 2),
         "instantes_de_corte": planos["instantes"][:400],
     }
+    if motivo_parcial:
+        medida["motivo_parcial"] = motivo_parcial
     if som.get("tem_audio") and som.get("silencio_s") is not None:
         medida["silencio_pct"] = round(100.0 * som["silencio_s"] / analisado, 1)
         medida["fala_pct"] = round(100.0 - medida["silencio_pct"], 1)

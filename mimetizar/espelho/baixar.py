@@ -50,6 +50,20 @@ def pasta_midia(pasta: Path) -> Path:
     return destino
 
 
+def _silencio(coleta: dict | None) -> float:
+    """Quantos segundos o yt-dlp pode ficar calado antes de ser interrompido.
+
+    `silencio_s` em `config/coleta.json`; sem ela, o padrao do `ytdlp`
+    (600 s). Com `--newline` o progresso sai a cada poucos segundos, entao
+    dez minutos sem uma linha e processo preso, nao download lento (PNL-11).
+    """
+    try:
+        valor = float((coleta or {}).get("silencio_s") or 0)
+    except (TypeError, ValueError):
+        valor = 0.0
+    return valor if valor > 0 else ytdlp.SILENCIO_S
+
+
 def _argumentos(pasta: Path, lista: Path, coleta: dict, *,
                 com_sessao: bool = False, com_retomada: bool = True) -> list:
     midia = pasta_midia(pasta)
@@ -220,7 +234,8 @@ def baixar(canal_id: str, *, limite: int = 0, criterio: str = "canal",
     argumentos = _argumentos(pasta, lista, coleta, com_sessao=com_sessao)
 
     try:
-        codigo = ytdlp.rodar_streaming(argumentos, log)
+        codigo = ytdlp.rodar_streaming(argumentos, log,
+                                       silencio_s=_silencio(coleta))
     finally:
         lista.unlink(missing_ok=True)
 
@@ -266,7 +281,8 @@ def baixar_estes(pasta: Path, videos: list, *, coleta: dict | None = None,
     try:
         codigo = ytdlp.rodar_streaming(
             _argumentos(pasta, lista, coleta, com_sessao=com_sessao,
-                        com_retomada=False), log)
+                        com_retomada=False), log,
+            silencio_s=_silencio(coleta))
     finally:
         lista.unlink(missing_ok=True)
 

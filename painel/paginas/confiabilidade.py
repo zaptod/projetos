@@ -111,9 +111,16 @@ class Pagina:
     def ao_esconder(self) -> None:
         """Nada a desligar: a pagina nao tem animacao nem laco proprio."""
 
+    def ilegivel(self, erro: str) -> None:
+        """O panorama inteiro nao veio (o pulso chama isto, nao `atualizar`)."""
+        self._desenhar({"erro": erro})
+
     def atualizar(self, resumo: dict) -> None:
         """Vem do pulso: a fonte so le disco leve, entao cabe nele."""
-        self._desenhar((resumo or {}).get("confiabilidade"))
+        familia = (resumo or {}).get("confiabilidade") \
+            if isinstance(resumo, dict) else None
+        self._desenhar(familia if familia is not None
+                       else {"erro": "panorama sem confiabilidade"})
 
     def recarregar(self) -> None:
         self.faixa.configure(text="lendo…", fg=self.t.texto_fraco)
@@ -124,14 +131,29 @@ class Pagina:
         """Pergunta ao YouTube. Rede: roda no supervisor, nunca na tela."""
         self.faixa.configure(text="conferindo o canal…",
                              fg=self.t.texto_fraco)
-        self.casca.supervisor.tarefa(_conferir, lambda _r: self.recarregar(),
+        self.casca.supervisor.tarefa(_conferir, self._conferido,
                                      rotulo="conferencia")
+
+    def _conferido(self, resultado) -> None:
+        """A conferencia que falhou (token vencido, sem rede) TEM que aparecer.
+
+        O callback antigo jogava o `{"erro": ...}` fora e recarregava: a tela
+        continuava mostrando a conferencia ANTERIOR como se fosse a de agora
+        (PNL-7).
+        """
+        if isinstance(resultado, dict) and resultado.get("erro"):
+            texto = f"conferência falhou: {resultado['erro']}"
+            self.faixa.configure(text=texto[:160], fg=self.t.erro)
+            self.casca._registrar(f"[confiabilidade] {texto}", "erro")
+            return
+        self.recarregar()
 
     def _desenhar(self, dados) -> None:
         if not isinstance(dados, dict) or dados.get("erro"):
-            self.faixa.configure(
-                text=f"não consegui ler: {(dados or {}).get('erro', '?')}",
-                fg=self.t.erro)
+            erro = (dados.get("erro") if isinstance(dados, dict) else None) \
+                or "?"
+            self.faixa.configure(text=f"não consegui ler: {erro}"[:160],
+                                 fg=self.t.erro)
             return
         self._dia = str(dados.get("dia") or "")
         alertas = dados.get("alertas") or []
@@ -141,13 +163,20 @@ class Pagina:
             self.faixa.configure(
                 text=f"⚠ {provado}/{prometido} com prova — "
                      f"{len(alertas)} coisa(s) para olhar", fg=self.t.aviso)
+        elif not prometido:
+            # Zero publicado hoje nao e "nada fora do lugar" em verde: nao
+            # ha o que conferir ainda, e o verde dava calma para dia parado.
+            self.faixa.configure(
+                text="· 0 publicação hoje — nada medido ainda",
+                fg=self.t.texto_fraco)
         else:
             self.faixa.configure(
                 text=f"✓ {provado}/{prometido} com prova — nada fora do lugar",
                 fg=self.t.ok)
+        quando = str(dados.get("quando") or "")[11:19]
         self.carimbo.configure(
-            text=f"dia {self._dia}  ·  lido às "
-                 f"{str(dados.get('quando'))[11:19]}")
+            text=(f"dia {self._dia}  ·  lido às {quando}"
+                  if self._dia and quando else ""))
 
         # As falhas ficam neste cartao, e nao no de SEM PROVA: falha nao e
         # publicacao — o video nao saiu, entao nao ha o que provar.
@@ -214,7 +243,12 @@ def _linha_da_conferencia(canal: str, conf: dict) -> str:
 
 def _ler() -> dict:
     import panorama
-    return panorama.resumo(forcar=True).get("confiabilidade") or {}
+    # Familia ausente e falha de leitura, nao "dia vazio": o `{}` daqui
+    # virava "✓ 0/0 nada fora do lugar" em verde (PNL-3).
+    familia = panorama.resumo(forcar=True).get("confiabilidade")
+    if not isinstance(familia, dict):
+        return {"erro": "panorama sem confiabilidade"}
+    return familia
 
 
 def _conferir():

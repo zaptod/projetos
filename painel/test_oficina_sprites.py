@@ -447,6 +447,25 @@ class PaginaDaOficina(unittest.TestCase):
             time.sleep(0.03)
         return False
 
+    def test_hover_preserva_vista_ativa(self):
+        """PNL-18: o <Leave> apagava o destaque da vista ativa."""
+        p = self.pagina
+        self.app.update()
+        ativa = p._botoes_vista[p.vista]
+        self.assertEqual(p.t.acento_fundo, ativa.cget("bg"))
+        ativa.event_generate("<Enter>")
+        ativa.event_generate("<Leave>")
+        self.assertEqual(p.t.acento_fundo, ativa.cget("bg"))
+        # passar o mouse e CLICAR numa vista inativa: ao sair, ela fica com
+        # a cor de ativa (o clique a repintou durante o hover)
+        outra_chave = next(c for c in p._botoes_vista if c != p.vista)
+        outra = p._botoes_vista[outra_chave]
+        outra.event_generate("<Enter>")
+        p.mostrar_vista(outra_chave)
+        outra.event_generate("<Leave>")
+        self.assertEqual(p.t.acento_fundo, outra.cget("bg"))
+        self.assertEqual(p.t.superficie_alta, ativa.cget("bg"))
+
     def test_abre_processa_e_desfaz(self):
         p = self.pagina
         self.assertTrue(p.abrir(FOGO))

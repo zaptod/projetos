@@ -573,9 +573,14 @@ class JanelaGuia(tk.Tk):
         return item
 
     def proximo(self) -> dict | None:
-        """Grava o marcador `proximo` (antes, a mensagem, se houver)."""
-        if self.texto_da_mensagem():
-            self.enviar_mensagem()
+        """Grava o marcador `proximo` (antes, a mensagem, se houver).
+
+        Se havia mensagem e ela NAO foi gravada, o proximo nao sai: o agente
+        avancaria o passo sem nunca ver o que o Adrian escreveu para ele.
+        """
+        if self.texto_da_mensagem() and self.enviar_mensagem() is None:
+            self._dica("mensagem não gravada — o próximo NÃO foi enviado")
+            return None
         item = colado.item_novo(self.ia, colado.PAPEL_PROXIMO, "",
                                 passo=self.passo, tipo="")
         if not self._gravar(item):

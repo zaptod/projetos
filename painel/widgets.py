@@ -20,6 +20,15 @@ from tkinter import messagebox, ttk
 
 from .estilo import BORDA, ESPACO, Tema
 
+# O botao cuja acao esta rodando agora (ou None). So a thread da interface
+# mexe nisto: e quem clica e quem desenha.
+_EM_CURSO = None
+
+
+def botao_em_curso():
+    """O botao do painel que esta sendo clicado neste instante, se houver."""
+    return _EM_CURSO
+
 
 class Oficina:
     """Fabrica de widgets amarrada a UM tema.
@@ -108,8 +117,22 @@ class Oficina:
             "perigo": (self.tema.erro_fundo, self.tema.erro, self.tema.erro),
         }[tipo]
         fundo, frente, realce = cores
+        alvo = None
+
+        def invocar():
+            # Marca QUEM esta sendo clicado enquanto a acao roda: o
+            # `Supervisor.rodar` desliga esse botao ate o processo acabar
+            # (PNL-1). Tudo na thread da interface, entao basta um global.
+            global _EM_CURSO
+            anterior, _EM_CURSO = _EM_CURSO, alvo
+            try:
+                return acao()
+            finally:
+                _EM_CURSO = anterior
+
         alvo = tk.Button(
-            pai, text=texto, command=acao, bg=fundo, fg=frente,
+            pai, text=texto, command=invocar if acao else None,
+            bg=fundo, fg=frente,
             activebackground=realce, activeforeground=frente,
             font=self.tema.letra("corpo", "bold" if tipo == "primario"
                                  else "normal"),
@@ -117,9 +140,87 @@ class Oficina:
             padx=ESPACO["meio"] if compacto else ESPACO["normal"],
             pady=2 if compacto else ESPACO["meio"],
             cursor="hand2", highlightthickness=0)
-        alvo.bind("<Enter>", lambda _e: alvo.configure(bg=realce))
-        alvo.bind("<Leave>", lambda _e: alvo.configure(bg=fundo))
+        # O <Leave> devolve a cor que o botao tinha ANTES do hover, e nao a
+        # da criacao: a vista ativa da Oficina e pintada com `acento_fundo`
+        # e perdia o destaque so de passar o mouse (PNL-18). Se alguem
+        # repintou o botao durante o hover (o clique que ativa a vista), a
+        # cor nova fica.
+        def entrar(_e):
+            atual = alvo.cget("bg")
+            if atual != realce:
+                alvo._bg_antes = atual                      # noqa: SLF001
+            alvo.configure(bg=realce)
+
+        def sair(_e):
+            if alvo.cget("bg") == realce:
+                alvo.configure(bg=getattr(alvo, "_bg_antes", fundo))
+
+        alvo.bind("<Enter>", entrar)
+        alvo.bind("<Leave>", sair)
         return alvo
+
+    # ------------------------------------------------------ rolagem
+    def rolavel(self, pai):
+        """Uma pagina que ROLA quando nao cabe. Devolve o quadro de dentro.
+
+        O `pack` corta em silencio: na tela dele (1366x768, ~650 px de
+        conteudo) a Videos de Build perdia a tabela de VIDEOS PRONTOS sem
+        erro nenhum (PNL-5). Aqui o quadro de dentro tem a largura da tela
+        e, de altura, o MAIOR entre o que ele pede e o que a tela tem: com
+        espaco sobrando, quem tem `expand` continua esticando; sem espaco,
+        aparece a barra e a roda do mouse rola.
+        """
+        fundo = pai.cget("bg")
+        moldura = tk.Frame(pai, bg=fundo)
+        moldura.pack(fill="both", expand=True)
+        tela = tk.Canvas(moldura, bg=fundo, highlightthickness=0, bd=0)
+        barra = ttk.Scrollbar(moldura, orient="vertical", command=tela.yview)
+        corpo = tk.Frame(tela, bg=fundo)
+        janela = tela.create_window((0, 0), window=corpo, anchor="nw")
+        tela.configure(yscrollcommand=barra.set)
+        tela.pack(side="left", fill="both", expand=True)
+
+        def ajustar(_e=None):
+            largura, altura = tela.winfo_width(), tela.winfo_height()
+            if largura <= 1:
+                return
+            pedida = corpo.winfo_reqheight()
+            tela.itemconfigure(janela, width=largura,
+                               height=max(altura, pedida))
+            tela.configure(scrollregion=(0, 0, largura, max(altura, pedida)))
+            if pedida > altura:
+                if not barra.winfo_ismapped():
+                    barra.pack(side="right", fill="y", before=tela)
+            elif barra.winfo_ismapped():
+                barra.pack_forget()
+                tela.yview_moveto(0)
+
+        tela.bind("<Configure>", ajustar, add="+")
+        corpo.bind("<Configure>", ajustar, add="+")
+
+        def rolar(evento):
+            try:
+                if not tela.winfo_exists() or not tela.winfo_ismapped():
+                    return
+                alvo = evento.widget
+                caminho = str(alvo)
+                if not caminho.startswith(str(tela)):
+                    return
+                # Tabela, texto e lista rolam a si mesmos.
+                if hasattr(alvo, "winfo_class") and alvo.winfo_class() in (
+                        "Treeview", "Text", "Listbox", "TCombobox"):
+                    return
+                if corpo.winfo_reqheight() <= tela.winfo_height():
+                    return
+                tela.yview_scroll(int(-evento.delta / 120) or
+                                  (-1 if evento.delta > 0 else 1), "units")
+            except tk.TclError:
+                pass
+
+        tela.bind_all("<MouseWheel>", rolar, add="+")
+        corpo.tela = tela            # noqa: SLF001 — o teste mede a rolagem
+        corpo.ajustar = ajustar      # noqa: SLF001
+        return corpo
 
     # ------------------------------------------------------ entrada
     def campo(self, pai, rotulo: str, largura: int = 12):
@@ -263,4 +364,4 @@ class Oficina:
                          lightcolor=t.acento, darkcolor=t.acento)
 
 
-__all__ = ["Oficina"]
+__all__ = ["Oficina", "botao_em_curso"]

@@ -96,8 +96,10 @@ def examinar_uma(tarefa: dict, existe=None) -> dict:
         if alvo and not existe(alvo):
             return ficha("quebrada", f"o {alvo} não existe", alvo)
         if "//b" not in opcoes:
-            return ficha("oculta", "wscript sem //B (erro de script abriria "
-                                   "caixa de diálogo)", alvo)
+            # Nao e "oculta": sem //B um erro de script abre caixa de dialogo
+            # na tela dele, e o selo ficava verde (PNL-21).
+            return ficha("desconhecida", "wscript sem //B (erro de script "
+                                         "abriria caixa de diálogo)", alvo)
         return ficha("oculta", "wscript + oculto.vbs", alvo)
     if programa == "pythonw.exe":
         return ficha("oculta", "pythonw (sem console)",

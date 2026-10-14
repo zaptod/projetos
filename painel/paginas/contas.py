@@ -27,6 +27,19 @@ RANDOM_BUILDS = RAIZ / "random_builds"
 HISTORIAS = RAIZ / "historias"
 PY = sys.executable
 
+# Os `choices` de `historias/main.py llm login --provedor` (ha teste que le
+# o argparse). O grok faltava e caia no `identity login`, que o recusa.
+LOGIN_PELO_LLM = ("chatgpt", "gemini", "deepseek", "grok")
+
+
+def _provedores_do_identity() -> tuple:
+    """Quem o `main.py identity login --provedor` aceita (digen, picasso...)."""
+    try:
+        from builds.identity import config
+        return tuple(config.PROVEDORES)
+    except Exception:                                        # noqa: BLE001
+        return ()
+
 
 class Pagina:
     chave = "contas"
@@ -222,7 +235,7 @@ class Pagina:
                         f"canal {canal}.\n\nUm login do Google cobre os três "
                         "canais; o que separa um do outro é o id, escolhido "
                         "em 🎯 Canais do YouTube.")
-        elif servico in ("chatgpt", "gemini", "deepseek"):
+        elif servico in LOGIN_PELO_LLM:
             if not HISTORIAS.is_dir():
                 messagebox.showinfo("Contas", "A pasta historias/ não existe.")
                 return
@@ -238,10 +251,15 @@ class Pagina:
                         f"Vou abrir o TikTok para a conta '{conta}' do canal "
                         f"{canal}.\n\nEntre na conta CERTA: é ela que vai "
                         "receber os vídeos desse canal.")
-        else:                                    # picasso, digen, dreamface
+        elif servico in _provedores_do_identity():  # picasso, digen, dreamface
             self._abrir(["main.py", "identity", "login", "--provedor", servico,
                          "--canal", canal], RANDOM_BUILDS,
                         f"login no {servico} ({conta}/{canal})", "")
+        else:
+            # Antes caia tudo no `identity login`, que recusava com o codigo
+            # 2 no console e mais nada (o grok, ate 14/10: PNL-15).
+            messagebox.showinfo(
+                "Contas", f"O serviço '{servico}' não tem login pelo painel.")
 
     def _abrir(self, argumentos: list, cwd, rotulo: str, aviso: str) -> None:
         if aviso:

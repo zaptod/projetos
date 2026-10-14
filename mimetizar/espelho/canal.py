@@ -129,11 +129,17 @@ def catalogar(url: str, *, abas=ABAS, log=print) -> dict:
         raise NaoColetou(
             f"nao achei videos em {url!r}. Confira se a URL abre no navegador.")
     vistos = {v["id"] for v in videos}
+    # Aba que FALHOU (rede, yt-dlp) nao e aba vazia: o catalogo fica marcado
+    # como incompleto, para o status avisar e oferecer recatalogar (PNL-10).
+    # O canal que simplesmente nao tem a aba ja volta `[]` de `coletar_aba`
+    # e continua contando como completo.
+    faltaram = []
     for aba in abas[1:]:
         try:
             _extra, novos = coletar_aba(url, aba, log=log)
         except NaoColetou as exc:
             log(f"[canal] aba {aba} nao veio: {exc}")
+            faltaram.append(aba)
             continue
         acrescentados = [v for v in novos if v["id"] not in vistos]
         vistos.update(v["id"] for v in acrescentados)
@@ -160,6 +166,8 @@ def catalogar(url: str, *, abas=ABAS, log=print) -> dict:
         "coletado_em": datetime.now(timezone.utc).astimezone()
                                .isoformat(timespec="seconds"),
         "yt_dlp": ytdlp.versao(),
+        "completo": not faltaram,
+        "abas_faltando": faltaram,
     }
     (pasta / "canal.json").write_text(
         json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -171,22 +171,60 @@ class Pagina:
             return
         self._diario(dados.get("eventos") or [])
 
-    def atualizar(self, resumo: dict) -> None:
-        """O placar vem do agregador, e nao de contagem de linha de arquivo."""
-        saude = resumo.get("saude") or {}
-        desempenho = resumo.get("desempenho") or {}
-        inventario = resumo.get("inventario") or {}
-        qualidade = resumo.get("qualidade") or {}
+    def ilegivel(self, erro: str) -> None:
+        """O panorama inteiro nao veio: nada de placar zerado e calmo."""
+        self.lbl_placar.configure(text=f"não consegui ler o placar: {erro}"[:140],
+                                  fg=self.t.erro)
+        self.lbl_paralelo.configure(text="não consegui ler o paralelismo",
+                                    fg=self.t.erro)
 
-        prontos = (inventario.get("videos_prontos") or {}).get("total", 0)
-        trabalhando = len(saude.get("trabalhando") or [])
-        problemas = qualidade.get("total_erros", 0)
-        self.lbl_placar.configure(
-            text=f"📤 {desempenho.get('total', 0)} publicados   ·   "
-                 f"🎬 {prontos} prontos   ·   "
+    def atualizar(self, resumo: dict) -> None:
+        """O placar vem do agregador, e nao de contagem de linha de arquivo.
+
+        Cada familia do panorama pode falhar sozinha (`{"erro": ...}`) ou
+        faltar. Familia que nao veio vira "?" no numero dela e o placar fica
+        com a cor de erro -- zero de verdade continua sendo 0 (PNL-3).
+        """
+        if not isinstance(resumo, dict) or resumo.get("erro"):
+            self.ilegivel((resumo or {}).get("erro", "?")
+                          if isinstance(resumo, dict) else "?")
+            return
+        falhas = {}
+        familias = {}
+        for nome in ("saude", "desempenho", "inventario", "qualidade"):
+            valor = resumo.get(nome)
+            if not isinstance(valor, dict):
+                falhas[nome] = "não veio"
+                valor = {}
+            elif valor.get("erro"):
+                falhas[nome] = str(valor["erro"])
+                valor = {}
+            familias[nome] = valor
+        saude, desempenho = familias["saude"], familias["desempenho"]
+        inventario, qualidade = familias["inventario"], familias["qualidade"]
+
+        def numero(familia, valor):
+            return "?" if familia in falhas else valor
+
+        prontos = numero("inventario", (inventario.get("videos_prontos")
+                                        or {}).get("total", 0))
+        trabalhando = numero("saude", len(saude.get("trabalhando") or []))
+        problemas = numero("qualidade", qualidade.get("total_erros", 0))
+        texto = (f"📤 {numero('desempenho', desempenho.get('total', 0))} "
+                 f"publicados   ·   🎬 {prontos} prontos   ·   "
                  f"⚙ {trabalhando} trabalhando   ·   "
                  f"⚠ {problemas} problema(s)")
+        if falhas:
+            texto += "   ·   não li: " + ", ".join(sorted(falhas))
+        self.lbl_placar.configure(text=texto,
+                                  fg=self.t.erro if falhas else self.t.texto)
 
+        if "saude" in falhas:
+            self.tabela.delete(*self.tabela.get_children())
+            self.lbl_paralelo.configure(
+                text=f"não consegui ler o paralelismo: {falhas['saude']}"[:120],
+                fg=self.t.erro)
+            return
         paralelo = saude.get("paralelismo") or {}
         self.tabela.delete(*self.tabela.get_children())
         for linha in paralelo.get("travas") or []:

@@ -1557,5 +1557,207 @@ class ConfiguracaoDoProjetoTests(unittest.TestCase):
                 json.loads(arquivo.read_text(encoding="utf-8-sig"))
 
 
+# ------------------------------------------------- consertos de 14/10/2026
+# Auditoria profunda (painel-e-vila, PNL-10 a PNL-14). Nenhum toca rede,
+# YouTube, yt-dlp ou ffmpeg de verdade: tudo dublado na fronteira.
+
+class CatalogoIncompletoTests(_PastaTemporaria):
+    def test_aba_que_falha_marca_catalogo_incompleto(self):
+        """PNL-10: falha passageira na aba shorts era gravada como completa."""
+        from unittest import mock
+
+        def coletar(_url, aba, log=print):
+            if aba == "shorts":
+                raise canal.NaoColetou("HTTP 500 (passageiro)")
+            if aba == "videos":
+                return ABA_CRUA, [canal._video(e, aba)
+                                  for e in canal._entradas(ABA_CRUA)]
+            return {}, []
+
+        with mock.patch.object(canal.ytdlp, "exigir", return_value="x"), \
+                mock.patch.object(canal.ytdlp, "versao", return_value="x"), \
+                mock.patch.object(canal, "coletar_aba", side_effect=coletar):
+            dados = canal.catalogar("@teste", abas=("videos", "shorts",
+                                                    "streams"),
+                                    log=lambda _t: None)
+        self.assertIs(dados["completo"], False)
+        self.assertIn("shorts", dados["abas_faltando"])
+        self.assertNotIn("streams", dados["abas_faltando"])  # so nao tem
+        gravado = canal.cabecalho(Path(dados["pasta"]))
+        self.assertIs(gravado["completo"], False)
+        retrato = status.do_canal(dados["canal_id"])
+        self.assertFalse(retrato["completo"])
+        self.assertIn("INCOMPLETO", retrato["proximo_passo"])
+        self.assertIn("shorts", retrato["proximo_passo"])
+
+    def test_canal_sem_a_aba_continua_completo(self):
+        from unittest import mock
+
+        def coletar(_url, aba, log=print):
+            if aba == "videos":
+                return ABA_CRUA, [canal._video(e, aba)
+                                  for e in canal._entradas(ABA_CRUA)]
+            return {}, []
+
+        with mock.patch.object(canal.ytdlp, "exigir", return_value="x"), \
+                mock.patch.object(canal.ytdlp, "versao", return_value="x"), \
+                mock.patch.object(canal, "coletar_aba", side_effect=coletar):
+            dados = canal.catalogar("@teste", abas=("videos", "shorts"),
+                                    log=lambda _t: None)
+        self.assertIs(dados["completo"], True)
+        self.assertEqual([], dados["abas_faltando"])
+        self.assertNotIn("INCOMPLETO",
+                         status.do_canal(dados["canal_id"])["proximo_passo"])
+
+
+class StreamingComPrazoTests(unittest.TestCase):
+    """PNL-11: o prazo do yt-dlp so valia DEPOIS de ele parar de falar."""
+
+    def _rodar(self, codigo_python, **kw):
+        import sys
+        import time
+        from unittest import mock
+        linhas = []
+        with mock.patch.object(ytdlp, "exigir", return_value="x"), \
+                mock.patch.object(ytdlp, "comando_base",
+                                  return_value=[sys.executable, "-c",
+                                                codigo_python]):
+            inicio = time.monotonic()
+            codigo = ytdlp.rodar_streaming([], linhas.append, **kw)
+        return codigo, time.monotonic() - inicio, linhas
+
+    def test_rodar_streaming_respeita_prazo_calado(self):
+        codigo, gasto, linhas = self._rodar("import time; time.sleep(5)",
+                                            timeout=0.2)
+        self.assertEqual(124, codigo)
+        self.assertLess(gasto, 2.0)
+        self.assertTrue(any("interrompido" in l for l in linhas))
+
+    def test_silencio_longo_tambem_interrompe(self):
+        codigo, gasto, linhas = self._rodar(
+            "import time; print('comecou', flush=True); time.sleep(5)",
+            timeout=60, silencio_s=0.4)
+        self.assertEqual(124, codigo)
+        self.assertLess(gasto, 3.0)
+        self.assertIn("comecou", linhas)
+        self.assertTrue(any("sem dizer nada" in l for l in linhas))
+
+    def test_quem_fala_e_termina_devolve_o_codigo(self):
+        codigo, _gasto, linhas = self._rodar(
+            "print('um'); print('dois'); raise SystemExit(3)", timeout=30)
+        self.assertEqual(3, codigo)
+        self.assertEqual(["um", "dois"], linhas)
+
+
+class BaixarPassaOSilencioTests(_PastaTemporaria):
+    """Os dois chamadores do `baixar` levam o prazo de silencio ao yt-dlp."""
+
+    def test_padrao_e_config(self):
+        self.assertEqual(ytdlp.SILENCIO_S, baixar._silencio({}))
+        self.assertEqual(ytdlp.SILENCIO_S, baixar._silencio(None))
+        self.assertEqual(30.0, baixar._silencio({"silencio_s": 30}))
+        self.assertEqual(ytdlp.SILENCIO_S,
+                         baixar._silencio({"silencio_s": "x"}))
+
+    def test_baixar_estes_manda_o_silencio(self):
+        from unittest import mock
+        _canal_id, pasta = config.criar_canal()
+        videos = [{"id": "v1", "url": "https://youtu.be/v1"}]
+        with mock.patch.object(baixar.ytdlp, "rodar_streaming",
+                               return_value=0) as rodar:
+            baixar.baixar_estes(pasta, videos, coleta={"silencio_s": 45},
+                                log=lambda _t: None)
+        self.assertEqual(45.0, rodar.call_args.kwargs["silencio_s"])
+
+
+class CorteInterrompidoTests(unittest.TestCase):
+    """PNL-12: corte cortado no prazo (124) contava como medicao inteira."""
+
+    def _medir(self, saida_ffmpeg):
+        from unittest import mock
+        cfg = {"timeout_por_video_s": 1}
+        with mock.patch.object(medidas.ffmpeg, "sondar",
+                               return_value={"duracao_s": 600.0}), \
+                mock.patch.object(medidas.ffmpeg, "ffmpeg",
+                                  return_value=(124, "", saida_ffmpeg)), \
+                mock.patch.object(medidas.ffmpeg, "ffmpeg_binario",
+                                  return_value=(1, b"", "")):
+            return medidas.medir_video(Path("v.mp4"), cfg=cfg)
+
+    def test_corte_com_timeout_marca_parcial(self):
+        medida = self._medir("pts_time:12.0\npts_time:30.0")
+        self.assertIs(medida["amostra_parcial"], True)
+        self.assertEqual("timeout", medida["motivo_parcial"])
+        self.assertLessEqual(medida["analisado_s"], 30.5)
+        # 2 cortes em 30 s = 4/min (com 600 s inteiros dava 0,2/min)
+        self.assertAlmostEqual(medida["cortes_por_min"], 4.0, places=1)
+
+    def test_timeout_sem_saber_ate_onde_nao_mede(self):
+        with self.assertRaises(medidas.NaoMediu):
+            self._medir("")
+
+
+class TranscricaoVaziaTests(_PastaTemporaria):
+    def test_srt_vazio_volta_para_a_fila(self):
+        """PNL-13: `.srt` so com WEBVTT pulava o video para sempre."""
+        from unittest import mock
+        canal_id, pasta = config.criar_canal()
+        destino = pasta / "transcricoes"
+        destino.mkdir()
+        (destino / "v1.srt").write_text("WEBVTT\n", encoding="utf-8")
+        legenda = pasta / "legenda.srt"
+        legenda.write_text("1\n00:00:01,000 --> 00:00:03,000\nola mundo\n\n"
+                           "2\n00:00:04,000 --> 00:00:06,000\ntudo bem\n",
+                           encoding="utf-8")
+        with mock.patch.object(transcrever._baixar, "baixados",
+                               return_value={"v1"}), \
+                mock.patch.object(transcrever._baixar, "legenda_de",
+                                  return_value=legenda):
+            resultado = transcrever.transcrever(canal_id, log=lambda _t: None)
+        self.assertEqual(1, resultado["transcritos"])
+        self.assertTrue((destino / "v1.json").is_file())
+        self.assertIn("-->", (destino / "v1.srt").read_text(encoding="utf-8"))
+        self.assertFalse((destino / "v1.srt.tmp").exists())
+        # e agora, valida, ela NAO volta para a fila
+        with mock.patch.object(transcrever._baixar, "baixados",
+                               return_value={"v1"}):
+            de_novo = transcrever.transcrever(canal_id, log=lambda _t: None)
+        self.assertEqual(0, de_novo["transcritos"])
+
+    def test_srt_sem_json_ao_lado_nao_conta(self):
+        destino = Path(config.OUTPUTS) / "t"
+        destino.mkdir()
+        (destino / "v1.srt").write_text(
+            "1\n00:00:01,000 --> 00:00:02,000\noi\n", encoding="utf-8")
+        self.assertFalse(transcrever._transcricao_valida(destino, "v1"))
+        (destino / "v1.json").write_text("{}", encoding="utf-8")
+        self.assertTrue(transcrever._transcricao_valida(destino, "v1"))
+
+
+class CriarCanalConcorrenteTests(_PastaTemporaria):
+    def test_criar_canal_concorrente(self):
+        """PNL-14: duas absorcoes juntas escolhiam o mesmo id."""
+        import threading
+        barreira = threading.Barrier(4)
+        criados, erros = [], []
+
+        def criar():
+            barreira.wait()
+            try:
+                criados.append(config.criar_canal())
+            except Exception as exc:                        # noqa: BLE001
+                erros.append(exc)
+
+        fios = [threading.Thread(target=criar) for _ in range(4)]
+        for fio in fios:
+            fio.start()
+        for fio in fios:
+            fio.join(10)
+        self.assertEqual([], erros)
+        self.assertEqual(4, len({c[0] for c in criados}))
+        for _id, pasta in criados:
+            self.assertTrue(pasta.is_dir())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -429,6 +429,16 @@ class CasoZero(_ComJanela):
         self.assertEqual(self.app.texto_da_mensagem(), "")
         self.assertIsNone(self.app.enviar_mensagem())        # vazia: nada
 
+    def test_proximo_para_se_a_mensagem_falhou(self):
+        """PNL-9: mensagem perdida nao pode virar passo avancado."""
+        self.app._focou_mensagem()
+        self.app.entrada_mensagem.insert(0, "não achei o botão")
+        with mock.patch.object(self.app, "_gravar",
+                               side_effect=[False, True]) as gravar:
+            self.assertIsNone(self.app.proximo())
+        self.assertEqual(gravar.call_count, 1)
+        self.assertEqual(colado.ler_itens(self.colado_de("grok")), [])
+
     def test_apagar_pede_dois_cliques(self):
         self.app.colar(TEXTAREA_GROK)
         item = self.app.gravar("campo_texto")

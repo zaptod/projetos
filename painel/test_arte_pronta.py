@@ -245,6 +245,17 @@ class FolhaTocaOCiclo(_ComPasta):
         # direcao sem linha propria cai no primeiro ciclo da folha
         self.assertEqual(folha.ciclo("cima"), "direita")
 
+    def test_grade_corrompida_vira_1x1(self):
+        """PNL-20: `int("corrompida")` estourava e congelava a animacao."""
+        meta = {"animacao": {"grade": ["corrompida", 1], "ciclos": [
+            {"nome": "direita", "quadros": ["x"], "fps": "rapido"}]}}
+        self._aprovar("habitantes/chatgpt/andar.png", meta=meta)
+        folha = arte_pronta.folha("habitantes/chatgpt/andar.png")
+        self.assertIsNotNone(folha)
+        self.assertEqual(folha.colunas, 1)
+        self.assertEqual(folha.linhas, 1)
+        self.assertEqual(folha.ordem, ["tudo"])
+
     def test_o_quadro_desenhado_e_a_celula_certa_com_o_pe_no_chao(self):
         for direcao, linha in (("dir", 2), ("esq", 1)):
             for i in range(4):

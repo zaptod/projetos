@@ -55,6 +55,11 @@ class Pagina:
 
     # ------------------------------------------------------------ montar
     def construir(self, pai) -> None:
+        # ROLA quando nao cabe: com a gaveta do console aberta (ela se abre
+        # sozinha quando um comando comeca), o cartao ONDE POSTAR saia da
+        # tela sem aviso numa tela de 768 px.
+        pai = self.o.rolavel(pai)
+        self.corpo = pai
         self.o.titulo(pai, "Publicar — tudo que está pronto, e para onde vai")
 
         filtros = tk.Frame(pai, bg=self.t.fundo)
@@ -101,6 +106,8 @@ class Pagina:
         self.tabela.bind("<Double-1>", lambda _e: self.no_arquivo("assistir"))
         self.lbl_conta = self.o.legenda(esquerda, "")
         self.lbl_conta.pack(fill="x", pady=(estilo.ESPACO["pouco"], 0))
+        # So entra na tela quando ha o que avisar (fonte que nao carregou).
+        self.lbl_aviso = self.o.legenda(esquerda, "", cor="erro")
 
         direita = self.o.cartao(corpo)
         direita.pack(side="left", fill="both",
@@ -111,7 +118,10 @@ class Pagina:
                                              estilo.ESPACO["normal"]))
         self.o.secao(direita.corpo, "Descrição (com as hashtags)").pack(
             anchor="w")
-        self.txt_descricao = self._caixa(direita.corpo, altura=8)
+        # 7 linhas (era 8): com a pagina rolavel nada encolhe sozinho, e com
+        # 8 o cartao passava 10 px da tela dele (649 > 639, medido) -- a
+        # barra de rolagem aparecia sem precisar. Com espaco, ela estica.
+        self.txt_descricao = self._caixa(direita.corpo, altura=7)
         self.txt_descricao.pack(fill="both", expand=True,
                                 pady=(estilo.ESPACO["pouco"],
                                       estilo.ESPACO["meio"]))
@@ -234,14 +244,19 @@ class Pagina:
                    "pendencias": list(v.pendencias or []),
                    "parte": 1, "partes": 1}
                   for v in catalogo_builds.listar()]
+        avisos = []
         try:
             from contos.publicar import catalogo as catalogo_contos
             historias = [{**h, "fonte": "historias", "pendencias": []}
                          for h in (catalogo_contos.resumo() or [])]
-        except Exception:
+        except Exception as erro:                            # noqa: BLE001
+            # Sumir com as historias da lista sem dizer nada fazia a pagina
+            # parecer "so tem builds pronto" (PNL-8).
             historias = []
+            avisos.append(f"histórias não carregaram: "
+                          f"{type(erro).__name__}: {erro}")
         return {"itens": builds + historias,
-                "publicados": self._publicados()}
+                "publicados": self._publicados(), "avisos": avisos}
 
     @staticmethod
     def _publicados() -> dict:
@@ -275,6 +290,17 @@ class Pagina:
             self.casca._registrar(f"[publicar] não li a lista: "
                                   f"{dados['erro']}", "erro")
             return
+        avisos = dados.get("avisos") or []
+        if avisos:
+            texto = "  ·  ".join(f"⚠ {a}" for a in avisos)
+            self.lbl_aviso.configure(text=texto[:200])
+            self.lbl_aviso.pack(fill="x", before=self.tabela,
+                                pady=(0, estilo.ESPACO["pouco"]))
+            for aviso in avisos:
+                self.casca._registrar(f"[publicar] {aviso}", "erro")
+        else:
+            self.lbl_aviso.configure(text="")
+            self.lbl_aviso.pack_forget()
         self._ja_publicados = dados["publicados"]
         alvo = self.combo_origem.get()
         formato = self.combo_formato.get()
@@ -432,16 +458,20 @@ class Pagina:
             alvos.append("YOUTUBE")
         if self.var_tt.get():
             alvos.append("TIKTOK")
+        # Publicacao rodando: o botao continua desligado ate ela acabar, por
+        # mais que a selecao ou as caixas mudem (PNL-1).
+        preso = self.casca.supervisor.segura(self.btn_enviar)
         self.btn_enviar.configure(
             text="🚀  PUBLICAR NO " + " + ".join(alvos) if alvos
             else "escolha YouTube e/ou TikTok",
-            state="normal" if alvos else "disabled")
+            state="normal" if alvos and not preso else "disabled")
 
     # ------------------------------------------------------------ acoes
-    def _rb(self, argumentos: list, rotulo: str, cwd=None) -> None:
-        self.casca.supervisor.rodar([PY, "-u", "-X", "utf8"] + argumentos,
-                                    cwd=cwd or RANDOM_BUILDS, rotulo=rotulo,
-                                    depois=self.recarregar)
+    def _rb(self, argumentos: list, rotulo: str, cwd=None,
+            botao=None) -> bool:
+        return self.casca.supervisor.rodar(
+            [PY, "-u", "-X", "utf8"] + argumentos, cwd=cwd or RANDOM_BUILDS,
+            rotulo=rotulo, depois=self.recarregar, botao=botao)
 
     def enviar(self) -> None:
         item = self.selecionado()
@@ -454,14 +484,25 @@ class Pagina:
             alvos.append("--tiktok")
         if not alvos:
             return
+        # O rotulo e o MESMO para builds e historias e nao leva o destino: o
+        # supervisor recusa um segundo "publicar <id>" enquanto o primeiro
+        # roda, em qualquer janela (PNL-1).
         if item.get("fonte") == "historias":
+            # `historias/main.py publicar` ja posta o TikTok (postar=True) e
+            # nao conhece `--postar`.
             self._rb(["main.py", "publicar", item["id"]] + alvos
                      + ["--visibilidade", self.combo_visibilidade.get()],
-                     f"publicar {item['id']}", cwd=HISTORIAS)
+                     f"publicar {item['id']}", cwd=HISTORIAS,
+                     botao=self.btn_enviar)
         else:
+            # A legenda da caixa diz "o TikTok posta de verdade, sem
+            # confirmação" (decisão de 31/08). Sem `--postar`, o builds
+            # subia e deixava o vídeo parado sem o clique final (PNL-2).
+            if "--tiktok" in alvos:
+                alvos.append("--postar")
             self._rb(["main.py", "publicar", item["id"]] + alvos
                      + ["--visibilidade", self.combo_visibilidade.get()],
-                     f"publicar {item['id']}")
+                     f"publicar {item['id']}", botao=self.btn_enviar)
 
     def no_arquivo(self, qual: str) -> None:
         item = self.selecionado()

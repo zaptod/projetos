@@ -40,6 +40,10 @@ class Pagina:
 
     # ------------------------------------------------------------ montar
     def construir(self, pai) -> None:
+        # ROLA quando nao cabe: com a gaveta do console aberta, a fileira de
+        # botoes do pe (Gerar tudo, Publicar serie) era cortada em silencio.
+        pai = self.o.rolavel(pai)
+        self.corpo = pai
         self.o.titulo(pai, "Histórias por IA — roteiro, imagens, narração e vídeo")
         if not HISTORIAS.is_dir():
             self.o.rotulo(pai, "A pasta historias/ não existe ao lado do painel.",
