@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T16:01:37",
+      "evento": "2026-10-14T16:00:44",
+      "linha": 185,
+      "nota": "resposta sem pedido de origem: builds/base-aprovado-na-biblioteca = Fica na biblioteca (recomendado)",
+      "opcao": "fica",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Fluxo base->folhas da esteira (452e035): aprovar um base exporta para efeitos/folhas/<id>.png (palco) ou habitantes/<ia>/base.png (Vila). Nada carrega esse arquivo; ele serve de referência das folhas.",
   "criado": "2026-10-14T16:00:14.569794",
   "depende_de": [],
