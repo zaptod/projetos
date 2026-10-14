@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:47:10",
+      "evento": "2026-10-14T08:47:06",
+      "linha": 177,
+      "nota": "resposta sem pedido de origem: publicacao/visibilidade-no-ledger = A visibilidade que o publicador de fato usou (recomendado)",
+      "opcao": "a-usada",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:47.771880",
   "depende_de": [],
