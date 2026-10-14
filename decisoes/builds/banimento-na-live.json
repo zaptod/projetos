@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:30.841393",
+  "depende_de": [],
+  "historico": [],
+  "id": "banimento-na-live",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "ligar",
+      "pede_comentario": false,
+      "rotulo": "Ligar a um comando de moderador (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "remover",
+      "pede_comentario": false,
+      "rotulo": "Remover"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Existe uma função de banimento na live que nada chama. Ligar a um comando de moderador ou remover?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Moderação da live",
+  "vigente": null
+}
