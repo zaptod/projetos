@@ -13,7 +13,6 @@ from neural_fights.utils.config import (
     AMARELO_FAISCA,
     AZUL_MANA,
     BRANCO,
-    COR_CORPO,
     COR_FUNDO,
     COR_GRID,
     COR_P1,
@@ -621,6 +620,11 @@ class Simulador:
         self.vencedor = (
             "EMPATE" if winner_slot is None else self._nome_do_slot(winner_slot)
         )
+        # Relógio da cena pós-K.O. (comemoração, estrelinhas do nocauteado):
+        # só o desenho lê. Anda em ``avancar_relogio`` (tempo de parede); a
+        # festa começa quando o slow-mo acaba e a fanfarra toca.
+        self._ko_tempo_real = 0.0
+        self._festa_desde = None
         self.ativar_slow_motion()
         return True
 
@@ -2740,12 +2744,21 @@ class Simulador:
         dano é uma fonte contínua (``tipo_fonte="lava"``): não gera
         invencibilidade, não sobe a raiva e paga a guarda em proporção.
         Sem sorteio: nada aqui consome RNG.
+
+        O tempo na poça ACUMULA por lutador: sair não zera o contador, só
+        ``PERIGO_CHAO_ESQUECE_S`` seguidos fora dela. Quem atravessa a lava
+        várias vezes paga pelo total (antes, cada passagem de 0,1–0,45 s
+        recomeçava do zero e a lava quase nunca aparecia no vídeo).
         """
         arena = getattr(self, "arena", None)
         verificar = getattr(arena, "esta_em_zona_perigo", None)
         if not callable(verificar):
             return
-        from neural_fights.utils.config import PERIGO_CHAO_DANO_PCT_S, PERIGO_CHAO_TICK_S
+        from neural_fights.utils.config import (
+            PERIGO_CHAO_DANO_PCT_S,
+            PERIGO_CHAO_ESQUECE_S,
+            PERIGO_CHAO_TICK_S,
+        )
 
         for lutador in (getattr(self, "p1", None), getattr(self, "p2", None)):
             if lutador is None or getattr(lutador, "morto", False):
@@ -2757,8 +2770,12 @@ class Simulador:
                 and verificar(lutador.pos[0], lutador.pos[1])
             )
             if not perigo:
-                lutador.perigo_chao_timer = 0.0
+                fora = float(getattr(lutador, "perigo_chao_fora", 0.0) or 0.0) + dt
+                lutador.perigo_chao_fora = fora
+                if fora >= PERIGO_CHAO_ESQUECE_S:
+                    lutador.perigo_chao_timer = 0.0
                 continue
+            lutador.perigo_chao_fora = 0.0
             acumulado = getattr(lutador, "perigo_chao_timer", 0.0) + dt
             while acumulado >= PERIGO_CHAO_TICK_S and not getattr(lutador, "morto", False):
                 acumulado -= PERIGO_CHAO_TICK_S
@@ -4838,8 +4855,14 @@ class Simulador:
             self.attack_anims.draw_ground(self.tela, self.cam)
 
         # === LUTADORES ===
-        self.desenhar_lutador(self.p1)
-        self.desenhar_lutador(self.p2)
+        # O nocauteado vai por baixo: o vencedor comemora por cima dele
+        # (sorted é estável — sem K.O. a ordem continua p1, p2).
+        self._desenhar_onda_do_ko()
+        self._desenhar_festa_da_vitoria(chao=True)
+        for lutador in sorted((self.p1, self.p2),
+                              key=lambda x: 0 if getattr(x, "morto", False) else 1):
+            self.desenhar_lutador(lutador)
+        self._desenhar_festa_da_vitoria()
 
         # Passe 4: efeitos de golpe do animador (Slash/Thrust — criados
         # desde sempre e nunca desenhados; o update ligou no Passe 2).
@@ -5108,19 +5131,14 @@ class Simulador:
         px = l.pos[0] * PPM; py = l.pos[1] * PPM
         sx, sy = self.cam.converter(px, py); off_y = self.cam.converter_tam(l.z * PPM); raio = self.cam.converter_tam((l.dados.tamanho / 2) * PPM)
         if l.morto:
-            pygame.draw.ellipse(self.tela, COR_CORPO, (sx-raio, sy-raio, raio*2, raio*2))
-            # rosto de nocaute (X X) — o cadáver também conta a história
-            from neural_fights.effects.character_flair import desenhar_rosto
-            desenhar_rosto(
-                self.tela, (sx, sy), raio,
-                getattr(l, "angulo_olhar", 0.0), 1.0, 1.0, "morto",
-                pygame.time.get_ticks() / 1000.0, id(l),
-            )
-            if l.dados.arma_obj:
-                ax = l.arma_droppada_pos[0]*PPM; ay = l.arma_droppada_pos[1]*PPM
-                asx, asy = self.cam.converter(ax, ay)
-                self.desenhar_arma(l.dados.arma_obj, (asx, asy), l.arma_droppada_ang, l.dados.tamanho, raio, no_chao=True)
+            self._desenhar_nocauteado(l, sx, sy, raio)
             return
+        # Pós-K.O. (só desenho): o vencedor pula de alegria em vez de ficar
+        # congelado no último quadro da luta. Nada disto toca o estado.
+        salto_festa = self._salto_da_comemoracao(l, raio)
+        comemorando = salto_festa is not None
+        if comemorando:
+            off_y += salto_festa
         # Sombra de contato achatada (passe de arte 1): gruda o lutador no
         # chão — a elipse cheia dava disco; a achatada dá peso.
         tam_s = int(raio * 2 * max(0.4, 1.0 - (l.z / 4.0)))
@@ -5204,7 +5222,7 @@ class Simulador:
             resolver_expressao,
         )
         t_flair = pygame.time.get_ticks() / 1000.0
-        expressao = resolver_expressao(l, t_flair)
+        expressao = "euforico" if comemorando else resolver_expressao(l, t_flair)
         desenhar_rosto(
             self.tela, centro, raio, getattr(l, "angulo_olhar", 0.0),
             esc_x, esc_y, expressao, t_flair, id(l), cor_corpo=cor,
@@ -5264,7 +5282,12 @@ class Simulador:
         # lado do olhar) e os olhos que miram já contam a direção 2x.
         
         # === CONTORNO APRIMORADO ===
-        if l.stun_timer > 0:
+        if comemorando:
+            # Pós-K.O.: o golpe/atordoamento do último quadro da luta não
+            # fica congelado no contorno do vencedor — ele brilha em ouro.
+            contorno = (255, 214, 90)
+            largura = max(2, self.cam.converter_tam(3))
+        elif l.stun_timer > 0:
             contorno = AMARELO_FAISCA
             largura = max(2, self.cam.converter_tam(5))
         elif l.atacando:
@@ -5296,10 +5319,12 @@ class Simulador:
             # Escala da animação
             anim_scale = getattr(l, 'weapon_anim_scale', 1.0)
             
-            # Desenha slash arc se estiver atacando (para armas melee)
-            if l.atacando and l.dados.arma_obj.tipo in ["Reta", "Dupla", "Corrente", "Transformável"]:
+            # Desenha slash arc se estiver atacando (para armas melee).
+            # Comemorando, o arco e a trilha do último golpe não ficam
+            # pendurados no ar: eles estão no relógio da luta, que parou.
+            if l.atacando and not comemorando and l.dados.arma_obj.tipo in ["Reta", "Dupla", "Corrente", "Transformável"]:
                 self._desenhar_slash_arc(l, centro, raio, anim_scale)
-            
+
             # Desenha trail antes da arma
             # Passe 4: trilhas POR ESTILO (WeaponTrailRenderer — 5
             # renderers que ficaram anos sem chamador).
@@ -5308,21 +5333,22 @@ class Simulador:
                     get_weapon_animation_manager,
                 )
                 arma_l = l.dados.arma_obj
-                get_weapon_animation_manager().draw_trails(
-                    self.tela, id(l),
-                    (getattr(arma_l, "r", 255), getattr(arma_l, "g", 255), getattr(arma_l, "b", 255)),
-                    arma_l.tipo,
-                    getattr(arma_l, "estilo", ""),
-                    converter=self.cam.converter,
-                )
+                if not comemorando:
+                    get_weapon_animation_manager().draw_trails(
+                        self.tela, id(l),
+                        (getattr(arma_l, "r", 255), getattr(arma_l, "g", 255), getattr(arma_l, "b", 255)),
+                        arma_l.tipo,
+                        getattr(arma_l, "estilo", ""),
+                        converter=self.cam.converter,
+                    )
             except Exception:
                 pass  # trilha nunca derruba o frame
-            
+
             # Desenha arma (design fixo; anima a empunhadura via lunge)
             self.desenhar_arma(l.dados.arma_obj, centro_ajustado, l.angulo_arma_visual,
                              l.dados.tamanho, raio, anim_scale,
                              anim_lunge=getattr(l, 'weapon_anim_lunge', 0.0),
-                             em_ataque=bool(getattr(l, 'atacando', False)),
+                             em_ataque=bool(getattr(l, 'atacando', False)) and not comemorando,
                              puxada=getattr(l, 'weapon_draw_amount', 0.0))
 
             # Passe 4: faíscas de impacto do animador (spark_list era
@@ -5353,6 +5379,229 @@ class Simulador:
             except Exception:
                 pass  # efeito de arma nunca derruba o frame
     
+    # ------------------------------------------------------------------
+    # A cena pós-K.O. (14/10/2026). O fim do vídeo é o payoff, e ele saía
+    # CONGELADO: depois do nocaute o motor só anima textos e partículas, o
+    # vencedor ficava parado no último quadro do golpe e o perdedor virava
+    # um disco quase preto (COR_CORPO) sobre o chão escuro — "sumia".
+    # Tudo aqui é só DESENHO: lê o relógio de parede do pós-K.O.
+    # (``_ko_tempo_real``, que ``avancar_relogio`` anda) e nunca escreve no
+    # estado da luta nem consome o ``random`` — a luta até o K.O. é a mesma
+    # e o resultado não muda. Os tamanhos são frações do RAIO NA TELA: na
+    # câmera ARENA (arena inteira, lutador pequeno) a festa ocupa a mesma
+    # proporção do lutador que no DIRETOR.
+    # ------------------------------------------------------------------
+    FESTA_RAMPA_S = 0.2
+    FESTA_PULOS_POR_S = 2.2
+    FESTA_ALTURA_PULO = 0.9       # fração do raio
+    FESTA_RAJADA_S = 0.7          # um estouro de confete a cada ...
+    FESTA_VIDA_CONFETE_S = 1.4
+    FESTA_CONFETES = 40
+    FESTA_ALCANCE = 6.0           # raios que o confete voa
+    COR_OURO = (255, 214, 90)
+    COR_ESTRELA_KO = (255, 226, 92)
+    COR_ONDA_KO = (255, 120, 90)
+    ONDA_KO_ATRASOS_S = (0.0, 0.3, 0.6)
+    ONDA_KO_VIDA_S = 0.8
+    ONDA_KO_ATE_S = 1.45
+
+    def _tempo_pos_ko(self):
+        """Segundos de parede desde o K.O. (None antes dele)."""
+        if not getattr(self, "round_finalizado", False):
+            return None
+        return max(0.0, float(getattr(self, "_ko_tempo_real", 0.0) or 0.0))
+
+    def _fase_da_festa(self):
+        """Segundos desde que a fanfarra tocou (None antes dela)."""
+        t = self._tempo_pos_ko()
+        desde = getattr(self, "_festa_desde", None)
+        if t is None or desde is None:
+            return None
+        return max(0.0, t - float(desde))
+
+    def _vencedor_comemorando(self):
+        """O lutador que comemora agora, ou None (antes da festa, empate)."""
+        if self._fase_da_festa() is None:
+            return None
+        lado = getattr(self, "vencedor_round_side", None)
+        if lado not in ("p1", "p2"):
+            return None
+        lutador = getattr(self, lado, None)
+        if lutador is None or getattr(lutador, "morto", False):
+            return None
+        return lutador
+
+    def _salto_da_comemoracao(self, lutador, raio):
+        """Altura do pulo (px) do vencedor neste quadro, ou None."""
+        if lutador is None or self._vencedor_comemorando() is not lutador:
+            return None
+        fase = self._fase_da_festa()
+        rampa = min(1.0, fase / self.FESTA_RAMPA_S) if self.FESTA_RAMPA_S > 0 else 1.0
+        onda = abs(math.sin(fase * math.pi * self.FESTA_PULOS_POR_S))
+        return int(round(onda * raio * self.FESTA_ALTURA_PULO * rampa))
+
+    def _desenhar_nocauteado(self, l, sx, sy, raio):
+        """O perdedor CAÍDO e visível: a cor dele apagada, achatado no chão,
+        rosto de nocaute (X X) e estrelinhas girando sobre a cabeça."""
+        from neural_fights.effects.character_flair import desenhar_rosto
+
+        cor_r = getattr(l.dados, 'cor_r', 200) or 200
+        cor_g = getattr(l.dados, 'cor_g', 50) or 50
+        cor_b = getattr(l.dados, 'cor_b', 50) or 50
+        # Mistura com cinza e escurece: lê como "apagado", mas ainda é ELE
+        # (a cor do lado), e destaca do chão escuro das arenas.
+        cinza = (118, 118, 128)
+        cor = tuple(
+            int(max(0, min(255, (c * 0.55 + g * 0.45) * 0.85)))
+            for c, g in zip((cor_r, cor_g, cor_b), cinza)
+        )
+        esc_x, esc_y = 1.12, 0.84   # deitado: mais largo que alto
+        rx = max(1, int(raio * esc_x)); ry = max(1, int(raio * esc_y))
+        # Sombra de contato, como a do lutador de pé.
+        tam_s = max(2, int(raio * 2.3))
+        alt_s = max(3, int(tam_s * 0.4))
+        sombra = pygame.Surface((tam_s, alt_s), pygame.SRCALPHA)
+        pygame.draw.ellipse(sombra, (0, 0, 0, 120), (0, 0, tam_s, alt_s))
+        self.tela.blit(sombra, (sx - tam_s // 2, sy + ry - alt_s // 2))
+
+        pygame.draw.ellipse(self.tela, cor, (int(sx) - rx, int(sy) - ry, rx * 2, ry * 2))
+        pygame.draw.ellipse(self.tela, (24, 24, 28), (int(sx) - rx, int(sy) - ry, rx * 2, ry * 2),
+                            max(1, self.cam.converter_tam(2)))
+        t = self._tempo_pos_ko()
+        t = 0.0 if t is None else t
+        desenhar_rosto(
+            self.tela, (sx, sy), raio,
+            getattr(l, "angulo_olhar", 0.0), esc_x, esc_y, "morto",
+            t, id(l), cor_corpo=cor,
+        )
+        if l.dados.arma_obj:
+            ax = l.arma_droppada_pos[0]*PPM; ay = l.arma_droppada_pos[1]*PPM
+            asx, asy = self.cam.converter(ax, ay)
+            self.desenhar_arma(l.dados.arma_obj, (asx, asy), l.arma_droppada_ang, l.dados.tamanho, raio, no_chao=True)
+        # Estrelinhas do nocaute: a parte da cena que nunca para.
+        r_orbita = raio * 0.95
+        tam = max(3, int(raio * 0.26))
+        for k in range(3):
+            ang = t * 5.0 + k * (2 * math.pi / 3)
+            ex = sx + math.cos(ang) * r_orbita
+            ey = sy - ry - tam + math.sin(ang) * r_orbita * 0.3
+            self._desenhar_estrela(ex, ey, tam, ang * 0.7, self.COR_ESTRELA_KO)
+
+        # O nome continua sobre o caído (apagado): quem chega no fim sabe
+        # quem perdeu.
+        nomes_hud = self.match_config.get("nomes_exibicao") or {}
+        rotulo = nomes_hud.get(l.dados.nome, l.dados.nome)
+        fonte = get_fonte(13, negrito=True)
+        surf = fonte.render(str(rotulo)[:18], True, (150, 150, 160))
+        sombra_rot = fonte.render(str(rotulo)[:18], True, (0, 0, 0))
+        nx = sx - surf.get_width() // 2
+        ny = sy - ry - tam * 3 - 18
+        self.tela.blit(sombra_rot, (nx + 1, ny + 1))
+        self.tela.blit(surf, (nx, ny))
+
+    def _desenhar_estrela(self, x, y, tamanho, giro, cor):
+        """Estrela de 4 pontas (o "tonto" do desenho animado)."""
+        pontos = []
+        for i in range(8):
+            r = tamanho if i % 2 == 0 else tamanho * 0.38
+            a = giro + i * math.pi / 4
+            pontos.append((x + math.cos(a) * r, y + math.sin(a) * r))
+        pygame.draw.polygon(self.tela, cor, pontos)
+
+    def _desenhar_onda_do_ko(self):
+        """Ondas de choque saindo do nocauteado durante o slow-mo do K.O.
+
+        O slow-mo (1,2 s a 0,25x) era o trecho mais parado do vídeo: só o
+        "FATAL!" andando a um quarto da velocidade. As ondas correm no
+        relógio de parede, então o momento do K.O. continua lento, mas vivo.
+        """
+        t = self._tempo_pos_ko()
+        if t is None or t > self.ONDA_KO_ATE_S:
+            return
+        caido = next((x for x in (getattr(self, "p1", None), getattr(self, "p2", None))
+                      if x is not None and getattr(x, "morto", False)), None)
+        if caido is None:
+            return
+        sx, sy = self.cam.converter(caido.pos[0] * PPM, caido.pos[1] * PPM)
+        raio = max(4, self.cam.converter_tam((caido.dados.tamanho / 2) * PPM))
+        largura_tela = float(getattr(self, "screen_width", 0) or self.tela.get_width())
+        alcance = max(raio * 7.0, largura_tela * 0.28)
+        for atraso in self.ONDA_KO_ATRASOS_S:
+            tau = t - atraso
+            if tau < 0.0 or tau > self.ONDA_KO_VIDA_S:
+                continue
+            frac = tau / self.ONDA_KO_VIDA_S
+            r = int(raio * 1.2 + alcance * (1.0 - (1.0 - frac) ** 2))
+            alfa = int(210 * (1.0 - frac))
+            if r <= 0 or alfa <= 0:
+                continue
+            lado = r * 2 + 8
+            onda = pygame.Surface((lado, lado), pygame.SRCALPHA)
+            pygame.draw.circle(onda, (*self.COR_ONDA_KO, alfa), (lado // 2, lado // 2), r,
+                               max(3, raio // 4))
+            self.tela.blit(onda, (int(sx) - lado // 2, int(sy) - lado // 2))
+
+    def _desenhar_festa_da_vitoria(self, *, chao=False):
+        """Confete estourando do vencedor, em rajadas, e um anel de ouro no
+        chão a cada pulo, até o vídeo acabar. ``chao=True`` desenha só o
+        anel (vai ANTES dos lutadores); ``False``, só o confete (depois).
+
+        Sem RNG: cada pedaço sai da proporção áurea do seu índice, então o
+        mesmo quadro desenha sempre a mesma coisa."""
+        vencedor = self._vencedor_comemorando()
+        if vencedor is None:
+            return
+        fase = self._fase_da_festa()
+        sx, sy = self.cam.converter(vencedor.pos[0] * PPM, vencedor.pos[1] * PPM)
+        raio = max(4, self.cam.converter_tam((vencedor.dados.tamanho / 2) * PPM))
+        rampa = min(1.0, fase / self.FESTA_RAMPA_S) if self.FESTA_RAMPA_S > 0 else 1.0
+
+        if chao:
+            # Anel de ouro que abre a cada aterrissagem (um por pulo).
+            p = (fase * self.FESTA_PULOS_POR_S) % 1.0
+            r_anel = int(raio * (1.1 + 1.8 * p))
+            alfa = int(200 * (1.0 - p) * rampa)
+            if r_anel > 0 and alfa > 0:
+                lado = r_anel * 2 + 8
+                anel = pygame.Surface((lado, lado), pygame.SRCALPHA)
+                pygame.draw.ellipse(anel, (*self.COR_OURO, alfa),
+                                    (4, 4 + r_anel // 2, r_anel * 2, r_anel), max(2, raio // 6))
+                self.tela.blit(anel, (sx - lado // 2, sy + raio // 2 - (4 + r_anel)))
+            return
+
+        cor_r = getattr(vencedor.dados, 'cor_r', 200) or 200
+        cor_g = getattr(vencedor.dados, 'cor_g', 50) or 50
+        cor_b = getattr(vencedor.dados, 'cor_b', 50) or 50
+        cores = ((int(cor_r), int(cor_g), int(cor_b)), self.COR_OURO,
+                 (245, 245, 250), COR_P1 if vencedor is self.p1 else COR_P2)
+        # Tamanho e alcance pelo raio, com piso e teto pela TELA: na ARENA o
+        # lutador tem ~40 px e o confete sumiria; no DIRETOR (lutador com
+        # 1/4 da largura) viraria placa.
+        largura_tela = float(getattr(self, "screen_width", 0) or self.tela.get_width())
+        tam = int(min(max(raio * 0.3, largura_tela * 0.010), largura_tela * 0.014))
+        tam = max(4, tam)
+        alcance = max(raio * self.FESTA_ALCANCE, largura_tela * 0.24)
+        vida = self.FESTA_VIDA_CONFETE_S
+        ultima = int(fase // self.FESTA_RAJADA_S)
+        primeira = max(0, ultima - int(vida // self.FESTA_RAJADA_S) - 1)
+        for rajada in range(primeira, ultima + 1):
+            tau = fase - rajada * self.FESTA_RAJADA_S
+            if tau < 0.0 or tau > vida:
+                continue
+            encolhe = 1.0 - max(0.0, (tau - 0.8 * vida) / (0.2 * vida))
+            # Sobe e desacelera (estouro), depois cai devagar.
+            abre = 1.0 - (1.0 - tau / vida) ** 3
+            for i in range(self.FESTA_CONFETES):
+                ang = i * 2.399963 + rajada * 0.9
+                forca = 0.55 + 0.45 * (((i * 7 + rajada * 3) % 5) / 4.0)
+                dist = alcance * forca * abre
+                cx = sx + math.cos(ang) * dist
+                cy = sy - raio * 0.6 + math.sin(ang) * dist * 0.75 + raio * 1.6 * tau * tau
+                larg = max(1, int(tam * (0.3 + 0.7 * abs(math.cos(tau * 10.0 + i))) * encolhe))
+                alt = max(1, int(tam * 0.6 * encolhe))
+                cor = cores[(i + rajada) % len(cores)]
+                pygame.draw.rect(self.tela, cor, (int(cx) - larg // 2, int(cy) - alt // 2, larg, alt))
+
     def _desenhar_slash_arc(self, lutador, centro, raio, anim_scale):
         """Desenha arco de corte visível durante ataques melee"""
         arma = lutador.dados.arma_obj
@@ -6781,6 +7030,10 @@ class Simulador:
         """
         if getattr(self, "letterbox_timer", 0.0) > 0.0:
             self.letterbox_timer -= raw_dt
+        if getattr(self, "round_finalizado", False):
+            # Relógio de PAREDE da cena pós-K.O. (só o desenho lê): a festa
+            # anda no tempo do vídeo, não no slow-mo.
+            self._ko_tempo_real = float(getattr(self, "_ko_tempo_real", 0.0) or 0.0) + raw_dt
         if self.slow_mo_timer > 0:
             self.slow_mo_timer -= raw_dt
             if self.slow_mo_timer <= 0:
@@ -6791,6 +7044,8 @@ class Simulador:
                         self.audio.play_special("slowmo_end", 0.5)
                         self.audio.play_special("arena_victory", 1.0)
                     self._slow_mo_ended = True
+                    # A comemoração começa com a fanfarra.
+                    self._festa_desde = float(getattr(self, "_ko_tempo_real", 0.0) or 0.0)
         return raw_dt * self.time_scale
 
     def close(self):

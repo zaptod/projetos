@@ -2463,7 +2463,7 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
                     camera_espera_zoom_in: float | None = None,
                     nomes_exibicao: dict | None = None, hud: bool = False,
                     fps_video: int = 30, max_duracao: float = 120.0,
-                    cauda_pos_ko: float = 3.5, headless: bool = False,
+                    cauda_pos_ko: float | None = None, headless: bool = False,
                     desenhar: bool = False, sonda: bool = True, hashes: bool = False,
                     roster_provider=None, anotar_som: bool | None = None,
                     corrente_v2: bool | None = None) -> dict:
@@ -2473,7 +2473,8 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
     ``60 / fps_video`` passos, ``avancar_relogio`` com o slow-mo do KO, cauda
     de ``cauda_pos_ko`` s no relogio do video): a timeline tem exatamente os
     passos que o video teria, e o quadro k do video e o passo ``k * 60 /
-    fps_video``.
+    fps_video``. ``cauda_pos_ko=None`` (padrao) e a conta do gravador: ate a
+    fanfarra de vitoria acabar (``fight_recorder.cauda_pos_ko_de``).
 
     - ``desenhar=True`` chama ``sim.desenhar()`` a cada passo, como o gravador
       (a sonda roda ANTES dele). ``False`` pula o desenho, que e 90% do custo.
@@ -2496,7 +2497,7 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
         raise ValueError("desenhar exige headless=False (o headless nao tem display)")
     # MOT-121: o mesmo laco do gravador, a mesma guarda (so divisores de 60;
     # 24 fps saia a 0,8x e com ``passos_por_quadro`` errado na timeline).
-    from neural_fights.recording.fight_recorder import validar_fps_e_duracao
+    from neural_fights.recording.fight_recorder import cauda_pos_ko_de, validar_fps_e_duracao
 
     validar_fps_e_duracao(fps_video, max_duracao)
     import pygame
@@ -2551,6 +2552,7 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
         t_jogo = 0.0
         t_ko_video = None
         duracao_luta = None
+        cauda = None
         while True:
             t_video = capturados / fps_video
             if t_video >= max_duracao:
@@ -2577,7 +2579,9 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
                 if t_ko_video is None:
                     t_ko_video = t_video
                     duracao_luta = t_jogo
-                elif t_video - t_ko_video >= cauda_pos_ko:
+                    cauda = (cauda_pos_ko_de(sim) if cauda_pos_ko is None
+                             else float(cauda_pos_ko))
+                elif t_video - t_ko_video >= cauda:
                     break
 
         def razao(lutador) -> float:

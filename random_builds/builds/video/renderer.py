@@ -51,6 +51,11 @@ def _saiu_sem_audio(resultado, destino: Path) -> bool:
 from . import medidas  # noqa: E402  (depois de NO_WINDOW)
 from . import som_da_luta  # noqa: E402
 
+# Teto de pico verdadeiro do video final (dBTP). O mesmo de
+# ``neural_fights.effects.mixagem.TETO_TP_DBTP``; aqui de novo para o
+# comando de sempre nao depender do import (a guarda que REFAZ depende).
+TETO_TP_DBTP = -1.5
+
 
 class VideoRenderer:
     def __init__(self, render_config: dict, profile: str = "celular",
@@ -857,24 +862,57 @@ class VideoRenderer:
             ultimo = "[mx]"
         else:
             ultimo = "[base]"
-        cadeia.append(f"{ultimo}alimiter=limit=0.89,loudnorm=I={alvo}:TP=-1.5:LRA=11,"
-                      f"aresample={sr}[out]")
-        temporario = out_path.with_name(
-            f"{out_path.stem}.tmp-{os.getpid()}.mp4")
-        cmd = ["ffmpeg", "-y", "-loglevel", "error", *entradas,
-               "-filter_complex", ";".join(cadeia),
-               "-map", "0:v", "-map", "[out]", "-c:v", "copy",
-               "-c:a", "aac", "-b:a", "160k", "-ar", str(sr), str(temporario)]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True,
-                                    creationflags=NO_WINDOW)
+
+        def comando(pico_db: float, nivel_db: float, destino: Path) -> list:
+            # pico_db/nivel_db = 0 e a mixagem de sempre; a guarda de pico
+            # verdadeiro so os mexe quando o aac passou do teto.
+            limite = 0.89 * 10 ** (pico_db / 20.0)
+            final = (f"{ultimo}alimiter=limit={limite:.4f},"
+                     f"loudnorm=I={alvo + nivel_db:.2f}:TP={TETO_TP_DBTP + pico_db:.2f}:LRA=11,"
+                     f"aresample={sr}[out]")
+            return ["ffmpeg", "-y", "-loglevel", "error", *entradas,
+                    "-filter_complex", ";".join([*cadeia, final]),
+                    "-map", "0:v", "-map", "[out]", "-c:v", "copy",
+                    "-c:a", "aac", "-b:a", "160k", "-ar", str(sr), str(destino)]
+
+        base = f"{out_path.stem}.tmp-{os.getpid()}"
+        temporario = out_path.with_name(f"{base}.mp4")
+        tentativas: list[Path] = [temporario]
+        erros: list[str] = []
+
+        def tentar(pico_db: float, nivel_db: float, indice: int):
+            destino = temporario if indice == 0 else out_path.with_name(f"{base}-{indice}.mp4")
+            if destino not in tentativas:
+                tentativas.append(destino)
+            result = subprocess.run(comando(pico_db, nivel_db, destino), capture_output=True,
+                                    text=True, creationflags=NO_WINDOW)
             if result.returncode != 0:
-                print(f"[render] mixagem final falhou ({(result.stderr or '')[-300:]}); "
+                erros.append((result.stderr or "")[-300:])
+                return None
+            return destino
+
+        try:
+            # O loudnorm mira TP -1,5, mas o aac passa dele (medido em 28/09:
+            # -0,9 a -1,4 dBTP no video final). ``com_teto_de_pico`` mede o mp4
+            # e refaz com o teto mais baixo sem deixar o integrado cair.
+            escolhida = None
+            try:
+                from neural_fights.effects import mixagem
+            except ImportError:
+                mixagem = None
+            if mixagem is not None:
+                escolhida, _historico = mixagem.com_teto_de_pico(tentar)
+            elif tentar(0.0, 0.0, 0) is not None:
+                escolhida = {"caminho": temporario}
+            if escolhida is None:
+                print(f"[render] mixagem final falhou ({(erros[-1] if erros else '')}); "
                       "o video sai sem trilha/voz", flush=True)
                 temporario.write_bytes(video.read_bytes())
-            os.replace(temporario, out_path)
+                escolhida = {"caminho": temporario}
+            os.replace(escolhida["caminho"], out_path)
         finally:
-            temporario.unlink(missing_ok=True)
+            for caminho in tentativas:
+                caminho.unlink(missing_ok=True)
 
     # ------------------------------------------------------------------ frames
     def _bg(self) -> Image.Image:

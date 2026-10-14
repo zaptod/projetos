@@ -24,6 +24,7 @@ melhoria, nunca dependencia (a mesma doutrina da trilha sintetizada).
 from __future__ import annotations
 
 import math
+import re
 import subprocess
 import wave
 from pathlib import Path
@@ -48,6 +49,19 @@ ALVO_DB = -13.0
 # fonte: medido em 28/09/2026, o wav limitado em -1,0 dBFS saiu do aac com 289
 # amostras em 0 dB.
 TETO = 0.75
+# Teto de pico VERDADEIRO (dBTP, BS.1770 — o ``ebur128=peak=true`` do ffmpeg)
+# do audio que sai no mp4 (14/10/2026). O limitador acima trava o SAMPLE em
+# -2,5 dBFS, mas entre samples o sinal passa (o wav da seed 4242 na Arena deu
+# -2,1 dBTP) e o aac soma mais (-1,2 dBTP a 160k: 0,2 dB de folga do -1 das
+# plataformas). Quem codifica mede o mp4 e, passou daqui, refaz com o teto do
+# limitador mais baixo e devolve no nivel o que o integrado perdeu
+# (``com_teto_de_pico``).
+TETO_TP_DBTP = -1.5
+# Quanto abaixo do teto mirar quando refaz (o aac nao repete o pico igual).
+FOLGA_TP_DB = 0.3
+TENTATIVAS_TP = 5
+# O integrado da versao final fica a no maximo isto abaixo da primeira.
+TOLERANCIA_LU = 0.1
 # Janela do medidor de nivel e o portao relativo: janela mais de 40 dB abaixo
 # da mais forte e silencio entre golpes, nao "momento ativo".
 JANELA_NIVEL_S = 0.05
@@ -267,15 +281,103 @@ def gravar_wav(destino: Path, buf, taxa: int = TAXA) -> Path:
     return destino
 
 
+def medir_loudness(caminho) -> dict:
+    """``{"lufs": integrado, "tp": true peak dBTP}`` pelo ``ebur128`` do ffmpeg.
+
+    Chave ausente quando nao da para medir (sem ffmpeg, sem faixa de audio,
+    saida ilegivel): quem chama segue sem a guarda, nunca derruba o video
+    por ela.
+    """
+    try:
+        saida = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-nostats", "-v", "info", "-i", str(caminho),
+             "-vn", "-af", "ebur128=peak=true", "-f", "null", "-"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=120, creationflags=NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if saida.returncode != 0:
+        return {}
+    texto = saida.stderr or ""
+    resumo = texto[texto.rfind("Summary:"):] if "Summary:" in texto else ""
+    medidas = {}
+    integrado = re.search(r"I:\s+(-?[\d.]+|-inf) LUFS", resumo)
+    if integrado is not None:
+        medidas["lufs"] = float("-inf") if integrado.group(1) == "-inf" else float(integrado.group(1))
+    marca = resumo.find("True peak:")
+    if marca >= 0:
+        achado = re.search(r"Peak:\s+(-?[\d.]+|-inf)", resumo[marca:])
+        if achado is not None:
+            medidas["tp"] = float("-inf") if achado.group(1) == "-inf" else float(achado.group(1))
+    return medidas
+
+
+def pico_verdadeiro_dbtp(caminho) -> float | None:
+    """True peak (dBTP) do audio de ``caminho`` (None se nao deu para medir)."""
+    return medir_loudness(caminho).get("tp")
+
+
+def com_teto_de_pico(tentar, *, teto_tp: float = TETO_TP_DBTP, folga_db: float = FOLGA_TP_DB,
+                     tentativas: int = TENTATIVAS_TP, tolerancia_lu: float = TOLERANCIA_LU,
+                     medir=None) -> tuple[dict | None, list[dict]]:
+    """Codifica ate o true peak ficar sob ``teto_tp`` SEM baixar o integrado.
+
+    ``tentar(pico_db, nivel_db, indice)`` codifica uma versao e devolve o
+    caminho (ou None se falhou): ``pico_db`` (<= 0) e quanto descer o teto do
+    limitador e ``nivel_db`` quanto subir o alvo de nivel, os dois em relacao
+    a primeira tentativa. Descer o teto amassa os picos e o integrado cai
+    junto (medido na seed 4242 da Arena: -0,6 dB no teto = -0,3 LU), entao a
+    proxima tentativa devolve essa perda no nivel. Para na primeira que fica
+    sob o teto com o integrado a ``tolerancia_lu`` do da primeira.
+
+    Devolve ``(escolhida, historico)``: a escolhida e a de MAIOR integrado
+    entre as que respeitam o teto (ou a ultima, se nenhuma respeitou); cada
+    registro tem ``caminho``, ``tp``, ``lufs``, ``pico_db`` e ``nivel_db``.
+    Quem chama fica com o caminho escolhido e apaga os outros.
+    """
+    medir = medir or medir_loudness
+    pico_db, nivel_db = 0.0, 0.0
+    referencia = None
+    historico: list[dict] = []
+    melhor = None
+    for indice in range(max(1, int(tentativas))):
+        caminho = tentar(pico_db, nivel_db, indice)
+        if caminho is None:
+            break
+        medidas = medir(caminho) or {}
+        tp, lufs = medidas.get("tp"), medidas.get("lufs")
+        if referencia is None:
+            referencia = lufs
+        registro = {"caminho": caminho, "tp": tp, "lufs": lufs,
+                    "pico_db": round(pico_db, 3), "nivel_db": round(nivel_db, 3)}
+        historico.append(registro)
+        dentro = tp is None or tp <= teto_tp
+        perdeu = (lufs is not None and referencia is not None
+                  and lufs < referencia - tolerancia_lu)
+        if dentro and (melhor is None or (lufs or float("-inf")) > (melhor["lufs"] or float("-inf"))):
+            melhor = registro
+        if dentro and not perdeu:
+            break
+        if not dentro:
+            pico_db -= (tp - teto_tp) + folga_db
+        if perdeu:
+            nivel_db += referencia - lufs
+    if melhor is None and historico:
+        melhor = historico[-1]
+    return melhor, historico
+
+
 def trilha_da_luta(sons, duracao: float, destino: Path, *, inicio: float = 0.0,
                    taxa: int = TAXA, alvo_db: float = ALVO_DB,
-                   arquivos: dict | None = None, extra=None) -> dict | None:
+                   arquivos: dict | None = None, extra=None,
+                   teto: float = TETO) -> dict | None:
     """Mistura, normaliza por trecho e grava ``destino`` (WAV). Relatorio ou None.
 
     ``extra`` e uma matriz (n, 2) somada ANTES de normalizar — e por onde o
     som sintetizado antigo entra quando ligado como reforco. None quando nao
     ha numpy ou nenhum som caiu no trecho: quem chama decide o que fazer com
-    o silencio (e nao e fingir que ha som).
+    o silencio (e nao e fingir que ha som). ``teto`` e o do limitador
+    (linear); quem refaz por causa do pico verdadeiro passa um menor.
     """
     buf, relatorio = mixar(sons, duracao, arquivos=arquivos, taxa=taxa, inicio=inicio)
     if buf is None:
@@ -285,7 +387,7 @@ def trilha_da_luta(sons, duracao: float, destino: Path, *, inicio: float = 0.0,
         buf[:n] += np.asarray(extra[:n], dtype=np.float32)
     if relatorio["sons"] == 0 and (extra is None or not len(extra)):
         return None
-    buf, ganho_db = normalizar(buf, taxa, alvo_db=alvo_db)
+    buf, ganho_db = normalizar(buf, taxa, alvo_db=alvo_db, teto=teto)
     gravar_wav(destino, buf, taxa)
     relatorio["ganho_db"] = round(ganho_db, 2)
     relatorio["arquivo"] = str(destino)

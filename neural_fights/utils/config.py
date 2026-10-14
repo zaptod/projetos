@@ -22,6 +22,11 @@ DANO_REFERENCIA_GUARDA = 30.0
 # 6% da vida maxima por segundo em pe na poca, em ticks de 0,5 s.
 PERIGO_CHAO_DANO_PCT_S = 0.06
 PERIGO_CHAO_TICK_S = 0.5
+# O tempo na lava ACUMULA por lutador (14/10/2026): sair da poca nao zera o
+# contador; ele so esquece depois de este tanto de segundos seguidos fora.
+# Com o contador zerando na saida, quem so atravessava (0,1-0,45 s por
+# passagem) nunca levava dano: 0 de vida nas sementes 101 e 103 do Vulcao.
+PERIGO_CHAO_ESQUECE_S = 1.0
 CUSTO_ESTAMINA_PARRY = 10.0
 COOLDOWN_DASH_S = 1.6
 # Bloqueio direcional: só cobre o arco frontal; parry é o bloqueio

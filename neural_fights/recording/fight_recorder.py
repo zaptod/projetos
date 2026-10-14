@@ -80,10 +80,18 @@ from neural_fights.utils.config import FPS, PPM  # noqa: E402
 
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
-# Sobra gravada depois do KO: o slow-motion dura 1,2 s (simulacao.py:3739) e o
-# letterbox cinematografico 0,9 s (:3584). Sem isso o video corta no meio da
-# comemoracao.
+# Sobra gravada depois do KO: o slow-motion dura 1,2 s (``ativar_slow_motion``)
+# e, quando ele acaba, toca a fanfarra de vitoria (``avancar_relogio``). Desde
+# 14/10/2026 a cauda vai ate a fanfarra ACABAR (``cauda_pos_ko_de``): com 3,5 s
+# fixos sobravam ~0,9 s de silencio depois dela (medido na seed 4242, Arena).
+# CAUDA_POS_KO e so o que se usa quando o arquivo da fanfarra nao e achado.
 CAUDA_POS_KO = 3.5
+# Nunca menos que o slow-mo (1,2 s) + o letterbox do golpe letal.
+CAUDA_MIN_POS_KO = 1.5
+# Folga depois do ultimo sample da fanfarra (o arquivo ja termina no rabo dela).
+FOLGA_POS_FANFARRA = 0.1
+SOM_DA_VITORIA = "arena_victory"
+SOM_FIM_DO_SLOWMO = "slowmo_end"
 
 # Passo da serie de HP, em segundos de video. Mesmo passo da sonda de
 # qualidade (probes.PASSO_HP): o drama acontece em escala de segundos.
@@ -373,6 +381,57 @@ def _recorte_util(sim, largura: int, altura: int) -> list[int] | None:
     return [int(x0), int(y0), int((x1 - x0) // 2 * 2), int((y1 - y0) // 2 * 2)]
 
 
+def duracao_do_som(id_som: str) -> float | None:
+    """Segundos do arquivo que o jogo tocaria para ``id_som`` (None se nao ha).
+
+    Mesma cadeia da mistura (``arquivos_de_som``: runtime > pacote >
+    fallbacks): trocar a fanfarra pelo wav do Adrian muda a cauda junto.
+    """
+    try:
+        from neural_fights.effects.audio_anotador import arquivos_de_som
+        arquivo = arquivos_de_som().get(id_som)
+    except Exception:
+        return None
+    if arquivo is None:
+        return None
+    arquivo = Path(arquivo)
+    if arquivo.suffix.lower() == ".wav":
+        import wave
+        try:
+            with wave.open(str(arquivo), "rb") as leitor:
+                taxa = leitor.getframerate()
+                if taxa > 0:
+                    return leitor.getnframes() / float(taxa)
+        except (wave.Error, OSError, EOFError):
+            pass   # wav que o modulo wave nao le (float, extensivel): ffmpeg
+    try:
+        from neural_fights.effects import mixagem
+        amostras = mixagem.decodificar(arquivo)
+    except Exception:
+        return None
+    if amostras is None or not len(amostras):
+        return None
+    return len(amostras) / float(mixagem.TAXA)
+
+
+def cauda_pos_ko_de(sim, *, padrao: float = CAUDA_POS_KO) -> float:
+    """Quanto gravar depois do K.O.: ate a fanfarra de vitoria acabar.
+
+    Chamada no quadro do K.O., quando o slow-mo acabou de ser armado: a
+    fanfarra toca quando ``slow_mo_timer`` zera (relogio de parede, o mesmo
+    do video). Sem o arquivo dela, ``padrao`` (os 3,5 s de sempre).
+    O gravador e a timeline do palco usam esta MESMA conta: o palco confere
+    que a imagem dele tem a duracao do clipe do pygame.
+    """
+    fanfarra = duracao_do_som(SOM_DA_VITORIA)
+    if fanfarra is None:
+        return float(padrao)
+    # O ``slowmo_end`` toca no mesmo quadro: a cauda cobre o mais longo.
+    fanfarra = max(fanfarra, duracao_do_som(SOM_FIM_DO_SLOWMO) or 0.0)
+    espera = max(0.0, float(getattr(sim, "slow_mo_timer", 0.0) or 0.0))
+    return round(max(CAUDA_MIN_POS_KO, espera + fanfarra + FOLGA_POS_FANFARRA), 3)
+
+
 def validar_fps_e_duracao(fps: int, max_duracao: float) -> None:
     """Recusa o que gravaria errado (MOT-121, auditoria de 11/10/2026).
 
@@ -512,33 +571,55 @@ def _embutir_som(saida: Path, sons: list, duracao: float) -> dict:
     lista ``sons`` para misturar na hora.
     """
     wav = saida.with_name(saida.stem + ".som.wav")
+    tentativas: list[Path] = []
     try:
         from neural_fights.effects import mixagem
         if not mixagem.disponivel():
             return {"som_no_video": False, "erro_som": "numpy ausente"}
         if not sons:
             return {"som_no_video": False, "erro_som": "a luta nao pediu som nenhum"}
-        relatorio = mixagem.trilha_da_luta(sons, duracao, wav)
-        if relatorio is None:
-            return {"som_no_video": False, "erro_som": "nenhum som tinha arquivo"}
-        temporario = saida.with_name(saida.stem + ".com_som" + saida.suffix)
-        comando = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(saida),
-                   "-i", str(wav), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-                   "-c:a", "aac", "-b:a", "160k", "-shortest", str(temporario)]
-        proc = subprocess.run(comando, capture_output=True, text=True,
-                              encoding="utf-8", errors="replace",
-                              creationflags=NO_WINDOW)
-        if proc.returncode != 0 or not temporario.is_file():
-            temporario.unlink(missing_ok=True)
-            return {"som_no_video": False,
-                    "erro_som": (proc.stderr or "ffmpeg falhou")[-300:]}
-        temporario.replace(saida)
+        estado: dict = {}
+
+        def codificar(pico_db: float, nivel_db: float, indice: int):
+            relatorio = mixagem.trilha_da_luta(
+                sons, duracao, wav, teto=mixagem.TETO * 10 ** (pico_db / 20.0),
+                alvo_db=mixagem.ALVO_DB + nivel_db)
+            if relatorio is None:
+                estado["erro"] = "nenhum som tinha arquivo"
+                return None
+            estado["relatorio"] = relatorio
+            destino = saida.with_name(f"{saida.stem}.com_som{indice}{saida.suffix}")
+            tentativas.append(destino)
+            comando = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(saida),
+                       "-i", str(wav), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+                       "-c:a", "aac", "-b:a", "160k", "-shortest", str(destino)]
+            proc = subprocess.run(comando, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace",
+                                  creationflags=NO_WINDOW)
+            if proc.returncode != 0 or not destino.is_file():
+                estado["erro"] = (proc.stderr or "ffmpeg falhou")[-300:]
+                return None
+            estado.setdefault("arquivos", len(relatorio.get("arquivos") or []))
+            return destino
+
+        # Teto de pico verdadeiro (14/10/2026): o aac passa do pico do wav
+        # (-1,2 dBTP na seed 4242 da Arena). Mede o mp4 e refaz com o
+        # limitador mais baixo, sem deixar o integrado cair.
+        escolhida, historico = mixagem.com_teto_de_pico(codificar)
+        if escolhida is None:
+            return {"som_no_video": False, "erro_som": estado.get("erro") or "ffmpeg falhou"}
+        Path(escolhida["caminho"]).replace(saida)
         return {"som_no_video": True,
-                "sons_distintos": len(relatorio.get("arquivos") or [])}
+                "sons_distintos": estado.get("arquivos", 0),
+                "pico_verdadeiro_dbtp": escolhida.get("tp"),
+                "lufs": escolhida.get("lufs"),
+                "tentativas_de_pico": len(historico)}
     except Exception as erro:  # o video sem som ainda e um video
         return {"som_no_video": False, "erro_som": f"{type(erro).__name__}: {erro}"}
     finally:
         wav.unlink(missing_ok=True)
+        for caminho in tentativas:
+            caminho.unlink(missing_ok=True)
 
 
 def _salvar_timeline(sonda_timeline, caminho, resumo: dict, sons) -> dict:
@@ -586,7 +667,7 @@ def gravar_luta(
     portrait: bool = False,
     fps_saida: int = 30,
     max_duracao: float = 120.0,
-    cauda_pos_ko: float = CAUDA_POS_KO,
+    cauda_pos_ko: float | None = None,
     hud: bool = True,
     crf: int = 20,
     preset: str = "veryfast",
@@ -623,6 +704,9 @@ def gravar_luta(
 
     ``corrente_v2`` carimba a chave da corrente nova (bola fisica + enlace)
     no match_config; ``None`` nao carimba e a luta usa a corrente antiga.
+
+    ``cauda_pos_ko``: segundos gravados depois do K.O.; ``None`` (padrao) =
+    ate a fanfarra de vitoria acabar (``cauda_pos_ko_de()``).
     """
     # Import tardio: o Simulador puxa pygame, e o driver precisa ja estar
     # escolhido (feito no topo do modulo).
@@ -702,6 +786,7 @@ def gravar_luta(
         capturados = 0
         t_jogo = 0.0
         t_ko_video: float | None = None
+        cauda: float | None = None
         # Duracao DA LUTA = tempo de jogo ate o nocaute. A cauda gravada
         # depois dele (slow-mo + letterbox) e do video, nao da luta; incluir
         # a faria divergir do que o motor headless reporta.
@@ -778,7 +863,9 @@ def gravar_luta(
                 if t_ko_video is None:
                     t_ko_video = t_video
                     duracao_luta = t_jogo
-                elif t_video - t_ko_video >= cauda_pos_ko:
+                    cauda = (cauda_pos_ko_de(sim) if cauda_pos_ko is None
+                             else float(cauda_pos_ko))
+                elif t_video - t_ko_video >= cauda:
                     break
 
         vencedor = getattr(sim, "vencedor", None)
