@@ -18,3 +18,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Build que saiu só no TikTok: levar ao YouTube depois?** — Mesma regra das histórias (recomendado) (13/10/2026) `build-so-no-tiktok`
 - ⏳ **Visibilidade gravada no registro** — Ao publicar uma história, o registro anota sempre 'pública', mesmo se o vídeo subiu privado. O que gravar? `visibilidade-no-ledger`
 - ⏳ **Chave 'postar automático' do TikTok nos builds** — No config dos builds, o TikTok está com 'postar automático: não', mas a grade posta sempre. O que vale? `tiktok-postar-automatico`
+- ⏳ **Duelo de 12/10 que saiu só no TikTok** — O conserto que leva ao YouTube o build que saiu só no TikTok vale a partir de 13/10. O duelo_00076 saiu só no TikTok em 12/10 às 16:31, um dia antes. Levar ele também? `duelo-00076-ao-youtube`

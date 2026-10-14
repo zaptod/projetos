@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Conserto PUB-2 da auditoria (decisão publicacao/build-so-no-tiktok).",
+  "criado": "2026-10-14T03:21:01.198987",
+  "depende_de": [],
+  "historico": [],
+  "id": "duelo-00076-ao-youtube",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Muda o corte para 12/10",
+      "id": "levar",
+      "pede_comentario": false,
+      "rotulo": "Levar ao YouTube também (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "deixar",
+      "pede_comentario": false,
+      "rotulo": "Deixar como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O conserto que leva ao YouTube o build que saiu só no TikTok vale a partir de 13/10. O duelo_00076 saiu só no TikTok em 12/10 às 16:31, um dia antes. Levar ele também?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Duelo de 12/10 que saiu só no TikTok",
+  "vigente": null
+}
