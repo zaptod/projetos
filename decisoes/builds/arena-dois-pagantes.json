@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:45:55",
+      "evento": "2026-10-14T08:45:47",
+      "linha": 172,
+      "nota": "resposta sem pedido de origem: builds/arena-dois-pagantes = Vale o primeiro; o que não coube é recusado com reembolso na tela (recomendado)",
+      "opcao": "primeiro-reembolso",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:22.340815",
   "depende_de": [],
