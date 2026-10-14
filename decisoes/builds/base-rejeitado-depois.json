@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Hoje as folhas já pedidas continuam com o base velho.",
+  "criado": "2026-10-14T16:00:16.353117",
+  "depende_de": [],
+  "historico": [],
+  "id": "base-rejeitado-depois",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "as já aprovadas pelo Adrian ficam",
+      "id": "refazer",
+      "pede_comentario": false,
+      "rotulo": "Folhas não aprovadas voltam a refazer com o base novo (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "folhas seguem com o base velho",
+      "id": "deixar",
+      "pede_comentario": false,
+      "rotulo": "Deixar como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Se um sprite-base é descartado ou refeito depois que folhas saíram dele, o que acontece com essas folhas?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Sprite-base rejeitado depois das folhas",
+  "vigente": null
+}
