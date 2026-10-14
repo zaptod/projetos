@@ -102,7 +102,11 @@ class ParecerIlegivelBarra(_Base):
             self.arquivo.write_text(json.dumps({}), encoding="utf-8")
             self.assertEqual("", postar._retencao(alvo))       # legivel: livre
             self._corromper()
-            self.assertIn("a IA reprovou", postar._retencao(alvo))
+            # retida (texto nao vazio); a frase do motivo e do postar.py,
+            # que desde o conserto da publicacao (14/10) diz que nao leu
+            motivo = postar._retencao(alvo)
+            self.assertTrue(motivo)
+            self.assertIn("pareceres", motivo)
 
     def test_a_agenda_mantem_conta_a_mais(self):
         """A agenda escolheu o outro lado (cria de menos): continua."""

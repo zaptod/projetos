@@ -322,8 +322,13 @@ class AjustesDaRevisao(unittest.TestCase):
         raiz = Path(Q.__file__).resolve().parents[3]
         fonte = (raiz / "painel" / "paginas" / "contas.py").read_text(
             encoding="utf-8")
-        self.assertIn('elif servico in ("chatgpt", "gemini", "deepseek"):',
-                      fonte)
+        # desde o PNL-15 (14/10) a lista mora em LOGIN_PELO_LLM (com o grok)
+        arvore = ast.parse(fonte)
+        lista = next(ast.literal_eval(no.value) for no in arvore.body
+                     if isinstance(no, ast.Assign)
+                     and getattr(no.targets[0], "id", "") == "LOGIN_PELO_LLM")
+        self.assertIn("deepseek", lista)
+        self.assertIn("elif servico in LOGIN_PELO_LLM:", fonte)
 
 
 @unittest.skipUnless(shutil.which("ffmpeg"),
