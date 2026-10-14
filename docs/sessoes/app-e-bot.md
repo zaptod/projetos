@@ -2932,3 +2932,47 @@ ao contratar. As mutacoes tambem exigem pareamento e `--acoes`.
 Desde 07/10, **Contratar** cria um pedido na Mesa e mostra o recibo dele; nao
 abre delegado nem worktree diretamente. A Mesa preserva cargo, IA e caminhos
 permitidos e devolve o pedido aberto quando o contrato ja esta na fila.
+
+# Consertos da auditoria profunda de 11/10 (14/10/2026, casca v69)
+
+Os 12 defeitos confirmados de `docs/auditoria/2026-10-11-profunda/app-celular.md`.
+O Codex começou (pedido c7e0c0d9) e a parte app-e-bot terminou. Prova de tela
+nova: `remoto/test_app_auditoria_tela.py` (Chrome 390x844 Android, clicando,
+servidor `tela_isolada`); medido em 14/10, os 7 testes falham no código de
+e7ea729 e 3 deles falhavam ainda na entrega do Codex.
+
+- **Faixa "sem conexão" por cima das abas** (item 1). A faixa (83 px em y=62)
+  cobria a fileira de abas (y=64) e engolia o toque. Agora as faixas fixas
+  (`#aviso`, `#casca-nova`, `#modulo-faltando`) **empurram o objeto aberto**:
+  o `app.js` (`faixasMedir`, num `MutationObserver`) põe a altura em
+  `--faixa-alto`, que entra no `padding-top` do `.livro` (e do `.livro.atelie`
+  e do deitado). A versão do Codex só descia a faixa para y=132, por cima do
+  primeiro cartão. A prova derruba a `/api/` com 502 no próprio servidor de
+  teste: o `page.route` do patchright deixava pedidos escaparem.
+- **Service worker** (itens 2 e 12): só o que está em `ARQUIVOS` passa por
+  ele; fundos e atlas da Vila (`?v=`), `/arte-vila/`, `/p/` e `/api/` são rede
+  pura e nunca entram no cache (antes cada versão da Vila ficava para sempre,
+  ~3,2 MB por arte salva). `favicon-16.png` e `favicon.ico` entraram na lista;
+  um teste confere que todo `href`/`src` do index está na lista e que todo
+  arquivo da lista tem rota (o `addAll` falha inteiro com um 404).
+- **Cinema** (item 3): "carregando os vídeos…" na hora, sem esperar o
+  `/api/acoes`; pede 80 e mostra 60. A lista (`videosCarregados`) serve ao
+  diálogo de comandos por até 2 min (item 10).
+- **Ícones dos objetos** (item 4): `vila_nova.mundo()["objetos_do_atelie"]`
+  diz quais dos quatro têm folha (mesmo critério da rota); o app só pede
+  esses. Folha ilegível fica de fora sem derrubar o mundo.
+- **Ateliê** (itens 5, 6 e 7): "O que falta" virou um modo da lista
+  (`AnimAtelie.faltam`): zera peça/estado/animação, fecha o editor, mostra a
+  busca e filtra por ela; tocar num grupo sai do modo. As quatro funções
+  duplicadas saíram. A prévia do Godot **para** ao sair (`atelieParar`) e
+  **retoma o mesmo trabalho** ao voltar (`atelieMostrar` →
+  `animPreviaConsultar`): o `mostrar()` roda a cada volta do app ao primeiro
+  plano, e a versão do Codex jogava o trabalho fora ali. O laço de quadros
+  (`requestAnimationFrame`) também para fora do Ateliê.
+- **Parear com o PC fora** (item 8): "Não consegui falar com o PC. Confira o
+  Tailscale neste celular." ou "O PC respondeu com erro N.".
+- **Título numa linha** (item 9): `h1` sem quebra, com reticências; "livre"
+  aparece como "Rodízio".
+- **Continuar do diálogo** (item 10): desligado até a lista de Geração/História
+  chegar e ter um id; a lista de um diálogo anterior não libera o atual.
+- **Prova de tela antiga** (item 11): espera `#anim-grupos button`.

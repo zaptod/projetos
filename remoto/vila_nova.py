@@ -239,6 +239,24 @@ def _info_do_atlas(folha: dict) -> dict:
             "pato": folha["pato"], "lago": folha["lago"]}
 
 
+def objetos_do_atelie() -> list[str]:
+    """Objetos da prateleira com folha no Atelie: so esses o celular pede.
+
+    Auditoria 11/10 (item 4): o app pedia os quatro a cada carga do mundo e,
+    sem a peca, eram 4 respostas 404 (e 4 linhas de erro no log) por carga.
+    O criterio e o mesmo da rota (`api_http._icone_do_objeto_do_atelie`); uma
+    folha ilegivel fica de fora, sem derrubar o mundo inteiro.
+    """
+    saida = []
+    for nome in ("agora", "decidir", "mandar", "ver"):
+        try:
+            if _arte_pronta().peca_do_atelie(f"objetos/{nome}.png") is not None:
+                saida.append(nome)
+        except (OSError, ValueError):
+            continue
+    return saida
+
+
 def mundo() -> dict:
     """O que o app precisa saber uma vez: tamanho, lotes, portas, atlas."""
     from painel.flutuante import paisagem, retrato
@@ -274,6 +292,7 @@ def mundo() -> dict:
         # as folhas da esteira que o celular toca sozinho (rota /arte-vila/)
         "arte": _arte_pronta().para_o_app(),
         "props_animados": props,
+        "objetos_do_atelie": objetos_do_atelie(),
         "versao": versao(),
     }
 

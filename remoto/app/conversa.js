@@ -204,7 +204,7 @@ function conversaBaloesDeImagem(m, rotulo) {
 function conversaDesenhar(d) {
   const ia = Conversa.ia;
   $("titulo").textContent = `${CONVERSA_CHATS.has(ia) && Conversa.modo === "texto"
-    ? "Conversa" : "Criar"} · ${d.rotulo || ia}`;
+    ? "Conversa" : "Criar"} · ${ia === "livre" ? "Rodízio" : (d.rotulo || ia)}`;
   const casa = d.casa || {};
   const partes = [];
   if (!CONVERSA_CHATS.has(ia)) {

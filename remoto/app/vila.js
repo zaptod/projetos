@@ -154,7 +154,7 @@ async function vilaCarregarRetrato(comMundo) {
 // mtime da folha, entao salvar de novo troca a URL e atualiza o cache.
 function vilaObjetosDoAtelie() {
   const versao = encodeURIComponent(Vila.mundo?.versao || "");
-  for (const nome of ["agora", "decidir", "mandar", "ver"]) {
+  for (const nome of Vila.mundo?.objetos_do_atelie || []) {
     const botao = document.getElementById(`obj-${nome}`);
     const atual = botao && botao.querySelector("span, .objeto-arte");
     if (!atual) continue;

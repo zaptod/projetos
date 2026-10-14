@@ -108,15 +108,37 @@ eval(fs.readFileSync(process.argv[2], "utf8"));
 const url = process.argv[4];
 let resposta;
 ouvintes.fetch({request: {method: "GET", url}, respondWith: (p) => { resposta = p; }});
-Promise.resolve(resposta).then((r) => console.log(JSON.stringify(r ? r.corpo : null)));
+const interceptado = resposta !== undefined;
+Promise.resolve(resposta).then((r) => console.log(JSON.stringify(
+  {corpo: r ? r.corpo : null, guardado: !!guardado[url], interceptado})));
 """
 
 
+# 14/10 (auditoria 11/10, item 2): só a CASCA (a lista ARQUIVOS) passa pelo
+# service worker; o resto é rede pura e nunca entra no cache. Antes cada
+# versão das imagens da Vila (`?v=`) ficava guardada para sempre.
 @pytest.mark.parametrize("cenario,url,esperado", [
-    ("502", "https://pc/conversa.js", "guardado"),      # o conserto: 502 -> cópia
-    ("rede_caiu", "https://pc/conversa.js", "guardado"),
-    ("ok", "https://pc/conversa.js", "novo"),            # rede primeiro, sempre
-    ("502", "https://pc/nao-guardado.js", "Bad Gateway"),  # sem cópia, o erro segue
+    ("502", "https://pc/conversa.js",
+     {"corpo": "guardado", "guardado": True, "interceptado": True}),
+    ("rede_caiu", "https://pc/conversa.js",
+     {"corpo": "guardado", "guardado": True, "interceptado": True}),
+    ("ok", "https://pc/conversa.js", {"corpo": "novo", "guardado": True, "interceptado": True}),
+    # da casca, ainda sem cópia: o erro segue para a página
+    ("502", "https://pc/oficina.js",
+     {"corpo": "Bad Gateway", "guardado": False, "interceptado": True}),
+    ("ok", "https://pc/app.js", {"corpo": "novo", "guardado": True, "interceptado": True}),
+    ("ok", "https://pc/", {"corpo": "novo", "guardado": True, "interceptado": True}),
+    # fora da casca: o service worker nem toca
+    ("ok", "https://pc/vilanova-retrato.webp?v=nova",
+     {"corpo": None, "guardado": False, "interceptado": False}),
+    ("ok", "https://pc/vilanova-atlas.png?escala=3&v=x",
+     {"corpo": None, "guardado": False, "interceptado": False}),
+    ("ok", "https://pc/arte-vila/atelie/objetos/agora.png?v=x",
+     {"corpo": None, "guardado": False, "interceptado": False}),
+    ("ok", "https://pc/p/bilhete123", {"corpo": None, "guardado": False, "interceptado": False}),
+    ("ok", "https://pc/api/vila", {"corpo": None, "guardado": False, "interceptado": False}),
+    ("502", "https://pc/nao-guardado.js",
+     {"corpo": None, "guardado": False, "interceptado": False}),
 ])
 def test_o_service_worker_cai_na_copia_quando_o_pc_responde_erro(tmp_path, cenario, url,
                                                                  esperado):

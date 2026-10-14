@@ -22,8 +22,10 @@ header {
   display: flex; align-items: center; gap: 8px;
   border-bottom: 1px solid var(--linha);
 }
-header h1 { font-size: 17px; margin: 0; flex: 1; }
-#conexao { font-size: 12px; color: var(--fraco); }
+header h1 { font-size: 17px; margin: 0; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#conexao { font-size: 12px; color: var(--fraco); flex: 0 1 auto;
+  max-width: 44%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #conexao.off { color: var(--erro); font-weight: 600; }
 main { padding: 12px 16px; max-width: 640px; margin: 0 auto; }
 .cartao {
@@ -308,7 +310,10 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
 .livro {
   position: fixed; inset: 0; z-index: 5; overflow-y: auto;
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
-  padding: calc(64px + env(safe-area-inset-top)) 14px
+  /* --faixa-alto: a faixa "sem conexão" (fixa, logo abaixo do cabeçalho)
+     empurra o objeto para baixo em vez de cobrir a fileira de abas e engolir
+     o toque (auditoria 11/10, item 1; medido pelo app.js, faixasMedir) */
+  padding: calc(64px + env(safe-area-inset-top) + var(--faixa-alto, 0px)) 14px
            calc(24px + env(safe-area-inset-bottom));
   --fundo: #eadbb5; --cartao: #f6ecd2; --texto: #3b2a1a; --fraco: #7a6248;
   --linha: #d6c29a; --ok: #3d6b2f; --erro: #a8321f; --ativo: #b8661b;
@@ -816,7 +821,7 @@ body.deitado #tela-vila #vila-escolhido.lado-dir { left: auto; right: 10px; }
 /* o objeto aberto: a folha usa a largura, e o entalhe do aparelho não come
    o texto */
 body.deitado .livro {
-  padding: calc(56px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+  padding: calc(56px + env(safe-area-inset-top) + var(--faixa-alto, 0px)) calc(16px + env(safe-area-inset-right))
            calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
 }
 body.deitado .livro > * { max-width: 760px; }
@@ -906,7 +911,7 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 
 /* ---- Ateliê: os dois modos e o Provador, o jogo de vestir (06/10/2026) ----
    Todo toque com >= 44 px; o fundo xadrez mostra a transparência da peça. */
-.livro.atelie { padding-top: calc(112px + env(safe-area-inset-top)); }
+.livro.atelie { padding-top: calc(112px + env(safe-area-inset-top) + var(--faixa-alto, 0px)); }
 .atelie-novo { max-width: 760px; margin: auto; }
 .atelie-novo-cabeca { display: flex; gap: 8px; align-items: center; position: relative; z-index: 1; }
 .atelie-novo h2 { margin: 8px 0; }

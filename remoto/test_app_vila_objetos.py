@@ -145,13 +145,34 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v65 = Ateliê: folha com fundo magenta/verde liso volta limpa (08/10, o Bot).
     # v66 = Vila do celular toca a animacao inteira do Atelie e baixa a arte nova sozinha (08/10).
     # v67 = props animados do Atelie (08/10).
-    assert "painel-casca-v68" in sw
+    # v69 = consertos da auditoria profunda de 11/10 (14/10): a faixa sem PC
+    # empurra o objeto, o cache só guarda a casca, Cinema "carregando", etc.
+    assert "painel-casca-v69" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw
     assert '"assembleia.js"' in sw
     assert '"atelie_novo.js"' in sw
     assert '"atelie_novo.js"' in sw
+    assert 'ARQUIVOS.includes(caminho)' in sw
+
+
+def test_a_casca_guarda_tudo_o_que_o_index_carrega_e_o_servidor_serve():
+    """Auditoria 11/10, item 12: o `favicon-16.png` do index não estava na
+    lista ARQUIVOS (sem rede, um erro por abertura). Todo href/src local do
+    index entra na casca, e todo arquivo da casca tem rota no servidor (o
+    `addAll` do install falha inteiro se um só der 404)."""
+    from remoto import api_http
+
+    sw = (APP / "sw.js").read_text(encoding="utf-8")
+    arquivos = re.findall(r'"([^"]+)"', sw.split("const ARQUIVOS = [", 1)[1].split("];", 1)[0])
+    locais = [a for a in re.findall(r'(?:href|src)="([^"#:]+)"', HTML) if not a.startswith("/")]
+    assert locais and "icones/favicon-16.png" in locais
+    assert set(locais) <= set(arquivos), set(locais) - set(arquivos)
+    assert "favicon.ico" in arquivos             # o navegador pede sozinho
+    for arquivo in arquivos:
+        rota = "/" if arquivo == "./" else "/" + arquivo
+        assert rota in api_http.ESTATICOS, rota
 
 
 def test_o_icone_novo_esta_no_manifest_na_casca_e_no_servidor():

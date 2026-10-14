@@ -1,11 +1,12 @@
 // Guarda so a CASCA do app (html, icone, manifest) para abrir sem rede.
 // Dados e videos nunca entram no cache: eles vem sempre do PC.
-const CASCA = "painel-casca-v68";
+const CASCA = "painel-casca-v69";
 const ARQUIVOS = ["./", "index.html", "app.js", "vila.js", "comandos.js",
                   "decisoes.js", "assembleia.js", "orquestrador.js", "coordenador.js", "conversa.js", "oficina.js", "equipe.js", "biblioteca.js", "atelie_novo.js", "app.css", "bolinha_hoje.png",
                   "manifest.webmanifest", "icones/icone-192.png",
                   "icones/icone-512.png", "icones/icone-maskable-512.png",
-                  "icones/apple-touch-icon.png", "icones/favicon-32.png"];
+                  "icones/apple-touch-icon.png", "icones/favicon-32.png",
+                  "icones/favicon-16.png", "favicon.ico"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CASCA).then((c) => c.addAll(ARQUIVOS)));
@@ -20,8 +21,13 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== "GET" || url.pathname.startsWith("/api/")
-      || url.pathname.startsWith("/v/")) return;
+  // So a CASCA passa por aqui. O resto (fundos e atlas da Vila com `?v=`,
+  // /arte-vila/, as paginas /p/ da Biblioteca) e rede pura: antes toda
+  // resposta 200 entrava no cache e cada versao da Vila ficava para sempre
+  // (~3,2 MB por arte salva no Ateliê; auditoria 11/10, item 2). O
+  // Cache-Control do servidor ja cuida das imagens.
+  const caminho = url.pathname === "/" ? "./" : url.pathname.slice(1);
+  if (e.request.method !== "GET" || !ARQUIVOS.includes(caminho)) return;
   // rede primeiro (a casca nova chega logo), cache quando o PC nao responde
   // So resposta 200 da propria origem entra no cache: um 404 ou 429
   // guardado viraria a casca quebrada ate a proxima atualizacao.

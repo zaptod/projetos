@@ -137,7 +137,7 @@ def _esperar_tela(page, nome):
         page.wait_for_function("""() => [...document.querySelectorAll('#sprites-lista img')]
             .some((img) => img.src.startsWith('blob:'))""")
     if nome == "atelie":
-        page.locator("#modular-slots button").first.wait_for(state="visible")
+        page.locator("#anim-grupos button").first.wait_for(state="visible")
     page.wait_for_function("""() => [...document.images].filter((img) =>
         img.getClientRects().length && img.getBoundingClientRect().width).every((img) => img.complete)""")
 

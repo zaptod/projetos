@@ -99,7 +99,30 @@ def test_mundo_leva_o_que_o_app_precisa():
     assert m["predios"]["grok"]["rotulo"] == "Grok"
     assert "grok" in m["lotes"] and "grok" in m["portas"]
     assert m["atlas"]["larg"] > 0 and m["atlas"]["mapa"]
+    assert set(m["objetos_do_atelie"]) <= {"agora", "decidir", "mandar", "ver"}
     assert m["versao"] and m["versao"] != "0"
+
+
+def test_mundo_lista_so_objetos_do_atelie_com_arte(monkeypatch):
+    class ArtePronta:
+        @staticmethod
+        def peca_do_atelie(nome):
+            return object() if nome == "objetos/mandar.png" else None
+
+    monkeypatch.setattr(vila_nova, "_arte_pronta", lambda: ArtePronta())
+    assert vila_nova.objetos_do_atelie() == ["mandar"]
+
+
+def test_folha_ilegivel_de_um_objeto_nao_derruba_a_lista(monkeypatch):
+    class ArteQuebrada:
+        @staticmethod
+        def peca_do_atelie(nome):
+            if nome == "objetos/agora.png":
+                raise OSError("folha truncada")
+            return object() if nome == "objetos/ver.png" else None
+
+    monkeypatch.setattr(vila_nova, "_arte_pronta", lambda: ArteQuebrada())
+    assert vila_nova.objetos_do_atelie() == ["ver"]
 
 
 def test_celular_recebe_a_vila_dobrada_em_3x_e_o_atlas_em_3x():

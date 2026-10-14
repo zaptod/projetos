@@ -198,6 +198,23 @@ function conexao(ok, err) {
   $("aviso").classList.remove("oculto");
 }
 
+// As faixas (#aviso, #casca-nova, #modulo-faltando) são fixas, logo abaixo do
+// cabeçalho. Com um objeto aberto elas cobriam a fileira de abas dele e
+// engoliam o toque, justo quando ele quer ir ao Coordenador ver o que caiu
+// (auditoria 11/10, item 1: faixa de 83 px em y=62, abas em y=64). O objeto
+// desce o tanto que a faixa ocupa: `--faixa-alto` entra no padding do .livro.
+function faixasMedir() {
+  let alto = 0;
+  for (const f of document.querySelectorAll("body > .aviso:not(.oculto)"))
+    alto = Math.max(alto, f.getBoundingClientRect().height);
+  document.body.style.setProperty("--faixa-alto", alto ? `${Math.ceil(alto + 8)}px` : "0px");
+}
+const faixasVigia = new MutationObserver(faixasMedir);
+for (const f of document.querySelectorAll("body > .aviso"))
+  faixasVigia.observe(f, {attributes: true, attributeFilter: ["class"],
+                          childList: true, characterData: true, subtree: true});
+window.addEventListener("resize", faixasMedir);
+
 // ------------------------------------------------------------- agora
 function desenharEstado(e) {
   $("proxima").textContent = e.proxima ? e.proxima.horario : "—";
@@ -317,12 +334,34 @@ async function carregarDiario() {
 }
 
 // ------------------------------------------------------------ videos
+// O /api/videos frio varre os vídeos prontos em disco: 11 a 30+ s, e o Cinema
+// ficava em branco (auditoria 11/10, item 3). Agora diz "carregando" na hora
+// e não espera o /api/acoes (o publicarLigado só decide o botão Publicar: a
+// lista é redesenhada quando ele chega). A varredura custa o mesmo para 60 ou
+// 80: pede 80 e guarda, e o diálogo de comandos (Geração) reaproveita.
+const VIDEOS_NO_CINEMA = 60;
 async function carregarVideos() {
+  const alvo = $("videos");
+  videosDestaAbertura = false;
+  alvo.replaceChildren(el("div", {class: "fraco"}, "carregando os vídeos…"));
   try {
-    const lista = await api("/api/videos?n=60");
-    const alvo = $("videos");
-    alvo.replaceChildren();
-    for (const v of lista) {
+    const lista = await api("/api/videos?n=80");
+    videosCarregados = lista;
+    videosCarregadosEm = Date.now();
+    videosDestaAbertura = true;
+    if (tela === "videos") desenharVideos(lista);
+    conexao(true);
+  } catch (err) {
+    alvo.replaceChildren(el("div", {class: "fraco"}, "não consegui buscar os vídeos agora."));
+    conexao(false, err);
+  }
+}
+
+function desenharVideos(todos) {
+  const alvo = $("videos");
+  const lista = todos.slice(0, VIDEOS_NO_CINEMA);
+  alvo.replaceChildren();
+  for (const v of lista) {
       const botao = el("button", {class: "acao"}, "▶");
       botao.addEventListener("click", () => tocar(v));
       let publicar = null;
@@ -344,10 +383,8 @@ async function carregarVideos() {
             ? el("div", {class: "erro"}, "pendente: " + v.pendencias.join(", "))
             : null),
         publicar, botao));
-    }
-    if (!lista.length) alvo.append(el("div", {class: "fraco"}, "nenhum vídeo pronto."));
-    conexao(true);
-  } catch (err) { conexao(false, err); }
+  }
+  if (!lista.length) alvo.append(el("div", {class: "fraco"}, "nenhum vídeo pronto."));
 }
 
 // ------------------------------------------------------------- acoes
@@ -355,6 +392,9 @@ async function carregarVideos() {
 // A tela so mostra e pede o "sim".
 let acoesLigadas = false;
 let publicarLigado = false;
+let videosCarregados = null;       // a última lista (80), também do diálogo de comandos
+let videosCarregadosEm = 0;
+let videosDestaAbertura = false;   // a lista na tela é desta abertura do Cinema
 
 function avisar(texto, ruim = false) {
   const t = $("toast");
@@ -599,13 +639,18 @@ $("btn-parear").addEventListener("click", async () => {
       body: JSON.stringify({codigo: $("codigo").value,
                             nome: navigator.userAgentData?.platform || "celular"}),
     });
-    const dados = await resp.json();
-    if (!resp.ok) throw new Error(dados.erro || resp.status);
+    let dados = {};
+    try { dados = await resp.json(); } catch (_) {}
+    if (!resp.ok) throw new Error(dados.erro || `O PC respondeu com erro ${resp.status}.`);
     localStorage.setItem(TOKEN, dados.token);
     $("codigo").value = "";
     msg.textContent = "";
     mostrar();
-  } catch (err) { msg.textContent = err.message; }
+  } catch (err) {
+    msg.textContent = err instanceof TypeError
+      ? "Não consegui falar com o PC. Confira o Tailscale neste celular."
+      : err.message;
+  }
 });
 
 // --------------------------------------------------------------- telas
@@ -826,7 +871,10 @@ function mostrar(nova) {
   if (tela === "coordenador" && typeof coordenadorMostrar === "function") {
     coordenadorMostrar();
   }
-  carregarAcoes().then(() => { if (tela === "videos") carregarVideos(); });
+  if (tela === "videos") carregarVideos();
+  carregarAcoes().then(() => {
+    if (tela === "videos" && videosDestaAbertura) desenharVideos(videosCarregados);
+  });
   const [carga, intervalo] = CARGAS[tela];
   if (carga) {
     carga();

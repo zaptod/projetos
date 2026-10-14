@@ -84,6 +84,7 @@ function comandosFormulario(acao) {
   corpo.replaceChildren(el("p", {}, acao.rotulo),
                         el("p", {class: "fraco"}, acao.descricao || ""));
   const entradas = {};
+  const carregamentos = [];
   for (const campo of acao.campos) {
     let entrada;
     if (campo.tipo === "escolha") {
@@ -98,9 +99,9 @@ function comandosFormulario(acao) {
       if (campo.maximo != null) entrada.max = campo.maximo;
       if (campo.padrao != null) entrada.value = campo.padrao;
     } else if (campo.tipo === "build" || campo.tipo === "historia") {
-      entrada = el("select", {});
+      entrada = el("select", {"data-ids": campo.tipo});
       entrada.replaceChildren(el("option", {value: ""}, "carregando…"));
-      comandosPreencherIds(entrada, campo.tipo);
+      carregamentos.push(comandosPreencherIds(entrada, campo.tipo));
     } else {
       entrada = el("input", {type: "text"});
     }
@@ -115,6 +116,19 @@ function comandosFormulario(acao) {
       "Isto não tem desfazer. Digite o alvo para confirmar:", confirmo));
   }
   return new Promise((resolve) => {
+    // "Continuar" só com a lista de Geração/História carregada e com um id
+    // nela: antes ele ficava ativo em "carregando…" e o pedido saía com id
+    // vazio (409 "falta preencher"; auditoria 11/10, item 10). A `vez` impede
+    // que a lista de um diálogo anterior, chegando atrasada, libere este.
+    const continuar = $("btn-campos-ok");
+    const vez = comandosFormulario.vez = (comandosFormulario.vez || 0) + 1;
+    const listas = Object.values(entradas).filter((e) => e.tagName === "SELECT"
+      && e.dataset.ids);
+    continuar.disabled = carregamentos.length > 0;
+    Promise.all(carregamentos).finally(() => {
+      if (d.open && comandosFormulario.vez === vez)
+        continuar.disabled = listas.some((e) => !e.value);
+    });
     d.returnValue = "cancelar";
     d.addEventListener("close", () => {
       if (d.returnValue !== "ok") { resolve(null); return; }
@@ -132,7 +146,11 @@ function comandosFormulario(acao) {
 // As listas de build e de história vêm do que o app já mostra em Vídeos.
 async function comandosPreencherIds(entrada, tipo) {
   try {
-    const videos = await api("/api/videos?n=80");
+    // a lista do Cinema serve se tiver até 2 min: a varredura é cara, mas uma
+    // build gerada depois dela tem de aparecer aqui
+    const fresca = videosCarregados && Date.now() - videosCarregadosEm < 120000;
+    const videos = fresca ? videosCarregados : await api("/api/videos?n=80");
+    if (!fresca) { videosCarregados = videos; videosCarregadosEm = Date.now(); }
     const canal = tipo === "build" ? "builds" : "historias";
     const ids = [...new Set(videos.filter((v) => v.canal === canal)
       .map((v) => String(v.id).split(":")[0]))];
