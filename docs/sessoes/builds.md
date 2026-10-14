@@ -149,7 +149,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Volume dos golpes depois do conserto** — Pode aplicar direto (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `volume-dos-golpes`
 - ✅ **Live: !arena com dois pagantes** — Vale o primeiro; o que não coube é recusado com reembolso na tela (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `arena-dois-pagantes`
 - ✅ **Estatísticas do torneio** — Preencher (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `estatisticas-do-torneio`
-- ⏳ **Moderação da live** — Existe uma função de banimento na live que nada chama. Ligar a um comando de moderador ou remover? `banimento-na-live`
+- ✅ **Moderação da live** — Ligar a um comando de moderador (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `banimento-na-live`
 
 <!-- decisoes:fim -->
 
