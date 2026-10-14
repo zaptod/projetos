@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T08:46:57",
+      "evento": "2026-10-14T08:46:29",
+      "linha": 175,
+      "nota": "resposta sem pedido de origem: historias/previa-do-gemini = Aceitar, marcada como 'prévia' (recomendado)",
+      "opcao": "aceitar-marcada",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:44.252504",
   "depende_de": [],
