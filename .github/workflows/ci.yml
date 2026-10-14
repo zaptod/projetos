@@ -17,10 +17,14 @@ jobs:
       SDL_AUDIODRIVER: dummy
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
-      NEURAL_FIGHTS_RUNTIME_DIR: ${{ runner.temp }}/neural-fights-runtime
 
     steps:
       - uses: actions/checkout@v4
+      # `runner` nao existe no `env:` do job (o CI morria em 0 s com
+      # "workflow file issue" desde 19/08); define aqui, ja dentro do runner
+      - name: Pasta de runtime
+        shell: bash
+        run: echo "NEURAL_FIGHTS_RUNTIME_DIR=${{ runner.temp }}/neural-fights-runtime" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -105,10 +109,14 @@ jobs:
       SDL_AUDIODRIVER: dummy
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
-      NEURAL_FIGHTS_RUNTIME_DIR: ${{ runner.temp }}/neural-fights-runtime
 
     steps:
       - uses: actions/checkout@v4
+      # `runner` nao existe no `env:` do job (o CI morria em 0 s com
+      # "workflow file issue" desde 19/08); define aqui, ja dentro do runner
+      - name: Pasta de runtime
+        shell: bash
+        run: echo "NEURAL_FIGHTS_RUNTIME_DIR=${{ runner.temp }}/neural-fights-runtime" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
