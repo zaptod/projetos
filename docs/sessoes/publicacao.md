@@ -70,7 +70,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Build que saiu só no TikTok: levar ao YouTube depois?** — Mesma regra das histórias (recomendado) (13/10/2026) `build-so-no-tiktok`
 - ✅ **Visibilidade gravada no registro** — A visibilidade que o publicador de fato usou (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `visibilidade-no-ledger`
 - ✅ **Chave 'postar automático' do TikTok nos builds** — A grade posta; a chave sai (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `tiktok-postar-automatico`
-- ⏳ **Duelo de 12/10 que saiu só no TikTok** — O conserto que leva ao YouTube o build que saiu só no TikTok vale a partir de 13/10. O duelo_00076 saiu só no TikTok em 12/10 às 16:31, um dia antes. Levar ele também? `duelo-00076-ao-youtube`
+- ✅ **Duelo de 12/10 que saiu só no TikTok** — Levar ao YouTube também (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `duelo-00076-ao-youtube`
 - ⏳ **Quando o arquivo de pareceres não abre** — Se o arquivo com os pareceres das histórias estiver corrompido ou trancado, toda parte fica 'retida'. Hoje, para o horário não ficar vazio, sai uma parte marcada 'a conferir'. Prefere que nesse caso nada saia? `pareceres-ilegiveis`
 
 <!-- decisoes:fim -->
