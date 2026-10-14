@@ -40,6 +40,13 @@ PERFIS = {
                    None, exige_mestra=True),
 }
 
+# O que o Adrian ja fez (14/10/2026): o Atelie do app guarda as folhas dele em
+# `animacoes/<peca>/<estado>/<animacao>/folha.png`, e a biblioteca do palco tem
+# a arte que ja entrou. O `lote` nao pede item que ja esta num desses lugares
+# (`ja_feito.py`).
+ATELIE = RAIZ_PROJETO / "palco" / "biblioteca" / "animacoes"
+BIBLIOTECA_PALCO = RAIZ_PROJETO / "palco" / "biblioteca"
+
 PERFIL = "palco"
 INVENTARIO = PERFIS[PERFIL].inventario
 PAGINA = PERFIS[PERFIL].pagina

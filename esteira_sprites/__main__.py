@@ -11,13 +11,13 @@ import numpy as np
 from ias import correio
 from PIL import Image
 
-from . import animacao, config, ficha, prompt
+from . import animacao, config, ficha, ja_feito, prompt
 from .aprovar import aprovar, descartar, refazer
 from .colher import colher
 from .juiz import colher as colher_juiz
 from .juiz import perguntar
 from .limpar import limpar
-from .pedir import pedir
+from .pedir import GERADOR, pedir
 from .portao import passar, validar
 
 
@@ -63,13 +63,30 @@ def _decisao_tomada(item: dict) -> bool:
     return dados.get("situacao") == "decidida"
 
 
-# 02/10/2026, o Adrian: "achei suas animacoes um lixo... eu mesmo vou fazer
-# esses sprites". As FOLHAS animadas nao sao mais pedidas a IA; ele importa as
-# dele pelo Atelie do app. Pecas paradas (predios, chao) continuam.
-FOLHAS_POR_IA = False
+# 02/10/2026 o Adrian desligou as folhas ("achei suas animacoes um lixo... eu
+# mesmo vou fazer esses sprites"). 14/10/2026 ele mandou voltar: "Agora que tudo
+# ja esta mais limpo e organizado quero que voce volte a utilizar o ChatGPT para
+# os sprites". Pecas paradas E folhas animadas voltam a ser pedidas, todas ao
+# ChatGPT; o que ele ja fez pelo Atelie nunca e pedido (`ja_feito.py`).
+FOLHAS_POR_IA = True
+
+# Estados em que a ficha ja esta na esteira (o `refazer` o `avancar` repede).
+JA_NA_ESTEIRA = ("pedido", "gerado", "limpo", "medido", "julgado", "a_conferir",
+                 "aprovado", "na_biblioteca", "refazer")
+# Descarte: os de antes do religamento foram a PARADA da esteira (02/10/2026,
+# 01:03 e 16:42, tudo o que estava em voo), nao um "nao quero" do Adrian: o item
+# volta a fila com a contagem de tentativas zerada. O que ele descartar pela tela
+# de conferencia daqui em diante fica fora (antes, o ciclo seguinte repedia).
+RELIGADA_EM = "2026-10-14"
 
 
-def lote(prioridade: str, n: int) -> list[str]:
+def _descarte_do_adrian(dados: dict) -> bool:
+    descartes = [str(e.get("em") or "") for e in dados.get("historico", []) if e.get("tipo") == "descartado"]
+    return bool(descartes) and descartes[-1] >= RELIGADA_EM
+
+
+def lote(prioridade: str, n: int, seco: bool = False) -> list[str]:
+    """Pede ate `n` itens da prioridade. `seco`: so diz quais pediria (nada e gravado)."""
     escolhidos = []
     if config.perfil().exige_mestra and not config.mestra().is_file():
         # sem a mestra, cada pedido sairia num estilo; nada e pedido
@@ -83,9 +100,20 @@ def lote(prioridade: str, n: int) -> list[str]:
                 or not _decisao_tomada(item)):
             continue
         existente = ficha.ler(item["id"])
-        if existente and existente.get("estado") in ("pedido", "gerado", "limpo", "medido", "julgado", "a_conferir", "aprovado", "na_biblioteca"):
+        if existente and existente.get("estado") in JA_NA_ESTEIRA:
             continue
-        pedir(item["id"])
+        if existente and existente.get("estado") == "descartado" and _descarte_do_adrian(existente):
+            continue
+        if ja_feito.motivo(item):
+            # o Adrian fez pelo Atelie, ou a arte ja esta na biblioteca
+            continue
+        if not seco:
+            if existente and existente.get("tentativas"):
+                # volta da parada: as tentativas de antes nao gastam o teto de agora
+                existente["contar_desde"] = len(existente["tentativas"])
+                ficha.registrar(existente, "volta_a_fila", de=existente.get("estado"))
+                ficha.gravar(existente)
+            pedir(item["id"])
         escolhidos.append(item["id"])
         if len(escolhidos) >= n:
             break
@@ -93,9 +121,57 @@ def lote(prioridade: str, n: int) -> list[str]:
 
 
 EM_VOO = ("pedido", "gerado", "limpo", "medido", "julgado")
-# quantos itens ficam em producao ao mesmo tempo por perfil: o carteiro faz um
-# por vez por conta, entao mais que isso so enche a fila
-ALVO_EM_VOO = 4
+# Quantos itens ficam em producao ao mesmo tempo POR PERFIL (14/10/2026: 2).
+# O ChatGPT tambem faz as imagens das historias pelo rodizio e o carteiro
+# entrega um pedido por vez por conta: com 2 por perfil a esteira tem no maximo
+# 4 imagens na fila dele, e as historias continuam passando entre elas.
+ALVO_EM_VOO = 2
+
+
+def _ultima(dados: dict) -> dict:
+    return (dados.get("tentativas") or [{}])[-1]
+
+
+def _de_outro_gerador(dados: dict) -> bool:
+    """Ficha em producao cuja imagem saiu (ou sairia) de outra IA: o Gemini de antes de 14/10."""
+    if dados.get("estado") not in EM_VOO or not dados.get("tentativas"):
+        return False
+    # sem `caixa` e ficha antiga do ChatGPT (o `colher` assume o mesmo)
+    return str(_ultima(dados).get("caixa") or GERADOR) != GERADOR
+
+
+def _parar_outro_gerador(dados: dict) -> bool:
+    """Cancela no correio o que a outra IA ainda nao fez (gerar ou julgar). Idempotente."""
+    t = _ultima(dados)
+    parou = False
+    for caixa, mid in ((t.get("caixa"), t.get("correio_id")), (t.get("juiz_caixa"), t.get("juiz_id"))):
+        if not caixa or not mid:
+            continue
+        mensagem = correio.uma(caixa, mid) or {}
+        if mensagem.get("situacao") == "pendente":
+            correio.atualizar(caixa, mid, situacao="falhou", categoria="interrompida",
+                              erro="a esteira so usa o ChatGPT desde 14/10/2026 (ordem do Adrian)")
+            parou = True
+    return parou
+
+
+def _trocar_para_chatgpt(item_id: str, dados: dict) -> bool:
+    """A ficha de outro gerador volta a ser pedida, igual, ao ChatGPT.
+
+    A tentativa da outra IA fica na ficha (auditoria), mas nao gasta o teto de
+    MAX_TENTATIVAS: `contar_desde` anda uma casa."""
+    _parar_outro_gerador(dados)
+    t = _ultima(dados)
+    t["trocado_para"] = GERADOR
+    dados["contar_desde"] = int(dados.get("contar_desde") or 0) + 1
+    ficha.registrar(dados, "gerador_trocado", de=t.get("caixa"), para=GERADOR)
+    ficha.gravar(dados)
+    # o motivo do pedido (nao o que o portao achou na imagem da outra IA)
+    pedidos = [h for h in dados.get("historico", []) if h.get("tipo") == "pedido"]
+    motivo = str((pedidos[-1].get("motivo") if pedidos else "") or "")
+    pronto = str(t.get("prompt") or "") if t.get("prompt_do_juiz") else ""
+    pedir(item_id, motivo, prompt_pronto=pronto)
+    return True
 
 
 def _repedir(item_id: str, dados: dict) -> bool:
@@ -116,61 +192,40 @@ def _repedir(item_id: str, dados: dict) -> bool:
     return True
 
 
-# 02/10/2026, o Adrian: "por que voce ainda esta gerando os sprites quando eu ja
-# disse pra parar". A esteira inteira esta DESLIGADA: ele faz os sprites dele e
-# importa pelo Atelie. Ligar de novo so com ordem dele.
-ESTEIRA_LIGADA = False
+# 02/10/2026 o Adrian desligou a esteira inteira ("por que voce ainda esta
+# gerando os sprites quando eu ja disse pra parar"). 14/10/2026 ele mandou
+# religar com o ChatGPT gerando todos os sprites (ordem no chat, ver o FOLHAS_POR_IA
+# acima). A aprovacao final continua dele: nada sai de `a_conferir` para a
+# biblioteca sem o `aprovar` (tela de conferencia do app ou comando).
+ESTEIRA_LIGADA = True
+
+
+def _em_voo_chatgpt() -> int:
+    return sum(1 for i in config.itens()
+               if (d := ficha.ler(i["id"])) and d.get("estado") in EM_VOO and not _de_outro_gerador(d))
 
 
 def ciclo() -> dict:
     """Uma passada da producao continua: anda tudo e completa o que esta em voo."""
     if not ESTEIRA_LIGADA:
         return {"perfil": config.PERFIL, "andou": 0, "em_voo": 0, "novos": [],
-                "desligada": "o Adrian mandou parar (02/10/2026)"}
+                "desligada": "a esteira esta desligada (ESTEIRA_LIGADA)"}
     andou = avancar()
-    em_voo = sum(1 for i in config.itens() if (d := ficha.ler(i["id"])) and d.get("estado") in EM_VOO)
+    em_voo = _em_voo_chatgpt()
     novos = []
+    # primeiro as fichas que outra IA tinha comecado, dentro do mesmo teto
+    for item in config.itens():
+        if em_voo + len(novos) >= ALVO_EM_VOO:
+            break
+        dados = ficha.ler(item["id"])
+        if dados and _de_outro_gerador(dados) and _trocar_para_chatgpt(item["id"], dados):
+            novos.append(item["id"])
     for prioridade in ("P1", "P2", "P3"):
         falta = ALVO_EM_VOO - em_voo - len(novos)
         if falta <= 0:
             break
         novos += lote(prioridade, falta)
     return {"perfil": config.PERFIL, "andou": andou, "em_voo": em_voo + len(novos), "novos": novos}
-
-
-# Decisao painel-e-vila/folhas-chatgpt-ocupado (Adrian, 02/10/2026): folha
-# espera ate COBERTURA_MIN pelo ChatGPT; se ele continuar ocupado (a criacao de
-# historias segura a conta por horas), o Gemini faz. Se o juiz reprovar, o
-# proximo pedido volta ao ChatGPT (o gerador padrao da folha).
-COBERTURA_MIN = 20
-
-
-def _cobrir_chatgpt_ocupado(item_id: str, dados: dict) -> bool:
-    from datetime import datetime
-    t = (dados.get("tentativas") or [{}])[-1]
-    if t.get("caixa") != "chatgpt" or t.get("cobertura"):
-        return False
-    m = correio.uma("chatgpt", t.get("correio_id") or "") or {}
-    if m.get("situacao") != "pendente":
-        return False                       # ja entregue ou respondida: segue
-    try:
-        idade = (datetime.now() - datetime.fromisoformat(str(m.get("em"))[:19])).total_seconds() / 60
-    except ValueError:
-        return False
-    if idade < COBERTURA_MIN:
-        return False
-    correio.atualizar("chatgpt", t["correio_id"], situacao="falhou", categoria="interrompida",
-                      erro=f"o ChatGPT ficou ocupado {idade:.0f} min; o Gemini cobre (decisao "
-                           "folhas-chatgpt-ocupado)")
-    ficha.registrar(dados, "cobertura", de="chatgpt", para="gemini", espera_min=round(idade))
-    ficha.gravar(dados)
-    # a tentativa que nunca saiu nao conta: o pedido vai igual ao Gemini
-    dados = ficha.ler(item_id)
-    dados["tentativas"].pop()
-    ficha.gravar(dados)
-    pedir(item_id, str(t.get("motivo") or ""), prompt_pronto=str(t.get("prompt") or ""),
-          caixa="gemini", cobertura=True)
-    return True
 
 
 def avancar() -> int:
@@ -180,9 +235,13 @@ def avancar() -> int:
         if not dados:
             continue
         estado = dados.get("estado")
-        if estado == "pedido" and _cobrir_chatgpt_ocupado(item["id"], dados):
-            feitos += 1
+        if _de_outro_gerador(dados):
+            # imagem de outra IA nao anda: espera o `ciclo` refazer no ChatGPT
+            # quando houver vaga; o que ela ainda nao fez e cancelado ja
+            feitos += bool(_parar_outro_gerador(dados))
             continue
+        # ChatGPT ocupado (a criacao de historias segura a conta): a ficha ESPERA
+        # em "pedido"; nao ha mais cobertura pelo Gemini (14/10/2026)
         if estado == "refazer":
             feitos += bool(_repedir(item["id"], dados))
         elif estado == "pedido":
@@ -231,6 +290,8 @@ def main(argv: list[str] | None = None) -> int:
     p_lote = sub.add_parser("lote")
     p_lote.add_argument("--prioridade", required=True)
     p_lote.add_argument("--n", type=int, default=5)
+    p_lote.add_argument("--seco", action="store_true",
+                        help="so lista o que pediria: nao grava ficha nem manda ao correio")
     sub.add_parser("avancar")
     sub.add_parser("ciclo", help="anda tudo e mantem a producao cheia (o coordenador chama)")
     sub.add_parser("status")
@@ -252,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.comando == "pedir":
         pedir(args.item)
     elif args.comando == "lote":
-        print("\n".join(lote(args.prioridade, args.n)))
+        print("\n".join(lote(args.prioridade, args.n, seco=args.seco)))
     elif args.comando == "avancar":
         print(avancar())
     elif args.comando == "ciclo":

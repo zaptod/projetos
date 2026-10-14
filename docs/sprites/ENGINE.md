@@ -472,7 +472,7 @@ O **`corpo_bolinha`** e o **`classe_berserker`** que ele fez em 02/10 foram expo
 
 ### Esteira de sprites
 
-- `esteira_sprites/` está **desligada**: `ESTEIRA_LIGADA = False` (`esteira_sprites/__main__.py:122`) e `FOLHAS_POR_IA = False` (`:69`).
+- `esteira_sprites/` foi **religada em 14/10/2026** (`ESTEIRA_LIGADA = True`, `FOLHAS_POR_IA = True`), com o ChatGPT gerando todos os sprites e a aprovação final do Adrian; o que ele fez no Ateliê é pulado (`esteira_sprites/ja_feito.py`). Ver `docs/sessoes/esteira-sprites.md`.
 
 ### Inventário dos 513
 

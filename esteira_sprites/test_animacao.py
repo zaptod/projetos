@@ -86,6 +86,14 @@ def perfil_limpo(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "INVENTARIO", config.PERFIS["palco"].inventario)
     monkeypatch.setattr(config, "PAGINA", None)
     monkeypatch.setattr(config, "RAIZ", tmp_path / "esteira")
+    # o Atelie e as bibliotecas de verdade nunca entram no teste (ja_feito.py)
+    monkeypatch.setattr(config, "ATELIE", tmp_path / "atelie")
+    monkeypatch.setattr(config, "BIBLIOTECA_PALCO", tmp_path / "biblioteca_palco")
+    vila = config.PERFIS["vila"]
+    monkeypatch.setitem(config.PERFIS, "vila", config.Perfil(
+        vila.nome, vila.inventario, vila.subpasta, tmp_path / "arte_vila", vila.pagina,
+        exige_mestra=vila.exige_mestra))
+    monkeypatch.setenv("NF_IAS_PASTA", str(tmp_path / "correio"))
     return tmp_path
 
 
@@ -223,7 +231,7 @@ def test_perfil_padrao_continua_o_palco(perfil_limpo, monkeypatch):
 
 
 def test_lote_da_vila_espera_a_mestra_e_pula_a_externa(perfil_limpo, monkeypatch):
-    monkeypatch.setattr(cli, "FOLHAS_POR_IA", True)       # o item de teste e uma folha
+    assert cli.FOLHAS_POR_IA is True                      # o item de teste e uma folha (14/10)
     config.usar("vila", _inventario_vila(perfil_limpo / "inv_vila.json"))
     pedidos = []
     monkeypatch.setattr(cli, "pedir", lambda item: pedidos.append(item))

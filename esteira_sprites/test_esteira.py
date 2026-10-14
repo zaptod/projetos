@@ -27,8 +27,13 @@ def ambiente(tmp_path, monkeypatch):
     ]
     inventario = tmp_path / "inventario.json"
     inventario.write_text(json.dumps({"itens": itens}), encoding="utf-8")
+    monkeypatch.setattr(config, "PERFIL", "palco")
+    monkeypatch.setenv("NF_IAS_PASTA", str(tmp_path / "correio"))   # nunca o correio de verdade
     monkeypatch.setattr(config, "RAIZ", tmp_path / "esteira")
     monkeypatch.setattr(config, "INVENTARIO", inventario)
+    # o Atelie e a biblioteca de verdade nunca entram no teste
+    monkeypatch.setattr(config, "ATELIE", tmp_path / "atelie")
+    monkeypatch.setattr(config, "BIBLIOTECA_PALCO", tmp_path / "biblioteca_palco")
     monkeypatch.setattr(pedir, "marcar", lambda *_: None)
     return tmp_path
 
@@ -197,11 +202,44 @@ def test_medida_reprovada_vai_ao_juiz_e_conta_como_grave(ambiente, monkeypatch):
     assert juiz.colher("fogo_teste") and refeitos == ["pontinhos soltos: 3"]
 
 
-def test_gerador_e_juiz_cruzados():
-    assert pedir.gerador_do({"tipo": "folha"}) == "chatgpt"
-    assert pedir.gerador_do({"tipo": "peca"}) == "gemini"
+@pytest.mark.parametrize("perfil", ["palco", "vila"])
+def test_o_chatgpt_gera_tudo_peca_e_folha_nos_dois_perfis(ambiente, monkeypatch, perfil):
+    """14/10/2026: o Adrian mandou voltar ao ChatGPT para TODOS os sprites."""
+    monkeypatch.setattr(config, "PERFIL", perfil)
+    monkeypatch.setattr(config, "PAGINA", None)
+    caixas = []
+    monkeypatch.setattr(pedir.correio, "pedir_imagem",
+                        lambda caixa, texto, **k: caixas.append(caixa) or {"id": f"m{len(caixas)}"})
+    for item_id in ("fogo_teste", "folha_teste"):          # uma peca e uma folha
+        assert config.item(item_id)["tipo"] in ("peca", "folha")
+        dados = pedir.pedir(item_id)
+        assert dados["tentativas"][-1]["caixa"] == "chatgpt"
+    assert caixas == ["chatgpt", "chatgpt"]
+    assert pedir.gerador_do({"tipo": "folha"}) == pedir.gerador_do({"tipo": "peca"}) == "chatgpt"
+    # e nao ha mais como mandar a outra IA: o parametro `caixa` saiu
+    with pytest.raises(TypeError):
+        pedir.pedir("fogo_teste", caixa="gemini")
+
+
+def test_juiz_e_sempre_o_chatgpt():
+    assert juiz.JUIZ == "chatgpt"                              # a constante nao engana mais
     assert juiz.juiz_do({"caixa": "gemini"}) == "chatgpt"
     assert juiz.juiz_do({"caixa": "chatgpt"}) == "chatgpt"   # o Gemini julgava mal (02/10)
+
+
+def test_a_pergunta_ao_juiz_diz_o_tamanho_real():
+    """Memoria pergunta-diz-o-que-e-e-pra-que-serve: o QUE e, PARA QUE serve e o TAMANHO real."""
+    vila = juiz._pergunta({"id": "casa", "descricao": "casa", "perfil": "vila",
+                           "tamanho": "1024x1024; no mundo 72x64 (x3 no celular)"}, ["o desenho"])
+    assert "TAMANHO REAL NA TELA: aparece com 216x192 px na tela do celular" in vila
+    palco = juiz._pergunta({"id": "fogo", "descricao": "fogo", "perfil": "palco",
+                            "tamanho": "512x512, objeto com ~400 px"}, ["o desenho"])
+    assert "TAMANHO REAL NA TELA:" in palco and "~144 px na tela do celular" in palco
+    assert "512x512, objeto com ~400 px" in palco
+    icone = juiz.tamanho_real_txt({"tamanho": "512x512 (aparece com ~30 px no celular)"}, "vila")
+    assert icone.startswith("aparece com ~30 px na tela do celular")
+    for texto in (vila, palco):
+        assert "O QUE É ESTE DESENHO" in texto and "PARA QUE SERVE A SUA RESPOSTA" in texto
 
 
 def test_a_pergunta_leva_o_prompt_usado_e_as_medidas():
@@ -246,16 +284,196 @@ def test_lote_pula_bloqueado_e_opcional(ambiente, monkeypatch):
     from esteira_sprites import __main__ as cli
     pedidos = []
     monkeypatch.setattr(cli, "pedir", lambda item: pedidos.append(item))
-    # 02/10: as folhas animadas por IA estao desligadas (o Adrian faz as dele)
-    assert cli.lote("P1", 5) == ["fogo_teste", "trevas_teste"]
-    pedidos.clear()
-    monkeypatch.setattr(cli, "FOLHAS_POR_IA", True)
-    for i in ("fogo_teste", "trevas_teste"):
-        f = ficha.ler(i) or ficha.nova(config.item(i))
-        f["estado"] = "pedido"
-        ficha.gravar(f)
-    assert cli.lote("P1", 5) == ["folha_teste"]
+    # 14/10: pecas E folhas voltaram (ordem do Adrian)
+    assert cli.FOLHAS_POR_IA is True
+    assert cli.lote("P1", 5) == ["fogo_teste", "trevas_teste", "folha_teste"]
     assert "bloqueado" not in pedidos and "opcional" not in pedidos
+    # a chave continua funcionando, se um dia ele desligar as folhas de novo
+    monkeypatch.setattr(cli, "FOLHAS_POR_IA", False)
+    assert cli.lote("P1", 5) == ["fogo_teste", "trevas_teste"]
+
+
+def test_lote_seco_nao_pede_nem_grava(ambiente, monkeypatch):
+    from esteira_sprites import __main__ as cli
+    monkeypatch.setattr(cli, "pedir", lambda *a, **k: pytest.fail("seco nao pede"))
+    assert cli.lote("P1", 2, seco=True) == ["fogo_teste", "trevas_teste"]
+    assert not config.RAIZ.exists() or not list(config.RAIZ.rglob("ficha.json"))
+
+
+def test_descarte_da_parada_volta_e_o_do_adrian_fica_fora(ambiente, monkeypatch):
+    """02/10 a parada descartou tudo o que estava em voo; daqui em diante o descarte e dele."""
+    from esteira_sprites import __main__ as cli
+    for item_id, quando in (("fogo_teste", "2026-10-02T16:42:38"), ("trevas_teste", "2026-10-14T18:00:00")):
+        d = ficha.nova(config.item(item_id))
+        d["tentativas"] = [{"caixa": "gemini", "caminhos": {}}] * 6
+        d["contar_desde"] = 3
+        d["estado"] = "descartado"
+        d["historico"] = [{"tipo": "descartado", "em": quando}]
+        ficha.gravar(d)
+    pedidos = []
+    monkeypatch.setattr(cli, "pedir", lambda item: pedidos.append(item))
+    monkeypatch.setattr(cli, "FOLHAS_POR_IA", False)
+    assert cli.lote("P1", 5) == ["fogo_teste"] and pedidos == ["fogo_teste"]
+    volta = ficha.ler("fogo_teste")
+    assert juiz.tentativas_contadas(volta) == 0 and volta["historico"][-1]["tipo"] == "volta_a_fila"
+
+
+def _folha_no_atelie(peca: str, estado: str, animacao: str = "parado", historico: bool = False) -> Path:
+    pasta = config.ATELIE / peca / estado / animacao
+    if historico:
+        pasta = pasta / "historico" / "20261008T000000Z"
+    pasta.mkdir(parents=True, exist_ok=True)
+    return imagem(pasta / "folha.png")
+
+
+def test_item_que_o_adrian_fez_no_atelie_nao_e_pedido(ambiente, monkeypatch):
+    """14/10/2026: a esteira nunca pede o que ele ja subiu pelo Atelie."""
+    from esteira_sprites import __main__ as cli, ja_feito
+    itens = [
+        {"id": "arma_cristais", "nome_arquivo": "armas/estilos/cristais_flutuantes.png", "tipo": "peca",
+         "prioridade": "P1", "ordem": 1},
+        {"id": "arma_katana", "nome_arquivo": "armas/estilos/katana.png", "tipo": "peca",
+         "prioridade": "P1", "ordem": 2},
+        {"id": "pilar", "nome_arquivo": "efeitos/folhas/skills/pilar_de_fogo_erupcao.png", "tipo": "folha",
+         "prioridade": "P1", "ordem": 3},
+        {"id": "projetil_fogo", "nome_arquivo": "efeitos/folhas/11239_removebg_preview_1.png",
+         "tipo": "folha", "prioridade": "P1", "ordem": 4},
+        {"id": "acerto", "nome_arquivo": "efeitos/folhas/acerto.png", "tipo": "folha",
+         "prioridade": "P1", "ordem": 5},
+        {"id": "livre", "nome_arquivo": "efeitos/pecas/skills/livre.png", "tipo": "peca",
+         "prioridade": "P1", "ordem": 6},
+    ]
+    config.INVENTARIO.write_text(json.dumps({"itens": itens}), encoding="utf-8")
+    monkeypatch.setattr(cli, "pedir", lambda *a, **k: pytest.fail("seco"))
+    assert cli.lote("P1", 9, seco=True) == [i["id"] for i in itens]
+    # a folha dele no Atelie (a pasta de peca/estado/animacao que o app grava)
+    _folha_no_atelie("arma.estilo.cristais_flutuantes", "orbitando", "orbitar")
+    _folha_no_atelie("skill.pilar_de_fogo", "efeito", "efeito")
+    # versao velha no historico nao conta como feito
+    _folha_no_atelie("arma.estilo.katana", "parado", historico=True)
+    # a folha dele direto na biblioteca (o fogo do piriri) e o destino do `aprovar` ocupado
+    (config.BIBLIOTECA_PALCO / "efeitos" / "folhas").mkdir(parents=True)
+    imagem(config.BIBLIOTECA_PALCO / "efeitos" / "folhas" / "11239_removebg_preview_1.png")
+    imagem(config.BIBLIOTECA_PALCO / "efeitos" / "folhas" / "acerto.png")
+    assert cli.lote("P1", 9, seco=True) == ["arma_katana", "livre"]
+    assert "Atelie" in ja_feito.motivo(itens[0]) and "biblioteca" in ja_feito.motivo(itens[3])
+
+
+def test_habitante_da_vila_feito_no_atelie_nao_e_pedido(ambiente, monkeypatch):
+    from esteira_sprites import __main__ as cli, ja_feito
+    from neural_fights.tools import catalogo_vila
+    itens = [{"id": "hab_bot_andar", "grupo": "habitantes", "subgrupo": "bot",
+              "nome_arquivo": "habitantes/bot/andar.png", "tipo": "folha", "prioridade": "P1", "ordem": 1},
+             {"id": "hab_bot_parado", "grupo": "habitantes", "subgrupo": "bot",
+              "nome_arquivo": "habitantes/bot/parado.png", "tipo": "folha", "prioridade": "P1", "ordem": 2},
+             {"id": "predio_casa", "grupo": "predios", "nome_arquivo": "predios/casa.png",
+              "tipo": "peca", "prioridade": "P1", "ordem": 3}]
+    config.INVENTARIO.write_text(json.dumps({"itens": itens}), encoding="utf-8")
+    biblioteca = ambiente / "arte_vila"
+    monkeypatch.setattr(config, "PERFIL", "vila")
+    monkeypatch.setitem(config.PERFIS, "vila", config.Perfil(
+        "vila", config.INVENTARIO, "vila", biblioteca, None, exige_mestra=True))
+    config.mestra().parent.mkdir(parents=True)
+    imagem(config.mestra())
+    # a mesma chave que o Atelie e a Vila usam
+    peca, estado = catalogo_vila.chave_do_item(itens[0])
+    assert (peca, estado) == ("vila.habitantes.bot", "andar")
+    _folha_no_atelie(peca, estado, "direita")
+    (biblioteca / "predios").mkdir(parents=True)
+    imagem(biblioteca / "predios" / "casa.png")              # arte da Vila ja aprovada
+    assert cli.lote("P1", 9, seco=True) == ["hab_bot_parado"]
+    assert "Atelie" in ja_feito.motivo(itens[0]) and "biblioteca" in ja_feito.motivo(itens[2])
+
+
+def test_chatgpt_ocupado_a_ficha_espera_e_nao_vai_ao_gemini(ambiente, monkeypatch):
+    """14/10/2026: acabou a cobertura pelo Gemini (decisao folhas-chatgpt-ocupado)."""
+    cli = importlib.import_module("esteira_sprites.__main__")
+    assert not hasattr(cli, "_cobrir_chatgpt_ocupado")
+    dados = ficha.nova(dict(config.item("folha_teste")))
+    dados["estado"] = "pedido"
+    dados["tentativas"] = [{"caixa": "chatgpt", "correio_id": "c1", "prompt": "P" * 90, "motivo": "",
+                            "caminhos": {}}]
+    ficha.gravar(dados)
+    # pendente ha 6 horas: as historias seguram a conta do ChatGPT
+    monkeypatch.setattr(cli.correio, "uma", lambda caixa, mid: {"situacao": "pendente",
+                                                                "em": "2026-10-14T03:00:00"})
+    monkeypatch.setattr(colher_mod.correio, "uma", lambda caixa, mid: {"situacao": "pendente",
+                                                                       "em": "2026-10-14T03:00:00"})
+    monkeypatch.setattr(cli.correio, "atualizar", lambda *a, **k: pytest.fail("nao cancela"))
+    monkeypatch.setattr(cli, "pedir", lambda *a, **k: pytest.fail("nao pede de novo"))
+    for _ in range(3):
+        assert cli.avancar() == 0
+    depois = ficha.ler("folha_teste")
+    assert depois["estado"] == "pedido" and [t["caixa"] for t in depois["tentativas"]] == ["chatgpt"]
+
+
+def test_ficha_do_gemini_volta_ao_chatgpt_dentro_do_teto(ambiente, monkeypatch):
+    """As fichas que o Gemini comecou antes de 14/10 sao refeitas no ChatGPT, sem gastar o teto."""
+    cli = importlib.import_module("esteira_sprites.__main__")
+    limpo = imagem(ambiente / "limpo.png")
+    for item_id in ("fogo_teste", "trevas_teste", "folha_teste"):
+        d = ficha.nova(config.item(item_id))
+        d["estado"] = "limpo"
+        d["tentativas"] = [{"caixa": "gemini", "correio_id": f"g-{item_id}", "prompt": "velho",
+                            "motivo": "", "caminhos": {"limpo": str(limpo)}}]
+        ficha.registrar(d, "pedido", correio_id=f"g-{item_id}", motivo="sem franja", caixa="gemini")
+        ficha.gravar(d)
+    respondidas = {"situacao": "respondida"}
+    monkeypatch.setattr(cli.correio, "uma", lambda caixa, mid: respondidas)
+    monkeypatch.setattr(cli.correio, "atualizar", lambda *a, **k: pytest.fail("nada pendente"))
+    monkeypatch.setattr(cli, "passar", lambda *_: pytest.fail("imagem do Gemini nao anda"))
+    assert cli.avancar() == 0
+    caixas = []
+    monkeypatch.setattr(pedir.correio, "pedir_imagem",
+                        lambda caixa, texto, **k: caixas.append((caixa, texto)) or {"id": f"c{len(caixas)}"})
+    monkeypatch.setattr(cli, "pedir", pedir.pedir)
+    saida = cli.ciclo()
+    assert cli.ALVO_EM_VOO == 2 and saida["novos"] == ["fogo_teste", "trevas_teste"]
+    assert [c for c, _ in caixas] == ["chatgpt", "chatgpt"] and "sem franja" in caixas[0][1]
+    fogo = ficha.ler("fogo_teste")
+    assert [t["caixa"] for t in fogo["tentativas"]] == ["gemini", "chatgpt"]
+    assert juiz.tentativas_contadas(fogo) == 1 and fogo["tentativas"][0]["trocado_para"] == "chatgpt"
+    assert ficha.ler("folha_teste")["estado"] == "limpo"        # espera a vaga
+
+
+def test_ficha_do_gemini_com_pedido_pendente_e_cancelada(ambiente, monkeypatch):
+    cli = importlib.import_module("esteira_sprites.__main__")
+    d = ficha.nova(config.item("fogo_teste"))
+    d["estado"] = "pedido"
+    d["tentativas"] = [{"caixa": "gemini", "correio_id": "g1", "prompt": "p", "caminhos": {}}]
+    ficha.gravar(d)
+    monkeypatch.setattr(cli.correio, "uma", lambda caixa, mid: {"situacao": "pendente"})
+    cancelados = []
+    monkeypatch.setattr(cli.correio, "atualizar", lambda caixa, mid, **k: cancelados.append((caixa, mid, k)))
+    assert cli.avancar() == 1
+    assert cancelados[0][:2] == ("gemini", "g1") and cancelados[0][2]["situacao"] == "falhou"
+
+
+def test_ciclo_ligado_anda_e_enche_ate_o_alvo(ambiente, monkeypatch):
+    """A esteira esta LIGADA (14/10/2026): o ciclo anda as fichas e pede ate ALVO_EM_VOO."""
+    cli = importlib.import_module("esteira_sprites.__main__")
+    assert cli.ESTEIRA_LIGADA is True
+    origem = imagem(ambiente / "resposta.png")
+    pedidas = []
+    monkeypatch.setattr(pedir.correio, "pedir_imagem",
+                        lambda caixa, texto, **k: pedidas.append(caixa) or {"id": f"c{len(pedidas)}"})
+    monkeypatch.setattr(cli, "pedir", pedir.pedir)
+    primeira = cli.ciclo()
+    assert primeira == {"perfil": "palco", "andou": 0, "em_voo": 2, "novos": ["fogo_teste", "trevas_teste"]}
+    assert pedidas == ["chatgpt", "chatgpt"]
+    # o ChatGPT entrega a primeira: a ficha anda e o ciclo nao passa do alvo
+    monkeypatch.setattr(colher_mod.correio, "uma", lambda caixa, mid: (
+        {"situacao": "respondida", "imagem": {"caminho": str(origem)}} if mid == "c1" else {"situacao": "pendente"}))
+    segunda = cli.ciclo()
+    assert segunda["andou"] == 1 and segunda["novos"] == [] and segunda["em_voo"] == 2
+    assert ficha.ler("fogo_teste")["estado"] == "gerado"
+
+
+def test_ciclo_desligado_nao_faz_nada(ambiente, monkeypatch):
+    cli = importlib.import_module("esteira_sprites.__main__")
+    monkeypatch.setattr(cli, "ESTEIRA_LIGADA", False)
+    monkeypatch.setattr(cli, "avancar", lambda: pytest.fail("desligada"))
+    assert cli.ciclo()["desligada"]
 
 
 def test_avancar_sem_resposta_e_idempotente(ambiente):
@@ -298,35 +516,3 @@ def test_pedir_atualiza_o_item_da_ficha(ambiente, monkeypatch):
     monkeypatch.setattr(pedir, "marcar", lambda *_: None)
     pedir.pedir("fogo_teste")
     assert ficha.ler("fogo_teste")["item"] == config.item("fogo_teste")
-
-
-def test_gemini_cobre_a_folha_quando_o_chatgpt_esta_ocupado(ambiente, monkeypatch):
-    """Decisao folhas-chatgpt-ocupado (02/10/2026)."""
-    cli = importlib.import_module("esteira_sprites.__main__")
-    dados = ficha.nova(dict(config.item("fogo_teste"), tipo="folha"))
-    dados["estado"] = "pedido"
-    dados["tentativas"] = [{"caixa": "chatgpt", "correio_id": "c1", "prompt": "P" * 90, "motivo": ""}]
-    ficha.gravar(dados)
-    msgs = {"c1": {"situacao": "pendente", "em": "2026-10-02T09:00:00"}}
-    monkeypatch.setattr(cli.correio, "uma", lambda caixa, mid: msgs.get(mid))
-    atualizados = []
-    monkeypatch.setattr(cli.correio, "atualizar", lambda caixa, mid, **k: atualizados.append((caixa, mid, k)))
-    pedidos = []
-    monkeypatch.setattr(cli, "pedir", lambda *a, **k: pedidos.append((a, k)))
-
-    class _Agora:
-        @staticmethod
-        def now():
-            from datetime import datetime
-            return datetime(2026, 10, 2, 9, 10)
-    import datetime as dt
-    monkeypatch.setattr(dt, "datetime", type("D", (dt.datetime,), {"now": staticmethod(_Agora.now)}))
-    assert cli._cobrir_chatgpt_ocupado("fogo_teste", ficha.ler("fogo_teste")) is False   # 10 min: espera
-    monkeypatch.setattr(dt, "datetime", type("D", (dt.datetime,), {
-        "now": staticmethod(lambda: dt.datetime.fromisoformat("2026-10-02T09:25:00"))}))
-    assert cli._cobrir_chatgpt_ocupado("fogo_teste", ficha.ler("fogo_teste")) is True    # 25 min: cobre
-    assert atualizados[0][0] == "chatgpt" and atualizados[0][2]["situacao"] == "falhou"
-    assert pedidos[0][1]["caixa"] == "gemini" and pedidos[0][1]["cobertura"] is True
-    assert pedidos[0][1]["prompt_pronto"] == "P" * 90
-    assert ficha.ler("fogo_teste")["tentativas"] == []        # a que nunca saiu nao conta
-    assert juiz.juiz_do({"caixa": "gemini", "cobertura": True}) == "chatgpt"

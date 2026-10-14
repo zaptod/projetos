@@ -343,6 +343,42 @@ def test_ciclo_com_saida_que_nao_e_json_nao_derruba():
                               "saida": "Erro: x"}
 
 
+def test_ciclo_de_verdade_da_vila_anda_e_pede_ao_chatgpt(tmp_path, monkeypatch):
+    """14/10/2026, esteira religada: o subprocesso REAL `esteira_sprites --perfil vila ciclo`
+    pede ate o alvo, tudo na caixa do ChatGPT. Fichas e correio em pastas de teste: nenhum
+    carteiro le essa caixa, nada gasta cota. (O palco fica de fora: ele marca a pagina do app.)"""
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    from PIL import Image
+
+    from coordenador.supervisor import ciclo_das_esteiras
+    esteira, correio = tmp_path / "esteira", tmp_path / "correio"
+    (esteira / "_mestra").mkdir(parents=True)
+    Image.new("RGBA", (8, 8), (20, 20, 26, 255)).save(esteira / "_mestra" / "aprovada.png")
+    monkeypatch.setenv("ESTEIRA_SPRITES_PASTA", str(esteira))
+    monkeypatch.setenv("NF_IAS_PASTA", str(correio))
+
+    def rodar(comando, **kw):
+        if "vila" in comando:
+            return subprocess.run(comando, **kw)
+        return subprocess.CompletedProcess(comando, 0, stdout="{}\n", stderr="")
+
+    raiz = Path(__file__).resolve().parents[1]
+    saida = ciclo_das_esteiras(rodar=rodar, python=sys.executable, raiz=raiz)["vila"]
+    assert saida["codigo"] == 0, saida
+    assert len(saida["novos"]) == 2 and saida["em_voo"] == 2
+    pedidos = [json.loads(linha) for linha in
+               (correio / "chatgpt" / "correio.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(pedidos) == 2 and {p["tipo"] for p in pedidos} == {"imagem"}
+    assert not (correio / "gemini").exists()
+    for item_id in saida["novos"]:
+        ficha_vila = json.loads((esteira / "vila" / item_id / "ficha.json").read_text(encoding="utf-8"))
+        assert ficha_vila["estado"] == "pedido" and ficha_vila["tentativas"][-1]["caixa"] == "chatgpt"
+
+
 def test_o_coordenador_de_producao_liga_a_esteira():
     import inspect
 

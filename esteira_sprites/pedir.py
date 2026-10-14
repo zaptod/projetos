@@ -14,14 +14,19 @@ def marcar(item_id: str, estado: str) -> None:
     biblioteca.marcar(config.PAGINA, item_id, estado)
 
 
-# Quem gera o que (Adrian, 02/10/2026): o Gemini acerta a peca parada; o
-# ChatGPT e melhor em folha de sprites (animacao e quadros).
+# Quem gera (Adrian, 14/10/2026: "Agora que tudo ja esta mais limpo e organizado
+# quero que voce volte a utilizar o ChatGPT para os sprites"): o ChatGPT gera
+# TODOS os sprites, peca e folha, palco e Vila. Antes (02/10) a peca ia ao
+# Gemini e o Gemini cobria o ChatGPT ocupado; isso acabou: com o ChatGPT
+# ocupado, a ficha ESPERA na caixa dele (o carteiro entrega quando ele livrar).
+GERADOR = "chatgpt"
+
+
 def gerador_do(item: dict) -> str:
-    return "chatgpt" if item.get("tipo") == "folha" else "gemini"
+    return GERADOR
 
 
-def pedir(item_id: str, defeitos: str = "", prompt_pronto: str = "", caixa: str = "",
-          cobertura: bool = False) -> dict:
+def pedir(item_id: str, defeitos: str = "", prompt_pronto: str = "") -> dict:
     """Pede a imagem. `prompt_pronto` e o prompt reescrito pelo juiz: vai como esta."""
     item = config.item(item_id)
     if item.get("externo"):
@@ -32,15 +37,13 @@ def pedir(item_id: str, defeitos: str = "", prompt_pronto: str = "", caixa: str 
     # e o portao julgarem o habitante bolinha como o boneco de pernas (02/10/2026)
     dados["item"] = item
     texto = prompt_pronto.strip() or prompt.montar(item, defeitos)
-    caixa = caixa or gerador_do(item)
+    caixa = gerador_do(item)
     mensagem = correio.pedir_imagem(caixa, texto, proporcao="1:1")
     tentativa = {"numero": len(dados.get("tentativas", [])) + 1,
                  "prompt": texto, "correio_id": mensagem["id"],
                  "caixa": caixa, "caminhos": {}, "medidas": None,
                  "veredito": None, "motivo": defeitos,
-                 "prompt_do_juiz": bool(prompt_pronto.strip()),
-                 # o Gemini cobrindo o ChatGPT ocupado (decisao folhas-chatgpt-ocupado)
-                 "cobertura": cobertura}
+                 "prompt_do_juiz": bool(prompt_pronto.strip())}
     dados.setdefault("tentativas", []).append(tentativa)
     dados["estado"] = "pedido"
     ficha.registrar(dados, "pedido", correio_id=mensagem["id"], motivo=defeitos, caixa=caixa)

@@ -32,7 +32,7 @@ Um chat longo piora: esquece decisões, repete erro e deixa entrega parada.
 - **Edite Python com Write/Edit, nunca com heredoc:** o shell come a barra invertida.
 - **IA que falha duas vezes num papel sai do papel NA HORA.** O Gemini não julga sprite.
 - **Pedido a uma IA diz o que é e para que serve** (jogo, objeto, uso, o que cada anexo é).
-- **Esteira de sprites DESLIGADA:** o Adrian faz os sprites dele no Ateliê do app.
+- **Esteira de sprites LIGADA (14/10) com o ChatGPT gerando TODOS os sprites** (peça e folha, palco e Vila; o Gemini saiu, ChatGPT ocupado = a ficha espera). Juiz = ChatGPT com controle cego; **aprovação final é do Adrian** (`a_conferir` → app/`aprovar`). O que ele fez no Ateliê nunca é pedido. Detalhes em `docs/sessoes/esteira-sprites.md`.
 - **Claude proibido:** antes de trabalho automático, `python -m remoto.orquestrador claude status`.
 
 ## 5. Ao terminar uma tarefa

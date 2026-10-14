@@ -4,9 +4,74 @@ A esteira mantém uma ficha por item em `outputs/_ias/esteira_sprites`. O
 coordenador usa `python -m esteira_sprites avancar` periodicamente; cada chamada
 move no máximo uma etapa por ficha, por isso repetir o comando é seguro.
 
-O portão técnico vem antes do Grok. O Grok apenas lista defeitos, recebe
-controles estragados de propósito e nunca publica arte: a aprovação final é do
-Adrian pela tela de conferência ou pelo comando `aprovar`.
+O portão técnico vem antes do juiz (hoje o ChatGPT; antes o Grok). O juiz apenas
+lista defeitos, recebe controles estragados de propósito e nunca publica arte: a
+aprovação final é do Adrian pela tela de conferência ou pelo comando `aprovar`.
+
+## Religada com o ChatGPT gerando tudo (14/10/2026)
+
+Ordem do Adrian no chat: "Agora que tudo já está mais limpo e organizado quero
+que você volte a utilizar o ChatGPT para os sprites." Ele não quis decidir
+detalhes; o que ficou:
+
+- **Ligada:** `ESTEIRA_LIGADA = True` e `FOLHAS_POR_IA = True` em
+  `esteira_sprites/__main__.py` (peças paradas E folhas animadas). O coordenador
+  já chamava `python -m esteira_sprites --perfil <palco|vila> ciclo` a cada 5 min
+  (`coordenador/supervisor.py::ciclo_das_esteiras`); nada mudou lá.
+- **Gerador = ChatGPT, sempre** (`pedir.GERADOR`), para peça e folha, palco e
+  Vila. `pedir()` não aceita mais `caixa`: não há como mandar a outra IA. O
+  caminho é o de sempre (`ias.correio.pedir_imagem` → carteiro, contas, travas,
+  prova de origem).
+- **Acabou a cobertura pelo Gemini** (decisão `painel-e-vila/folhas-chatgpt-ocupado`,
+  de 02/10, superada): com o ChatGPT ocupado, a ficha ESPERA em `pedido` na
+  caixa dele, sem prazo.
+- **Fichas que o Gemini começou** (antes de 14/10: 4 do palco e 4 da Vila em
+  `gerado`/`limpo`/`pedido`) não andam com a imagem dele: o `avancar` cancela no
+  correio o que estiver pendente, e o `ciclo` as refaz no ChatGPT dentro do
+  mesmo teto, antes de pedir item novo. A tentativa do Gemini fica na ficha
+  (`trocado_para: chatgpt`) e não gasta o teto (`contar_desde` anda uma casa).
+- **Juiz = ChatGPT** (`juiz.JUIZ`; a constante dizia "gemini" e não era usada).
+  Ele julga o que ele mesmo gerou; o que compensa: o controle cego (1 em 10 vai
+  estragado de propósito; sem defeito grave, a ficha marca `juiz_fraco`), a
+  medida do portão e a aprovação do Adrian. A pergunta diz o jogo, o que é o
+  desenho, o formato, para que serve a resposta e agora sempre o **TAMANHO
+  REAL NA TELA** (`juiz.tamanho_real_txt`: o "no mundo WxH (xN no celular)" da
+  Vila; no palco, a escala da bolinha de ~400 px no vídeo 1080x1920, ~144 px
+  no celular).
+- **O que o Adrian já fez nunca é pedido** (`esteira_sprites/ja_feito.py`,
+  usado pelo `lote`):
+  1. folha dele no Ateliê: `palco/biblioteca/animacoes/<peça>/<estado>/<animação>/folha.png`
+     (o `historico/` não conta). Na Vila a chave é a mesma que o Ateliê e a
+     Vila usam (`catalogo_vila.chave_do_item`); no palco, a pasta do
+     `nome_arquivo` diz a família do catálogo (`PALCO_NO_ATELIE`: `armas/estilos`
+     e `efeitos/orbes` → `arma.estilo`, `lutadores/status` → `estado`, skills →
+     `skill`...) e qualquer animação da peça conta;
+  2. arte já na biblioteca: a Vila em `painel/flutuante/arte_vila/<nome_arquivo>`;
+     o palco em `palco/biblioteca/<nome_arquivo>` (pega o fogo do piriri,
+     `efeitos/folhas/11239_removebg_preview_1.png`) ou onde o `aprovar`
+     exportaria (`efeitos/folhas/<id>.png`). O `aprovar` nunca sobrescreve, então
+     pedir isso só gastaria a vez do ChatGPT.
+- **Descartados:** os descartes de 02/10 (01:03 e 16:42) foram a parada da
+  esteira, não um "não quero": o item volta à fila com o teto zerado
+  (`volta_a_fila`). O que o Adrian descartar daqui em diante
+  (`RELIGADA_EM = "2026-10-14"`) fica fora; antes, o ciclo seguinte repedia.
+- **Ritmo:** `ALVO_EM_VOO = 2` por perfil (era 4). O ChatGPT também faz as
+  imagens das histórias pelo rodízio e o carteiro entrega um pedido por vez
+  por conta: no máximo 4 imagens da esteira na fila dele, e as histórias
+  passam entre elas.
+- **Aprovação final continua dele:** nada sai de `a_conferir` para
+  `palco/biblioteca` nem para `painel/flutuante/arte_vila` sem o `aprovar`. No
+  palco o `aprovar` (Oficina) grava `efeitos/folhas/<id>.png`, a cena e anota o
+  `LICENCAS.md`, sem sobrescrever nada.
+- **Medir sem gastar:** `python -m esteira_sprites [--perfil vila] lote --prioridade P1 --n 999 --seco`
+  lista o que seria pedido, sem gravar ficha nem tocar o correio.
+
+Medido em 14/10 (seco, fichas e Ateliê reais): a primeira passada pede **2 no
+palco** (refaz `arma_runas_flutuantes` e `orbe_default`, que eram do Gemini) e
+**2 na Vila** (`predio_digen`, `predio_estudio`). A fila depois disso: palco
+P1 30, P2 72, P3 287 (389: 338 peças, 51 folhas); Vila P1 23, P2 40, P3 34
+(97: 21 peças, 76 folhas). Pulados por já feitos: 9 no palco (1 do Ateliê,
+8 na biblioteca) e 15 na Vila (4 do Ateliê, 11 já aprovados).
 
 ## Perfis: palco e Vila (02/10/2026)
 

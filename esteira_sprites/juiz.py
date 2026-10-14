@@ -10,10 +10,14 @@ from ias import correio
 
 from . import config, ficha, prompt
 
-# Quem julga. O Grok respondia mal (Adrian, 02/10/2026). Juiz cruzado: quem nao
-# gerou julga (peca parada sai do Gemini e o ChatGPT julga; folha sai do ChatGPT
-# e o Gemini julga), para ninguem aprovar o proprio desenho.
-JUIZ = "gemini"
+# Quem julga: o ChatGPT, sempre. O Grok respondia mal e o Gemini recusou ou
+# travou como juiz (02/10/2026, memoria gemini-nao-e-juiz). Desde 14/10 o
+# ChatGPT tambem GERA todos os sprites: julgar o proprio desenho e compensado
+# pelo controle cego (a cada 10 tentativas vai uma arte estragada de proposito;
+# se ele nao acha defeito grave, a ficha marca `juiz_fraco`), pela medida do
+# portao e pela aprovacao final do Adrian. Com o ChatGPT ocupado, o julgamento
+# espera na caixa dele (nao vai a outra IA).
+JUIZ = "chatgpt"
 MAX_TENTATIVAS = 4
 JUIZ_FALHAS_MAX = 3
 
@@ -27,8 +31,8 @@ def juiz_do(tentativa: dict) -> str:
     # 02/10/2026 15h: o Gemini como juiz recusou ("sou uma IA com base em texto")
     # ou travou na maioria dos julgamentos, mesmo em conversa nova. O Adrian:
     # "VOCE AINDA ESTA FAZENDO AS MESMAS PERGUNTAS PRO GEMINI????". Juiz = ChatGPT,
-    # sempre; se ele estiver ocupado, o julgamento espera (nao vai ao Gemini).
-    return "chatgpt"
+    # sempre, qualquer que seja o gerador da tentativa.
+    return JUIZ
 
 
 # Fundo LISO onde o desenho vai morar: o xadrez de transparencia enganava o juiz,
@@ -97,6 +101,31 @@ def _tamanho_real(item: dict) -> tuple[int, int] | None:
     return int(m.group(1)) * escala, int(m.group(2)) * escala
 
 
+# O palco vira video 1080x1920 visto no celular com ~390 px de largura; a
+# bolinha lutadora tem ~400 px no video (`painel/sprites/exportar.py`).
+CELULAR_PX = 390
+VIDEO_PX = 1080
+BOLINHA_VIDEO_PX = 400
+
+
+def tamanho_real_txt(item: dict, perfil: str = "") -> str:
+    """O tamanho em que o juiz deve imaginar o desenho (regra: todo pedido diz o tamanho real)."""
+    entrega = str(item.get("tamanho") or "").strip()
+    sufixo = f" (a imagem pedida: {entrega})" if entrega else ""
+    real = _tamanho_real(item)
+    if real:
+        return f"aparece com {real[0]}x{real[1]} px na tela do celular{sufixo}"
+    m = re.search(r"aparece com ~?(\d+) px", entrega)
+    if m:
+        return f"aparece com ~{m.group(1)} px na tela do celular{sufixo}"
+    if (perfil or config.PERFIL) == "palco":
+        bolinha = round(BOLINHA_VIDEO_PX * CELULAR_PX / VIDEO_PX)
+        return (f"o vídeo tem {VIDEO_PX}x1920 e é assistido no celular com ~{CELULAR_PX} px de largura; "
+                f"a bolinha lutadora tem ~{BOLINHA_VIDEO_PX} px no vídeo, ~{bolinha} px na tela do "
+                f"celular, e este desenho aparece na escala dela{sufixo}")
+    return entrega or "o inventário não diz; julgue como um ícone pequeno na tela do celular"
+
+
 def _no_tamanho_real(origem: str, tamanho: tuple[int, int], destino: Path) -> Path:
     """O desenho reduzido ao tamanho da tela, sobre a grama da Vila, ampliado 2x sem suavizar."""
     arte = Image.open(origem).convert("RGBA")
@@ -120,6 +149,7 @@ def _pergunta(item: dict, rotulos: list[str], usado: str = "", medidas: list[str
     linhas.append(f"FORMATO: {tipo}. O desenho já tem fundo TRANSPARENTE; nos anexos ele aparece sobre "
                   "uma cor lisa só para você ver (verde = a grama da Vila, escuro = a arena). O tamanho em "
                   "pixels da imagem NÃO importa: ela é reduzida depois; julgue o desenho, não a resolução.")
+    linhas.append(f"TAMANHO REAL NA TELA: {tamanho_real_txt(item, perfil)}. Tem de ser legível assim.")
     uso = item.get("presenca_txt") or ""
     if uso:
         linhas.append(f"QUANDO APARECE: {uso}.")
