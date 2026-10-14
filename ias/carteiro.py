@@ -582,6 +582,10 @@ def classificar_erro(ia: str, exc: BaseException, tela: str = "") -> tuple:
     achado = motivo_da_tela(ia, tela)
     if achado:
         return achado
+    if getattr(exc, "legivel", False):
+        # a mensagem ja e a frase para o Adrian (`AnexoRecusado`, 14/10/2026)
+        return (getattr(exc, "categoria", None) or "erro",
+                " ".join(str(exc).split())[:400])
     mensagem = " ".join(str(exc).split())[:220]
     categoria = catalogo.classificar(mensagem)
     # A excecao pode orientar quem vai olhar a janela, mas nao e evidencia de
@@ -589,7 +593,43 @@ def classificar_erro(ia: str, exc: BaseException, tela: str = "") -> tuple:
     if categoria == "limite":
         categoria = None
     categoria = categoria or "erro"
+    if detalhe_tecnico(exc):
+        # erro do navegador/Python: o app e o Telegram recebem a frase; a
+        # excecao crua vai so ao log (quem chama loga `detalhe_tecnico`)
+        return (categoria, frase_do_erro_tecnico(ia, exc))
     return (categoria, f"{nome}: {mensagem}" if mensagem else nome)
+
+
+# Pacotes NOSSOS: as excecoes deles ja falam com o Adrian (LLMFalhou,
+# ImagemFalhou...). O resto (Playwright, Python) e detalhe tecnico.
+_PACOTES_NOSSOS = ("contos", "ias", "builds", "remoto", "coordenador", "historias",
+                   "random_builds", "neural_fights", "painel", "vila")
+
+
+def detalhe_tecnico(exc: BaseException) -> str:
+    """"Classe: mensagem" da excecao crua quando ela NAO e nossa (Playwright,
+    Python); "" quando a mensagem ja e legivel. Vai so para o log."""
+    modulo = str(getattr(type(exc), "__module__", "") or "")
+    if getattr(exc, "legivel", False) or modulo.split(".")[0] in _PACOTES_NOSSOS:
+        return ""
+    texto = " ".join(str(exc).split())[:600]
+    return f"{type(exc).__name__}: {texto}" if texto else type(exc).__name__
+
+
+def frase_do_erro_tecnico(ia: str, exc: BaseException) -> str:
+    """O erro do navegador em portugues simples (14/10/2026: o app mostrava
+    "Error: Locator.set_input_files: Error: Non-multiple file input...")."""
+    rotulo = correio.ROTULOS.get(ia, ia)
+    bruto = (type(exc).__name__ + " " + str(exc)).lower()
+    if "set_input_files" in bruto or "file input" in bruto:
+        frase = f"o {rotulo} não aceitou o anexo"
+    elif "timeout" in bruto:
+        frase = f"o {rotulo} demorou demais para responder na tela (tempo esgotado)"
+    elif "closed" in bruto or "fechad" in bruto:
+        frase = f"o navegador do {rotulo} fechou no meio do pedido"
+    else:
+        frase = f"o {rotulo} deu um erro inesperado no navegador"
+    return frase + "; o detalhe técnico ficou no log do carteiro"
 
 
 # ================================================================= carteiro
@@ -844,6 +884,13 @@ class Carteiro:
                  + "; nao entrego de novo")
         return None
 
+    def _log_detalhe(self, ia: str, mid: str, exc: BaseException) -> None:
+        """A excecao crua do navegador vai SO para o log (14/10/2026); o
+        motivo que vai ao app e ao Telegram e a frase de `classificar_erro`."""
+        detalhe = detalhe_tecnico(exc)
+        if detalhe:
+            self.log(f"[carteiro] {ia} {mid}: detalhe técnico: {detalhe}")
+
     def _falhar(self, caixa: str, ia: str, mid: str, motivo: str, categoria: str,
                 **campos) -> dict:
         """Marca a falha (motivo legivel), vai ao DIARIO e avisa. Se outra
@@ -915,6 +962,7 @@ class Carteiro:
                     and not correio.reservado_por_outro(pendente)):
                 categoria, motivo = classificar_erro(ia, exc)
                 self.log(f"[carteiro] {ia} {amid}: {motivo}")
+                self._log_detalhe(ia, amid, exc)
                 # o site fora na abertura (pagina em branco, 30/09): o rodizio
                 # tira o gerador por `cota_pausa_h`, como no "Alta procura"
                 pausa = ({"pausa_rodizio": True} if getattr(exc, "pausa_rodizio", False)
@@ -1000,6 +1048,7 @@ class Carteiro:
                     and not correio.reservado_por_outro(pendente)):
                 categoria, motivo = imagem.classificar(ia, exc)
                 self.log(f"[carteiro] {ia} {mid}: {motivo}")
+                self._log_detalhe(ia, mid, exc)
                 ultima = self._falhar(caixa, ia, mid, motivo, categoria, gerador=ia)
         finally:
             self._estado("ocioso")
@@ -1164,6 +1213,7 @@ class Carteiro:
                 categoria = "recuperacao"
                 motivo = f"o Chrome caiu no download e a recuperação falhou: {motivo}"
             self.log(f"[carteiro] {ia} {mid} (imagem) falhou: {motivo}")
+            self._log_detalhe(ia, mid, exc)
             if casa is not None:
                 casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
                 correio.gravar_casa(ia, casa)
@@ -1248,6 +1298,7 @@ class Carteiro:
                 return correio.uma(ia, mid)
             categoria, motivo = classificar_erro(ia, exc, tela_do_turno(sessao))
             self.log(f"[carteiro] {ia} {mid} falhou: {motivo}")
+            self._log_detalhe(ia, mid, exc)
             if not avulsa:
                 casa["falhas_seguidas"] = int(casa.get("falhas_seguidas") or 0) + 1
                 correio.gravar_casa(ia, casa)
@@ -1282,6 +1333,7 @@ class Carteiro:
                 categoria, motivo = imagem.classificar(ia, exc)
                 self.log(f"[carteiro] {ia} {mid}: a imagem da resposta nao foi guardada: "
                          f"{motivo}")
+                self._log_detalhe(ia, mid, exc)
                 if not resposta:
                     return self._falhar(ia, ia, mid, f"a resposta foi uma imagem, mas "
                                         f"ela não foi guardada: {motivo}", categoria)

@@ -256,13 +256,19 @@ class CarteiroEntrega(_Base):
         self.assertEqual(correio.casa("deepseek")["falhas_seguidas"], 1)
 
     def test_falha_sem_texto_na_tela_usa_a_excecao(self):
+        # 14/10/2026: a excecao crua vai SO ao log; o app e o Telegram recebem
+        # a frase em portugues simples (antes o erro era "TimeoutError: ...").
         fabrica = carteiro_mod.fabrica_duble(falhar=TimeoutError("estourou"))
-        c = _novo(fabrica)
+        linhas = []
+        c = _novo(fabrica, log=linhas.append)
         correio.enviar("grok", "oi")
         fim = c.uma_volta()
         self.assertEqual(fim["situacao"], "falhou")
         self.assertEqual(fim["categoria"], "erro")
-        self.assertIn("TimeoutError", fim["erro"])
+        self.assertNotIn("TimeoutError", fim["erro"])
+        self.assertIn("o Grok demorou demais", fim["erro"])
+        self.assertFalse(any("TimeoutError" in a for a in c.avisos), c.avisos)
+        self.assertTrue(any("TimeoutError: estourou" in l for l in linhas), linhas)
 
     def test_sessao_que_nem_abre_marca_a_mensagem_como_falhou(self):
         class NaoLogado(RuntimeError):

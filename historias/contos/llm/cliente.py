@@ -110,6 +110,41 @@ class ModeloFraco(LLMFalhou):
     """
 
 
+class AnexoRecusado(LLMFalhou):
+    """O site NAO aceitou todos os anexos (14/10/2026).
+
+    Visto pelo conferente no app: pedido de imagem com DUAS referencias ao
+    ChatGPT falhava com "Locator.set_input_files: Error: Non-multiple file
+    input can only accept single file" — o `input[type=file]` dele nao tem
+    `multiple`, e as duas iam de uma vez. Agora `anexar` manda um por vez
+    nesse input; se mesmo assim o site nao ficar com todos, falha com esta
+    excecao, cuja mensagem ja e a frase para o Adrian (sem o nome da classe
+    na frente): "o ChatGPT so aceitou 1 das 2 imagens de referencia". O
+    detalhe tecnico vai so para o log.
+    """
+
+    categoria = "anexo"
+    legivel = True
+
+
+ROTULOS = {"chatgpt": "ChatGPT", "gemini": "Gemini", "deepseek": "DeepSeek",
+           "grok": "Grok"}
+_EXTENSOES_DE_IMAGEM = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+
+
+def _nome_dos_anexos(arquivos) -> str:
+    if arquivos and all(Path(a).suffix.lower() in _EXTENSOES_DE_IMAGEM
+                        for a in arquivos):
+        return "imagens de referência" if len(arquivos) > 1 else "imagem de referência"
+    return "arquivos anexados" if len(arquivos) > 1 else "arquivo anexado"
+
+
+def _e_input_de_um_so(exc: BaseException) -> bool:
+    """A recusa do Playwright para varios arquivos num input sem `multiple`."""
+    texto = str(exc).lower()
+    return "non-multiple" in texto or "only accept single file" in texto
+
+
 def perfil_de(provedor: str, canal: str = "geral") -> Path:
     """A pasta de Chrome daquele LLM, na conta ativa.
 
@@ -1491,6 +1526,30 @@ class ClienteLLM:
             return 0
 
         antes = self._provas_de_anexo()
+        campo = self._campo_de_anexo()
+        if campo is None:
+            raise LLMFalhou(
+                f"nao achei onde anexar arquivo no {self.provedor}.\n"
+                f"Rode: python main.py llm probe --provedor {self.provedor} "
+                "e confira `anexo_input` em contos/llm/seletores.py.")
+
+        # UM POR VEZ quando o input nao tem `multiple` (14/10/2026: o do
+        # ChatGPT recusava as duas referencias juntas com "Non-multiple file
+        # input can only accept single file"). Com `multiple`, uma chamada so.
+        if len(arquivos) > 1 and self._aceita_varios(campo) is not False:
+            try:
+                campo.set_input_files([str(c) for c in arquivos])
+            except Exception as exc:                           # noqa: BLE001
+                if not _e_input_de_um_so(exc):
+                    raise
+                self.log(f"[{self.provedor}] o campo de anexo so aceita um "
+                         f"arquivo por vez; mando um de cada ({exc})")
+            else:
+                return self._esperar_miniaturas(arquivos, antes, len(arquivos),
+                                                espera)
+        return self._anexar_um_por_vez(arquivos, campo, antes, espera)
+
+    def _campo_de_anexo(self):
         campo = sel.encontrar_oculto(self.page, self.sel["anexo_input"],
                                      timeout=3.0)
         if campo is None:
@@ -1505,31 +1564,87 @@ class ClienteLLM:
                 _pausa(self.rng, 0.4, 0.9)
             campo = sel.encontrar_oculto(self.page, self.sel["anexo_input"],
                                          timeout=8.0)
-        if campo is None:
-            raise LLMFalhou(
-                f"nao achei onde anexar arquivo no {self.provedor}.\n"
-                f"Rode: python main.py llm probe --provedor {self.provedor} "
-                "e confira `anexo_input` em contos/llm/seletores.py.")
+        return campo
 
-        campo.set_input_files([str(c) for c in arquivos])
-        alvo = antes + len(arquivos)
+    @staticmethod
+    def _aceita_varios(campo):
+        """True/False lido do DOM (`input.multiple`); None se nao deu para ler
+        (quem chama tenta todos de uma vez e cai para um por vez se o site
+        recusar)."""
+        try:
+            return bool(campo.evaluate("e => !!e.multiple"))
+        except Exception:                                      # noqa: BLE001
+            pass
+        try:
+            return campo.get_attribute("multiple") is not None
+        except Exception:                                      # noqa: BLE001
+            return None
+
+    def _recusado(self, arquivos, aceitos: int, detalhe: str = "") -> AnexoRecusado:
+        rotulo = ROTULOS.get(self.provedor, self.provedor)
+        frase = (f"o {rotulo} só aceitou {aceitos} das {len(arquivos)} "
+                 f"{_nome_dos_anexos(arquivos)}")
+        if detalhe:
+            self.log(f"[{self.provedor}] {frase} — detalhe: {detalhe}")
+        else:
+            self.log(f"[{self.provedor}] {frase}")
+        return AnexoRecusado(frase)
+
+    def _anexar_um_por_vez(self, arquivos, campo, antes: int, espera: float) -> int:
+        """Cada arquivo sozinho, e o proximo so depois de a miniatura do
+        anterior aparecer. O input e procurado de novo a cada volta: o site
+        pode trocar o elemento depois do primeiro anexo."""
+        for i, arquivo in enumerate(arquivos):
+            if i > 0:
+                campo = self._campo_de_anexo()
+                if campo is None:
+                    raise self._recusado(arquivos, i, "o campo de anexo sumiu "
+                                                      "depois do anexo anterior")
+            try:
+                campo.set_input_files([str(arquivo)])
+            except Exception as exc:                           # noqa: BLE001
+                if i == 0 and len(arquivos) == 1:
+                    raise
+                raise self._recusado(arquivos, i, f"{type(exc).__name__}: "
+                                                  f"{' '.join(str(exc).split())[:300]}"
+                                     ) from exc
+            fim = time.monotonic() + float(espera)
+            while self._provas_de_anexo() < antes + i + 1:
+                if time.monotonic() >= fim:
+                    if i == 0:
+                        raise LLMFalhou(
+                            f"anexei {len(arquivos)} arquivo(s) mas nenhuma "
+                            f"miniatura apareceu em {espera:.0f}s. Pode ser "
+                            "arquivo grande demais para a conta, ou o site "
+                            "mudou a tela de anexo.")
+                    raise self._recusado(arquivos, i, f"a miniatura do anexo "
+                                                      f"{i + 1} nao apareceu em "
+                                                      f"{espera:.0f}s")
+                time.sleep(0.6)
+            self._esperar_subir(fim, espera)
+        self.log(f"[{self.provedor}] {len(arquivos)} anexo(s) confirmado(s) "
+                 "na tela" + (", um por vez." if len(arquivos) > 1 else "."))
+        return len(arquivos)
+
+    def _esperar_miniaturas(self, arquivos, antes: int, quantos: int,
+                            espera: float) -> int:
+        alvo = antes + quantos
         fim = time.monotonic() + float(espera)
         while time.monotonic() < fim:
             agora = self._provas_de_anexo()
             if agora >= alvo:
                 self._esperar_subir(fim, espera)
-                self.log(f"[{self.provedor}] {len(arquivos)} anexo(s) "
+                self.log(f"[{self.provedor}] {quantos} anexo(s) "
                          "confirmado(s) na tela.")
-                return len(arquivos)
+                return quantos
             time.sleep(0.6)
 
         agora = self._provas_de_anexo()
         if agora > antes:
-            self._esperar_subir(time.monotonic() + 10.0, espera)
-            self.log(f"[{self.provedor}] so {agora - antes} de "
-                     f"{len(arquivos)} anexos apareceram em {espera:.0f}s; "
-                     "sigo com o que subiu.")
-            return agora - antes
+            # Referencia pela metade e pior que falhar: a imagem sairia sem
+            # o rosto ou a arma que faltou (14/10/2026; antes seguia assim).
+            raise self._recusado(arquivos, agora - antes,
+                                 f"so {agora - antes} miniatura(s) em {espera:.0f}s")
         raise LLMFalhou(
             f"anexei {len(arquivos)} arquivo(s) mas nenhuma miniatura apareceu "
             f"em {espera:.0f}s. Pode ser arquivo grande demais para a conta, "
