@@ -28,10 +28,12 @@ class Perfil:
     exige_mestra: bool = False   # `lote` nao pede nada sem a mestra aprovada
 
 
+# 14/10/2026: todo pedido de imagem anexa a imagem-mestra (o estilo), nos dois
+# perfis; sem ela, nada e pedido (`base.py`).
 PERFIS = {
     "palco": Perfil("palco",
                     RAIZ_PROJETO / "docs" / "palco" / "inventario_sprites.json",
-                    "", None, "237c51f24a0147f8bfd605374665fc02"),
+                    "", None, "237c51f24a0147f8bfd605374665fc02", exige_mestra=True),
     # A pasta `vila/` da raiz foi aposentada (no `aposentar-vila-pixel`):
     # a arte nova mora ao lado de quem a desenha, a janela flutuante.
     "vila": Perfil("vila",
@@ -68,8 +70,13 @@ def perfil() -> Perfil:
 
 
 def itens() -> list[dict]:
+    """O inventario e, no fim, os sprites-base derivados das folhas (`base.py`).
+
+    Os bases derivados nao vao ao JSON: o Atelie e a Vila leem o JSON."""
+    from .base import derivar
     dados = json.loads(INVENTARIO.read_text(encoding="utf-8"))
-    return list(dados.get("itens", []))
+    lista = list(dados.get("itens", []))
+    return lista + derivar(lista, PERFIL)
 
 
 def item(item_id: str) -> dict:

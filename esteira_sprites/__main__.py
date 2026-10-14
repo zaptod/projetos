@@ -11,7 +11,7 @@ import numpy as np
 from ias import correio
 from PIL import Image
 
-from . import animacao, config, ficha, ja_feito, prompt
+from . import animacao, base, config, ficha, ja_feito, prompt
 from .aprovar import aprovar, descartar, refazer
 from .colher import colher
 from .juiz import colher as colher_juiz
@@ -85,28 +85,69 @@ def _descarte_do_adrian(dados: dict) -> bool:
     return bool(descartes) and descartes[-1] >= RELIGADA_EM
 
 
+def _pedivel(item: dict) -> bool:
+    """O item pode ser pedido, sem olhar a prioridade nem o sprite-base."""
+    if (item.get("bloqueio") or item.get("opcional") or item.get("externo")
+            or item["id"] == "imagem_mestra"
+            or (item.get("tipo") == "folha" and not FOLHAS_POR_IA)
+            or not _decisao_tomada(item)):
+        return False
+    existente = ficha.ler(item["id"])
+    if existente and existente.get("estado") in JA_NA_ESTEIRA:
+        return False
+    if existente and existente.get("estado") == "descartado" and _descarte_do_adrian(existente):
+        return False
+    # o Adrian fez pelo Atelie, ou a arte ja esta na biblioteca
+    return not ja_feito.motivo(item)
+
+
+def _base_tem_demanda(item: dict, folhas: list[dict], itens: list[dict]) -> bool:
+    """Um base derivado so e pedido se alguma folha dele ainda vai ser pedida e
+    nao tem outro desenho de referencia (o Atelie ou o que o Adrian aprovou)."""
+    return any(_pedivel(f) and base.referencia(f, itens) is None for f in folhas)
+
+
+# O que o `lote --seco` mostra ao lado de cada id (14/10/2026: bases primeiro)
+EXPLICACAO: dict[str, str] = {}
+ESPERAM_BASE: list[str] = []
+
+
 def lote(prioridade: str, n: int, seco: bool = False) -> list[str]:
-    """Pede ate `n` itens da prioridade. `seco`: so diz quais pediria (nada e gravado)."""
+    """Pede ate `n` itens da prioridade. `seco`: so diz quais pediria (nada e gravado).
+
+    Fluxo de 14/10/2026 (`base.py`): na mesma prioridade os sprites-base vem
+    PRIMEIRO; folha so entra com o base pronto (juiz aprovou, o Adrian aprovou
+    ou ele fez no Atelie); base derivado so entra se alguma folha precisa dele."""
     escolhidos = []
+    EXPLICACAO.clear()
+    ESPERAM_BASE.clear()
     if config.perfil().exige_mestra and not config.mestra().is_file():
         # sem a mestra, cada pedido sairia num estilo; nada e pedido
         print(f"perfil {config.PERFIL}: espera a imagem-mestra aprovada ({config.mestra()})")
         return escolhidos
-    itens = sorted(config.itens(), key=lambda i: (i.get("ordem") is None, i.get("ordem") or 999999))
+    todos = config.itens()
+    dependentes = base.mapa(todos)
+    por_id = {str(i.get("id")): i for i in todos}
+    itens = sorted(todos, key=lambda i: (str(i.get("id")) not in dependentes,
+                                         i.get("ordem") is None, i.get("ordem") or 999999))
     for item in itens:
-        if (item.get("prioridade") != prioridade or item.get("bloqueio") or item.get("opcional")
-                or item.get("externo") or item["id"] == "imagem_mestra"
-                or (item.get("tipo") == "folha" and not FOLHAS_POR_IA)
-                or not _decisao_tomada(item)):
+        if item.get("prioridade") != prioridade or not _pedivel(item):
             continue
-        existente = ficha.ler(item["id"])
-        if existente and existente.get("estado") in JA_NA_ESTEIRA:
+        folhas = [por_id[f] for f in dependentes.get(str(item["id"]), []) if f in por_id]
+        if item.get("derivado") and not _base_tem_demanda(item, folhas, todos):
             continue
-        if existente and existente.get("estado") == "descartado" and _descarte_do_adrian(existente):
-            continue
-        if ja_feito.motivo(item):
-            # o Adrian fez pelo Atelie, ou a arte ja esta na biblioteca
-            continue
+        if item.get("tipo") == "folha":
+            ref = base.referencia(item, todos)
+            if ref is None:
+                ESPERAM_BASE.append(item["id"])
+                continue                    # espera o sprite-base
+            de = f" {ref['de']}" if ref.get("de") else ""
+            EXPLICACAO[item["id"]] = (f"folha; base {ref['base_id']}: "
+                                      f"{base.ORIGEM_TXT.get(ref['origem'], ref['origem'])}{de}")
+        elif folhas:
+            EXPLICACAO[item["id"]] = f"sprite-base de {len(folhas)} folha(s): {', '.join(f['id'] for f in folhas)}"
+        else:
+            EXPLICACAO[item["id"]] = "peça"
         if not seco:
             if existente and existente.get("tentativas"):
                 # volta da parada: as tentativas de antes nao gastam o teto de agora
@@ -132,41 +173,74 @@ def _ultima(dados: dict) -> dict:
     return (dados.get("tentativas") or [{}])[-1]
 
 
-def _de_outro_gerador(dados: dict) -> bool:
-    """Ficha em producao cuja imagem saiu (ou sairia) de outra IA: o Gemini de antes de 14/10."""
+def _fora_do_fluxo(dados: dict) -> str:
+    """Por que a ficha em producao nao pode andar com a imagem que tem ('' = pode).
+
+    - `outro_gerador`: a imagem saiu (ou sairia) de outra IA, o Gemini de antes
+      de 14/10/2026;
+    - `sem_anexo`: pedida antes do fluxo de 14/10 (`base.FLUXO`): sem a
+      imagem-mestra anexada e, se folha, sem o sprite-base. As 4 fichas pedidas
+      as 11:28 de 14/10 (palco `arma_runas_flutuantes`, `orbe_default`; Vila
+      `predio_digen`, `predio_estudio`) sao estas."""
     if dados.get("estado") not in EM_VOO or not dados.get("tentativas"):
-        return False
-    # sem `caixa` e ficha antiga do ChatGPT (o `colher` assume o mesmo)
-    return str(_ultima(dados).get("caixa") or GERADOR) != GERADOR
-
-
-def _parar_outro_gerador(dados: dict) -> bool:
-    """Cancela no correio o que a outra IA ainda nao fez (gerar ou julgar). Idempotente."""
+        return ""
     t = _ultima(dados)
+    # sem `caixa` e ficha antiga do ChatGPT (o `colher` assume o mesmo)
+    if str(t.get("caixa") or GERADOR) != GERADOR:
+        return "outro_gerador"
+    if t.get("fluxo") != base.FLUXO:
+        return "sem_anexo"
+    return ""
+
+
+def _de_outro_gerador(dados: dict) -> bool:
+    return _fora_do_fluxo(dados) == "outro_gerador"
+
+
+MOTIVO_DO_CANCELAMENTO = {
+    "outro_gerador": "a esteira so usa o ChatGPT desde 14/10/2026 (ordem do Adrian)",
+    "sem_anexo": ("pedido sem a imagem-mestra/sprite-base anexados: a esteira refaz no fluxo "
+                  "novo de 14/10/2026 (estilo e personagem anexados)"),
+}
+
+
+def _parar_fora_do_fluxo(dados: dict) -> bool:
+    """Cancela no correio o que ainda nao foi feito (gerar ou julgar). Idempotente."""
+    t = _ultima(dados)
+    erro = MOTIVO_DO_CANCELAMENTO.get(_fora_do_fluxo(dados), MOTIVO_DO_CANCELAMENTO["sem_anexo"])
     parou = False
-    for caixa, mid in ((t.get("caixa"), t.get("correio_id")), (t.get("juiz_caixa"), t.get("juiz_id"))):
+    for caixa, mid in ((t.get("caixa") or GERADOR, t.get("correio_id")),
+                       (t.get("juiz_caixa"), t.get("juiz_id"))):
         if not caixa or not mid:
             continue
         mensagem = correio.uma(caixa, mid) or {}
         if mensagem.get("situacao") == "pendente":
-            correio.atualizar(caixa, mid, situacao="falhou", categoria="interrompida",
-                              erro="a esteira so usa o ChatGPT desde 14/10/2026 (ordem do Adrian)")
+            correio.atualizar(caixa, mid, situacao="falhou", categoria="interrompida", erro=erro)
             parou = True
     return parou
 
 
-def _trocar_para_chatgpt(item_id: str, dados: dict) -> bool:
-    """A ficha de outro gerador volta a ser pedida, igual, ao ChatGPT.
+def _refazer_no_fluxo(item_id: str, dados: dict) -> bool:
+    """A ficha fora do fluxo volta a ser pedida, no fluxo novo, ao ChatGPT.
 
-    A tentativa da outra IA fica na ficha (auditoria), mas nao gasta o teto de
-    MAX_TENTATIVAS: `contar_desde` anda uma casa."""
-    _parar_outro_gerador(dados)
+    A tentativa velha fica na ficha (auditoria), mas nao gasta o teto de
+    MAX_TENTATIVAS: `contar_desde` anda uma casa. Folha sem sprite-base pronto
+    espera (False) e nao e mexida."""
+    item = config.item(item_id)
+    if item.get("tipo") == "folha" and base.referencia(item) is None:
+        return False
+    razao = _fora_do_fluxo(dados)
+    _parar_fora_do_fluxo(dados)
     t = _ultima(dados)
-    t["trocado_para"] = GERADOR
+    if razao == "outro_gerador":
+        t["trocado_para"] = GERADOR
+        ficha.registrar(dados, "gerador_trocado", de=t.get("caixa"), para=GERADOR)
+    else:
+        t["sem_anexo"] = True
+        ficha.registrar(dados, "refeito_no_fluxo_novo", fluxo=base.FLUXO)
     dados["contar_desde"] = int(dados.get("contar_desde") or 0) + 1
-    ficha.registrar(dados, "gerador_trocado", de=t.get("caixa"), para=GERADOR)
     ficha.gravar(dados)
-    # o motivo do pedido (nao o que o portao achou na imagem da outra IA)
+    # o motivo do pedido (nao o que o portao achou na imagem velha)
     pedidos = [h for h in dados.get("historico", []) if h.get("tipo") == "pedido"]
     motivo = str((pedidos[-1].get("motivo") if pedidos else "") or "")
     pronto = str(t.get("prompt") or "") if t.get("prompt_do_juiz") else ""
@@ -184,11 +258,15 @@ def _repedir(item_id: str, dados: dict) -> bool:
         return True
     ultima = (dados.get("tentativas") or [{}])[-1]
     motivo = str(ultima.get("erro") or ultima.get("motivo") or "")
-    if ultima.get("erro") and ultima.get("prompt"):
-        # o gerador falhou: o mesmo prompt de novo, igual (memoria imagem-estouro-de-espera)
-        pedir(item_id, motivo, prompt_pronto=ultima["prompt"])
-    else:
-        pedir(item_id, motivo)
+    try:
+        if ultima.get("erro") and ultima.get("prompt"):
+            # o gerador falhou: o mesmo prompt de novo, igual (memoria imagem-estouro-de-espera);
+            # o cabecalho dos anexos e refeito pelo `pedir`
+            pedir(item_id, motivo, prompt_pronto=ultima["prompt"])
+        else:
+            pedir(item_id, motivo)
+    except base.BaseFaltando:
+        return False                        # folha sem base: espera em `refazer`
     return True
 
 
@@ -199,13 +277,15 @@ def _repedir(item_id: str, dados: dict) -> bool:
 # biblioteca sem o `aprovar` (tela de conferencia do app ou comando).
 # 14/10/2026 11:4x PAUSADA de novo: o pedido nao anexava a imagem-mestra nem um
 # sprite-base, e o Adrian quer "um sprite base para pegar o estilo e, a partir
-# dele, as variacoes em sprite sheet". Volta a True com isso feito.
+# dele, as variacoes em sprite sheet".
+# 14/10/2026 (tarde): o fluxo base -> folhas (`base.py`) esta no codigo (WIP),
+# mas o Adrian pediu PAUSA: continua desligada ate a ordem dele.
 ESTEIRA_LIGADA = False
 
 
 def _em_voo_chatgpt() -> int:
     return sum(1 for i in config.itens()
-               if (d := ficha.ler(i["id"])) and d.get("estado") in EM_VOO and not _de_outro_gerador(d))
+               if (d := ficha.ler(i["id"])) and d.get("estado") in EM_VOO and not _fora_do_fluxo(d))
 
 
 def ciclo() -> dict:
@@ -216,13 +296,14 @@ def ciclo() -> dict:
     andou = avancar()
     em_voo = _em_voo_chatgpt()
     novos = []
-    # primeiro as fichas que outra IA tinha comecado, dentro do mesmo teto
-    for item in config.itens():
-        if em_voo + len(novos) >= ALVO_EM_VOO:
-            break
-        dados = ficha.ler(item["id"])
-        if dados and _de_outro_gerador(dados) and _trocar_para_chatgpt(item["id"], dados):
-            novos.append(item["id"])
+    # primeiro as fichas do fluxo antigo (outra IA, ou sem anexo), dentro do mesmo teto
+    if config.mestra().is_file():
+        for item in config.itens():
+            if em_voo + len(novos) >= ALVO_EM_VOO:
+                break
+            dados = ficha.ler(item["id"])
+            if dados and _fora_do_fluxo(dados) and _refazer_no_fluxo(item["id"], dados):
+                novos.append(item["id"])
     for prioridade in ("P1", "P2", "P3"):
         falta = ALVO_EM_VOO - em_voo - len(novos)
         if falta <= 0:
@@ -238,10 +319,11 @@ def avancar() -> int:
         if not dados:
             continue
         estado = dados.get("estado")
-        if _de_outro_gerador(dados):
-            # imagem de outra IA nao anda: espera o `ciclo` refazer no ChatGPT
-            # quando houver vaga; o que ela ainda nao fez e cancelado ja
-            feitos += bool(_parar_outro_gerador(dados))
+        if _fora_do_fluxo(dados):
+            # imagem de outra IA, ou pedida sem os anexos: nao anda; espera o
+            # `ciclo` refazer no fluxo novo quando houver vaga; o que ainda nao
+            # foi feito e cancelado ja
+            feitos += bool(_parar_fora_do_fluxo(dados))
             continue
         # ChatGPT ocupado (a criacao de historias segura a conta): a ficha ESPERA
         # em "pedido"; nao ha mais cobertura pelo Gemini (14/10/2026)
@@ -316,7 +398,17 @@ def main(argv: list[str] | None = None) -> int:
     elif args.comando == "pedir":
         pedir(args.item)
     elif args.comando == "lote":
-        print("\n".join(lote(args.prioridade, args.n, seco=args.seco)))
+        escolhidos = lote(args.prioridade, args.n, seco=args.seco)
+        if not args.seco:
+            print("\n".join(escolhidos))
+        else:
+            for item_id in escolhidos:
+                print(f"{item_id}\t{EXPLICACAO.get(item_id, '')}")
+            fora = [i["id"] for i in config.itens()
+                    if (d := ficha.ler(i["id"])) and _fora_do_fluxo(d)]
+            print(f"# fora do fluxo (o ciclo refaz PRIMEIRO, sem gastar tentativa): "
+                  f"{', '.join(fora) or 'nenhuma'}")
+            print(f"# folhas {args.prioridade} que esperam o sprite-base: {len(ESPERAM_BASE)}")
     elif args.comando == "avancar":
         print(avancar())
     elif args.comando == "ciclo":

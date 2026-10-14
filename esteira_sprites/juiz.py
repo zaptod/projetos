@@ -139,7 +139,13 @@ def _no_tamanho_real(origem: str, tamanho: tuple[int, int], destino: Path) -> Pa
     return destino
 
 
-def _pergunta(item: dict, rotulos: list[str], usado: str = "", medidas: list[str] | None = None) -> str:
+PERGUNTA_DO_BASE = ("O PERSONAGEM DOS QUADROS É O MESMO DO SPRITE-BASE? Compare cada quadro com o "
+                    "anexo do sprite-base e liste CADA diferença (forma, cores, proporções, "
+                    "acessórios, rosto) como um defeito; personagem diferente do sprite-base é grave.")
+
+
+def _pergunta(item: dict, rotulos: list[str], usado: str = "", medidas: list[str] | None = None,
+              com_base: bool = False) -> str:
     perfil = item.get("perfil") or config.PERFIL
     linhas = ["PEDIDO DE TEXTO. Você é o diretor de arte que aprova sprites para um jogo.",
               "O JOGO: " + JOGO.get(perfil, JOGO["palco"]),
@@ -165,13 +171,16 @@ def _pergunta(item: dict, rotulos: list[str], usado: str = "", medidas: list[str
                   "vai DIRETO ao gerador de imagem, sem ninguém editar, e a imagem é feita de novo; "
                   "sem grave, ela vai para o Adrian aprovar.")
     linhas.append("Liste o que está errado PARA ESSE USO; nunca diga só que está bom. " + GRAVIDADE)
+    if com_base:
+        linhas.append(PERGUNTA_DO_BASE)
     linhas.append("COMO ESCREVER O prompt_corrigido: parta do prompt que gerou a imagem, mantenha o que "
                   "funcionou e mude só o que causou cada defeito grave, dizendo ao gerador o que fazer "
                   "(não o que estava errado). Prompt inteiro, pronto para colar, em português, sem "
                   "comentários. Sem defeito grave, deixe vazio.")
+    mesmo = '"mesmo_do_base":0-3,' if com_base else ""
     linhas.append('Responda JSON estrito: {"defeitos":[{"o_que":str,"onde":str,"como_corrigir":str,'
                   '"gravidade":"leve|media|grave"}],"prompt_corrigido":str,"notas":{"le_no_tamanho_real":0-3,'
-                  '"igual_a_referencia":0-3,"e_o_que_foi_pedido":0-3,"recorte":0-3,'
+                  '"igual_a_referencia":0-3,"e_o_que_foi_pedido":0-3,"recorte":0-3,' + mesmo +
                   '"continuidade":0-3}} (continuidade só em animação; senão 3).')
     return "\n".join(linhas)
 
@@ -204,7 +213,16 @@ def perguntar(item_id: str) -> bool:
         anexos.append(str(config.mestra()))
         rotulos.append("a imagem-mestra aprovada: o ESTILO a seguir (traço, contorno, sombra, "
                        "cores); não o conteúdo")
-    texto = _pergunta(item, rotulos, tentativa.get("prompt") or "", tentativa.get("portao_reprovou"))
+    # a folha foi desenhada a partir do sprite-base (14/10/2026): o juiz ve o base
+    # e diz se o personagem dos quadros e o mesmo
+    sprite_base = (tentativa.get("base") or {}).get("caminho")
+    com_base = bool(sprite_base and Path(sprite_base).is_file())
+    if com_base:
+        anexos.append(str(_sobre_fundo(sprite_base, pasta / "base_para_juiz.png")))
+        rotulos.append("o SPRITE-BASE aprovado do personagem, sobre a mesma cor lisa: os quadros "
+                       "têm de mostrar EXATAMENTE este personagem")
+    texto = _pergunta(item, rotulos, tentativa.get("prompt") or "", tentativa.get("portao_reprovou"),
+                      com_base=com_base)
     caixa = juiz_do(tentativa)
     mensagem = correio.enviar(caixa, texto, de="esteira_sprites", anexos=anexos)
     tentativa["juiz_id"] = mensagem["id"]

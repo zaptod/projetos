@@ -11,8 +11,8 @@ from . import config
 
 # O estilo escolhido pelo Adrian no Grimorio (builds/imagem-mestra-v2 = "2 Anime",
 # 02/10/2026): o mesmo texto que gerou a imagem-mestra, para o palco e a Vila.
-# O ChatGPT nao recebe anexo, entao o estilo tem de ir escrito.
-ESTILO = ("Estilo anime cel-shading de jogo de luta moderno: formas dinâmicas, brilhos marcados, "
+# Desde 14/10/2026 a mestra vai ANEXADA (imagem 1) e o texto continua junto.
+ESTILO =("Estilo anime cel-shading de jogo de luta moderno: formas dinâmicas, brilhos marcados, "
           "contorno preto forte de tinta com espessura variada, contraste de cor dramático, "
           "luz do alto à esquerda, legível pequeno. Nada de pixel art, nada de 3D.")
 
@@ -73,11 +73,35 @@ def _palco(item: dict, defeitos: str) -> str:
         texto = " ".join(str(item.get(k, "")) for k in ("id", "nome_arquivo", "descricao")).lower()
         if "arma" in texto or "projetil" in texto:
             partes.append("Arma ou projetil aponta para a direita.")
-    if config.mestra().is_file():
-        partes.append("Siga rigorosamente o estilo da imagem-mestra aprovada do Neural Fights.")
     if defeitos:
         partes.append(f"Corrija estes defeitos da tentativa anterior: {defeitos}.")
     return " ".join(partes)
+
+
+# O que cada anexo e (14/10/2026; memoria pergunta-diz-o-que-e-e-pra-que-serve).
+# A ordem e a dos anexos no pedido: a mestra sempre primeiro, o base depois.
+ANEXO_ESTILO = ("a referência de ESTILO do jogo Neural Fights (a imagem-mestra aprovada) — "
+                "copie traço, contorno, paleta e sombreamento, NÃO o conteúdo: não desenhe o "
+                "que aparece nela")
+ANEXO_BASE = ("o PERSONAGEM (o sprite-base aprovado) — desenhe EXATAMENTE este personagem "
+              "(mesma forma, cores, proporções, acessórios) em todos os quadros; só a pose "
+              "muda de um quadro para o outro, e o fundo liso dela é só o chroma")
+CABECALHO = "ANEXOS"
+
+
+def com_anexos(corpo: str, rotulos: list[str]) -> str:
+    """O prompt com o cabecalho que diz o que e cada anexo, na ordem.
+
+    O cabecalho e o primeiro paragrafo: um prompt que ja o tem (o mesmo prompt
+    repetido, ou o reescrito pelo juiz) troca pelo de agora."""
+    corpo = str(corpo or "").strip()
+    if corpo.startswith(CABECALHO):
+        corpo = corpo.split("\n\n", 1)[1].strip() if "\n\n" in corpo else ""
+    if not rotulos:
+        return corpo
+    linhas = [f"{CABECALHO} (leia antes de desenhar):"]
+    linhas += [f"imagem {n}: {r}." for n, r in enumerate(rotulos, 1)]
+    return "\n".join(linhas) + "\n\n" + corpo
 
 
 def _onde(quadros: list, colunas: int) -> str:
@@ -123,8 +147,6 @@ def _vila(item: dict, defeitos: str) -> str:
                           "da célula; nenhuma parte some de um quadro para o outro.")
     elif not opaco(item):
         partes.append("Peça parada: um objeto único, centrado, sem tocar a borda.")
-    if config.mestra().is_file():
-        partes.append("O estilo de referência é a imagem-mestra aprovada do Neural Fights.")
     if defeitos:
         partes.append(f"Corrija estes defeitos da tentativa anterior: {defeitos}.")
     return " ".join(partes)

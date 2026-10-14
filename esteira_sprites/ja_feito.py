@@ -56,6 +56,19 @@ def pastas_no_atelie(item: dict) -> list[Path]:
     return [config.ATELIE / f"{familia}.{c}" for c in candidatos]
 
 
+def pecas_no_atelie(item: dict) -> list[Path]:
+    """As pastas de PECA (qualquer estado) do Atelie para este item.
+
+    Serve ao sprite-base (`base.py`): o que o Adrian fez para a peca, em
+    qualquer animacao, e o desenho de referencia das folhas que faltam dela.
+    No palco a pasta de `pastas_no_atelie` ja e a da peca."""
+    if config.PERFIL == "vila":
+        from neural_fights.tools import catalogo_vila
+        chave = catalogo_vila.chave_do_item(item)
+        return [config.ATELIE / chave[0]] if chave else []
+    return pastas_no_atelie(item)
+
+
 def no_atelie(item: dict) -> Path | None:
     """A folha do Adrian no Atelie para este item, ou None."""
     for pasta in pastas_no_atelie(item):
