@@ -295,6 +295,103 @@ def test_exportar_vila_reduz_png_e_guarda_tamanho_original(ambiente):
     assert meta["tamanho_original"] == [1600, 900]
 
 
+def _tentativa_aprovavel(ambiente, nome: str, cor) -> dict:
+    """Uma tentativa pronta para o `aprovar`: desenho limpo (quadrado da cor) e prova."""
+    from esteira_sprites import base
+    arr = np.zeros((80, 80, 4), dtype=np.uint8)
+    arr[20:60, 20:60] = (*cor, 255)
+    limpo = ambiente / f"{nome}.png"
+    Image.fromarray(arr, "RGBA").save(limpo)
+    prova = ambiente / f"{nome}.prova.json"
+    prova.write_text("{}", encoding="utf-8")
+    return {"fluxo": base.FLUXO, "caixa": "chatgpt", "medidas": {},
+            "caminhos": {"limpo": str(limpo), "prova": str(prova)},
+            "veredito": {"defeitos": [], "notas": {}}}
+
+
+def test_base_refeito_na_biblioteca_sobrescreve_e_guarda_o_velho(ambiente, monkeypatch):
+    """O base NOVO de um base refeito que ja estava na biblioteca sobrescreve o
+    arquivo; o velho vai a `_versoes_antigas/` (.gdignore). Peca comum nunca."""
+    aprovar_mod = importlib.import_module("esteira_sprites.aprovar")
+    from esteira_sprites import base
+    monkeypatch.setattr(aprovar_mod, "marcar", lambda *_: None)
+    _correio_de_imagem(monkeypatch)
+    biblioteca = ambiente / "biblioteca"
+    dados = ficha.nova(config.item("folha_teste_base"))
+    dados["estado"] = "a_conferir"
+    dados["tentativas"] = [_tentativa_aprovavel(ambiente, "base_v1", (10, 100, 200))]
+    ficha.gravar(dados)
+    saida = aprovar_mod.aprovar("folha_teste_base", biblioteca)
+    folha_png = Path(saida["folha"])
+    v1 = folha_png.read_bytes()
+    pedir.pedir("folha_teste")                                  # a folha sai do base v1
+    assert ficha.ler("folha_teste")["tentativas"][-1]["base"]["origem"] == "aprovado_pelo_adrian"
+    # o Adrian manda refazer o base; o novo passa no juiz e vai para a conferencia
+    aprovar_mod.refazer("folha_teste_base", "outro rosto")
+    assert base.referencia(config.item("folha_teste")) is None  # a biblioteca e o desenho velho
+    d = ficha.ler("folha_teste_base")
+    d["tentativas"].append(_tentativa_aprovavel(ambiente, "base_v2", (200, 40, 40)))
+    d["estado"] = "a_conferir"
+    ficha.gravar(d)
+    saida2 = aprovar_mod.aprovar("folha_teste_base", biblioteca)   # antes: FileExistsError
+    assert Path(saida2["folha"]) == folha_png and folha_png.read_bytes() != v1
+    antigas = folha_png.parent / aprovar_mod.VERSOES_ANTIGAS
+    assert (antigas / f"{folha_png.stem}.v1.png").read_bytes() == v1
+    assert (antigas / f"{folha_png.stem}.v1.json").is_file() and (antigas / ".gdignore").is_file()
+    if saida.get("cena"):
+        cena = Path(saida["cena"])
+        assert (cena.parent / aprovar_mod.VERSOES_ANTIGAS / f"{cena.stem}.v1.tscn").is_file()
+    final = ficha.ler("folha_teste_base")
+    assert final["estado"] == "na_biblioteca"
+    assert str(antigas / f"{folha_png.stem}.v1.png") in final["tentativas"][-1]["versao_antiga"]
+    assert any(e["tipo"] == "versao_antiga_guardada" and e["versao"] == 1 for e in final["historico"])
+    # o base aprovado de novo pelo Adrian volta a servir as folhas, na versao 2
+    ref = base.referencia(config.item("folha_teste"))
+    assert ref["origem"] == "aprovado_pelo_adrian" and ref["versao"] == 2
+    # peca comum (nao e base, sem versao_rejeitada) continua nunca sobrescrevendo
+    peca = ficha.nova(config.item("fogo_teste"))
+    peca["estado"] = "a_conferir"
+    peca["tentativas"] = [_tentativa_aprovavel(ambiente, "fogo_v1", (10, 100, 200))]
+    ficha.gravar(peca)
+    fogo_png = Path(aprovar_mod.aprovar("fogo_teste", biblioteca)["folha"])
+    fogo_v1 = fogo_png.read_bytes()
+    aprovar_mod.refazer("fogo_teste", "maior")
+    peca = ficha.ler("fogo_teste")
+    peca["tentativas"].append(_tentativa_aprovavel(ambiente, "fogo_v2", (200, 40, 40)))
+    peca["estado"] = "a_conferir"
+    ficha.gravar(peca)
+    with pytest.raises(FileExistsError):
+        aprovar_mod.aprovar("fogo_teste", biblioteca)
+    assert fogo_png.read_bytes() == fogo_v1
+    assert not list((fogo_png.parent / aprovar_mod.VERSOES_ANTIGAS).glob("fogo*"))
+
+
+def test_base_refeito_na_vila_sobrescreve_e_guarda_o_velho(ambiente):
+    aprovar_mod = importlib.import_module("esteira_sprites.aprovar")
+    prova = ambiente / "prova.json"
+    prova.write_text("{}", encoding="utf-8")
+    biblioteca = ambiente / "arte_vila"
+    item = {"id": "habitante_bot_base", "nome_arquivo": "habitantes/bot/base.png", "tipo": "peca"}
+    velho = _tentativa_aprovavel(ambiente, "hab_v1", (10, 100, 200))
+    dados = {"item": item, "tentativas": [velho]}
+    primeira = aprovar_mod._exportar_vila(dados, str(prova), biblioteca)
+    velho["exportacao"] = primeira
+    png = Path(primeira["folha"])
+    v1 = png.read_bytes()
+    novo = _tentativa_aprovavel(ambiente, "hab_v2", (200, 40, 40))
+    # sem versao_rejeitada (peca comum ou base que ninguem rejeitou): nunca sobrescreve
+    with pytest.raises(FileExistsError):
+        aprovar_mod._exportar_vila({"item": item, "tentativas": [velho, novo]}, str(prova), biblioteca)
+    refeito = {"item_id": item["id"], "item": item, "tentativas": [velho, novo], "versao_rejeitada": 1}
+    aprovar_mod._exportar_vila(refeito, str(prova), biblioteca)
+    antigas = png.parent / aprovar_mod.VERSOES_ANTIGAS
+    assert png.read_bytes() != v1 and (antigas / "base.v1.png").read_bytes() == v1
+    assert (antigas / "base.v1.json").is_file()
+    # a Vila so carrega o `nome_arquivo` do inventario: a copia velha nao e uma peca
+    assert not (biblioteca / "habitantes" / "bot" / "base.v1.png").exists()
+    assert refeito["tentativas"][-1]["versao_antiga"]
+
+
 def test_lote_pula_bloqueado_e_opcional(ambiente, monkeypatch):
     from esteira_sprites import __main__ as cli
     pedidos = []

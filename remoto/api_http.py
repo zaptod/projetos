@@ -271,6 +271,22 @@ ARQUIVO = None                           # os testes apontam para outro lugar
 # A esteira ainda escolhe o perfil por modulo. As chamadas do celular podem
 # chegar em threads diferentes, entao a troca fica inteira dentro desta trava.
 _TRAVA_SPRITES = threading.Lock()
+# Windows: ERROR_SHARING_VIOLATION (32) e ERROR_LOCK_VIOLATION (33) = o arquivo
+# esta aberto por outro processo (o `ciclo` da esteira gravando a ficha)
+_ARQUIVO_EM_USO = (32, 33)
+
+
+def _erro_da_acao_sprite(exc: OSError) -> tuple[int, str]:
+    """(status, mensagem) de um OSError do aprovar/refazer/descartar.
+
+    So arquivo em uso e "ocupada" (tente de novo); o resto e o erro real."""
+    if getattr(exc, "winerror", None) in _ARQUIVO_EM_USO:
+        return 503, f"a esteira esta ocupada (arquivo em uso: {exc.filename or exc}); tente de novo"
+    if isinstance(exc, FileExistsError):
+        return 409, f"ja existe na biblioteca (nao sobrescrevo): {exc}"
+    return 500, f"{type(exc).__name__}: {exc}"
+
+
 _SPRITES_ARQUIVOS = {
     "limpo.png": ("limpo", "image/png"),
     "previa.gif": ("previa_gif", "image/gif"),
@@ -1721,8 +1737,11 @@ class Manipulador(BaseHTTPRequestHandler):
                     resultado = sprites_aprovar.descartar(item_id)
             except ValueError as exc:
                 return self._erro(409, str(exc))
-            except OSError:
-                return self._erro(503, "a esteira esta ocupada; tente de novo")
+            except OSError as exc:
+                # 14/10/2026: todo OSError virava "a esteira esta ocupada", ate o
+                # arquivo que ja existe na biblioteca. So arquivo em uso por outro
+                # processo e trava; o resto devolve o erro de verdade
+                return self._erro(*_erro_da_acao_sprite(exc))
             finally:
                 sprites_config.usar(anterior)
         return self._json({"feito": True, "acao": acao,

@@ -278,8 +278,17 @@ arte grande da IA.
   e é refeita. Teste que monta ficha à mão em produção precisa desse campo.
 - Base que já foi para a biblioteca (`na_biblioteca`) e depois o Adrian manda
   refazer: as folhas esperam o novo (a biblioteca não serve mais de
-  referência), mas o `aprovar` do base novo vai dar `FileExistsError`, porque
-  nunca sobrescreve. Tirar o arquivo velho à mão antes de aprovar.
+  referência) e o `aprovar` do base NOVO **sobrescreve** o arquivo do base
+  (palco: folha, `.json` e cena; Vila: `.png` e `.json`). O velho é copiado
+  antes para `_versoes_antigas/<nome>.v<N>.<ext>` na mesma pasta, com
+  `.gdignore` (o Godot não importa; a Vila só lê o `nome_arquivo` do
+  inventário); `N` = a versão que estava exportada. Vale **só** para ficha de
+  base com `versao_rejeitada` e tentativa nova; peça comum continua nunca
+  sobrescrevendo (`FileExistsError`).
+- O app (`POST /api/sprites/<perfil>/<id>/<ação>`) só diz "a esteira está
+  ocupada" (503) para arquivo em uso por outro processo (WinError 32/33).
+  `FileExistsError` volta 409 com o caminho; outro `OSError`, 500 com a
+  mensagem real (antes todo `OSError` era "ocupada").
 - No inventário do palco, 28 itens têm o campo `fundo` diferente do fundo que o
   prompt e a limpeza usam (a regra por palavra-chave manda). A Vila evita isso
   com `chroma` explícito.

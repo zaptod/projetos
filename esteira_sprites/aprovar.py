@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -12,15 +13,67 @@ from . import base, config, ficha, prompt
 from .pedir import marcar
 
 
+# Base refeito que ja estava na biblioteca (14/10/2026, decisao do
+# coordenador): o `aprovar` do base NOVO sobrescreve o arquivo do base, e o
+# velho fica ao lado em `_versoes_antigas/<nome>.v<N>.<ext>`, fora do que o jogo
+# carrega (o Godot pula a pasta pelo `.gdignore`; a Vila so le o `nome_arquivo`
+# do inventario). Vale SO para ficha de base com `versao_rejeitada`; peca comum
+# continua nunca sobrescrevendo.
+VERSOES_ANTIGAS = "_versoes_antigas"
+
+
+def _base_refeito(dados: dict) -> bool:
+    """A ficha e de um base que o Adrian rejeitou e a tentativa de agora e a nova."""
+    rejeitada = base.versao_rejeitada(dados)
+    return rejeitada > 0 and base.versao(dados) > rejeitada
+
+
+def _versao_exportada(dados: dict) -> int:
+    """Qual versao do base esta na biblioteca: a ultima tentativa exportada."""
+    tentativas = dados.get("tentativas") or []
+    for numero in range(len(tentativas) - 1, 0, -1):     # a de agora (a ultima) nao conta
+        if tentativas[numero - 1].get("exportacao"):
+            return numero
+    return base.versao_rejeitada(dados)
+
+
+def _guardar_versao_antiga(arquivos: list[Path], numero: int) -> list[str]:
+    """Copia o que vai ser sobrescrito para `_versoes_antigas/` (nunca apaga nada)."""
+    guardados = []
+    for arquivo in arquivos:
+        if not arquivo.is_file():
+            continue
+        pasta = arquivo.parent / VERSOES_ANTIGAS
+        pasta.mkdir(parents=True, exist_ok=True)
+        (pasta / ".gdignore").touch(exist_ok=True)
+        destino = pasta / f"{arquivo.stem}.v{numero}{arquivo.suffix}"
+        extra = 2
+        while destino.exists():
+            destino = pasta / f"{arquivo.stem}.v{numero}-{extra}{arquivo.suffix}"
+            extra += 1
+        shutil.copy2(arquivo, destino)
+        guardados.append(str(destino))
+    return guardados
+
+
+def _anotar_versao_antiga(dados: dict, guardados: list[str]) -> None:
+    if guardados:
+        dados["tentativas"][-1]["versao_antiga"] = guardados
+        ficha.registrar(dados, "versao_antiga_guardada", caminhos=guardados,
+                        versao=_versao_exportada(dados))
+
+
 def _exportar_vila(dados: dict, prova: str, biblioteca: str | Path | None) -> dict:
-    """Exporta a arte da Vila reduzida, com metadados ao lado. Nunca sobrescreve."""
+    """Exporta a arte da Vila reduzida, com metadados ao lado. Nunca sobrescreve,
+    menos o base refeito (`_base_refeito`): o velho vai a `_versoes_antigas/`."""
     item = dados["item"]
     raiz = Path(biblioteca or config.PERFIS["vila"].biblioteca)
     destino = raiz / item["nome_arquivo"]
     meta = destino.with_suffix(".json")
-    existentes = [str(p) for p in (destino, meta) if p.exists()]
-    if existentes:
-        raise FileExistsError(", ".join(existentes))
+    existentes = [p for p in (destino, meta) if p.exists()]
+    if existentes and not _base_refeito(dados):
+        raise FileExistsError(", ".join(str(p) for p in existentes))
+    _anotar_versao_antiga(dados, _guardar_versao_antiga(existentes, _versao_exportada(dados)))
     tentativa = dados["tentativas"][-1]
     destino.parent.mkdir(parents=True, exist_ok=True)
     # A folha da IA vem em resolucao de trabalho; a Vila so precisa de 256 px
@@ -81,9 +134,18 @@ def aprovar(item_id: str, biblioteca: str | Path | None = None) -> dict:
     r = receita.Receita(fundo="nenhum", fatiar="componentes")
     with Image.open(tentativa["caminhos"]["limpo"]) as imagem:
         resultado = receita.processar(imagem, r)
-    saida = exportar.exportar(resultado, _identidade(dados, prova), receita=r,
+    identidade = _identidade(dados, prova)
+    substituir = False
+    if _base_refeito(dados):
+        # a folha, os metadados e a cena do base velho vao a `_versoes_antigas/`
+        # ANTES (copia: se o exportar recusar, o velho continua no lugar)
+        raiz = Path(biblioteca or exportar.biblioteca_padrao())
+        velhos = [Path(p) for p in exportar.ja_existem(identidade, raiz)]
+        _anotar_versao_antiga(dados, _guardar_versao_antiga(velhos, _versao_exportada(dados)))
+        substituir = bool(velhos)
+    saida = exportar.exportar(resultado, identidade, receita=r,
                               medidas=tentativa.get("medidas"), biblioteca=biblioteca,
-                              substituir=False)
+                              substituir=substituir)
     dados["estado"] = "na_biblioteca"
     tentativa["exportacao"] = saida
     ficha.registrar(dados, "na_biblioteca", caminhos=saida)

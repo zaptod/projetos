@@ -932,3 +932,27 @@ def test_sprite_aprovar_chama_a_funcao_da_esteira(servidor, sprites_temporarios,
     assert json.loads(corpo)["estado"] == "na_biblioteca"
 
 
+def test_sprite_erro_que_nao_e_trava_volta_com_a_mensagem_real(servidor, sprites_temporarios, monkeypatch):
+    """14/10/2026: todo OSError virava "a esteira esta ocupada", ate o arquivo que
+    ja existia na biblioteca. So arquivo em uso por outro processo e trava."""
+    sprites_temporarios("palco", "fogo")
+    servidor.RequestHandlerClass.estado.com_acoes = True
+    token = _parear(servidor)
+    rota = "/api/sprites/palco/fogo/aprovar"
+
+    class EmUso(PermissionError):
+        winerror = 32                         # ERROR_SHARING_VIOLATION, em qualquer sistema
+
+    for erro, status, trecho in (
+            (FileExistsError("E:/biblioteca/efeitos/folhas/fogo.png"), 409, "efeitos/folhas/fogo.png"),
+            (OSError(28, "No space left on device"), 500, "No space left on device"),
+            (EmUso(13, "em uso", "ficha.json"), 503, "ocupada")):
+        def falha(item_id, _erro=erro):
+            raise _erro
+        monkeypatch.setattr(api_http.sprites_aprovar, "aprovar", falha)
+        resp, corpo = _pedir(servidor, "POST", rota, {}, token)
+        mensagem = json.loads(corpo)["erro"]
+        assert resp.status == status and trecho in mensagem, (erro, mensagem)
+        assert ("ocupada" in mensagem) == (status == 503)
+
+
