@@ -8,6 +8,7 @@ minusculo com o ffmpeg e PULA se ele nao estiver instalado.
 """
 from __future__ import annotations
 
+import ast
 import inspect
 import shutil
 import subprocess
