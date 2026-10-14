@@ -17,10 +17,8 @@ da mistura e — este sim na simulacao — o contador da lava.
 """
 from __future__ import annotations
 
-import math
 import os
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 

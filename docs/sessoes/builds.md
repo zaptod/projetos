@@ -883,6 +883,8 @@ no `winrate_p1` (0,458). A paridade de 0,500 é do lote inteiro.
   Inferno, 6% da vida máxima por segundo (`PERIGO_CHAO_DANO_PCT_S`), em ticks
   de 0,5 s, sem RNG. Em 24 lutas do smoke: no Vulcão, ~12% da vida por luta
   e 1 morte pela lava; no Inferno, ~2%. A IA ainda não desvia da poça.
+  **Desde 14/10 (tarde) o tempo na poça acumula** (§11): Vulcão 10,3% →
+  14,0% da vida por luta.
 - **Empate** (`builds/empate-persistente`): três empates não viram mais
   vitória do p1. Vence quem tem mais HP (fração). Com HP igual, vence quem
   tirou mais vida. Ainda igual, decide a paridade da seed (par = p1). O
@@ -891,6 +893,57 @@ no `winrate_p1` (0,458). A paridade de 0,500 é do lote inteiro.
 - Re-pinos: `tests/test_corrente_v2_regressions.py` (as 3 digitais de luta,
   chave desligada) e `alvos_qualidade.json` (C2 9 → 10; a descrição do V4
   registra a purga dos humores).
+
+## 11. O fim do vídeo de luta (14/10/2026)
+
+Achado do conferente, gravando pelo gravador de produção (seed 4242, Gunnar
+Vexevok × Aurelia Argalacern, Arena, câmera ARENA): o fim era o pior trecho
+do vídeo. Depois do K.O. a imagem **congelava** (freezedetect de 39,4 s até o
+fim, 42,9 s), o perdedor **sumia** (o corpo caído era pintado em
+`COR_CORPO` sobre o chão escuro), sobravam ~0,9 s de silêncio depois da
+fanfarra e o pico verdadeiro dava -1,2 dBTP.
+
+**O que mudou** (só o último item mexe na luta):
+- **cena pós-K.O. viva** (só desenho, `simulacao.py`): perdedor caído na cor
+  dele, com estrelas; ondas de choque no slow-mo; o vencedor pula e sai
+  confete depois da fanfarra. Movimento médio por quadro pós-K.O. 0,00003 →
+  0,00139 (a luta: 0,00078); congelado pós-K.O.: nenhum.
+- **cauda = slow-mo + fanfarra + 0,1 s** (`fight_recorder.cauda_pos_ko_de`,
+  a mesma conta no gravador e na timeline do palco; `cauda_pos_ko=None` é o
+  padrão). A fanfarra é medida no arquivo que a mistura usaria (runtime >
+  pacote > fallbacks), então trocar o wav muda a cauda junto. Sem o arquivo,
+  os 3,5 s de antes; nunca menos que `CAUDA_MIN_POS_KO` = 1,5 s. Seed 4242
+  na Arena: 3,5 → 2,73 s; silêncio final (-40 dB) 0,91 → 0,17 s.
+- **teto de pico verdadeiro** (`mixagem.com_teto_de_pico`, no gravador e no
+  mix final do renderer): mede o mp4 e, se passou, refaz com o limitador
+  mais baixo devolvendo o integrado. -1,2 → -2,6 dBTP, -16,1 → -16,2 LUFS.
+- **a lava acumula** (`PERIGO_CHAO_ESQUECE_S` = 1,0): sair da poça não zera o
+  contador; ele só esquece depois de 1 s seguido fora. Antes, quem só
+  atravessava (0,1–0,45 s por passagem) nunca levava dano. Vulcão, 24 lutas:
+  10,3% → 14,0% da vida por luta (21 → 22 lutas com dano); Inferno 1,75% →
+  2,0%. **Queimar a cada pisada foi recusado**: levava a 35%.
+
+**Prova de que a luta só mudou pela lava** (48 lutas headless, 8 arenas × 6
+seeds, fixture engine, base `3e5e2a4` × WIP): Arena, Arena Pequena,
+Labirinto, Duto, Poço e Torre **36/36 iguais** (vencedor, motivo, duração,
+quadros, HP); Vulcão 3/6 e Inferno 5/6 iguais (uma troca de vencedor, Vulcão
+seed 103); com `PERIGO_CHAO_ESQUECE_S = 0` (o zerar de antes) **48/48
+iguais** à base. Nenhum pino da suíte mudou por causa da lava (o gate de
+qualidade passa sem re-pino); o único teste ajustado foi o piso da cauda do
+gate de gravação (`test_gravacao_continua_depois_do_ko`: era "≥ 3,0 s",
+agora "cobre slow-mo + fanfarra e não passa da conta + 2 quadros").
+
+**Vídeo de prova** (fora do git e do catálogo): `E:\tmp_pytest\prova_fim_luta\`
+— `vulcao_4242.mp4` (Gunnar Vexevok × Aurelia Argalacern, seed 4242,
+Vulcão, DIRETOR, 1920×1080, sem HUD, largura mínima 5,5 m e espera 2,5 s
+como o duelo, pelo `fight_recorder` em subprocesso como o `capture.gravar_uma`).
+K.O. aos 21,57 s **pela lava** (um tique de 22,4 em Gunnar), vídeo de 24,30 s:
+**cauda 2,73 s** (slow-mo 21,567 → 22,767, fanfarra 22,767 → 24,18);
+silêncio final 0,16 s; nenhum congelado na cauda (freezedetect n=0,001
+d=0,3); **-2,3 dBTP**, -17,7 LUFS, LRA 5,0, 1 tentativa de pico (já dentro);
+11 arquivos de som. Quadros: `cauda_1_ko.png` (21,567), `cauda_2_slowmo.png`
+(22,2), `cauda_3_perdedor_caido.png` (23,5), `cauda_4_ultimo.png` (24,25).
+Gravação: 37 s.
 
 ## Contratos com outras partes
 

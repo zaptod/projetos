@@ -120,13 +120,28 @@ class GravacaoDeLutaTests(unittest.TestCase):
 
     @unittest.skipIf(GATE_PESADO, "gate pesado; ligue com NF_RECORDING_GATE=1")
     def test_gravacao_continua_depois_do_ko(self) -> None:
-        """O video precisa conter o slow-motion e o letterbox do nocaute."""
+        """O video precisa conter o slow-motion e a fanfarra inteira do nocaute.
+
+        Desde 14/10/2026 a cauda nao e mais 3,5 s fixos: vai ate a fanfarra
+        acabar (``cauda_pos_ko_de``: slow-mo 1,2 s + fanfarra + 0,1 s). O
+        piso de 3,0 s deste teste era da cauda antiga (que deixava ~0,9 s de
+        silencio no fim); o contrato agora e cobrir slow-mo + fanfarra.
+        """
+        from neural_fights.recording import fight_recorder as fr
+
         gravado = self._gravar(portrait=False, camera=None, nome="cauda")
         if gravado["ko_em_video"] is None:
             self.skipTest("a luta terminou por tempo, sem KO")
-        self.assertGreaterEqual(
-            gravado["duracao_video"] - gravado["ko_em_video"], 3.0,
-            "faltou cauda apos o KO")
+        cauda = gravado["duracao_video"] - gravado["ko_em_video"]
+        fanfarra = fr.duracao_do_som(fr.SOM_DA_VITORIA)
+        minimo = fr.CAUDA_POS_KO if fanfarra is None else 1.2 + fanfarra
+        # um quadro de folga: o video e medido em quadros de 1/30 s
+        self.assertGreaterEqual(cauda + 1 / 30, max(minimo, fr.CAUDA_MIN_POS_KO),
+                                "faltou cauda apos o KO")
+        from types import SimpleNamespace
+        esperado = fr.cauda_pos_ko_de(SimpleNamespace(slow_mo_timer=1.2))
+        self.assertLessEqual(cauda, esperado + 2 / 30,
+                             "sobrou silencio depois da fanfarra")
 
     @unittest.skipIf(GATE_PESADO, "gate pesado; ligue com NF_RECORDING_GATE=1")
     def test_camera_diretor_e_resolucao_nativa_nao_alteram_a_luta(self) -> None:
