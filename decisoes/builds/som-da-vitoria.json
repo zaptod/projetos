@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:14.173325",
+  "depende_de": [],
+  "historico": [],
+  "id": "som-da-vitoria",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "fanfarra",
+      "pede_comentario": false,
+      "rotulo": "Uma fanfarra curta de vitória (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "silencio",
+      "pede_comentario": false,
+      "rotulo": "Nenhum som"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": true,
+      "rotulo": "Outro (diga qual nos comentários)"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Na vitória hoje toca a abertura da arena, quase muda. Que som deve tocar?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Som da vitória",
+  "vigente": null
+}

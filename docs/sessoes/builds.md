@@ -144,6 +144,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ⏳ **Os 29 traços sem efeito** — 29 traços de personalidade são sorteados para os lutadores mas não fazem nada na luta. O que fazer? `quirks-sem-efeito`
 - ⏳ **Atordoamento e relógio de ataque** — Hoje o atordoamento pausa o relógio de ataque do lutador (muda o ritmo de toda luta). Mantém? `atordoamento-e-relogio`
 - ⏳ **Lava do Vulcão e do Inferno** — O catálogo promete dano de lava nas arenas Vulcão e Inferno, mas a lava não machuca. O que fazer? `lava-do-vulcao`
+- ⏳ **Som da vitória** — Na vitória hoje toca a abertura da arena, quase muda. Que som deve tocar? `som-da-vitoria`
 
 <!-- decisoes:fim -->
 
