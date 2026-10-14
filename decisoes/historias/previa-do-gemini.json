@@ -3,7 +3,14 @@
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:44.252504",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+      "em": "2026-10-14T08:46:29",
+      "opcao": "aceitar-marcada",
+      "origem": "cli"
+    }
+  ],
   "id": "previa-do-gemini",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Quando o original da imagem do Gemini não baixa, hoje fica a prévia com metade da resolução (47 de 89 imagens em 12/10). Aceitar ou gerar de novo?",
   "projeto": "historias",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Prévia de meia resolução do Gemini",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+    "em": "2026-10-14T08:46:29",
+    "opcao": "aceitar-marcada"
+  }
 }
