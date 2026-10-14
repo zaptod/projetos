@@ -46,3 +46,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Desenho 'Comum' de habilidade: vale para todos os elementos?** — Sua arte por elemento ganha; o Comum troca só a provisória (recomendado) (07/10/2026) `comum-tingido-ordem`
 - ✅ **Rosto desenhado só em algumas carinhas: o que aparece nas outras?** — Usa a sua mais parecida (recomendado) (07/10/2026) `boca-de-uma-carinha`
 - ✅ **Launcher: o 'Iniciar batalha' com o visual antigo** — Tirar o pygame do launcher (08/10/2026) `launcher-iniciar-batalha`
+- ⏳ **Botão 'Gerar Roster' do torneio** — O botão 'Gerar Roster' do torneio troca o banco inteiro de personagens e armas por 64 inventados, sem perguntar. Fica uma cópia, mas ninguém avisa. O que ele deve fazer? `gerar-roster-do-torneio`

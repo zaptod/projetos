@@ -1,0 +1,47 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:55:45.861713",
+  "depende_de": [],
+  "historico": [],
+  "id": "gerar-roster-do-torneio",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Seu catálogo nunca é tocado",
+      "id": "catalogo-separado",
+      "pede_comentario": false,
+      "rotulo": "Gravar num catálogo só do torneio (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Como hoje, mas com confirmação",
+      "id": "perguntar",
+      "pede_comentario": false,
+      "rotulo": "Perguntar e substituir, guardando cópia"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Os 64 entram junto com os seus",
+      "id": "acrescentar",
+      "pede_comentario": false,
+      "rotulo": "Acrescentar ao catálogo"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tirar",
+      "pede_comentario": false,
+      "rotulo": "Tirar o botão"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O botão 'Gerar Roster' do torneio troca o banco inteiro de personagens e armas por 64 inventados, sem perguntar. Fica uma cópia, mas ninguém avisa. O que ele deve fazer?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Botão 'Gerar Roster' do torneio",
+  "vigente": null
+}
