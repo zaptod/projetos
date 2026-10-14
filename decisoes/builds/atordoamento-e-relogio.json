@@ -3,7 +3,14 @@
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:56:07.080002",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+      "em": "2026-10-14T08:45:32",
+      "opcao": "manter",
+      "origem": "cli"
+    }
+  ],
   "id": "atordoamento-e-relogio",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Hoje o atordoamento pausa o relógio de ataque do lutador (muda o ritmo de toda luta). Mantém?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Atordoamento e relógio de ataque",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.",
+    "em": "2026-10-14T08:45:32",
+    "opcao": "manter"
+  }
 }
