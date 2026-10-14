@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:58:13.725426",
+  "depende_de": [],
+  "historico": [],
+  "id": "botoes-picasso-digen",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tirar",
+      "pede_comentario": false,
+      "rotulo": "Tirar os botões (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "A página Vídeos ainda tem 'Login no PicassoIA', 'Login no Digen' e 'Vídeo do payoff (Digen)', depois de você ter tirado os dois da roda. Tirar?",
+  "projeto": "painel-e-vila",
+  "situacao": "pendente",
+  "titulo": "Botões do PicassoIA e do Digen no painel",
+  "vigente": null
+}
