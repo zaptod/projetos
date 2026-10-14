@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-14T01:57:42",
+      "evento": "2026-10-14T01:56:55",
+      "linha": 164,
+      "nota": "resposta sem pedido de origem: builds/gerar-roster-do-torneio = Gravar num catálogo só do torneio (recomendado)",
+      "opcao": "catalogo-separado",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
   "criado": "2026-10-14T01:55:45.861713",
   "depende_de": [],
