@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:02.077600",
+  "depende_de": [],
+  "historico": [],
+  "id": "quirks-sem-efeito",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O vídeo para de prometer o que não acontece",
+      "id": "tirar",
+      "pede_comentario": false,
+      "rotulo": "Tirar do sorteio agora, implementar aos poucos (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "implementar",
+      "pede_comentario": false,
+      "rotulo": "Implementar todos os 29"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "29 traços de personalidade são sorteados para os lutadores mas não fazem nada na luta. O que fazer?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Os 29 traços sem efeito",
+  "vigente": null
+}
