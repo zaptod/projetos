@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Achado na auditoria profunda de 11-14/10 (docs/auditoria/2026-10-11-profunda/RESUMO.md).",
+  "criado": "2026-10-14T01:56:07.080002",
+  "depende_de": [],
+  "historico": [],
+  "id": "atordoamento-e-relogio",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Não muda os números de nenhuma luta",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter como está (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "paralelo",
+      "pede_comentario": false,
+      "rotulo": "Relógio corre durante o atordoamento"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Hoje o atordoamento pausa o relógio de ataque do lutador (muda o ritmo de toda luta). Mantém?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Atordoamento e relógio de ataque",
+  "vigente": null
+}
