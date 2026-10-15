@@ -1075,9 +1075,14 @@ class ConfiabilidadeTests(unittest.TestCase):
         self.app = Casca.criar([confiabilidade.Pagina])
         self.app.geometry("1366x740")
         self.app.update()
-        # A pagina abre lendo a ficha REAL em segundo plano. Sem esperar, essa
-        # leitura chegava no meio do teste e redesenhava por cima da FICHA
-        # (no CI: alertas com 1 linha em vez de 2). Espera e entrega agora.
+        # O pulso de 4 s le o panorama REAL e chama `atualizar`, que redesenha
+        # por cima da FICHA: no CI (maquina lenta) ele caia no meio do teste
+        # (alertas com 1 linha em vez de 2). Os testes do pulso chamam
+        # `atualizar` direto; aqui ele fica desligado. A leitura de abertura
+        # (`ao_mostrar`) termina e e entregue antes do teste comecar.
+        self.app._pulso.desligar()
+        if self.app._pulso_pipeline is not None:
+            self.app._pulso_pipeline.desligar()
         self.app.supervisor.aguardar(60)
         self.app.update()
         self.pagina = self.app.paginas["confiabilidade"]
