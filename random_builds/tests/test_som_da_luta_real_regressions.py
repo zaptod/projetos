@@ -145,7 +145,9 @@ class CorteLevaOSomTests(unittest.TestCase):
             self.assertEqual([], sorted(p.name for p in Path(pasta).iterdir()
                                         if p.suffix in (".mov", ".txt")))
             esperado = highlights.mapear_tempo(trechos, 10.3)
-            self.assertAlmostEqual(esperado, _onset(cortado), delta=0.01)
+            # meio quadro a 30 fps: o ffmpeg do CI (choco) poe o estalo 13 ms
+            # antes do daqui; o defeito que o teste pega era de 67 ms
+            self.assertAlmostEqual(esperado, _onset(cortado), delta=1 / 60)
             # quadro a quadro no passo de 30 fps (o .mkv dava 33 e 34 ms)
             saida = subprocess.run(
                 ["ffprobe", "-v", "error", "-select_streams", "v", "-show_entries",

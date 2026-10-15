@@ -1075,6 +1075,11 @@ class ConfiabilidadeTests(unittest.TestCase):
         self.app = Casca.criar([confiabilidade.Pagina])
         self.app.geometry("1366x740")
         self.app.update()
+        # A pagina abre lendo a ficha REAL em segundo plano. Sem esperar, essa
+        # leitura chegava no meio do teste e redesenhava por cima da FICHA
+        # (no CI: alertas com 1 linha em vez de 2). Espera e entrega agora.
+        self.app.supervisor.aguardar(60)
+        self.app.update()
         self.pagina = self.app.paginas["confiabilidade"]
         self.addCleanup(self._fechar)
 
