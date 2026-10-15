@@ -151,8 +151,11 @@ def _rodar(nome: str, cwd: Path, comando: list, tempo: int = 900) -> dict:
     resumo = (f"{quantos} testes" if quantos else "ok") if ok else (
         f"{len(falhas)} falha(s)" if falhas else
         f"código {proc.returncode}")
+    # `todas`: o `--verboso` lista cada uma. So as 8 primeiras escondiam 25
+    # das 33 do random_builds no primeiro run do CI (38625290567).
     return {"nome": nome, "ok": ok, "resumo": resumo, "falhas": falhas[:8],
-            "segundos": time.monotonic() - inicio, "saida": saida}
+            "todas": falhas, "segundos": time.monotonic() - inicio,
+            "saida": saida}
 
 
 def ferramentas() -> dict:
@@ -277,10 +280,12 @@ def main(argv=None) -> int:
         marca = _cor("  ok  ", VERDE) if resultado["ok"] else _cor(" FALHA", VERMELHO)
         print(f"[{marca}] {nome:24} {resultado['resumo']:22} "
               f"{resultado['segundos']:5.1f}s")
-        for falha in resultado.get("falhas") or []:
+        lista = (resultado.get("todas") if args.verboso else None) \
+            or resultado.get("falhas") or []
+        for falha in lista:
             print(f"           {_cor('x ' + str(falha), VERMELHO)}")
         if args.verboso and not resultado["ok"]:
-            print(resultado["saida"][-2500:])
+            print(resultado["saida"][-12000:])
 
     print("=" * 68)
     ruins = [r for r in resultados if not r["ok"]]

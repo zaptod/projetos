@@ -426,6 +426,11 @@ class PaginaDaOficina(unittest.TestCase):
         from painel import janelas
         self.app = janelas.montar("oficina")
         self.app.withdraw()
+        # A tela DELE (1366x768), qualquer que seja a de quem roda: no Windows
+        # o Tk limita a janela ao `maxsize`, que nasce do tamanho da tela, e
+        # no runner do GitHub (1024x768) o 1366 virava 1024 e a tela de
+        # pintura ficava com 184 px (CI 38625290567).
+        self.app.maxsize(1366, 768)
         self.app.geometry("1366x705+0+0")
         self.pagina = self.app.paginas["oficina"]
 

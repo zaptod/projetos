@@ -258,7 +258,10 @@ class DataContractTests(unittest.TestCase):
             self.assertEqual([], list(Path(temp_dir).glob("*.bak")))
 
     def test_match_config_pode_ser_isolado_por_variavel_de_ambiente(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as bruto:
+            # O nome canonico: no runner do GitHub o TEMP e `RUNNER~1` (8.3);
+            # `resolve()` expande e o caminho devolvido nao.
+            temp_dir = os.path.realpath(bruto)
             path = Path(temp_dir) / "processo" / "match.json"
             with patch.dict(os.environ, {database.MATCH_CONFIG_ENV: str(path)}):
                 resolved = database.salvar_match_config(

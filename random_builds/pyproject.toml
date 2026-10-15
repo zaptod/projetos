@@ -27,6 +27,10 @@ dependencies = [
     # Automacao de navegador (Digen, PicassoIA, DreamFace, YouTube Studio,
     # TikTok). Depois de instalar:  patchright install chrome
     "patchright>=1.50",
+    # A API do YouTube (publicar, metricas, recuperar, conferencia). Faltava
+    # aqui: o PC tinha o requests instalado a mao, e no Windows limpo do CI
+    # (run 38625290567, 15/10/2026) 31 testes cairam com ImportError.
+    "requests>=2.31,<3",
 ]
 
 [tool.setuptools.packages.find]

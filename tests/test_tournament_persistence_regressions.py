@@ -2,6 +2,7 @@ import copy
 import io
 import json
 import os
+import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stdout
@@ -521,8 +522,12 @@ class TournamentPersistenceRegressionTests(unittest.TestCase):
         self.assertEqual(restored.name, "Estado local")
 
     def test_relative_environment_override_stays_in_runtime_directory(self):
+        # O nome canonico do temporario: no runner do GitHub o TEMP e
+        # `RUNNER~1` (8.3), o codigo devolve `abspath` e o esperado era
+        # `resolve()` -- o mesmo arquivo com dois nomes.
+        temp_dir = os.path.realpath(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, temp_dir, True)
         with (
-            tempfile.TemporaryDirectory() as temp_dir,
             patch.object(tournament_module.database, "RUNTIME_DIR", temp_dir),
             patch.dict(
                 os.environ,
@@ -537,7 +542,8 @@ class TournamentPersistenceRegressionTests(unittest.TestCase):
         )
 
     def test_relative_explicit_path_is_resolved_from_current_directory(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as bruto:
+            temp_dir = os.path.realpath(bruto)  # nome canonico (TEMP 8.3 no CI)
             previous_cwd = Path.cwd()
             try:
                 os.chdir(temp_dir)

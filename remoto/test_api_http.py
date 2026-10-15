@@ -241,6 +241,40 @@ def test_codigo_vence_e_cinco_erros_o_matam(mundo):
     assert api_http.trocar_codigo(codigo, "x") is None
 
 
+def _gravar_no_mesmo_tique(monkeypatch):
+    """Toda gravacao deixa o MESMO mtime: o que acontece quando duas caem no
+    mesmo tique do relogio do Windows (~1-16 ms), como no runner do CI."""
+    gravar = api_http.gravar_config
+
+    def gravar_e_congelar(dados):
+        gravar(dados)
+        os.utime(api_http.caminho(), ns=(10**18, 10**18))
+    monkeypatch.setattr(api_http, "gravar_config", gravar_e_congelar)
+
+
+def test_tentativas_contam_mesmo_no_mesmo_tique(mundo, monkeypatch):
+    """CI 38625290567 (15/10/2026): `tentativas` 1 -> 2 nao muda o tamanho do
+    JSON e, no mesmo tique, nem o mtime. A leitura de quem ia GRAVAR vinha do
+    cache (mtime, tamanho) e o contador nunca passava de 1: o limite de cinco
+    erros do pareamento nao valia."""
+    _gravar_no_mesmo_tique(monkeypatch)
+    codigo = api_http.novo_codigo()
+    errado = f"{(int(codigo) + 1) % 10**6:06d}"
+    for _ in range(api_http.CODIGO_TENTATIVAS):
+        assert api_http.trocar_codigo(errado, "x") is None
+    assert api_http.trocar_codigo(codigo, "x") is None
+
+
+def test_leitura_comum_ve_a_troca_no_mesmo_tique(mundo, monkeypatch):
+    """Mesmo tamanho e mesmo mtime, conteudo novo: o `os.replace` traz outro
+    arquivo (outro `st_ino`), e a leitura do servidor tem de ve-lo."""
+    _gravar_no_mesmo_tique(monkeypatch)
+    api_http.gravar_config({"aparelhos": [], "x": "a"})
+    assert api_http.ler_config()["x"] == "a"
+    api_http.gravar_config({"aparelhos": [], "x": "b"})
+    assert api_http.ler_config()["x"] == "b"
+
+
 def test_sem_token_nao_le_nada(servidor):
     for rota in ("/api/estado", "/api/diario", "/api/videos",
                  "/api/video/builds/bom", "/api/relatorio/metas"):

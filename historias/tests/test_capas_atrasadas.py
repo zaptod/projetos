@@ -4,15 +4,24 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[2] / "ferramentas" / "capas_atrasadas.py"
 
 
 def _modulo():
+    # O script poe `random_builds/` no sys.path[0]. Sem devolver o sys.path,
+    # todo `import main` depois deste arquivo na suite pegava o main.py dos
+    # builds (test_rumos: "module 'main' has no attribute 'cmd_auto'",
+    # 15/10/2026).
+    antes = list(sys.path)
     spec = importlib.util.spec_from_file_location("capas_atrasadas_teste", SCRIPT)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path[:] = antes
     return mod
 
 

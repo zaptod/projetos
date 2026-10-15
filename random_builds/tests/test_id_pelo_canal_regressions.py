@@ -118,9 +118,14 @@ class IdNoCanalTests(unittest.TestCase):
         self.assertEqual([], chamou, "sem titulo nao ha o que casar")
 
     def test_aceita_a_hora_como_texto(self):
+        # O texto e a hora LOCAL do PC (como o ledger grava). Escrita fixa
+        # ("15:42") so valia no fuso dele: no runner do CI, em UTC, virava
+        # 3 h de diferenca (CI 38625290567). O mesmo instante, no fuso local.
+        texto = (self.AGORA.astimezone().replace(tzinfo=None)
+                 .isoformat(timespec="seconds"))
         with self._com([_video("x", "mesmo titulo", "2026-09-17T18:41:00Z")]):
             self.assertEqual("x", recuperar.id_no_canal(
-                "builds", "mesmo titulo", "2026-09-17T15:42:00"))
+                "builds", "mesmo titulo", texto))
 
 
 class NoPublicadorTests(unittest.TestCase):

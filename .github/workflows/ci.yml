@@ -215,5 +215,7 @@ jobs:
       - run: python -m ruff check .
       - name: A catraca de arquitetura
         run: python ferramentas/auditoria_arquitetura.py --strict
+      # `--verboso`: o run 38625290567 so mostrou os NOMES (e so 8 por parte);
+      # no CI nao ha como rodar de novo para ver o motivo.
       - name: Tudo, num comando so
-        run: python testar.py
+        run: python testar.py --verboso

@@ -658,7 +658,15 @@ class RodarUmaFaixa(unittest.TestCase):
 class MainEscolheORumo(unittest.TestCase):
 
     def _cmd(self, gerador=None, faixas=()):
-        import main
+        # O main.py DAS HISTORIAS pelo caminho, e nao `import main`: o
+        # random_builds tem outro main.py, e quem poe `random_builds/` no
+        # sys.path antes (ferramentas/capas_atrasadas.py) fazia o `import`
+        # pegar o dele (15/10/2026).
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_main_historias_rumo", Path(__file__).resolve().parents[1] / "main.py")
+        main = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(main)
         from contos.pipeline import agenda as A
         chamadas = []
         anteriores = (A.rodar, A.rodar_faixas, A.faixas, A.carregar)

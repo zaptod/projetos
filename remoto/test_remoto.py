@@ -2072,6 +2072,13 @@ class ConteudoDosRelatoriosTests(BaseTemp):
         self.assertIn("?", texto)
 
     def test_funcionamento_mede_a_duracao_pelo_par_inicio_fim(self):
+        # O Agendador de verdade nao e o assunto: no PC dele sao ~60 consultas
+        # ao schtasks (89 s, medido em 15/10/2026), e a suite do remoto
+        # passava dos 900 s do testar.py.
+        dublado = mock.patch.object(relatorios, "_linhas_do_agendador",
+                                    lambda: [])
+        dublado.start()
+        self.addCleanup(dublado.stop)
         comandos.atividade.registrar("estudio", "inicio", "parte 1")
         comandos.atividade.registrar("estudio", "ok", "1 video")
         texto = relatorios.funcionamento()

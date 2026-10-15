@@ -88,7 +88,10 @@ class AudioContractTests(unittest.TestCase):
     def test_runtime_overrides_do_not_modify_packaged_sound_assets(self) -> None:
         package_config = PACKAGE_SOUND_DIR / "sound_config.json"
         original_text = package_config.read_text(encoding="utf-8")
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as bruto:
+            # O nome canonico: no runner do GitHub o TEMP e `RUNNER~1` (8.3) e
+            # o codigo resolve o caminho; comparar com o nome curto falhava.
+            temp_dir = os.path.realpath(bruto)
             with patch.dict(os.environ, {SOUND_RUNTIME_DIR_ENV: temp_dir}):
                 config = load_sound_config()
                 self.assertIn("slash_light", config)
@@ -168,7 +171,8 @@ class AudioContractTests(unittest.TestCase):
         file_var = Mock()
         status_label = Mock()
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as bruto:
+            temp_dir = os.path.realpath(bruto)  # nome canonico (TEMP 8.3 no CI)
             override = Path(temp_dir) / "slash_light.mp3"
             override.write_bytes(b"custom override")
             with (

@@ -946,7 +946,11 @@ class FichaAnteriorSemDonaVivaTests(_BaseDaDona):
     # "clicou", "desde": 23:42:21} — e a linha do TikTok dela no ledger as
     # 23:42:50. Sem o conserto, principal perdida = "a conferir" (+ Telegram)
     # para um video que ja tinha saido.
-    DESDE = 1791340941.2106843                  # 06/10/2026 23:42:21 (local)
+    # 06/10/2026 23:42:21 na hora LOCAL de quem roda, como o ledger grava.
+    # Era o epoch fixo 1791340941.21 -- 23:42:21 so no fuso dele (-03); no
+    # runner do CI, em UTC, o voo "comecava" as 02:42 e a linha do ledger
+    # ficava de antes dele (CI 38625290567).
+    DESDE = datetime(2026, 10, 6, 23, 42, 21, 210684).timestamp()
 
     def _ledger(self, *linhas, quebra=False):
         def publicados(canal):

@@ -8,6 +8,7 @@ vigiado tem o limite do proprio config (critico = o freio; baixo = freio + 3).
 """
 import unittest
 from collections import namedtuple
+from pathlib import Path
 from unittest import mock
 
 from panorama import auditoria, recursos
@@ -23,6 +24,14 @@ def _uso(livres):
 
 
 class DiscoQueParaTests(unittest.TestCase):
+    def setUp(self):
+        # O repositorio "no E:", como no PC dele. O volume do repositorio entra
+        # sempre na lista vigiada, e no runner do GitHub o checkout fica no
+        # D: -- o disco falso nao tinha D: e dava KeyError (CI 38625290567).
+        patcher = mock.patch.object(recursos, "RAIZ", Path(r"E:\projetos"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_disco_vigia_o_volume_do_config(self):
         disco = recursos._disco(_uso({"C:/": 4, "E:/": 50}))
         self.assertEqual("critico", disco["volumes"]["C:/"]["situacao"])

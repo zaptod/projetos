@@ -671,13 +671,18 @@ _CONFIG_LIDA_GUARDA = threading.Lock()
 
 
 def _assinatura(alvo: Path):
+    """(arquivo, mtime, tamanho). O `st_ino` entrou em 15/10/2026: duas
+    gravacoes no mesmo tique do relogio do Windows (~1-16 ms) com o mesmo
+    tamanho (`tentativas` 1 -> 2) davam a MESMA assinatura e a leitura vinha
+    velha do cache. Como `gravar_config` troca o arquivo inteiro
+    (`os.replace` do .tmp), cada gravacao e outro arquivo, outro `st_ino`."""
     try:
         info = alvo.stat()
     except FileNotFoundError:
         return None
     except OSError:
         return False
-    return (info.st_mtime_ns, info.st_size)
+    return (info.st_ino, info.st_mtime_ns, info.st_size)
 
 
 def _ler_config_do_disco(alvo: Path):
@@ -706,13 +711,17 @@ def ler_config(estrito: bool = False) -> dict:
     menos leituras = menos `os.replace` recusado para quem grava. Leitura
     que falha com o arquivo existindo usa a ultima que deu certo; sem ela
     (ou com `estrito`, que quem vai GRAVAR usa), levanta `ConfigIlegivel`.
+
+    `estrito` le SEMPRE do disco (15/10/2026): quem le para gravar esta
+    dentro da trava e nao pode partir de uma copia; com o cache, o contador
+    de tentativas do pareamento parava em 1 (CI 38625290567).
     """
     alvo = caminho()
     chave = os.path.normcase(str(alvo))
     assinatura = _assinatura(alvo)
     with _CONFIG_LIDA_GUARDA:
         guardada = _CONFIG_LIDA.get(chave)
-    if assinatura and guardada and guardada[0] == assinatura:
+    if not estrito and assinatura and guardada and guardada[0] == assinatura:
         dados = copy.deepcopy(guardada[1])
     else:
         try:

@@ -13,6 +13,7 @@ comando que ela sugere; nao havia nada que percebesse o problema sozinho.
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 from remoto import relatorios
 
@@ -75,7 +76,10 @@ class CredenciaisNoRelatorioTests(unittest.TestCase):
     def test_a_secao_entra_no_relatorio(self):
         self._dublar({"builds": {"ok": True, "motivo": ""},
                       "historias": {"ok": True, "motivo": ""}})
-        self.assertIn("*Credenciais*", relatorios.funcionamento())
+        # O Agendador de verdade nao e o assunto: no PC dele sao ~60
+        # consultas ao schtasks (81 s, medido em 15/10/2026).
+        with mock.patch.object(relatorios, "_linhas_do_agendador", lambda: []):
+            self.assertIn("*Credenciais*", relatorios.funcionamento())
 
     def test_conta_que_explode_nao_derruba_o_relatorio(self):
         """O relatorio das 09:00 nao pode sumir porque a rede caiu."""

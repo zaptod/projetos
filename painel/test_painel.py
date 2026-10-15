@@ -898,7 +898,10 @@ class UmPorRotuloTests(unittest.TestCase):
         if _os.name == "nt":
             lista = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {neto}", "/NH"],
-                capture_output=True, text=True).stdout
+                # `errors`: em pt-BR o tasklist responde em cp850
+                # ("INFORMAÇÕES"), e com o PYTHONUTF8 do testar.py a leitura
+                # quebrava e o stdout vinha None.
+                capture_output=True, text=True, errors="replace").stdout
             self.assertNotIn(str(neto), lista)
         self.assertTrue(any("encerrei a árvore" in l for l in self.linhas))
 
@@ -1658,6 +1661,10 @@ class TamanhoInicialTests(unittest.TestCase):
                             f"{app.winfo_width()}x{app.winfo_height()} "
                             f"({app.state()})")
             # Quem pede tamanho (a --prova, os testes) ganha o que pediu.
+            # `maxsize` da tela dele: no Windows o Tk limita a janela ao
+            # tamanho da tela, e no runner do GitHub (1024x768) o pedido de
+            # 1200 virava 1024 (CI 38625290567).
+            app.maxsize(1366, 768)
             app.geometry("1200x650")
             app.update()
             self.assertEqual("normal", app.state())
