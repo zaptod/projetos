@@ -966,11 +966,19 @@ luta):
 3. **câmera DIRETOR na cauda** (`Câmera._enquadrar_pos_ko`): com um morto,
    enquadra os dois se o vencedor ainda ocupa ≥ 15% da largura
    (`diretor_pos_ko_fracao_min`), senão só o vencedor; a caixa leva o pulo
-   (`FESTA_ALTURA_PULO`), o nome e o alcance do confete, e cabe nos 70% de
-   cima da tela (`diretor_pos_ko_area`). Transição exponencial
-   (`diretor_pos_ko_lerp` = 3,5/s), sem salto. Para o rosto não ficar sob o
-   nome do vencedor, **o veredito do duelo desceu para o terço de baixo**
-   (`renderer.VEREDITO_ALTURA` = 0,80; era o meio da tela).
+   (`FESTA_ALTURA_PULO`), o nome e o alcance do confete, e cabe nos **60% de
+   cima e fora dos 12% da direita** (`diretor_pos_ko_area` = (0, 0, 0,88,
+   0,60)). Transição exponencial (`diretor_pos_ko_lerp` = 3,5/s), sem salto.
+   **O veredito do duelo saiu do meio da tela** (passava sobre o rosto do
+   vencedor) para a **zona segura das plataformas** (decisão da coordenação,
+   15/10): inteiro entre 62% e 76% da altura (`renderer.VEREDITO_ZONA`; o
+   bloco nome + cartel, com contorno, é centrado na faixa) e no máximo 74% da
+   largura, centrado (`VEREDITO_LARGURA_MAX`), fora da coluna de botões. Os
+   ~20% de baixo e os ~12% da direita (`ZONA_DAS_PLATAFORMAS`) o TikTok e o
+   YouTube Shorts cobrem com legenda, canal e botões; um 1º conserto a 0,80
+   caía ali. HUD, identidade e callouts do duelo terminam antes de 62%
+   (teste). O HUD do topo (barra e nome do p2) ainda entra nos 12% da
+   direita: não mexido.
 4. **projétil/orbe/invocação parado no ar**: vivos no K.O., somem em fade em
    0,3 s de tempo real (`FADE_OBJETOS_POS_KO_S`; a tela antes deles é
    guardada e devolvida com opacidade 1 − fade).
@@ -982,9 +990,12 @@ sons, narrativa e série de HP até o K.O. **iguais à base `3e5e2a4`** (com e
 sem a lava nova). Prova pelo caminho real do duelo (`main.py duelo --p1
 "Gunnar Vexevok" --p2 "Aurelia Argalacern" --seed 4242 --arena Torre|Vulcao`,
 na worktree, runtime numa cópia do banco), vídeo final do renderer
-(loudnorm), 1080×1920, em `E:\tmp_pytest\prova_fim_luta2\{torre,vulcao}\`
-com quadros da cauda a cada 0,25 s (`cauda_NN_<t>s.png`) e as folhas
-`folha_torre.png`/`folha_vulcao.png`:
+(loudnorm), 1080×1920, em `E:\tmp_pytest\prova_fim_luta3\{torre,vulcao}\`
+(a de `prova_fim_luta2` é a do veredito a 0,80, superada) com quadros da
+cauda a cada 0,25 s (`cauda_NN_<t>s.png`), as cópias com a zona das
+plataformas e a faixa do veredito desenhadas (`zona\*_zona.png`), as folhas
+`folha_zona_torre.png`/`folha_zona_vulcao.png` e a medição por quadro
+(`zona_torre.json`/`zona_vulcao.json`):
 
 | | Torre | Vulcão |
 |---|---|---|
@@ -993,8 +1004,10 @@ com quadros da cauda a cada 0,25 s (`cauda_NN_<t>s.png`) e as folhas
 | pico / integrado | -1,6 dBTP / -15,5 LUFS | -1,8 dBTP / -15,6 LUFS |
 | silêncio (-40 dB, 0,1 s) e congelado (0,001, 0,3 s) na cauda | nenhum | nenhum |
 | quadro | os dois | só o vencedor |
-| vencedor (diâmetro / largura) no fim | 17,4% | 17,2% (9,1% no início da cauda) |
+| vencedor (diâmetro / largura) no fim | 15,3% (17,4% com a área de 70%) | 15,1% (17,2% com a área de 70%) |
 | plano no HUD depois do K.O. | vazio (11 amostras) | vazio (11 amostras) |
+| rosto do vencedor fora da zona das plataformas e acima de 62% | 12/12 quadros | 12/12 quadros |
+| veredito (4 quadros) | y 1269–1383 px (66,1–72,0%), x 158–916 (≤ 84,8%) | y 1269–1383 px, x 160–916 |
 
 ## Contratos com outras partes
 

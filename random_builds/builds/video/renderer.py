@@ -23,9 +23,15 @@ from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
 
 # nao abrir janelas de console para os processos ffmpeg no Windows
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-# Altura (fracao da tela) do nome do vencedor no veredito do DUELO. Era 0,5:
-# cobria o rosto do vencedor, que a camera pos-K.O. poe nos 70% de cima.
-VEREDITO_ALTURA = 0.80
+# Faixa (fracoes da altura) onde o veredito do DUELO fica INTEIRO. Era o meio
+# da tela (0,5): cobria o rosto do vencedor, que a camera pos-K.O. poe nos
+# 60% de cima (``Camera.diretor_pos_ko_area``). Abaixo de 76% o TikTok e o
+# YouTube Shorts cobrem com legenda, canal e botoes (os ~20% de baixo); a
+# coluna de botoes ocupa os ~12% da direita (VEREDITO_LARGURA_MAX, centrado,
+# nunca chega nela). Decisao da coordenacao de 14/10/2026.
+VEREDITO_ZONA = (0.62, 0.76)
+VEREDITO_LARGURA_MAX = 0.74
+ZONA_DAS_PLATAFORMAS = {"baixo": 0.20, "direita": 0.12}
 
 
 def _entrada_de_som(som: Path | None, taxa: int) -> list[str]:
@@ -697,8 +703,8 @@ class VideoRenderer:
         if not ver or not str(ver.get("vencedor") or "").strip():
             return None
         vencedor = str(ver["vencedor"]).strip()
-        fonte = fit_font(vencedor, self.fonts["black"], int(self.width * 0.86),
-                         int(self.ref * 0.085))
+        fonte = fit_font(vencedor, self.fonts["black"],
+                         int(self.width * VEREDITO_LARGURA_MAX), int(self.ref * 0.085))
         fonte_ko = load_font(self.fonts["bold"], int(self.ref * 0.034))
         # Onda 15D: o cartel JA CONTANDO esta luta. "5V-0D" no fim diz que
         # ha uma sequencia em risco — e o unico gancho honesto para o
@@ -709,6 +715,33 @@ class VideoRenderer:
                                  (str(ver.get("ko_type") or "").strip(), cartel) if p),
                 "fonte": fonte, "fonte_ko": fonte_ko}
 
+    def _posicoes_do_veredito(self, draw, ver: dict):
+        """((y do nome, contorno), y da linha do K.O. ou None) com o bloco
+        INTEIRO (contorno incluso) centrado em ``VEREDITO_ZONA``. A distancia
+        entre as linhas e a de antes (0,075 ref entre centros) e encolhe se o
+        bloco nao couber na faixa."""
+        contorno = max(4, int(self.ref * 0.008))
+        cn = draw.textbbox((0, 0), ver["nome"], font=ver["fonte"], anchor="mm",
+                           stroke_width=contorno)
+        altura_nome = cn[3] - cn[1]
+        topo_zona = self.height * VEREDITO_ZONA[0]
+        baixo_zona = self.height * VEREDITO_ZONA[1]
+        if ver.get("ko"):
+            ck = draw.textbbox((0, 0), ver["ko"], font=ver["fonte_ko"], anchor="mm",
+                               stroke_width=3)
+            altura_ko = ck[3] - ck[1]
+            vao = int(self.ref * 0.075) - (cn[3] + (-ck[1]))
+            vao = max(int(self.ref * 0.006), min(vao, int(baixo_zona - topo_zona
+                                                          - altura_nome - altura_ko)))
+            total = altura_nome + vao + altura_ko
+        else:
+            ck, altura_ko, vao, total = None, 0, 0, altura_nome
+        topo = topo_zona + max(0.0, (baixo_zona - topo_zona - total) / 2.0)
+        y_nome = int(round(topo - cn[1]))
+        if ck is None:
+            return (y_nome, contorno), None
+        return (y_nome, contorno), int(round(topo + altura_nome + vao - ck[1]))
+
     def _desenhar_veredito(self, img: Image.Image, ver: dict, t: float) -> None:
         if t < ver["de"]:
             return
@@ -717,15 +750,13 @@ class VideoRenderer:
         alfa = min(1.0, (t - ver["de"]) / 0.25)
         camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(camada)
-        # Terco de baixo (14/10/2026): no meio da tela o nome passava por
-        # cima do rosto do vencedor, que a camera DIRETOR pos-K.O. enquadra
-        # nos 70% de cima (``Camera.diretor_pos_ko_area``).
-        cy = int(self.height * VEREDITO_ALTURA)
-        draw.text((self.width // 2, cy), ver["nome"], font=ver["fonte"],
+        cx = self.width // 2
+        (y_nome, contorno_nome), ko = self._posicoes_do_veredito(draw, ver)
+        draw.text((cx, y_nome), ver["nome"], font=ver["fonte"],
                   fill=(255, 255, 255), anchor="mm",
-                  stroke_width=max(4, int(self.ref * 0.008)), stroke_fill=(12, 10, 24))
-        if ver["ko"]:
-            draw.text((self.width // 2, cy + int(self.ref * 0.075)), ver["ko"],
+                  stroke_width=contorno_nome, stroke_fill=(12, 10, 24))
+        if ko is not None:
+            draw.text((cx, ko), ver["ko"],
                       font=ver["fonte_ko"], fill=(255, 214, 92), anchor="mm",
                       stroke_width=3, stroke_fill=(12, 10, 24))
         if alfa < 1.0:

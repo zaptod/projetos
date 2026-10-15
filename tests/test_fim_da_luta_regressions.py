@@ -477,7 +477,7 @@ class CameraPosKoTests(unittest.TestCase):
         x0, y0, x1, y1 = self._caixa_na_tela(cam, cam._caixa_da_festa(vencedor, cam.zoom))
         self.assertGreaterEqual(x0, -2)
         self.assertGreaterEqual(y0, -2)          # o nome no alto do pulo cabe
-        self.assertLessEqual(x1, cam.screen_width + 2)
+        self.assertLessEqual(x1, cam.diretor_pos_ko_area[2] * cam.screen_width + 2)
         self.assertLessEqual(y1, cam.diretor_pos_ko_area[3] * cam.screen_height + 2)
         self._sem_salto(cam, historico)
         # antes: o vencedor ficava com ~7% da largura
@@ -495,7 +495,7 @@ class CameraPosKoTests(unittest.TestCase):
                       cam._caixa_do_caido(perdedor, cam.zoom)):
             x0, y0, x1, y1 = self._caixa_na_tela(cam, caixa)
             self.assertGreaterEqual(min(x0, y0), -2)
-            self.assertLessEqual(x1, cam.screen_width + 2)
+            self.assertLessEqual(x1, cam.diretor_pos_ko_area[2] * cam.screen_width + 2)
             self.assertLessEqual(y1, cam.diretor_pos_ko_area[3] * cam.screen_height + 2)
         self._sem_salto(cam, historico)
 

@@ -90,9 +90,11 @@ class Câmera:
         self.diretor_pos_ko_fracao_min = 0.15
         self.diretor_pos_ko_lerp = 3.5        # lerp/s (exponencial: sem salto)
         self.diretor_pos_ko_margem = 0.04     # fração do lado menor, por borda
-        # Área da tela (x0, y0, x1, y1, em frações) onde a festa cabe: o terço
-        # de baixo fica para o veredito do vídeo (renderer VEREDITO_ALTURA).
-        self.diretor_pos_ko_area = (0.0, 0.0, 1.0, 0.70)
+        # Área da tela (x0, y0, x1, y1, em frações) onde a festa cabe. Abaixo
+        # de 60% fica o veredito do vídeo (renderer VEREDITO_ZONA, 62–76%) e,
+        # mais abaixo, a legenda/botões do TikTok e do Shorts (20% de baixo);
+        # os 12% da direita são a coluna de botões das plataformas.
+        self.diretor_pos_ko_area = (0.0, 0.0, 0.88, 0.60)
         self._diretor_t = 0.0
         self._diretor_estavel_desde = None
         self.shake_timer = 0.0
