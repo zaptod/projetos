@@ -183,6 +183,10 @@ function coordSemDados(porque) {
   $("coord-trabalho").replaceChildren(linha());
   $("coord-servicos").replaceChildren(linha());
   $("coord-eventos").replaceChildren(linha());
+  // e o "Controlar o PC" de Mandar: as ações de antes da queda não ficam
+  // tocáveis (varredura da v72)
+  $("coord-acoes").replaceChildren(linha());
+  $("coord-confirmar").classList.add("oculto");
 }
 
 async function coordCarregar() {

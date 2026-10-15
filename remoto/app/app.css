@@ -506,6 +506,11 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
    FORA DO AR, que a tela não sabe (14/10, v72) */
 .coord-mesa.velho:not(.fora) { background: #ece3cf; border-color: #8a7a5c; color: #4a3a26; }
 .orq-sem-dados { font-style: italic; }
+/* o interruptor do Claude sem dados: nem o verde do LIBERADO nem o vermelho
+   do PROIBIDO, que a tela não sabe com o PC fora (v72) */
+.claude-chave:has(> .orq-sem-dados) { padding: 8px 12px; border-radius: 12px;
+  border: 3px dashed #8a7a5c; background: #ece3cf; color: #4a3a26; }
+.claude-chave > .orq-sem-dados { color: #4a3a26; }
 .orq-faixa { padding: 10px 12px; border-radius: 10px; margin-bottom: 12px;
   border: 2px solid #b8661b; background: #fbe9c8; color: #6b3a1a; font-size: 14px;
   position: relative; z-index: 1; }

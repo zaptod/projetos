@@ -120,9 +120,21 @@ async function equipeCarregar() {
     pedidos.replaceChildren(...(dados.pedidos_permissao || []).map(equipePedidoPermissao));
     if (!(dados.pedidos_permissao || []).length) pedidos.append(el("div", {class: "fraco"}, "Nenhum pedido de permissao."));
     $("equipe-politica-permissoes").value = JSON.stringify(dados.permissoes || {}, null, 2);
+    equipeLidoEm = new Date().toISOString();
+    controlesSemPC("#tela-equipe", false);
     conexao(true);
-  } catch (err) { conexao(false, err); }
+  } catch (err) {
+    conexao(false, err);
+    // PC fora (v72): "Nenhum pedido de permissão" e "Ninguém trabalhando" de
+    // antes da queda não passam por atuais; contratar, salvar e os botões dos
+    // trabalhadores desligam até o PC voltar
+    if (!falhaDoPC(err)) return;
+    cartoesSemDados(["equipe-pedidos-permissao", "equipe-lista"], err, equipeLidoEm);
+    $("equipe-gerente").replaceChildren(linhaSemDados(err, equipeLidoEm));
+    controlesSemPC("#tela-equipe", true, ".aba-objeto");
+  }
 }
+let equipeLidoEm = null;
 
 function equipeMostrar() {
   equipeCarregar(); clearInterval(equipeTimer);

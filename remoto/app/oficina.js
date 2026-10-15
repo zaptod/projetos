@@ -112,8 +112,13 @@ async function ofiCarregarLista() {
     ofiDesenharUso(d);
     ofiDesenharLista(d);
     $("oficina-erros").textContent = (d.erros || []).join(" · ");
+    Ofi.listaEm = new Date().toISOString();
     conexao(true);
-  } catch (err) { conexao(false, err); }
+  } catch (err) {
+    conexao(false, err);
+    // PC fora (v72): o uso e a lista de antes da queda não passam por atuais
+    if (falhaDoPC(err)) cartoesSemDados(["oficina-uso", "oficina-lista"], err, Ofi.listaEm);
+  }
 }
 
 // ------------------------------------------------------------- detalhe
@@ -241,10 +246,20 @@ async function ofiCarregarDetalhe(primeira = false) {
     // pedaço grande ainda por vir: busca já, sem esperar o relógio
     if (d.mais) setTimeout(() => ofiCarregarDetalhe(), 50);
     ofiRelogioDoDetalhe();
+    Ofi.detalheEm = new Date().toISOString();
     conexao(true);
   } catch (err) {
     if (err.status === 404) { avisar("essa tarefa não existe mais", true); ofiFechar(); }
-    else conexao(false, err);
+    else {
+      conexao(false, err);
+      // PC fora (v72): o selo "rodando" e o "último sinal" são de antes da
+      // queda; o selo sai e a cabeça diz que não há dado
+      if (falhaDoPC(err)) {
+        const cabeca = $("oficina-cabeca");
+        for (const x of cabeca.querySelectorAll(".orq-sem-dados, .ofi-topo .selo")) x.remove();
+        cabeca.append(linhaSemDados(err, Ofi.detalheEm));
+      }
+    }
   } finally { Ofi.carregando = false; }
 }
 

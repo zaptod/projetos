@@ -121,7 +121,8 @@ async function spritesMostrar() {
     if (!(dados.itens || []).length) alvo.append(el("div", {class: "fraco"}, "Nenhum sprite esperando."));
     conexao(true);
   } catch (err) {
-    alvo.replaceChildren(el("div", {class: "erro"}, "Não consegui carregar: " + err.message));
+    alvo.replaceChildren(falhaDoPC(err) ? linhaSemDados(err)
+      : el("div", {class: "erro"}, "Não consegui carregar: " + err.message));
     conexao(false, err);
   }
 }
@@ -185,7 +186,8 @@ function decisoesLigarRelogio() {
 
 async function decisoesReler() {
   let dados;
-  try { dados = await api("/api/decisoes"); } catch (err) { return; }
+  // a falha avisa (v72): calada, o Grimório seguia "atualizado às" sem saber
+  try { dados = await api("/api/decisoes"); } catch (err) { conexao(false, err); return; }
   const mudou = decisoesAssinatura(dados) !== Decisoes.assinatura;
   Decisoes.dados = dados;
   grimorioMarcarSelo(dados);
@@ -218,9 +220,9 @@ async function decisoesMostrar() {
     decisoesLigarRelogio();
     conexao(true);
   } catch (err) {
+    $("decisoes-lista").replaceChildren(falhaDoPC(err) ? linhaSemDados(err, Decisoes.lidoEm)
+      : el("div", {class: "erro"}, "Não consegui carregar: " + err.message));
     conexao(false, err);
-    $("decisoes-lista").replaceChildren(el("div", {class: "erro"},
-      "Não consegui carregar: " + err.message));
     return;
   }
   if (!Decisoes.projeto) {

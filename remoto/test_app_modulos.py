@@ -328,6 +328,30 @@ def test_um_diagnostico_so_para_a_faixa_e_os_cartoes():
         assert "PC fora do ar" not in (APP / nome).read_text(encoding="utf-8"), nome
 
 
+def test_a_agora_nao_redesenha_o_estado_guardado_como_se_fosse_de_agora():
+    """Até a v72 o catch do carregarAgora redesenhava o último /api/estado
+    guardado (Próxima postagem, Fábricas) como se o PC tivesse respondido."""
+    corpo = APP_JS.split("async function carregarAgora", 1)[1].split("\n}\n", 1)[0]
+    falha = corpo.split("} catch (err) {", 1)[1]
+    assert "desenharEstado(" not in falha
+    assert 'cartoesSemDados(["fabricas", "erros", "vila-gente", "vila-travas"]' in falha
+
+
+def test_toda_tela_parada_tem_area_sem_pc_e_pulso():
+    """Varredura da v72: as telas que não releem sozinhas entram nas áreas
+    "sem dados" e ganham o pulso leve; a conexao dispara as duas pontas."""
+    for tela in ("sprites", "assembleias", "decisoes", "comandos", "conversa", "videos",
+                 "biblioteca", "relatorios", "diario", "arena", "atelie", "coordenador"):
+        assert f'telas: ["{tela}"]' in APP_JS, tela
+    conexao = APP_JS.split("function conexao", 1)[1].split("\n}\n", 1)[0]
+    assert "areasSemPC(err)" in conexao and "areasDeVolta()" in conexao
+    assert 'diag.tipo !== "erro"' in conexao                   # erro N de uma rota não apaga tudo
+    assert "setInterval(pulsoPC, PULSO_PC_MS)" in APP_JS
+    for nome, marca in (("vila.js", "vilaSemDados(err)"), ("oficina.js", "cartoesSemDados("),
+                        ("equipe.js", "cartoesSemDados(")):
+        assert marca in (APP / nome).read_text(encoding="utf-8"), nome
+
+
 def test_editor_deitado_tem_a_sobra_na_ultima_linha():
     """Deitado, a folha em `grid-row: 1 / span 8` esticava a coluna da direita
     ("Escolher folha" de y=109 para y=366). A folha atravessa as 10 linhas e a

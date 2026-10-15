@@ -1008,8 +1008,10 @@ async function orqCarregarFluxo() {
         el("div", {class: "fraco"}, g.proximo))));
     alvo.replaceChildren(topo, ...alertas, ...linhas,
       el("div", {class: "fraco"}, "✓ pronto  ▶ gerando  … na fila  ✕ falhou  · não começou"));
+    Orq.fluxoEm = new Date().toISOString();
   } catch (err) {
-    alvo.replaceChildren(el("div", {class: "erro"}, "fluxo: " + err.message));
+    alvo.replaceChildren(falhaDoPC(err) ? linhaSemDados(err, Orq.fluxoEm)
+      : el("div", {class: "erro"}, "fluxo: " + err.message));
   }
 }
 
@@ -1234,8 +1236,18 @@ function orqSemDados(err) {
   fila.className = "fraco";
   fila.replaceChildren(linha());
   $("orq-fila").replaceChildren();
-  for (const id of ["orq-capacidade-resumo", "orq-modelos-resumo", "orq-limites-resumo"])
+  for (const id of ["orq-capacidade-resumo", "orq-modelos-resumo", "orq-limites-resumo",
+                    "orq-decisoes-resumo"])
     orqResumoRecolhido(id, texto, true);
+  // varredura da v72: os recolhidos (Limites, Fluxo, Acessos), o que ele
+  // decidiu sozinho (Decidir) e o que você mandou (Mandar) também
+  for (const id of ["orq-limites", "orq-grafico", "orq-acessos", "orq-fluxo-trabalho",
+                    "orq-decisoes", "orq-comandos"]) {
+    const alvo = $(id);
+    if (alvo) alvo.replaceChildren(linha());
+  }
+  $("orq-grafico-leitura").textContent = "";
+  $("orq-teto-aviso").classList.add("oculto");
   orqControlesSemPC(true);
   // o PC não foi alcançado ou o servidor do app está parado: a leitura do
   // coordenador falharia igual. Erro N do /api/orquestrador: ele pode estar bem.

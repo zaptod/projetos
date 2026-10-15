@@ -3166,6 +3166,47 @@ Só casca (`orquestrador.js`, `coordenador.js`, `atelie_novo.js`, `index.html`,
     (vermelha, `.fora`): leitura que falha não sabe se ele caiu.
 
   Erro do próprio JavaScript e 401 não mexem. A próxima leitura boa redesenha.
+- **Varredura final: 502 em /api/** e nenhuma aba com dado velho** (15/10,
+  pedido do coordenador). Medido com cada aba aberta e o PC caindo (captura e
+  texto de cada uma):
+  - **Agora**: Próxima postagem, Fábricas e Erros recentes. O `carregarAgora`
+    redesenhava o último `/api/estado` guardado (`painel.ultimo_estado`) como
+    se o PC tivesse respondido: "12:37 ▶ rodando normalmente", "PicassoIA
+    trabalhando". Na vila agora e Paralelismo também ficavam. Agora todos
+    dizem "sem dados" com a hora do estado guardado, e a Próxima fica "—". Os
+    recolhidos (Limites, Fluxo, Acessos) também (`orqSemDados`);
+  - **Vila**: o placar e o cartão do prédio (o que ele faz agora, a caixa do
+    correio) eram do retrato de antes. `vilaSemDados`: o placar diz "sem
+    dados" e o cartão também; Conversar e Criar desligam, e o "Ver no diário"
+    segue;
+  - **Codex** (o uso e a lista; no detalhe, o selo "rodando" sai) e **Equipe**
+    (pedidos de permissão, trabalhadores e gerente; contratar e salvar
+    desligam): tratam a falha no próprio carregar;
+  - **telas que não releem sozinhas**, que nem sabiam que o PC caiu: Grimório
+    (o `decisoesReler` calava a falha), Sprites (Aprovar/Refazer/Descartar
+    ativos), Assembleia, Mandar (o interruptor do Claude dizia LIBERADO; o
+    catálogo, o Controlar o PC e o que você mandou), IAs, Cinema (Publicar
+    ativo), Biblioteca, Pergaminhos, Diário, Arena (Lutar e Revanche) e
+    Ateliê (Salvar, Substituir, Desfazer, Esconder, Ver no Godot). Agora são
+    as **áreas** de `AREAS_SEM_PC` (`app.js`). Cada uma:
+    - troca o conteúdo pela linha (`trocar`, estado) ou ganha a linha no topo
+      (`marcar`, histórico com hora: Diário, conversas, Pergaminho, a árvore
+      do Grimório);
+    - desliga os botões de ação (`desligar`/`desligarIds`, com `data-sem-pc`),
+      sem mexer nas abas nem nos campos de texto;
+    - quando o PC volta (`areasDeVolta`), religa e relê a tela aberta.
+
+    Quem dispara é a `conexao`: só com o PC inalcançável ou o servidor do app
+    parado (um erro N de uma rota não apaga as outras telas). Para essas telas
+    saberem da queda, o `mostrar` liga um **pulso leve**: `GET /api/claude` a
+    cada 15 s, enquanto uma tela sem releitura própria estiver aberta (a Vila
+    não);
+  - **Coordenador**: o "Controlar o PC" (`coord-acoes`) de Mandar entra no
+    `coordSemDados`; na Conversa, as propostas e o cérebro trocam e as
+    mensagens ganham a linha;
+  - erros de leitura que tinham texto próprio ("Não consegui carregar: erro
+    502", "não consegui buscar os vídeos agora", "falhou: erro 502")
+    passaram a usar a mesma linha quando a falha é do PC.
 - **"Escolher folha" é botão.** Era `label.acao` com o `input file` escondido,
   e só o `button.acao` e o rótulo com caixinha tinham o visual: texto solto,
   alvo de 20 px (deitado 21,75). `label.acao:has(> input[type=file])` ganha
@@ -3202,6 +3243,12 @@ Da 2ª rodada: `test_com_o_pc_fora_fila_resumos_e_pedidos_dizem_sem_dados_e_os_b
 combinações (claro e escuro, 390x844 e 844x390; capturas `v72b-*.png`).
 Medido antes: os 4 da Fila e os 2 deitados do editor falham; o de FORA DO
 AR com `vivo: false` passava (é a guarda do que não pode mudar).
+Da varredura: `test_proxima_postagem_fabricas_e_erros_dizem_sem_dados` (4
+combinações), `test_varredura_com_502_nenhuma_aba_mostra_dado_velho` (13
+abas: o que tem de dizer "sem dados", os botões que desligam, as abas que
+seguem tocáveis e a volta do PC) e
+`test_vila_com_502_placar_e_cartao_do_predio_dizem_sem_dados`; capturas
+`v72c-*.png`.
 
 **Fica para quem reinicia:** a casca v72 só chega ao celular depois de
 `python -m coordenador reiniciar app`, fora de :25–:55.

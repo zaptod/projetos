@@ -778,3 +778,126 @@ def test_editor_deitado_com_folha_deixa_os_controles_no_topo(  # noqa: F811
             fps = page.locator("#anim-fps-numero").bounding_box()
             folha = page.locator("#anim-folha-canvas").bounding_box()
             assert fps["x"] > folha["x"] + folha["width"], (fps, folha)   # na coluna da direita
+
+
+# ========================== varredura final da v72 (15/10): 502 em /api/**
+SEM_DADOS = f"sem dados — {SERVIDOR_PARADO}"
+
+
+def _ver_sem_dados(page, alvos, timeout=25000):
+    """Espera cada alvo começar pela linha "sem dados" (o pulso leve das
+    telas paradas leva até 15 s). textContent, não innerText: dentro de um
+    <details> fechado o Chrome devolve innerText vazio."""
+    page.wait_for_function(
+        "([alvos, t]) => alvos.every((a) => { const e = document.querySelector(a);"
+        " return e && e.textContent.trim().startsWith(t); })", arg=[alvos, SEM_DADOS], timeout=timeout)
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_proxima_postagem_fabricas_e_erros_dizem_sem_dados(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Coordenador, 15/10: com o PC fora, a Agora redesenhava o último
+    /api/estado guardado como se fosse de agora (Próxima postagem 12:37
+    "rodando normalmente", PicassoIA "trabalhando", o erro das 10:03)."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "agora", "agora")
+        page.wait_for_function("() => document.querySelector('#fabricas').innerText.includes('PicassoIA')",
+                               timeout=15000)
+        fora["sim"] = True
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=20000)
+        page.wait_for_timeout(4000)              # o que já estava em voo antes da queda chega
+        _tentar_de_novo(page)
+        _ver_sem_dados(page, ["#pausa", "#fabricas", "#erros", "#vila-gente", "#vila-travas"])
+        page.locator("#agora-postagem").scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v72c-agora-postagem-fabricas-{nome}.png"))
+        cartoes = page.locator("#agora-postagem").inner_text() + page.locator("#agora-fabricas").inner_text()
+        for velho in ("rodando normalmente", "PicassoIA", "render falhou", "a vila está tranquila",
+                      "em uso ·"):
+            assert velho not in cartoes, (velho, cartoes)
+        assert page.locator("#proxima").inner_text().strip() == "—"
+        assert "(último dado às " in page.locator("#fabricas").inner_text()
+        fora["sim"] = False
+        _tentar_de_novo(page)
+        # (as Fábricas vêm do /api/estado e também do /api/vila, que a Agora
+        # relê ao voltar; na prova o da Vila é vazio: só conta sair o "sem dados")
+        page.wait_for_function("t => ['#erros', '#fabricas', '#pausa', '#vila-travas'].every((a) =>"
+                               " !document.querySelector(a).textContent.trim().startsWith(t))",
+                               arg=SEM_DADOS, timeout=25000)
+
+
+# (objeto, aba, o que tem de dizer "sem dados", botões de ação que desligam)
+VARREDURA = [
+    ("agora", "oficina", ["#oficina-uso", "#oficina-lista"], []),
+    ("agora", "equipe", ["#equipe-pedidos-permissao", "#equipe-lista"], ["#equipe-contratar"]),
+    ("decidir", "decisoes", ["#decisoes-listas", "#orq-decisoes"], []),
+    ("decidir", "sprites", ["#sprites-lista"], []),
+    ("decidir", "assembleias", ["#assembleias-lista"], []),
+    ("mandar", "comandos", ["#comandos-grupos", "#coord-acoes", "#orq-comandos", "#claude-bancada"],
+     ["#orq-enviar", "#assembleia-enviar"]),
+    ("mandar", "conversa", ["#conversa-historico"], ["#conversa-enviar"]),
+    ("ver", "videos", ["#videos"], []),
+    ("ver", "biblioteca", ["#biblioteca-lista"], []),
+    ("ver", "relatorios", ["#relatorio"], []),
+    ("ver", "diario", ["#diario"], []),
+    ("arena", "arena", ["#arena-lutas"], ["#arena-lutar"]),
+    ("arena", "atelie", ["#anim-lista", "#anim-progresso"], []),
+]
+
+
+@pytest.mark.parametrize("objeto,aba,alvos,botoes", VARREDURA, ids=[v[1] for v in VARREDURA])
+def test_varredura_com_502_nenhuma_aba_mostra_dado_velho(  # noqa: F811
+        tela_isolada, monkeypatch, objeto, aba, alvos, botoes):
+    """Coordenador, 15/10: com 502 em /api/**, nenhum cartão de nenhuma aba
+    pode exibir dado como se fosse atual. Medido antes (varredura com a
+    aba aberta e o PC caindo): Codex, Equipe, Grimório, Sprites, Assembleia,
+    Mandar, IAs, Cinema, Biblioteca, Pergaminhos, Diário, Arena e Ateliê
+    seguiam iguais ao de antes da queda, com os botões de ação ativos."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    with _pagina(tela_isolada) as page:
+        page.wait_for_timeout(2500)                           # a carga da Vila assenta
+        _abrir_objeto(page, objeto, objeto if objeto in ("agora", "arena") else
+                      {"decidir": "decisoes", "mandar": "comandos", "ver": "videos"}[objeto])
+        page.evaluate("t => { const b = document.querySelector("
+                      "`.livro:not(.oculto) [data-aba-tela='${t}']`); if (b) b.click(); }", aba)
+        page.locator(f"#tela-{aba}:not(.oculto)").wait_for(state="visible")
+        page.wait_for_timeout(3000)
+        fora["sim"] = True
+        # a faixa aparece no primeiro pedido que falha (o pulso, em até 15 s,
+        # mais o que ainda estava em voo)
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=35000)
+        page.wait_for_timeout(1500)
+        _tentar_de_novo(page)
+        try:
+            _ver_sem_dados(page, alvos)
+        finally:
+            page.screenshot(path=str(CAPTURAS / f"v72c-varredura-{aba}.png"))
+        for botao in botoes:
+            assert _desligado(page, botao), botao
+        for b in page.locator(f"#tela-{aba} .aba-objeto").all():
+            assert not b.evaluate("e => e.disabled")              # as abas seguem tocáveis
+        # o PC volta: os botões religam e o "sem dados" sai da tela aberta
+        fora["sim"] = False
+        _tentar_de_novo(page)
+        page.wait_for_function("([a, t]) => !document.querySelector(a).textContent.trim().startsWith(t)",
+                               arg=[alvos[0], SEM_DADOS], timeout=25000)
+        # religar é da `conexao(true)`, que pode chegar depois do redesenho
+        page.wait_for_function("t => !document.querySelector(`#tela-${t} [data-sem-pc]`)",
+                               arg=aba, timeout=15000)
+
+
+def test_vila_com_502_placar_e_cartao_do_predio_dizem_sem_dados(tela_isolada, monkeypatch):  # noqa: F811
+    """A Vila: o placar e o cartão do prédio escolhido (o que ele faz agora,
+    a caixa do correio) eram do retrato de antes da queda; o Conversar e o
+    Criar seguiam ativos."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    with _pagina(tela_isolada) as page:
+        page.wait_for_timeout(3000)
+        fora["sim"] = True
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=20000)
+        _tentar_de_novo(page)
+        page.wait_for_function("() => { const p = document.querySelector('#vila-placar');"
+                               " return p && p.innerText.includes('sem dados'); }", timeout=25000)
+        page.screenshot(path=str(CAPTURAS / "v72c-varredura-vila.png"))
+        assert SEM_DADOS in page.locator("#vila-placar").inner_text()

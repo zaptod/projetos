@@ -34,7 +34,9 @@ async function assembleiasMostrar() {
     alvo.replaceChildren(...(dados.assembleias || []).map(assembleiasLinha));
     if (!(dados.assembleias || []).length) alvo.append(el("div", {class: "fraco"}, "Nenhuma assembleia ainda."));
   } catch (err) {
-    alvo.replaceChildren(el("div", {class: "erro"}, "Não consegui carregar: " + err.message));
+    alvo.replaceChildren(falhaDoPC(err) ? linhaSemDados(err)
+      : el("div", {class: "erro"}, "Não consegui carregar: " + err.message));
+    conexao(false, err);
   }
 }
 

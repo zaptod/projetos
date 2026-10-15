@@ -169,11 +169,17 @@ function vilaObjetosDoAtelie() {
 async function vilaCarregarEstado() {
   // o correio (a conversa dele com cada IA) vem junto: uma resposta que ele
   // ainda não viu vira balão em cima do prédio e entra no cartão
-  const [vila, correio] = await Promise.all([
-    api("/api/vila"), api("/api/correio").catch(() => null)]);
+  let vila, correio;
+  try {
+    [vila, correio] = await Promise.all([
+      api("/api/vila"), api("/api/correio").catch(() => null)]);
+  } catch (err) { vilaSemDados(err); throw err; }
   Vila.estado = vila.estado;
   Vila.correio = correio;
+  Vila.falha = null;
+  Vila.estadoEm = new Date().toISOString();
   vilaDesenharPainel();
+  vilaDesenharGente();
   if (Vila.selecionado) vilaMostrarEscolhido();
 }
 
@@ -759,6 +765,27 @@ function vilaMostrarEscolhido() {
         `🎨 não gera imagem hoje: ${vilaGerador(nome).motivo}`
           + (vilaGerador(nome).proximo_passo ? " (próximo passo)" : ""))
       : null);
+  // PC fora (v72): o que o prédio faz agora, a caixa e a resposta são do
+  // retrato de antes da queda; o cartão diz "sem dados" e o Conversar/Criar
+  // desligam ("Ver no diário" só navega)
+  if (Vila.falha) {
+    const corpo = alvo.querySelector(".linha .corpo");
+    if (corpo) corpo.replaceChildren(predio.rotulo || nome, linhaSemDados(Vila.falha, Vila.estadoEm));
+    const selo = alvo.querySelector(".linha > .selo");
+    if (selo) selo.remove();
+    controlesSemPC("#vila-escolhido", true, "#vila-escolhido .botoes > button:first-child");
+  }
+}
+
+// O /api/vila não respondeu: o placar, as fábricas, quem está na vila e o
+// paralelismo dizem "sem dados" (v72); a próxima leitura boa redesenha.
+function vilaSemDados(err) {
+  if (typeof falhaDoPC !== "function" || !falhaDoPC(err)) return;
+  Vila.falha = err;
+  const placar = document.getElementById("vila-placar");
+  if (placar) placar.replaceChildren(linhaSemDados(err, Vila.estadoEm));
+  cartoesSemDados(["fabricas", "vila-gente", "vila-travas"], err, Vila.estadoEm);
+  if (Vila.selecionado) vilaMostrarEscolhido();
 }
 
 // o balão de fala em cima do prédio: a resposta que ele ainda não viu.
@@ -1008,7 +1035,7 @@ async function vilaMostrar() {
     await vilaCarregarRetrato(!Vila.mundo);
     await vilaCarregarEstado();
     conexao(true);
-  } catch (err) { conexao(false, err); }
+  } catch (err) { conexao(false, err); vilaSemDados(err); }
 }
 
 function vilaParar() {

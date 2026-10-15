@@ -191,6 +191,140 @@ function quandoFoi(iso) {
   return !q ? "" : q.includes(" ") ? `de ${q}` : `às ${q}`;
 }
 
+// ---- sem dados: o mesmo texto e a mesma regra em TODO cartão (v72) ----
+// Com o PC fora, nenhum cartão mostra o dado de antes da queda como se fosse
+// de agora (conferente, 14/10, v72: a varredura com 502 em /api/** achou a
+// Fila, o PEDIR, Próxima postagem, Fábricas, Erros, a Vila, o Codex, a
+// Equipe, o Grimório, os Sprites, a Assembleia, a Arena, o Ateliê, Mandar e
+// Ver). Só falha do PC conta: 401 é do pareamento e erro do JavaScript vai ao
+// console (conexao), sem apagar nada.
+function falhaDoPC(err) {
+  return err instanceof ErroApi && err.status !== 401;
+}
+
+function textoSemDados(err, desde, rotulo = "último dado") {
+  const q = desde ? quandoFoi(desde) : "";
+  return `sem dados — ${diagnosticoPC(err).motivo}${q ? ` (${rotulo} ${q})` : ""}`;
+}
+
+function linhaSemDados(err, desde, rotulo) {
+  return el("div", {class: "fraco orq-sem-dados"}, textoSemDados(err, desde, rotulo));
+}
+
+// troca o conteúdo de cada alvo (id) pela linha "sem dados"
+function cartoesSemDados(ids, err, desde) {
+  for (const id of ids) {
+    const alvo = $(id);
+    if (alvo) alvo.replaceChildren(linhaSemDados(err, desde));
+  }
+}
+
+// Os botões que mandam algo ao PC, dentro de `seletor`, desligam até a
+// próxima leitura boa daquela área (`desligar=false` religa SÓ os que esta
+// regra desligou, marcados com data-sem-pc). Campo de texto e "Ver …" que só
+// navegam ficam (`poupar`: seletores).
+function controlesSemPC(seletor, desligar, poupar = "") {
+  for (const caixa of document.querySelectorAll(seletor)) {
+    if (!desligar) {
+      for (const c of caixa.querySelectorAll("[data-sem-pc]")) {
+        c.disabled = false; c.removeAttribute("data-sem-pc");
+      }
+      continue;
+    }
+    for (const c of caixa.querySelectorAll(
+      "button, select, input:not([type=text]):not([type=search])")) {
+      if (c.disabled || (poupar && c.matches(poupar))) continue;
+      c.disabled = true; c.setAttribute("data-sem-pc", "1");
+    }
+  }
+}
+
+// As telas que mostram dado do PC lido ao abrir (sem reler sozinhas, ou
+// relendo sem tratar a falha). Com o PC fora (`pc-sem-dados`, disparado pela
+// `conexao`), cada área troca o conteúdo (`trocar`: estado) ou ganha a linha
+// no topo (`marcar`: histórico com hora, como o Diário e as conversas), e os
+// botões de ação desligam (`desligar`: caixas; `desligarIds`: botões
+// avulsos). Quando o PC volta (`pc-voltou`), religa e, na tela aberta, relê.
+// Agora, Codex, Equipe, Coordenador e a Vila tratam a falha no próprio
+// carregar (orqSemDados, coordSemDados, vilaSemDados...).
+const AREAS_SEM_PC = [
+  {telas: ["sprites"], trocar: ["sprites-lista"],
+   reler: () => typeof spritesMostrar === "function" && spritesMostrar()},
+  {telas: ["assembleias"], trocar: ["assembleias-lista"],
+   reler: () => typeof assembleiasMostrar === "function" && assembleiasMostrar()},
+  {telas: ["decisoes"], marcar: ["decisoes-listas"], trocar: ["orq-decisoes", "orq-decisoes-resumo"], desligar: "#decisao-item",
+   desde: () => typeof Decisoes === "object" && Decisoes.lidoEm,
+   reler: () => typeof decisoesReler === "function" && decisoesReler()},
+  {telas: ["comandos"], trocar: ["comandos-grupos", "tarefas-lista", "restantes", "orq-comandos",
+                                 "claude-bancada", "coord-acoes"], desligar: "#tela-comandos", poupar: ".aba-objeto, #btn-fechar-log",
+   reler: () => { if (typeof comandosMostrar === "function") comandosMostrar(); }},
+  {telas: ["conversa"], marcar: ["conversa-historico"],
+   desligarIds: ["conversa-enviar", "criar-enviar", "conversa-anexo"],
+   reler: () => typeof conversaMostrar === "function" && conversaMostrar()},
+  {telas: ["videos"], trocar: ["videos"], reler: () => carregarVideos()},
+  {telas: ["biblioteca"], trocar: ["biblioteca-lista"], marcar: ["biblioteca-leitor"],
+   reler: () => typeof bibliotecaMostrar === "function" && bibliotecaMostrar()},
+  {telas: ["relatorios"], marcar: ["relatorio"]},
+  {telas: ["diario"], marcar: ["diario"]},
+  {telas: ["arena"], trocar: ["arena-lutas"], desligarIds: ["arena-lutar"],
+   reler: () => { desenharArenaEscolhas(); carregarArena(); }},
+  {telas: ["atelie"], trocar: ["anim-grupos", "anim-lista", "anim-progresso"],
+   desligarIds: ["anim-salvar", "anim-substituir", "anim-desfazer", "anim-esconder", "anim-godot",
+                 "anim-criar-botao", "anim-arquivo", "anim-ordem-folha"],
+   reler: () => typeof atelieMostrar === "function" && atelieMostrar()},
+  {telas: ["coordenador"], marcar: ["coord-mensagens"], trocar: ["coord-propostas", "coord-cerebro"],
+   desligarIds: ["coord-enviar"]},
+];
+const SemPC = {fora: false, err: null};
+
+function areasSemPC(err) {
+  const contato = localStorage.getItem(CONTATO);
+  for (const a of AREAS_SEM_PC) {
+    const desde = a.desde && a.desde();
+    const linha = () => desde ? linhaSemDados(err, desde)
+      : linhaSemDados(err, contato, "último contato com o PC");
+    for (const id of a.trocar || []) { const alvo = $(id); if (alvo) alvo.replaceChildren(linha()); }
+    for (const id of a.marcar || []) {
+      const alvo = $(id);
+      if (!alvo) continue;
+      for (const x of alvo.querySelectorAll(":scope > .sem-pc-marca")) x.remove();
+      const marca = linha(); marca.classList.add("sem-pc-marca");
+      alvo.prepend(marca);
+    }
+    if (a.desligar) controlesSemPC(a.desligar, true, a.poupar || ".aba-objeto");
+    for (const id of a.desligarIds || []) {
+      const c = $(id);
+      if (c && !c.disabled) { c.disabled = true; c.setAttribute("data-sem-pc", "1"); }
+    }
+  }
+}
+
+function areasDeVolta() {
+  for (const a of AREAS_SEM_PC) {
+    for (const id of a.marcar || []) {
+      const alvo = $(id);
+      if (alvo) for (const x of alvo.querySelectorAll(":scope > .sem-pc-marca")) x.remove();
+    }
+    if (a.desligar) controlesSemPC(a.desligar, false);
+    for (const id of a.desligarIds || []) {
+      const c = $(id);
+      if (c && c.hasAttribute("data-sem-pc")) { c.disabled = false; c.removeAttribute("data-sem-pc"); }
+    }
+    if (a.reler && a.telas.includes(tela)) {
+      try { a.reler(); } catch (err) { console.error("erro na tela:", err); }
+    }
+  }
+}
+
+// As telas que não releem sozinhas não saberiam que o PC caiu: um toque leve
+// no PC a cada 15 s enquanto uma delas está aberta (o /api/claude só lê um
+// arquivo pequeno). A Vila e as que já releem (Agora, Diário, Arena) não.
+const PULSO_PC_MS = 15000;
+async function pulsoPC() {
+  if (document.visibilityState !== "visible") return;
+  try { await api("/api/claude"); conexao(true); } catch (err) { conexao(false, err); }
+}
+
 function conexao(ok, err) {
   const alvo = $("conexao");
   if (ok) {
@@ -198,6 +332,7 @@ function conexao(ok, err) {
     alvo.className = "";
     alvo.textContent = "ao vivo · " + hora(new Date().toISOString());
     $("aviso").classList.add("oculto");
+    if (SemPC.fora) { SemPC.fora = false; areasDeVolta(); }
     return;
   }
   const status = err && err.status;
@@ -214,6 +349,9 @@ function conexao(ok, err) {
   alvo.textContent = diag.selo + desde;
   $("aviso-texto").textContent = diag.faixa;
   $("aviso").classList.remove("oculto");
+  // o PC não foi alcançado, ou o servidor do app está parado: TODA tela fica
+  // sem dados. Um erro N de uma rota só não apaga as outras (a faixa avisa).
+  if (diag.tipo !== "erro") { SemPC.fora = true; SemPC.err = err; areasSemPC(err); }
 }
 
 // As faixas (#aviso, #casca-nova, #modulo-faltando) são fixas, logo abaixo do
@@ -326,6 +464,13 @@ async function carregarAgora() {
     $("erros").replaceChildren();
     desenharEventos($("erros"), erros.reverse(), "✓ nenhum erro registrado");
     conexao(true);
+    // a Agora estava "sem dados" na Vila agora / Paralelismo (do /api/vila e
+    // do retrato, que só a Vila relê): relê uma vez, para não ficar velho
+    if (tela === "agora" && typeof vilaCarregarEstado === "function"
+        && document.querySelector("#vila-travas .orq-sem-dados, #vila-gente .orq-sem-dados")) {
+      vilaCarregarEstado().catch(() => {});
+      if (typeof vilaCarregarRetrato === "function") vilaCarregarRetrato(false).catch(() => {});
+    }
     // o selo da Mesa de comando na prateleira (teto, fora do ar, pendentes)
     if (tela === "vila" && typeof orquestradorSelo === "function") orquestradorSelo();
     // o selo do Grimório (escolhas esperando) vale em qualquer tela
@@ -333,9 +478,19 @@ async function carregarAgora() {
     if (typeof spritesSelo === "function") spritesSelo();
     if (typeof equipeSelo === "function") equipeSelo();
   } catch (err) {
-    const ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null");
-    if (ultimo) desenharEstado(ultimo.e);
     conexao(false, err);
+    // Até a v72 a tela redesenhava o último estado guardado, como se fosse
+    // de agora (Próxima postagem 12:37 "rodando normalmente", PicassoIA
+    // "trabalhando"). Agora diz que não há dado, e desde quando.
+    if (!falhaDoPC(err)) return;
+    let ultimo = null;
+    try { ultimo = JSON.parse(localStorage.getItem(ULTIMO) || "null"); } catch (_) { /* guardado ruim */ }
+    const desde = ultimo && ultimo.quando;
+    $("proxima").textContent = "—";
+    $("pausa").className = "fraco";
+    $("pausa").replaceChildren(linhaSemDados(err, desde));
+    $("previsao").replaceChildren();
+    cartoesSemDados(["fabricas", "erros", "vila-gente", "vila-travas"], err, desde);
   }
 }
 
@@ -373,7 +528,8 @@ async function carregarVideos() {
     if (tela === "videos") desenharVideos(lista);
     conexao(true);
   } catch (err) {
-    alvo.replaceChildren(el("div", {class: "fraco"}, "não consegui buscar os vídeos agora."));
+    alvo.replaceChildren(falhaDoPC(err) ? linhaSemDados(err)
+      : el("div", {class: "fraco"}, "não consegui buscar os vídeos agora."));
     conexao(false, err);
   }
 }
@@ -642,7 +798,7 @@ function montarAbas() {
         $("relatorio").textContent = texto.replace(/[*_`]/g, "");
         conexao(true);
       } catch (err) {
-        $("relatorio").textContent = "falhou: " + err.message;
+        $("relatorio").textContent = falhaDoPC(err) ? textoSemDados(err) : "falhou: " + err.message;
         conexao(false, err);
       }
     });
@@ -903,6 +1059,8 @@ function mostrar(nova) {
       if (document.visibilityState === "visible") carga();
     }, intervalo);
   }
+  // tela sem releitura própria: o pulso leve diz se o PC caiu (v72)
+  if (pareado && !intervalo && tela !== "vila") timer = setInterval(pulsoPC, PULSO_PC_MS);
 }
 
 // Abrir um objeto da vila. A animação sai de onde o objeto está (--ox,
