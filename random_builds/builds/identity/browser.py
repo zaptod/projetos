@@ -37,6 +37,37 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # A unica flag que vale a pena: tira o `navigator.webdriver`.
 ARGS_PADRAO = ["--disable-blink-features=AutomationControlled"]
 
+# JANELA FORA DA TELA (15/10/2026, pedido do Adrian: as janelas que pipocavam
+# na frente dele "irritam"). Headless de verdade NAO serve: o chatgpt.com
+# serve o desafio do Cloudflare para janela headless e a sessao viva parece
+# deslogada (ver contos/llm/probe.py). Entao o navegador continua o MESMO,
+# com janela, so que aberta alem da borda da area de trabalho. As janelas em
+# que ELE precisa mexer (login manual, sessao guiada) passam `visivel=True`.
+# NF_NAVEGADOR_VISIVEL=1 traz todas de volta para a tela (para olhar um defeito).
+TAMANHO_DA_JANELA = (1366, 900)
+
+
+def _area_de_trabalho() -> tuple[int, int, int, int]:
+    """(esquerda, topo, largura, altura) da area que soma todos os monitores."""
+    try:
+        import ctypes
+        m = ctypes.windll.user32.GetSystemMetrics
+        return m(76), m(77), m(78), m(79)   # SM_X/YVIRTUALSCREEN, SM_CX/CYVIRTUALSCREEN
+    except Exception:
+        return 0, 0, 3840, 2160
+
+
+def args_da_janela(visivel: bool) -> list[str]:
+    """Os argumentos que decidem ONDE a janela abre."""
+    if visivel or os.environ.get("NF_NAVEGADOR_VISIVEL") == "1":
+        return []
+    esquerda, topo, largura, _ = _area_de_trabalho()
+    w, h = TAMANHO_DA_JANELA
+    # a direita de TODOS os monitores, com folga; nao usa -32000 (o Windows le
+    # essa posicao como "minimizada" e o Chrome para de pintar a pagina)
+    return [f"--window-position={esquerda + largura + 200},{topo}",
+            f"--window-size={w},{h}"]
+
 
 class PatchrightAusente(RuntimeError):
     pass
@@ -218,8 +249,11 @@ ESPERA_PERFIL_S = 90.0
 
 @contextlib.contextmanager
 def contexto_persistente(headless: bool = False, profile: Path | None = None,
-                         esperar: float | None = None):
+                         esperar: float | None = None, visivel: bool = False):
     """Contexto logado e persistente. Fecha tudo no fim, com ou sem excecao.
+
+    `visivel=False` (o normal): a janela abre FORA DA TELA (`args_da_janela`).
+    `visivel=True` so onde o Adrian precisa mexer: login manual e sessao guiada.
 
     Nao ha `browser` separado: `launch_persistent_context` devolve o contexto
     ja ligado ao perfil. Fechar o contexto fecha o Chrome.
@@ -256,7 +290,7 @@ def contexto_persistente(headless: bool = False, profile: Path | None = None,
             channel="chrome",
             headless=headless,
             no_viewport=True,
-            args=ARGS_PADRAO,
+            args=ARGS_PADRAO + ([] if headless else args_da_janela(visivel)),
             # O padrao do Playwright e `chromium_sandbox=False`, que ADICIONA
             # `--no-sandbox` — a flag que este modulo diz, logo acima, que nao
             # usa (e que faz o Chrome exibir a tarja de "sinalizador nao

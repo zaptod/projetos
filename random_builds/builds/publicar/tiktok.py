@@ -489,7 +489,7 @@ def _janela_de_login(perfil: Path) -> bool:
     """A janela do login. Devolve True se a pagina NAO montou (precisa reparo)."""
     from ..identity.browser import montou
 
-    with contexto_persistente(headless=False, profile=perfil) as ctx:
+    with contexto_persistente(headless=False, visivel=True, profile=perfil) as ctx:
         page = _abrir(ctx, "https://www.tiktok.com/login")
 
         # Esperar de VERDADE antes de acusar o perfil: a home do TikTok e

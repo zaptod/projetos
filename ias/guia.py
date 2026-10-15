@@ -328,7 +328,8 @@ def rodar(ia: str, *, log=print, limite_min: float = 240.0) -> dict:
             avisar(f"Não consegui abrir o {TITULOS.get(ia, ia)}: a conta está em uso "
                    f"por outro processo ({nome_trava}). Tento de novo quando soltar.", log)
             return resumo
-        with browser.contexto_persistente(headless=False, profile=perfil, esperar=30.0) as ctx:
+        with browser.contexto_persistente(headless=False, visivel=True, profile=perfil,
+                                          esperar=30.0) as ctx:
             page = browser.pagina(ctx)
             page.goto(URLS[ia], wait_until="domcontentloaded", timeout=90_000)
             time.sleep(4.0)

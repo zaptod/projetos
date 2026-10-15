@@ -805,7 +805,7 @@ def _esperar_montar(page, segundos: float = PACIENCIA_S) -> bool:
 def login(*, canal: str = "builds") -> None:
     """Abre a janela para o login manual da conta Google. Uma vez por perfil."""
     perfil = perfil_da_conta(canal)
-    with contexto_persistente(headless=False, profile=perfil) as ctx:
+    with contexto_persistente(headless=False, visivel=True, profile=perfil) as ctx:
         page = _abrir(ctx, URL_STUDIO)
         _esperar_montar(page)
         print(f"[youtube-web] a janela e SUA: entre na conta do canal "

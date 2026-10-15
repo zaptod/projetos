@@ -156,7 +156,7 @@ def login(provedor: str = "chatgpt", *, espera: float = 300.0, log=print) -> boo
         "pode fechar a janela.")
     visto = False
     try:
-        with browser.contexto_persistente(headless=False,
+        with browser.contexto_persistente(headless=False, visivel=True,
                                           profile=perfil) as ctx:
             page = browser.pagina(ctx)
             page.goto(alvo["url"], wait_until="domcontentloaded", timeout=90_000)

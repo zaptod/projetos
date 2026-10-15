@@ -956,7 +956,7 @@ def _identity(args, controller) -> None:
             import time as _t
             from builds.identity import dreamface_selectors as dsel
             perfil = icfg.profile_dir(provedor, canal=canal)
-            with contexto_persistente(profile=perfil) as ctx:
+            with contexto_persistente(profile=perfil, visivel=True) as ctx:
                 page = pagina(ctx)
                 page.goto(dsel.URL_LOGIN, wait_until="domcontentloaded",
                           timeout=90_000)
@@ -992,7 +992,8 @@ def _identity(args, controller) -> None:
                   f"{perfil}")
             return
         with contexto_persistente(
-                profile=icfg.profile_dir(provedor, canal=canal)) as ctx:
+                profile=icfg.profile_dir(provedor, canal=canal),
+                visivel=True) as ctx:
             ensure_logged_in(pagina(ctx), icfg.settings())
         print(f"[identity] perfil de {provedor} ({canal}) salvo em "
               f"{icfg.profile_dir(provedor, canal=canal)}")
