@@ -73,7 +73,14 @@ def test_atelie_novo_fluxo_completo_no_navegador(tmp_path, monkeypatch):
             ctx = nav.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True, service_workers="block")
             page = ctx.new_page(); base = f"http://127.0.0.1:{srv.server_address[1]}"
             page.goto(base + "/", wait_until="domcontentloaded"); page.evaluate("t => localStorage.setItem('painel.token', t)", token); page.reload(wait_until="domcontentloaded")
-            page.evaluate("atelieMostrar()"); page.locator("#anim-grupos button").first.click(); page.locator("#anim-lista .anim-peca").click(); page.locator("#anim-lista button").first.click(); page.locator(".anim-cartao-abrir").click()
+            page.wait_for_function("document.body.classList.contains('pareado')")
+            # o evaluate do patchright roda em contexto ISOLADO: nao enxerga o
+            # atelieMostrar da pagina (ReferenceError). Abre como ele abre: Arena > Atelie
+            page.locator("#obj-arena").wait_for(state="visible")
+            page.evaluate("() => document.querySelector('#obj-arena').click()")
+            page.evaluate("() => document.querySelector(\"#tela-arena [data-aba-tela='atelie']\").click()")
+            page.locator("#tela-atelie:not(.oculto)").wait_for(state="visible")
+            page.locator("#anim-grupos button").first.click(); page.locator("#anim-lista .anim-peca").click(); page.locator("#anim-lista button").first.click(); page.locator(".anim-cartao-abrir").click()
             page.locator("#anim-arquivo").set_input_files({"name": "folha.png", "mimeType": "image/png", "buffer": bruto.getvalue()})
             page.locator("#anim-grade").check(); page.locator("#anim-linhas").fill("2"); page.locator("#anim-colunas").fill("4"); page.locator("#anim-colunas").press("Tab")
             page.locator("#anim-quadros").wait_for(); assert "8 quadros" in page.locator("#anim-quadros").inner_text()
