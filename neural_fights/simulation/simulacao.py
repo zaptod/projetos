@@ -5091,7 +5091,7 @@ class Simulador:
             self.attack_anims.draw_effects(self.tela, self.cam)
 
         for s in self.shockwaves: s.draw(self.tela, self.cam)
-        for t in self.textos: t.draw(self.tela, self.cam)
+        self._desenhar_textos()
 
         # === SCREEN EFFECTS (FLASH) v8.0 IMPACT ===
         if hasattr(self, 'attack_anims') and self.attack_anims:
@@ -5450,6 +5450,17 @@ class Simulador:
         if prog > 0.0:
             pygame.draw.rect(self.tela, cor_lado, (bx, by, int(30 * prog), 3))
         return True
+
+    def _desenhar_textos(self):
+        """Textos flutuantes (dano, FATAL!, ...). Pós-K.O. eles vivem no
+        relógio da luta, que o slow-mo quase para — o "134" ficava ~1,5 s
+        sobre o olho do vencedor. Somem em fade no tempo real, como os
+        projéteis (conferente, 15/10/2026)."""
+        textos = getattr(self, "textos", None) or []
+        guardado = self._abrir_fade_pos_ko(bool(textos))
+        for t in textos:
+            t.draw(self.tela, self.cam)
+        self._fechar_fade_pos_ko(guardado)
 
     def _fade_objetos_pos_ko(self):
         """Opacidade de projéteis/orbes/invocações: 1 antes do K.O.; depois

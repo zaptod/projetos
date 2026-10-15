@@ -431,6 +431,33 @@ class ObjetosSomemNoKoTests(unittest.TestCase):
         self.assertIsNone(simulacao.Simulador._abrir_fade_pos_ko(sim, False))
 
 
+class TextosDeDanoSomemNoKoTests(unittest.TestCase):
+    """Vulcao (15/10): o "134" ficou ~1,5 s sobre o olho do vencedor — o
+    texto vive no relogio da luta, que o slow-mo quase para."""
+
+    @classmethod
+    def setUpClass(cls):
+        pygame.init()
+
+    class _Texto:
+        def draw(self, tela, cam):
+            pygame.draw.rect(tela, (255, 255, 255), (90, 90, 20, 20))
+
+    def _pixel(self, t, finalizado=True):
+        sim = _sim_pos_ko(t)
+        sim.round_finalizado = finalizado
+        sim.textos = [self._Texto()]
+        simulacao.Simulador._desenhar_textos(sim)
+        return tuple(sim.tela.get_at((100, 100))[:3])
+
+    def test_texto_some_em_0_3_s_de_tempo_real_e_na_luta_fica(self):
+        self.assertEqual(self._pixel(0.0, finalizado=False), (255, 255, 255))
+        self.assertEqual(self._pixel(0.0), (255, 255, 255))         # quadro do K.O.
+        meio = self._pixel(0.15)
+        self.assertTrue(all(abs(m - (c + 255) / 2) <= 2 for m, c in zip(meio, COR_FUNDO)), meio)
+        self.assertEqual(self._pixel(0.31), tuple(COR_FUNDO))
+
+
 def _lutador_cam(x, y, morto=False, tamanho=1.0):
     return SimpleNamespace(pos=[x, y], z=0.0, morto=morto, raio_fisico=tamanho / 4.0,
                            dados=SimpleNamespace(tamanho=tamanho))
@@ -498,6 +525,63 @@ class CameraPosKoTests(unittest.TestCase):
             self.assertLessEqual(x1, cam.diretor_pos_ko_area[2] * cam.screen_width + 2)
             self.assertLessEqual(y1, cam.diretor_pos_ko_area[3] * cam.screen_height + 2)
         self._sem_salto(cam, historico)
+
+    def _fora_da_arena(self, cam):
+        """Fracao da largura da tela que mostra o lado de fora da arena."""
+        ax, mw = cam.arena_centro[0] * PPM, cam.arena_tamanho[0] * PPM / 2
+        esq = (ax - mw - cam.x) * cam.zoom + cam.screen_width / 2
+        dir_ = (ax + mw - cam.x) * cam.zoom + cam.screen_width / 2
+        return (max(0.0, esq) + max(0.0, cam.screen_width - dir_)) / cam.screen_width
+
+    def _cauda_na_arena(self, vencedor, perdedor):
+        from neural_fights.effects.camera import Câmera
+
+        cam = Câmera(1080, 1920)
+        cam.set_arena_bounds(5.0, 9.0, 10.0, 18.0)       # x de 0 a 10 m
+        cam.modo = "DIRETOR"
+        cam.diretor_largura_min_m = 5.5
+        cam.zoom = cam._calcular_zoom_necessario(vencedor, perdedor,
+                                                  zoom_max=cam._diretor_teto_zoom())
+        cam.x, cam.y = cam._calcular_centro_ideal(vencedor, perdedor)
+        fora = []
+        for dt in [0.25 / 60] * 72 + [1 / 60] * 91:
+            cam.atualizar(dt, vencedor, perdedor)
+            fora.append(self._fora_da_arena(cam))
+        return cam, fora
+
+    def test_vencedor_na_parede_nao_leva_o_quadro_para_fora_da_arena(self):
+        """Torre (15/10): a cauda chegou a mostrar 47% da largura fora da
+        arena, com o vencedor encostado na parede da direita."""
+        vencedor = _lutador_cam(9.5, 8.0)                 # encostado na parede
+        perdedor = _lutador_cam(3.0, 14.0, morto=True)
+        cam, fora = self._cauda_na_arena(vencedor, perdedor)
+        # O corpo encosta na parede: o rosto tem de ficar fora da coluna de
+        # botoes (12% da direita) + margem, entao so essa faixa pode mostrar o
+        # lado de fora (era 47,6% sem o conserto; com ele, 17%).
+        faixa = (1.0 - cam.diretor_pos_ko_area[2]) + cam.diretor_pos_ko_margem * min(
+            cam.screen_width, cam.screen_height) / cam.screen_width
+        self.assertLessEqual(max(fora), faixa + 0.02)
+        # longe da parede, nada de fora aparece
+        _cam2, fora2 = self._cauda_na_arena(_lutador_cam(5.0, 9.0),
+                                            _lutador_cam(5.8, 9.2, morto=True))
+        self.assertLessEqual(max(fora2), cam.diretor_pos_ko_fora_arena + 0.01)
+        # e o rosto e o nome do vencedor continuam inteiros no quadro
+        x0, y0, x1, y1 = self._caixa_na_tela(cam, cam.caixa_do_rosto(vencedor, cam.zoom))
+        self.assertGreaterEqual(min(x0, y0), 0)
+        self.assertLessEqual(x1, cam.diretor_pos_ko_area[2] * cam.screen_width + 2)
+        self.assertLessEqual(y1, cam.diretor_pos_ko_area[3] * cam.screen_height + 2)
+
+    def test_sem_cortar_na_arena_o_quadro_sairia(self):
+        """Caso ZERO: sem o corte e o limite, a mesma cena passa do teto."""
+        from neural_fights.effects.camera import Câmera
+
+        vencedor = _lutador_cam(9.5, 8.0)
+        perdedor = _lutador_cam(3.0, 14.0, morto=True)
+        with mock.patch.object(Câmera, "_cortar_na_arena", lambda self, c: c), \
+                mock.patch.object(Câmera, "_limitar_centro_a_arena",
+                                  lambda self, cx, cy, zoom=None, fora=None: (cx, cy)):
+            cam, fora = self._cauda_na_arena(vencedor, perdedor)
+        self.assertGreater(max(fora), cam.diretor_fora_arena + 0.01)
 
     def test_antes_do_ko_o_diretor_nao_muda(self):
         from neural_fights.effects.camera import Câmera

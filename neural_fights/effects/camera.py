@@ -95,6 +95,11 @@ class Câmera:
         # mais abaixo, a legenda/botões do TikTok e do Shorts (20% de baixo);
         # os 12% da direita são a coluna de botões das plataformas.
         self.diretor_pos_ko_area = (0.0, 0.0, 0.88, 0.60)
+        # Fração da janela que pode mostrar o lado de fora da arena na cauda.
+        # A luta aceita 35% (``diretor_fora_arena``); na festa o quadro é de
+        # um lutador só e a parede encostada mostrava 47% de nada (Torre,
+        # 15/10). O rosto e o nome do vencedor ainda ganham deste limite.
+        self.diretor_pos_ko_fora_arena = 0.0
         self._diretor_t = 0.0
         self._diretor_estavel_desde = None
         self.shake_timer = 0.0
@@ -489,7 +494,7 @@ class Câmera:
 
     # ------------------------------------------------------------ DIRETOR
 
-    def _limitar_centro_a_arena(self, cx, cy):
+    def _limitar_centro_a_arena(self, cx, cy, zoom=None, fora=None):
         """Clamp MACIO à arena: os lutadores ficam no centro, não a arena.
 
         A arena é o palco, mas quem manda no quadro é a luta. A janela pode
@@ -497,13 +502,17 @@ class Câmera:
         dimensão (35%): dois lutadores encostados na parede de cima aparecem
         a ~1/3 do topo, não colados nele. Só quando nem isso basta (janela
         muito maior que a arena naquele eixo) o eixo centraliza na arena.
+        ``zoom`` (padrão: o atual) é o do quadro que se quer limitar e
+        ``fora`` (padrão: ``diretor_fora_arena``) a fração que pode sair.
         """
-        if self.arena_centro is None or self.arena_tamanho is None or self.zoom <= 0:
+        zoom = self.zoom if zoom is None else zoom
+        if self.arena_centro is None or self.arena_tamanho is None or zoom <= 0:
             return cx, cy
-        meia_w = (self.screen_width / 2) / self.zoom
-        meia_h = (self.screen_height / 2) / self.zoom
-        fora_w = self.diretor_fora_arena * 2 * meia_w
-        fora_h = self.diretor_fora_arena * 2 * meia_h
+        meia_w = (self.screen_width / 2) / zoom
+        meia_h = (self.screen_height / 2) / zoom
+        fora = self.diretor_fora_arena if fora is None else fora
+        fora_w = fora * 2 * meia_w
+        fora_h = fora * 2 * meia_h
         ax, ay = self.arena_centro[0] * PPM, self.arena_centro[1] * PPM
         meia_aw = self.arena_tamanho[0] * PPM / 2
         meia_ah = self.arena_tamanho[1] * PPM / 2
@@ -685,8 +694,14 @@ class Câmera:
         ``diretor_pos_ko_fracao_min`` da largura → enquadra os dois; senão,
         só o vencedor. Nos dois casos a caixa leva o pulo e o confete.
         """
+        # A festa é cortada pela arena (15/10, conferente): o confete de quem
+        # está encostado na parede não puxa o quadro para fora dela (na Torre
+        # a cauda chegou a mostrar 47% da largura fora da arena).
+        def festa(zoom):
+            return self._cortar_na_arena(self._caixa_da_festa(vencedor, zoom))
+
         def caixa_par(zoom):
-            a = self._caixa_da_festa(vencedor, zoom)
+            a = festa(zoom)
             b = self._caixa_do_caido(perdedor, zoom)
             return min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])
 
@@ -695,14 +710,62 @@ class Câmera:
         if fracao >= self.diretor_pos_ko_fracao_min:
             caixa, zoom, modo = caixa_par(zoom_par), zoom_par, "dois"
         else:
-            zoom = self._zoom_que_cabe(lambda z: self._caixa_da_festa(vencedor, z))
-            caixa, modo = self._caixa_da_festa(vencedor, zoom), "vencedor"
+            zoom = self._zoom_que_cabe(festa)
+            caixa, modo = festa(zoom), "vencedor"
         # o centro da caixa vai ao centro da ÁREA (não da tela)
         ax0, ay0, ax1, ay1 = self.diretor_pos_ko_area
         desvio_x = ((ax0 + ax1) / 2.0 - 0.5) * self.screen_width / zoom
         desvio_y = ((ay0 + ay1) / 2.0 - 0.5) * self.screen_height / zoom
-        return ((caixa[0] + caixa[2]) / 2.0 - desvio_x,
-                (caixa[1] + caixa[3]) / 2.0 - desvio_y, zoom, modo)
+        cx = (caixa[0] + caixa[2]) / 2.0 - desvio_x
+        cy = (caixa[1] + caixa[3]) / 2.0 - desvio_y
+        # o limite de arena do DIRETOR na luta (mais apertado: a festa não
+        # mostra o lado de fora) ...
+        cx, cy = self._limitar_centro_a_arena(cx, cy, zoom, self.diretor_pos_ko_fora_arena)
+        # ... e, se ele cortar o vencedor, o rosto e o nome ganham: o resto da
+        # festa (confete) pode sair do quadro, o vencedor não.
+        cx, cy = self._garantir_rosto(vencedor, cx, cy, zoom)
+        return cx, cy, zoom, modo
+
+    def _cortar_na_arena(self, caixa) -> tuple:
+        """A caixa (px do mundo) cortada pelos limites da arena."""
+        if self.arena_centro is None or self.arena_tamanho is None:
+            return caixa
+        ax, ay = self.arena_centro[0] * PPM, self.arena_centro[1] * PPM
+        mw, mh = self.arena_tamanho[0] * PPM / 2, self.arena_tamanho[1] * PPM / 2
+        x0, y0 = max(caixa[0], ax - mw), max(caixa[1], ay - mh)
+        x1, y1 = min(caixa[2], ax + mw), min(caixa[3], ay + mh)
+        if x1 <= x0 or y1 <= y0:
+            return caixa
+        return x0, y0, x1, y1
+
+    def caixa_do_rosto(self, vencedor, zoom: float) -> tuple:
+        """Corpo do vencedor no alto do pulo + o nome sobre a cabeça (px do mundo)."""
+        r = self._raio_desenhado(vencedor)
+        x = vencedor.pos[0] * PPM
+        y = vencedor.pos[1] * PPM - float(getattr(vencedor, "z", 0.0) or 0.0) * PPM
+        nome = 40.0 / max(zoom, 1e-6)
+        return (x - 1.15 * r, y - (1.0 + FESTA_ALTURA_PULO) * r - nome,
+                x + 1.15 * r, y + 1.1 * r)
+
+    def _garantir_rosto(self, vencedor, cx, cy, zoom):
+        """Empurra o centro o mínimo para o rosto/nome caberem na ÁREA."""
+        margem = self.diretor_pos_ko_margem * min(self.screen_width, self.screen_height)
+        ax0, ay0, ax1, ay1 = self.diretor_pos_ko_area
+        lim = (ax0 * self.screen_width + margem, ay0 * self.screen_height + margem,
+               ax1 * self.screen_width - margem, ay1 * self.screen_height - margem)
+        x0, y0, x1, y1 = self.caixa_do_rosto(vencedor, zoom)
+        tela = lambda wx, c, meia: (wx - c) * zoom + meia  # noqa: E731
+        sx0, sx1 = tela(x0, cx, self.screen_width / 2), tela(x1, cx, self.screen_width / 2)
+        sy0, sy1 = tela(y0, cy, self.screen_height / 2), tela(y1, cy, self.screen_height / 2)
+        if sx0 < lim[0]:
+            cx -= (lim[0] - sx0) / zoom
+        elif sx1 > lim[2]:
+            cx += (sx1 - lim[2]) / zoom
+        if sy0 < lim[1]:
+            cy -= (lim[1] - sy0) / zoom
+        elif sy1 > lim[3]:
+            cy += (sy1 - lim[3]) / zoom
+        return cx, cy
 
     def _enquadrar_pos_ko(self, dt, vencedor, perdedor):
         """Vai suave (exponencial, nunca salta) ao quadro de ``alvo_pos_ko``.

@@ -1009,6 +1009,45 @@ plataformas e a faixa do veredito desenhadas (`zona\*_zona.png`), as folhas
 | rosto do vencedor fora da zona das plataformas e acima de 62% | 12/12 quadros | 12/12 quadros |
 | veredito (4 quadros) | y 1269–1383 px (66,1–72,0%), x 158–916 (≤ 84,8%) | y 1269–1383 px, x 160–916 |
 
+**Segunda conferência (ffbb80b): mais dois, consertados** (15/10):
+5. **Torre: a cauda mostrava até 47% da largura fora da arena** (a parede
+   da direita ia de x≈810 antes do K.O. a x≈565 no último quadro). O centro
+   pós-K.O. não passava pelo limite de arena e a caixa da festa atravessava
+   a parede com o vencedor encostado nela. Agora a caixa da festa é cortada
+   pela arena (`Câmera._cortar_na_arena`), o centro passa por
+   `_limitar_centro_a_arena(cx, cy, zoom, fora=diretor_pos_ko_fora_arena)`
+   — na cauda o limite é **0** (a luta continua com os 35% de
+   `diretor_fora_arena`) — e, se isso cortar o vencedor, **o rosto e o nome
+   ganham** (`_garantir_rosto`: o centro anda o mínimo para a
+   `caixa_do_rosto` caber na área); o confete pode sair. Com o corpo
+   encostado na parede, só a faixa da coluna de botões (12%) + margem pode
+   mostrar o lado de fora. Teste com o vencedor encostado: 47,6% sem o
+   conserto (caso zero, com o corte e o limite desligados), 17% com ele;
+   longe da parede, 0%.
+6. **Vulcão: o "134" sobre o olho do vencedor durante o "ACABOU"**: o texto
+   flutuante vive no relógio da luta, que o slow-mo quase para. Os textos
+   vivos no K.O. somem em fade de 0,3 s de tempo real, como os projéteis
+   (`Simulador._desenhar_textos`). O "FATAL!" do K.O. some junto. Antes do
+   K.O. (15,2–15,84 s) nada mudou.
+
+Luta igual até o K.O. de novo: 6/6 pelo gravador contra a base `3e5e2a4`
+e 48/48 headless. Provas em `E:\tmp_pytest\prova_fim_luta4\{torre,vulcao}\`
+(mesmo caminho e mesmas medidas da 3; as de `prova_fim_luta3` ficam
+superadas), mais `fora_da_arena_{torre,vulcao}.json`: a mesma luta
+re-simulada pelo gravador com a câmera registrada a cada passo, e a fração
+da tela fora da arena (largura e altura) em cada quadro da cauda; antes do
+K.O. ela bate com a medida do conferente (25%, parede em x≈810). E
+`vulcao\texto_134_rosto\sequencia_15.84_a_16.24.png` mostra o fade do "134".
+
+| | Torre | Vulcão |
+|---|---|---|
+| fora da arena, largura (antes do K.O. → K.O. → último quadro) | 25,3% → 25,2% → **16,9%** (era 47%) | 0% em todos |
+| fora da arena, altura | 0% em todos | 19,4% no K.O. (herdado da luta) → 0,0% |
+| rosto fora da zona das plataformas e acima de 62% | 12/12 | 12/12 |
+| veredito na faixa 62–76% e fora da zona | 4/4 | 4/4 |
+| "134" sobre o vencedor | — | some entre 15,84 e ~16,14 s (0,3 s de tempo real) |
+| cauda / pico / integrado | 2,73 s / -1,6 dBTP / -15,5 LUFS | 2,73 s / -1,8 dBTP / -15,6 LUFS |
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre
