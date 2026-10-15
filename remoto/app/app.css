@@ -89,6 +89,15 @@ label.acao:has(> input[type=checkbox], > input[type=radio]) {
 label.acao > input[type=checkbox], label.acao > input[type=radio] {
   width: 20px; height: 20px; margin: 0; flex: none;
 }
+/* Rotulo que abre o seletor de arquivo ("Escolher folha" do Atelie): o input
+   fica escondido e o rotulo E o botao. Sem isto era texto solto com alvo de
+   20 px (conferente, 14/10, v71); so o button.acao tinha o visual. */
+label.acao:has(> input[type=file]) {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px;
+  box-sizing: border-box; padding: 6px 12px; border: 1px solid var(--linha);
+  border-radius: 8px; background: var(--cartao); color: var(--texto); cursor: pointer;
+}
+label.acao > input[type=file] { display: none; }
 video { width: 100%; max-height: 70vh; border-radius: 10px; background: #000; }
 pre { white-space: pre-wrap; font: 13px/1.5 ui-monospace, Consolas, monospace;
   margin: 0; overflow-wrap: anywhere; }
@@ -489,6 +498,11 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
   cursor: pointer; position: relative; z-index: 1; margin-bottom: 12px; padding: 8px 12px;
   border-radius: 10px; background: #dcebd9; border: 1px solid #6a9b65; color: #25502a; }
 .coord-mesa::after { content: "  ›"; font-weight: 700; }
+/* fora do ar (o coordenador disse, ou o PC não respondeu) e, sem resposta,
+   velha: tracejada, para não passar por retrato de agora (14/10, v71) */
+.coord-mesa.fora { background: #f3dcd4; border-color: #a8321f; color: #7a2012; }
+.coord-mesa.velho { border-style: dashed; }
+.orq-sem-dados { font-style: italic; }
 .orq-faixa { padding: 10px 12px; border-radius: 10px; margin-bottom: 12px;
   border: 2px solid #b8661b; background: #fbe9c8; color: #6b3a1a; font-size: 14px;
   position: relative; z-index: 1; }
@@ -758,6 +772,7 @@ details.recolhido[open] > summary { margin-bottom: 8px; }
   .livro.coordenador .cartao { background: rgba(30, 33, 39, .96); }
   .livro.coordenador .cartao h2 { color: #c9b48f; }
   .coord-mesa { background: #23442b; border-color: #5cc185; color: #dff5e4; }
+  .coord-mesa.fora { background: #4a2420; border-color: #ff6b5b; color: #ffe1dc; }
 }
 
 /* ================================================================
@@ -850,10 +865,18 @@ body.deitado .livro {
 body.deitado.com-faixa .livro {
   padding-top: calc(64px + env(safe-area-inset-top) + var(--faixa-alto, 0px));
 }
-/* a Agora (o mapa, `.livro.mesa`) tem moldura de 12 px: com a faixa à vista
-   o vão até as abas era 22 px, contra 10 px nas outras (conferente, 14/10,
-   v70). Com a faixa, a moldura sai da conta; sem ela, nada muda. */
-body.com-faixa .livro.mesa,
+/* a Agora (o mapa, `.livro.mesa`) tem moldura de 12 px: a moldura sai da
+   conta do topo SEMPRE, e as abas ficam onde estão nas outras telas. Com a
+   faixa "sem conexão" o vão era 22 px contra 10 (v70 → v71); sem a faixa a
+   Agora seguia 12 px mais baixa: topo→abas 25,7 contra 13,7 px no
+   Coordenador, deitado 19,7 contra 7,7 (conferente, 14/10, v71). A moldura
+   de cima fica atrás do cabeçalho. */
+.livro.mesa {
+  padding-top: calc(64px - 12px + env(safe-area-inset-top) + var(--faixa-alto, 0px));
+}
+body.deitado .livro.mesa {
+  padding-top: calc(56px - 12px + env(safe-area-inset-top) + var(--faixa-alto, 0px));
+}
 body.deitado.com-faixa .livro.mesa {
   padding-top: calc(64px - 12px + env(safe-area-inset-top) + var(--faixa-alto, 0px));
 }

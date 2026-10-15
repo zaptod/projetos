@@ -153,7 +153,10 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v71 = (14/10) o Coordenador com o PC ligado diz "Nada de novo desde",
     # o vão da faixa na Agora igual ao das outras, e as caixinhas do Ateliê
     # ao lado do rótulo.
-    assert "painel-casca-v71" in sw
+    # v72 = (14/10) a Agora com o PC fora diz "sem dados" e o coordenador
+    # FORA DO AR, "Escolher folha" é botão, a folha vazia não abre buraco e a
+    # Agora sem faixa tem o mesmo vão das outras.
+    assert "painel-casca-v72" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

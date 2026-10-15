@@ -1184,9 +1184,40 @@ async function orqCarregar() {
     orqDesenharFluxoTrabalho(d);
     orqDesenharComandos(d);
     orqMarcarSelo(d);
+    Orq.lidoEm = new Date().toISOString();
     if (typeof coordenadorMesa === "function") coordenadorMesa();
     conexao(true);
-  } catch (err) { conexao(false, err); }
+  } catch (err) { conexao(false, err); orqSemDados(err); }
+}
+
+// O PC não respondeu: RODANDO AGORA, AGENTES e o Codex dizem que não há
+// dado, e desde quando, em vez de ficarem vazios (antes de carregar) ou de
+// mostrar o retrato velho como se fosse de agora (conferente, 14/10, v71: a
+// linha do coordenador seguia "carregando…" para sempre, ou "no ar · 4/4"
+// de antes da queda). O mesmo padrão do Coordenador na v70; a próxima
+// leitura boa redesenha tudo.
+function orqSemDados(err) {
+  if (err && err.status === 401) return;            // o pareamento já trata
+  if (err && !(err instanceof ErroApi)) return;     // erro da tela: vai ao console
+  const fora = !err || !err.status || [502, 503, 504].includes(err.status);
+  const porque = fora ? "PC fora do ar" : `o PC respondeu com erro ${err.status}`;
+  const contato = localStorage.getItem(CONTATO);
+  const quando = (iso) => { const q = quandoCurto(iso); return q.includes(" ") ? `de ${q}` : `às ${q}`; };
+  const desde = Orq.lidoEm ? ` (último dado ${quando(Orq.lidoEm)})`
+    : contato ? ` (último contato com o PC ${quando(contato)})` : "";
+  const linha = () => el("div", {class: "fraco orq-sem-dados"}, `sem dados — ${porque}${desde}`);
+  $("orq-principal").replaceChildren(linha());
+  $("orq-resumo").replaceChildren();
+  $("orq-agentes-titulo").textContent = "Agentes";
+  $("orq-agora").replaceChildren(linha());
+  $("orq-carteiro").replaceChildren();
+  $("orq-concluidos").textContent = "";
+  $("orq-codex").replaceChildren(linha());
+  $("orq-faixa").classList.add("oculto");           // alarmes do retrato velho
+  if (typeof coordMesaSemDados === "function") {
+    if (fora) coordMesaSemDados();
+    else if (typeof coordenadorMesa === "function") coordenadorMesa();
+  }
 }
 
 // O objeto Agora, na prateleira, avisa sem abrir. Vermelho só para problema

@@ -147,10 +147,26 @@ function coordResumo(dados) {
 }
 
 async function coordenadorMesa() {
-  try { $("coord-mesa").textContent = coordResumo(await api("/api/coordenador")); } catch (err) {
-    $("coord-mesa").textContent = "Coordenador: FORA DO AR";
-  }
+  try {
+    const dados = await api("/api/coordenador");
+    Coord.mesaEm = new Date().toISOString();
+    const linha = $("coord-mesa");
+    linha.textContent = coordResumo(dados);
+    linha.classList.remove("velho");
+    linha.classList.toggle("fora", !dados.vivo);
+  } catch (err) { coordMesaSemDados(); }
   if (typeof pedidosCarregar === "function") pedidosCarregar();
+}
+
+// A linha do coordenador em Agora sem resposta do PC: FORA DO AR e marcada
+// como velha, com a hora do último retrato bom. Nunca o "no ar · N/N" de
+// antes da queda (conferente, 14/10, v71).
+function coordMesaSemDados() {
+  const linha = $("coord-mesa");
+  const ultimo = Coord.mesaEm ? quandoCurto(Coord.mesaEm) : "";
+  linha.textContent = "Coordenador: FORA DO AR · sem dados do PC"
+    + (ultimo ? ` (último ${ultimo.includes(" ") ? "de" : "às"} ${ultimo})` : "");
+  linha.classList.add("fora", "velho");
 }
 
 // Os três cartões do painel sem dado: diz POR QUÊ, em vez de ficarem vazios

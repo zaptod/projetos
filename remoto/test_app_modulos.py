@@ -271,11 +271,43 @@ def test_coordenador_ligado_sem_eventos_diz_nada_de_novo():
 
 def test_a_moldura_da_agora_sai_da_conta_com_a_faixa():
     """A Agora (`.livro.mesa`, moldura de 12 px) tinha vão de 22 px até as
-    abas com a faixa "sem conexão"; as outras, 10 px."""
+    abas com a faixa "sem conexão"; as outras, 10 px. Desde a v72 a moldura
+    sai da conta também sem a faixa (topo→abas 25,7 contra 13,7 px)."""
     assert "border: 12px solid" in _bloco(".livro.mesa")
-    regra = re.search(r"body\.com-faixa \.livro\.mesa,\s*body\.deitado\.com-faixa "
-                      r"\.livro\.mesa\s*\{([^}]*)\}", CSS)
-    assert regra and "calc(64px - 12px + env(safe-area-inset-top)" in regra.group(1)
+    for seletor, base in ((r"\.livro\.mesa", 64), (r"body\.deitado \.livro\.mesa", 56),
+                          (r"body\.deitado\.com-faixa \.livro\.mesa", 64)):
+        regras = re.findall(r"(?m)^" + seletor + r"\s*\{([^}]*)\}", CSS)
+        esperado = (f"padding-top: calc({base}px - 12px + env(safe-area-inset-top)"
+                    f" + var(--faixa-alto, 0px))")
+        assert any(esperado in r for r in regras), seletor
+
+
+# ------------------------------------- achados do conferente (14/10, casca v72)
+def test_rotulo_do_seletor_de_arquivo_e_botao():
+    """"Escolher folha" (label.acao com input file escondido) era texto solto
+    com alvo de 20 px; só o button.acao tinha o visual."""
+    bloco = _bloco("label.acao:has(> input[type=file])")
+    for regra in ("min-height: 44px", "border: 1px solid var(--linha)", "background: var(--cartao)",
+                  "cursor: pointer"):
+        assert regra in bloco, regra
+
+
+def test_folha_do_atelie_nasce_escondida():
+    html = (APP / "index.html").read_text(encoding="utf-8")
+    assert re.search(r'<canvas id="anim-folha-canvas"[^>]*\shidden>', html)
+    js = (APP / "atelie_novo.js").read_text(encoding="utf-8")
+    assert "c.hidden = !AnimAtelie.imagem" in js.split("function animFolha", 1)[1].split("\n}\n", 1)[0]
+
+
+def test_agora_sem_resposta_do_pc_diz_sem_dados():
+    js = (APP / "orquestrador.js").read_text(encoding="utf-8")
+    carregar = js.split("async function orqCarregar()", 1)[1].split("\n}\n", 1)[0]
+    assert "orqSemDados(err)" in carregar
+    corpo = js.split("function orqSemDados", 1)[1].split("\n}\n", 1)[0]
+    for alvo in ("orq-principal", "orq-agora", "sem dados — ", "coordMesaSemDados"):
+        assert alvo in corpo, alvo
+    coord = (APP / "coordenador.js").read_text(encoding="utf-8")
+    assert "FORA DO AR" in coord.split("function coordMesaSemDados", 1)[1].split("\n}\n", 1)[0]
 
 
 def test_caixinha_nao_herda_a_largura_do_campo_comum():

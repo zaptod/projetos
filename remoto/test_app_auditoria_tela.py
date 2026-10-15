@@ -459,8 +459,10 @@ def test_faixa_sem_pc_tem_o_mesmo_vao_na_agora_e_no_coordenador(  # noqa: F811
             vaos[tela] = abas["y"] - (faixa["y"] + faixa["height"])
             page.screenshot(path=str(
                 CAPTURAS / f"v71-faixa-vao-{tela}-{tamanho[0]}x{tamanho[1]}.png"))
-        # o PC voltou: sem a faixa, a Agora volta ao lugar de sempre (a
-        # moldura do mapa continua inteira, sem o desconto da faixa)
+        # o PC voltou: sem a faixa, a Agora volta ao lugar de sempre. Desde a
+        # v72 é o mesmo das outras telas (7,7 px deitado, 13,7 em pé; ver
+        # test_sem_faixa_a_agora_tem_o_mesmo_vao_que_o_coordenador); aqui só
+        # que as abas não ficam embaixo do cabeçalho
         fora["sim"] = False
         _abrir_aba(page, "coordenador", "agora")
         # o ciclo da própria página pode achar o PC antes do toque: aí a faixa
@@ -471,7 +473,7 @@ def test_faixa_sem_pc_tem_o_mesmo_vao_na_agora_e_no_coordenador(  # noqa: F811
         page.wait_for_timeout(300)
         topo = page.locator("#tela-agora .abas-objeto").bounding_box()["y"]
         cabeca = page.locator("header").bounding_box()
-        assert topo - (cabeca["y"] + cabeca["height"]) >= 10, (topo, cabeca)
+        assert topo - (cabeca["y"] + cabeca["height"]) >= 5, (topo, cabeca)
     assert 8 <= vaos["agora"] <= 12 and abs(vaos["agora"] - vaos["coordenador"]) <= 1, vaos
 
 
@@ -508,3 +510,148 @@ def test_caixinhas_do_editor_ao_lado_do_rotulo_e_tocaveis(tela_isolada, tema, ta
             page.locator(f"label:has({caixa})").click(position={"x": 60, "y": 20})
             assert entrada.is_checked() == antes, caixa
         page.screenshot(path=str(CAPTURAS / f"v71-atelie-caixinhas-{_nome(tema, tamanho)}.png"))
+
+
+# ===================================== achados do conferente (14/10, casca v72)
+# As capturas saem ANTES das contas: rodando a prova no código de antes, elas
+# mostram o defeito (era assim que a prova da v72 foi medida).
+def _tentar_de_novo(page):
+    """O "Tentar de novo" da faixa, se ela estiver à vista: o ciclo da página
+    (10 s na Agora) pode já ter achado o PC antes do toque."""
+    page.evaluate("() => { const b = document.querySelector('#btn-tentar');"
+                  " if (b && b.offsetParent) b.click(); }")
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS)
+def test_agora_com_o_pc_fora_diz_sem_dados_e_o_coordenador_fora_do_ar(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Conferente, 14/10 (v71): com o PC fora, RODANDO AGORA e AGENTES ficavam
+    vazios e a linha "Coordenador: carregando…" para sempre (o `orqCarregar`
+    só chamava a `conexao` no erro). E com a Agora já carregada, a linha
+    seguia "no ar · N/N serviços ok", o retrato velho como se fosse atual."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    nome = _nome(tema, tamanho)
+    sem_dados = "sem dados — PC fora do ar"
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        page.wait_for_timeout(3000)                         # a carga da Vila assenta
+        # 1) o PC cai antes de a Agora carregar (a prova 6 do conferente)
+        fora["sim"] = True
+        _abrir_objeto(page, "agora", "agora")
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible")
+        page.wait_for_timeout(1500)
+        page.locator("#orq-sec-agora").scroll_into_view_if_needed()   # deitado fica embaixo
+        page.screenshot(path=str(CAPTURAS / f"v72-agora-pc-fora-{nome}.png"))
+        page.wait_for_function(
+            "t => document.querySelector('#orq-agora').innerText.includes(t)", arg=sem_dados,
+            timeout=12000)
+        for alvo in ("#orq-principal", "#orq-agora"):
+            assert sem_dados in page.locator(alvo).inner_text(), alvo
+        linha = page.locator("#coord-mesa")
+        assert "FORA DO AR" in linha.inner_text() and "carregando" not in linha.inner_text()
+        assert "velho" in (linha.get_attribute("class") or "")
+        # 2) o PC volta: o retrato de verdade substitui o aviso
+        fora["sim"] = False
+        _tentar_de_novo(page)
+        page.wait_for_function("() => document.querySelector('#coord-mesa')"
+                               ".innerText.includes('no ar')", timeout=15000)
+        page.wait_for_function("t => !document.querySelector('#orq-agora').innerText.includes(t)",
+                               arg=sem_dados, timeout=15000)
+        assert "velho" not in (linha.get_attribute("class") or "")
+        # 3) cai de novo, com a Agora carregada: nada do "no ar" velho
+        fora["sim"] = True
+        page.wait_for_function(
+            "t => document.querySelector('#orq-agora').innerText.includes(t)", arg=sem_dados,
+            timeout=15000)
+        page.wait_for_timeout(300)
+        page.locator("#orq-sec-agora").scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v72-agora-pc-caiu-{nome}.png"))
+        agentes = page.locator("#orq-agora").inner_text()
+        assert "(último dado às " in agentes, agentes
+        hora = agentes.split("(último dado às ", 1)[1][:5]
+        assert hora[2] == ":" and hora.replace(":", "").isdigit(), agentes
+        assert "no ar ·" not in linha.inner_text() and "FORA DO AR" in linha.inner_text()
+        assert "velho" in (linha.get_attribute("class") or "")
+        assert not page.locator("#orq-resumo").inner_text().strip()   # as vagas velhas saem
+
+
+def _abrir_editor_do_atelie(page):
+    _abrir_objeto(page, "arena", "arena")
+    _abrir_aba(page, "arena", "atelie")
+    page.locator("#anim-grupos button").first.wait_for(state="visible")
+    page.locator("#anim-grupos button").first.click()
+    page.locator("#anim-lista .anim-peca").first.click()
+    page.locator("#anim-lista button").first.click()
+    page.locator("#anim-lista .anim-cartao-abrir").first.click()
+    page.locator("#anim-editor:not(.oculto)").wait_for(state="visible")
+    page.wait_for_timeout(300)
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS)
+def test_escolher_folha_e_botao_e_a_folha_vazia_nao_abre_buraco(  # noqa: F811
+        tela_isolada, tmp_path, tema, tamanho):
+    """Conferente, 14/10 (v71): "Escolher folha" era texto solto com alvo de
+    20 px (o `label.acao` do input de arquivo não ganhava o visual de botão),
+    e antes de escolher a folha o `#anim-folha-canvas` abria 180 px
+    transparentes entre os campos e a prévia."""
+    from PIL import Image
+
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_editor_do_atelie(page)
+        botao = page.locator("label.anim-enviar")
+        botao.scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v72-atelie-sem-folha-{_nome(tema, tamanho)}.png"))
+        caixa = botao.bounding_box()
+        estilo = botao.evaluate(
+            "e => { const s = getComputedStyle(e); return {borda: s.borderTopWidth,"
+            " estilo: s.borderTopStyle, fundo: s.backgroundColor, cursor: s.cursor}; }")
+        assert caixa["height"] >= 44, caixa                         # alvo de dedo
+        assert estilo["borda"] == "1px" and estilo["estilo"] == "solid", estilo
+        assert estilo["fundo"] not in ("rgba(0, 0, 0, 0)", "transparent"), estilo
+        assert estilo["cursor"] == "pointer", estilo
+        # o mesmo visual dos botões do editor
+        assert botao.evaluate("e => getComputedStyle(e).borderRadius") == \
+            page.locator("#anim-claro").evaluate("e => getComputedStyle(e).borderRadius")
+        # sem folha: nada de buraco entre os campos e a prévia
+        folha = page.locator("#anim-folha-canvas")
+        assert not folha.is_visible()
+        if tamanho[0] < tamanho[1]:                                 # em pé: uma coluna
+            campos = page.locator("#anim-espaco").bounding_box()    # a última fileira
+            previa = page.locator("#anim-canvas").bounding_box()
+            assert previa["y"] - (campos["y"] + campos["height"]) < 40, (campos, previa)
+        # tocar abre o seletor de arquivo (o rótulo é o alvo)
+        with page.expect_file_chooser(timeout=3000) as escolha:
+            botao.click()
+        imagem = tmp_path / "folha.png"
+        folha_png = Image.new("RGBA", (96, 32), (0, 0, 0, 0))        # 3 quadros num fundo vazio
+        for n in range(3):
+            folha_png.paste((200, 40, 40, 255), (n * 32 + 6, 6, n * 32 + 26, 26))
+        folha_png.save(imagem)
+        escolha.value.set_files(str(imagem))
+        page.wait_for_function("() => !document.querySelector('#anim-folha-canvas').hidden",
+                               timeout=8000)
+        folha.scroll_into_view_if_needed()
+        assert folha.is_visible() and folha.bounding_box()["height"] > 50
+        page.screenshot(path=str(CAPTURAS / f"v72-atelie-com-folha-{_nome(tema, tamanho)}.png"))
+
+
+@pytest.mark.parametrize("tamanho", [(390, 844), (844, 390)])
+def test_sem_faixa_a_agora_tem_o_mesmo_vao_que_o_coordenador(tela_isolada, tamanho):  # noqa: F811
+    """Conferente, 14/10 (v71): sem a faixa "sem conexão", a Agora ficava 12 px
+    mais baixa que as outras (vão do topo às abas 25,7 contra 13,7 px no
+    Coordenador; deitado 19,7 contra 7,7): a moldura de 12 px do mapa
+    (`.livro.mesa`) somava ao padding."""
+    vaos = {}
+    with _pagina(tela_isolada, tamanho=tamanho) as page:
+        _abrir_objeto(page, "agora", "agora")
+        for tela in ("agora", "coordenador"):
+            if tela != "agora":
+                _abrir_aba(page, "agora", tela)
+            page.wait_for_timeout(700)                      # a animação de abrir
+            assert not page.locator("#aviso").is_visible()
+            cabeca = page.locator("header").bounding_box()
+            abas = page.locator(f"#tela-{tela} .abas-objeto").bounding_box()
+            vaos[tela] = abas["y"] - (cabeca["y"] + cabeca["height"])
+            page.screenshot(path=str(
+                CAPTURAS / f"v72-sem-faixa-vao-{tela}-{tamanho[0]}x{tamanho[1]}.png"))
+    assert abs(vaos["agora"] - vaos["coordenador"]) <= 1, vaos
+    assert vaos["agora"] >= 5, vaos                       # as abas não somem sob o topo

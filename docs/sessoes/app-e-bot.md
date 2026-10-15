@@ -3111,7 +3111,7 @@ que o app pode disparar.
   com a faixa "sem conexão" o vão até as abas era 22 px (medido: 22,4 em pé e
   22,7 deitado), contra 10 px no Coordenador. Com `body.com-faixa` a moldura
   sai da conta (`64px - 12px`): 10 px nas duas, em pé e deitado. Sem a faixa
-  a Agora não muda.
+  a Agora não mudava (era 12 px mais baixa; consertado na v72, abaixo).
 - **Caixinhas do Ateliê.** A regra comum `input {width: 100%}` valia para o
   checkbox: "Repetir / Ida e volta / Espelhar" saíam com a caixa em cima do
   texto (centro da caixa 12 px acima do centro do rótulo; a caixa com a
@@ -3129,4 +3129,50 @@ escuro e 844x390). Medido antes do conserto: os 8 testes de tela novos
 falham.
 
 **Fica para quem reinicia:** a casca v71 só chega ao celular depois de
+`python -m coordenador reiniciar app`, fora de :25–:55.
+
+# Quatro achados do conferente na v71 (14/10/2026, casca v72)
+
+Só casca (`orquestrador.js`, `coordenador.js`, `atelie_novo.js`, `index.html`,
+`app.css`, `sw.js`); nada muda no servidor nem no que o app pode disparar.
+
+- **Agora com o PC fora.** O `orqCarregar` só chamava a `conexao(false)` no
+  erro: aberta com o PC fora, RODANDO AGORA e AGENTES ficavam vazios e a linha
+  "Coordenador: carregando…" para sempre (o `coordenadorMesa`, com o "FORA DO
+  AR", só rodava no sucesso); já carregada, a linha seguia "no ar · 0/0
+  serviços ok" e "Nenhum agente trabalhando agora." depois da queda (medido
+  na prova: 11 s depois do 502, os dois textos velhos). Agora `orqSemDados`
+  (o mesmo padrão da v70 no Coordenador): RODANDO AGORA, AGENTES e o Codex
+  dizem "sem dados — PC fora do ar (último dado às HH:MM)" (a hora é a da
+  última leitura boa do `/api/orquestrador`; sem nenhuma, "último contato com
+  o PC"; erro N que não é 502/503/504: "o PC respondeu com erro N"); as vagas,
+  o carteiro, os concluídos e a faixa de alarmes do retrato velho saem. A
+  linha do coordenador (`coordMesaSemDados`) vai a "Coordenador: FORA DO AR ·
+  sem dados do PC (último às HH:MM)", vermelha e tracejada (`.fora.velho`);
+  com o coordenador dizendo `vivo: false`, vermelha sem tracejado. A próxima
+  leitura boa redesenha tudo. Erro do próprio JavaScript e 401 não mexem.
+- **"Escolher folha" é botão.** Era `label.acao` com o `input file` escondido,
+  e só o `button.acao` e o rótulo com caixinha tinham o visual: texto solto,
+  alvo de 20 px (deitado 21,75). `label.acao:has(> input[type=file])` ganha
+  borda, fundo, canto e `cursor` dos botões, com 44 px de altura.
+- **Sem buraco antes da folha.** O `#anim-folha-canvas` (320x180) ocupava
+  ~195 px transparentes entre os campos e a prévia antes de escolher a folha.
+  Nasce `hidden` e o `animFolha` o mostra só com folha (`c.hidden =
+  !AnimAtelie.imagem`); o "Escolha uma folha." da prévia já diz o que falta.
+- **Agora sem a faixa na mesma altura das outras.** A moldura de 12 px do
+  `.livro.mesa` somava ao padding: topo→abas 25,7 px contra 13,7 no
+  Coordenador (deitado 19,7 contra 7,7). A moldura sai da conta sempre
+  (`.livro.mesa` 64−12, deitado 56−12, deitado com faixa 64−12) e a de cima
+  fica atrás do cabeçalho. Com a faixa o vão continua 10 px.
+
+**Provas:** `remoto/test_app_modulos.py` (três regras estáticas novas e a da
+moldura com os três casos), `remoto/test_app_auditoria_tela.py`
+(`NF_TESTE_NAVEGADOR=1`: Agora com o PC fora antes de carregar, de volta e
+caindo de novo; "Escolher folha" com 44 px, borda e seletor de arquivo
+abrindo, folha escondida até escolher e à vista depois; vão sem faixa Agora ×
+Coordenador em 390x844 e 844x390). Capturas `<TEMP>/tela_app/v72-*.png`,
+claro, escuro e 844x390. Medido antes do conserto: os 8 testes de tela novos
+falham.
+
+**Fica para quem reinicia:** a casca v72 só chega ao celular depois de
 `python -m coordenador reiniciar app`, fora de :25–:55.
