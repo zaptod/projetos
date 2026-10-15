@@ -108,6 +108,11 @@ class Câmera:
         # parede depois do K.O.). None = não há letreiro (jogo, palco).
         self.reserva_pos_ko = None
         self.t_pos_ko = None                  # o Simulador escreve, no pós-K.O.
+        self.pulo_pos_ko = None               # idem: pulo da festa agora, em raios
+        # Maior deslocamento da imagem por ATUALIZAÇÃO (o gravador atualiza a
+        # 60 Hz e grava a 30 fps: 2 por quadro → até 10 px por quadro).
+        self.diretor_pos_ko_degrau_max_px = 5.0
+        self.diretor_pos_ko_degrau_ate_s = 1.0      # segundos de parede depois do K.O.
         self._pos_ko_topo = None
         self._diretor_t = 0.0
         self._diretor_estavel_desde = None
@@ -747,13 +752,16 @@ class Câmera:
             return caixa
         return x0, y0, x1, y1
 
-    def caixa_do_rosto(self, vencedor, zoom: float) -> tuple:
-        """Corpo do vencedor no alto do pulo + o nome sobre a cabeça (px do mundo)."""
+    def caixa_do_rosto(self, vencedor, zoom: float, pulo: float | None = None) -> tuple:
+        """Corpo do vencedor + o nome sobre a cabeça (px do mundo), com o pulo
+        da festa em ``pulo`` raios (padrão: o MÁXIMO, ``FESTA_ALTURA_PULO``,
+        que é o que o alvo do enquadramento reserva)."""
         r = self._raio_desenhado(vencedor)
         x = vencedor.pos[0] * PPM
         y = vencedor.pos[1] * PPM - float(getattr(vencedor, "z", 0.0) or 0.0) * PPM
         nome = 40.0 / max(zoom, 1e-6)
-        return (x - 1.15 * r, y - (1.0 + FESTA_ALTURA_PULO) * r - nome,
+        pulo = FESTA_ALTURA_PULO if pulo is None else max(0.0, float(pulo))
+        return (x - 1.15 * r, y - (1.0 + pulo) * r - nome,
                 x + 1.15 * r, y + 1.1 * r)
 
     def _garantir_rosto(self, vencedor, cx, cy, zoom):
@@ -818,12 +826,51 @@ class Câmera:
                 self._pos_ko_topo = None
         cx, cy, zoom, modo = self.alvo_pos_ko(vencedor, perdedor)
         self._pos_ko_modo = modo
-        self.zoom += (zoom - self.zoom) * passo
-        self.x += (cx - self.x) * passo
-        self.y += (cy - self.y) * passo
-        self.zoom = max(self.zoom_min, min(self._diretor_teto_zoom(), self.zoom))
+        antes = (self.x, self.y, self.zoom)
+        novo_zoom = max(self.zoom_min, min(self._diretor_teto_zoom(),
+                                           self.zoom + (zoom - self.zoom) * passo))
+        novo = (self.x + (cx - self.x) * passo, self.y + (cy - self.y) * passo, novo_zoom)
+        if letreiro is not None:
+            # a garantia do letreiro entra NO passo (e não depois dele): o
+            # teto de degrau abaixo vale para o movimento inteiro
+            self.x, self.y, self.zoom = novo
+            self._tirar_rosto_do_letreiro(vencedor, letreiro)
+            novo = (self.x, self.y, self.zoom)
+            self.x, self.y, self.zoom = antes
+        # Teto de degrau (15/10, conferente: nenhum degrau > 12 px por quadro
+        # de 30 fps): se a imagem andaria mais que isto neste passo, o passo
+        # inteiro (centro e zoom) encolhe na mesma proporção.
+        # Só no 1º segundo (o slow-mo, com o letreiro na tela): depois a festa
+        # precisa chegar ao quadro dela antes de o vídeo acabar.
+        fracao = 1.0
+        t = self.t_pos_ko
+        if t is not None and t <= self.diretor_pos_ko_degrau_ate_s:
+            degrau = self._degrau_na_tela(antes, novo)
+            teto = self.diretor_pos_ko_degrau_max_px
+            if degrau > teto > 0:
+                fracao = teto / degrau
+        self.x = antes[0] + (novo[0] - antes[0]) * fracao
+        self.y = antes[1] + (novo[1] - antes[1]) * fracao
+        self.zoom = antes[2] + (novo[2] - antes[2]) * fracao
         if letreiro is not None:
             self._tirar_rosto_do_letreiro(vencedor, letreiro)
+
+    def _degrau_na_tela(self, antes, depois) -> float:
+        """Quanto (px) a imagem anda na tela de ``antes`` para ``depois``
+        (x, y, zoom): o maior deslocamento de 9 pontos (10/50/90% da largura
+        × 30/45/60% da altura), onde estão o vencedor e o fundo atrás dele —
+        o centro mede o deslocamento, as bordas pegam o zoom."""
+        w, h = self.screen_width, self.screen_height
+        x0, y0, z0 = antes
+        x1, y1, z1 = depois
+        maior = 0.0
+        for fy in (0.30, 0.45, 0.60):
+            for fx in (0.1, 0.5, 0.9):
+                sx, sy = fx * w, fy * h
+                wx, wy = (sx - w / 2) / z0 + x0, (sy - h / 2) / z0 + y0
+                nx, ny = (wx - x1) * z1 + w / 2, (wy - y1) * z1 + h / 2
+                maior = max(maior, math.hypot(nx - sx, ny - sy))
+        return maior
 
     def _tirar_rosto_do_letreiro(self, vencedor, letreiro):
         """No quadro DE AGORA (não só no alvo): se o rosto/nome do vencedor
@@ -833,7 +880,10 @@ class Câmera:
         tela, ele sai de trás do letreiro de uma vez — junto com o K.O."""
         margem = self.diretor_pos_ko_margem * min(self.screen_width, self.screen_height)
         limite = letreiro * self.screen_height + margem / 2.0
-        _x0, y0, _x1, _y1 = self.caixa_do_rosto(vencedor, self.zoom)
+        # o pulo de AGORA (no K.O. ele nem começou): com o máximo, a caixa
+        # ficava ~50 px alta demais e empurrava a câmera 34 px num quadro
+        # sem o vencedor estar atrás do letreiro (Vulcão, 15/10)
+        _x0, y0, _x1, _y1 = self.caixa_do_rosto(vencedor, self.zoom, self.pulo_pos_ko)
         topo_tela = (y0 - self.y) * self.zoom + self.screen_height / 2
         if topo_tela < limite:
             self.y -= (limite - topo_tela) / self.zoom

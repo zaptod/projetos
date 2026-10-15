@@ -1095,7 +1095,47 @@ cruzam, e a fração fora da arena) e `tira_letreiro_{torre,vulcao}.png`
 | rosto fora da zona das plataformas e acima de 62%; veredito na faixa | 12/12; 4/4 | 12/12; 4/4 |
 | cauda / pico / integrado | 2,73 s / -1,6 dBTP / -15,5 LUFS | 2,73 s / -1,8 dBTP / -15,6 LUFS |
 
-## Contratos com outras partes
+**Quarta conferência (c34e6b7): um degrau, consertado** (15/10):
+8. **Vulcão: a câmera saltava ~34 px no 1º quadro com o "ACABOU"** (6 px
+   antes), sem o vencedor estar atrás do letreiro (folga de 44 px). A
+   garantia por quadro (`_tirar_rosto_do_letreiro`) usava a caixa do rosto
+   com o pulo MÁXIMO da festa, e no K.O. o pulo nem começou: ~50 px alta
+   demais. Agora:
+   - a garantia por quadro usa o **pulo de agora** (o Simulador escreve
+     `cam.pulo_pos_ko`, `Simulador._fracao_do_pulo`; 0 até a fanfarra); o
+     máximo só entra no alvo (`caixa_do_rosto(..., pulo=None)`);
+   - a garantia entra **dentro** do passo do enquadramento, e no 1º segundo
+     depois do K.O. (`diretor_pos_ko_degrau_ate_s` = 1,0, o slow-mo com o
+     letreiro) o passo inteiro tem teto de degrau: 5 px por atualização
+     (`diretor_pos_ko_degrau_max_px`; o gravador atualiza a 60 Hz e grava a
+     30 fps → até 10 px por quadro), medido em 9 pontos da tela
+     (`_degrau_na_tela`: 10/50/90% da largura × 30/45/60% da altura). Depois
+     de 1 s o enquadramento anda livre para a festa chegar ao quadro dela.
+   Testes (`test_letreiro_do_ko_regressions.py`): nenhum degrau > 12 px por
+   quadro do K.O. ao K.O.+1 s em Vulcão e Torre (fora a cena em que a luta
+   acaba com o vencedor atrás do letreiro, que sai de uma vez junto com o
+   K.O.); caso zero: com o pulo máximo, a cena do Vulcão (44 px de folga)
+   leva um empurrão > 12 px; com o pulo de agora, 0.
+
+Luta igual até o K.O.: 6/6 pelo gravador e 48/48 headless. Provas em
+`E:\tmp_pytest\prova_fim_luta6\{torre,vulcao}\` (as da 5 ficam superadas),
+com o mesmo conjunto da 5 e `degrau_{Torre,Vulcao}.json`: a mesma luta
+re-simulada pelo gravador com a câmera registrada a cada quadro capturado e
+o degrau (máximo dos 9 pontos e o do centro) de quadro a quadro.
+
+| | Torre | Vulcão |
+|---|---|---|
+| maior degrau do K.O. ao K.O.+1 s (9 pontos / centro) | 8,4 / 5,9 px | 10,4 / 7,1 px (era ~34 no 477) |
+| maior degrau antes do K.O. (a luta, para comparar) | 12,6 px | 12,9 px |
+| maior degrau no resto da cauda (o enquadramento solto depois de 1 s) | 25,4 px | 31,8 px |
+| rosto+nome × letreiro (28 quadros com ele) | 0 cruzam, folga mín. 118 px | 0 cruzam, folga mín. 42 px |
+| rosto fora da zona e acima de 62%; veredito na faixa | 12/12; 4/4 | 12/12; 4/4 |
+| cauda / pico / integrado | 2,73 s / -1,6 dBTP / -15,5 LUFS | 2,73 s / -1,8 dBTP / -15,6 LUFS |
+
+(A folga do `letreiro_x_vencedor_*.json` da prova 6 usa o pulo de agora —
+0 enquanto o letreiro está na tela —, como a câmera; o da prova 5 usava o
+pulo máximo e por isso dava 22 px.)
+
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre
   `outputs/` e devolve `Video(id, origem, perfil, titulo, descricao, hashtags,

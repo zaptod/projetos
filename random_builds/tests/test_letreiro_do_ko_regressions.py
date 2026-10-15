@@ -67,20 +67,30 @@ class LetreiroDoKoTests(unittest.TestCase):
         cam.modo = "DIRETOR"
         cam.diretor_largura_min_m = 5.5
         cam.reserva_pos_ko = reserva
+        # o letreiro (0,95 s) acaba antes da fanfarra (1,2 s): o pulo da festa
+        # ainda nao comecou enquanto ele esta na tela, como no Simulador
+        cam.pulo_pos_ko = 0.0
         # o quadro do fim da luta: os dois enquadrados, no limite da arena
         cam.zoom = cam._calcular_zoom_necessario(vencedor, perdedor,
                                                   zoom_max=cam._diretor_teto_zoom())
         cam.x, cam.y = cam._limitar_centro_a_arena(*cam._calcular_centro_ideal(vencedor, perdedor))
         colisoes, parede = [], 0.0
+        self.degraus = []                         # px por quadro de 30 fps
+        quadro_anterior = (cam.x, cam.y, cam.zoom)
         # slow-mo (1,2 s de parede a 0,25x) e a festa, passos de 60 Hz
         for k, dt in enumerate([0.25 / 60] * 72 + [1 / 60] * 91):
             t_parede = (k + 1) / 60
             cam.t_pos_ko = t_parede
             cam.atualizar(dt, vencedor, perdedor)
+            if k % 2 == 1:                        # um quadro do video
+                agora = (cam.x, cam.y, cam.zoom)
+                self.degraus.append((round(t_parede, 3),
+                                     cam._degrau_na_tela(quadro_anterior, agora)))
+                quadro_anterior = agora
             if t_parede > self.duracao:          # alfa do letreiro = 0
                 continue
             letreiro = self._letreiro(t_parede)
-            x0, y0, x1, y1 = cam.caixa_do_rosto(vencedor, cam.zoom)
+            x0, y0, x1, y1 = cam.caixa_do_rosto(vencedor, cam.zoom, cam.pulo_pos_ko)
             sx0, sy0 = cam.converter(x0, y0)
             sx1, sy1 = cam.converter(x1, y1)
             if letreiro and sx0 < letreiro[2] and sx1 > letreiro[0] \
@@ -107,6 +117,65 @@ class LetreiroDoKoTests(unittest.TestCase):
                     _cam, colisoes = self._cauda(arena, _lutador(*v), _lutador(*p, morto=True),
                                                  reserva)
                     self.assertEqual(colisoes, [], colisoes[:3])
+
+    def test_nenhum_degrau_de_camera_passa_de_12_px_por_quadro_no_primeiro_segundo(self):
+        """Vulcao (15/10): a garantia por quadro usava o pulo MAXIMO e
+        empurrava a camera 34 px no 1o quadro com o ACABOU, sem o vencedor
+        estar atras dele. Do K.O. ao K.O.+1 s, nenhum degrau > 12 px.
+
+        Fora: a cena em que a luta ACABOU com o vencedor atras do letreiro
+        (Torre, vencedor no alto): ali ele sai de uma vez, junto com o K.O."""
+        reserva = reserva_do_letreiro(self.PERFIL)
+        for arena, cenas in self.CENAS.items():
+            for v, p in cenas:
+                vencedor, perdedor = _lutador(*v), _lutador(*p, morto=True)
+                if self._atras_no_ko(arena, vencedor, perdedor, reserva):
+                    continue
+                with self.subTest(arena=arena, vencedor=v, perdedor=p):
+                    self._cauda(arena, vencedor, perdedor, reserva)
+                    um_segundo = [d for t, d in self.degraus if t <= 1.0 + 1e-6]
+                    self.assertLessEqual(max(um_segundo), 12.0, max(um_segundo))
+
+    def test_caso_zero_o_pulo_maximo_empurraria(self):
+        """Sem o pulo ATUAL (o maximo na garantia por quadro), a mesma cena do
+        Vulcao leva um empurrao no 1o quadro."""
+        from unittest import mock
+
+        from neural_fights.effects.camera import Câmera
+
+        reserva = reserva_do_letreiro(self.PERFIL)
+        letreiro = reserva["topo"]
+
+        def empurrao(pulo_atual):
+            # a cena do Vulcao: zoom do duelo, o rosto (sem pulo) 44 px abaixo
+            # do letreiro — livre — no 1o quadro com o ACABOU
+            cam = Câmera(self.LARGURA, self.ALTURA)
+            cam.zoom = 3.6
+            cam.pulo_pos_ko = pulo_atual
+            vencedor = _lutador(10.0, 10.0)
+            _x0, y0, _x1, _y1 = cam.caixa_do_rosto(vencedor, cam.zoom, 0.0)
+            alvo_tela = letreiro * self.ALTURA + 44
+            cam.y = y0 - (alvo_tela - self.ALTURA / 2) / cam.zoom
+            antes = cam.y
+            cam._tirar_rosto_do_letreiro(vencedor, letreiro)
+            return abs(cam.y - antes) * cam.zoom
+
+        self.assertEqual(empurrao(0.0), 0.0)                 # o pulo de agora: nada
+        with mock.patch.object(Câmera, "pulo_pos_ko", None, create=True):
+            self.assertGreater(empurrao(None), 12.0)         # o maximo: o degrau
+
+    def _atras_no_ko(self, arena, vencedor, perdedor, reserva):
+        from neural_fights.core.arena import ARENAS
+        from neural_fights.effects.camera import Câmera
+
+        cfg = ARENAS[arena]
+        cam = Câmera(self.LARGURA, self.ALTURA)
+        cam.set_arena_bounds(cfg.largura / 2, cfg.altura / 2, cfg.largura, cfg.altura)
+        cam.zoom = cam._calcular_zoom_necessario(vencedor, perdedor,
+                                                  zoom_max=cam._diretor_teto_zoom())
+        cam.x, cam.y = cam._limitar_centro_a_arena(*cam._calcular_centro_ideal(vencedor, perdedor))
+        _x0, y0, _x1, _y1 = cam.caixa_do_rosto(vencedor, cam.zoom, 0.0)
+        return cam.converter(0, y0)[1] < reserva["topo"] * self.ALTURA
 
     def test_caso_zero_sem_reserva_o_rosto_entra_no_letreiro(self):
         acusou = 0

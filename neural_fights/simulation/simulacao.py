@@ -725,6 +725,10 @@ class Simulador:
             # a câmera pós-K.O. lê o relógio de PAREDE (o letreiro do K.O. do
             # vídeo vive nele; o dt daqui é o do slow-mo)
             self.cam.t_pos_ko = self._tempo_pos_ko()
+            # e o pulo da festa de agora (a garantia por quadro do letreiro
+            # usa o pulo ATUAL; o máximo só entra no alvo)
+            self.cam.pulo_pos_ko = (self._fracao_do_pulo()
+                                    if self._vencedor_comemorando() is not None else 0.0)
             self.cam.atualizar(dt, self.p1, self.p2)
         atualizar_debug(dt)
 
@@ -5518,10 +5522,17 @@ class Simulador:
         """Altura do pulo (px) do vencedor neste quadro, ou None."""
         if lutador is None or self._vencedor_comemorando() is not lutador:
             return None
+        return int(round(raio * self._fracao_do_pulo()))
+
+    def _fracao_do_pulo(self):
+        """Altura do pulo da festa AGORA, em raios do vencedor (0 antes da
+        fanfarra). A câmera pós-K.O. lê isto (``cam.pulo_pos_ko``)."""
         fase = self._fase_da_festa()
+        if fase is None:
+            return 0.0
         rampa = min(1.0, fase / self.FESTA_RAMPA_S) if self.FESTA_RAMPA_S > 0 else 1.0
         onda = abs(math.sin(fase * math.pi * self.FESTA_PULOS_POR_S))
-        return int(round(onda * raio * self.FESTA_ALTURA_PULO * rampa))
+        return onda * self.FESTA_ALTURA_PULO * rampa
 
     def _desenhar_nocauteado(self, l, sx, sy, raio):
         """O perdedor CAÍDO e visível: a cor dele apagada, achatado no chão,
