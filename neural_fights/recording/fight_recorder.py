@@ -696,6 +696,7 @@ def gravar_luta(
     som_no_video: bool = True,
     timeline: str | Path | None = None,
     corrente_v2: bool | None = None,
+    reserva_pos_ko: dict | None = None,
 ) -> dict:
     """Roda a luta desenhando cada frame e devolve o resultado + timestamps.
 
@@ -776,6 +777,9 @@ def gravar_luta(
         anotador.passo = 0   # Onda 16C: o som tambem leva o passo exato (``i``)
         extras["audio"] = anotador
     sim = Simulador(match_config=match_config, headless=False, seed=seed, **extras)
+    if reserva_pos_ko and getattr(sim, "cam", None) is not None:
+        # so a camera da cauda le (Camera._topo_do_letreiro); nada da luta
+        sim.cam.reserva_pos_ko = dict(reserva_pos_ko)
     sonda = SondaDeDano()
     narrativa = SondaNarrativa()
     camera = SondaCamera()
@@ -1033,7 +1037,24 @@ def build_parser() -> argparse.ArgumentParser:
                        default=None, help="carimba corrente_v2=True no match_config")
     chave.add_argument("--sem-corrente-v2", dest="corrente_v2", action="store_const", const=False,
                        help="carimba corrente_v2=False (a corrente antiga)")
+    parser.add_argument("--reserva-pos-ko", type=tipo_reserva_pos_ko, default=None,
+                        metavar="TOPO,SEGUNDOS",
+                        help="letreiro do K.O. do video: borda de baixo (fracao da "
+                             "altura) e quanto ele fica na tela depois do K.O.; a "
+                             "camera DIRETOR da cauda poe o vencedor abaixo dele")
     return parser
+
+
+def tipo_reserva_pos_ko(texto: str) -> dict:
+    """``"0.27,0.9"`` -> ``{"topo": 0.27, "ate_s": 0.9}`` (argparse)."""
+    try:
+        topo, ate = (float(v) for v in str(texto).split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"use TOPO,SEGUNDOS (ex. 0.27,0.9): {texto}") from None
+    if not (0.0 <= topo < 1.0) or ate < 0:
+        raise argparse.ArgumentTypeError(f"fora da faixa: {texto}")
+    return {"topo": topo, "ate_s": ate}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1057,6 +1078,7 @@ def main(argv: list[str] | None = None) -> int:
             anotar_som=not args.sem_som,
             timeline=args.timeline,
             corrente_v2=args.corrente_v2,
+            reserva_pos_ko=args.reserva_pos_ko,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback
         resultado = {"sucesso": False, "erro": f"{type(erro).__name__}: {erro}",

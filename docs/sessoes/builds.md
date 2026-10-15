@@ -1048,6 +1048,53 @@ K.O. ela bate com a medida do conferente (25%, parede em x≈810). E
 | "134" sobre o vencedor | — | some entre 15,84 e ~16,14 s (0,3 s de tempo real) |
 | cauda / pico / integrado | 2,73 s / -1,6 dBTP / -15,5 LUFS | 2,73 s / -1,8 dBTP / -15,6 LUFS |
 
+**Terceira conferência (05bf5f0): uma regressão, consertada** (15/10):
+7. **Vulcão: o vencedor subia para dentro do letreiro "ACABOU"** (nome
+   atrás do "BOU" ~16,3 s, cabeça ~16,5 s, até ~16,77 s): o limite vertical
+   novo descia a câmera já no K.O. O letreiro é do renderer (o callout do
+   K.O., `fight_callouts`, 0,9 s a partir do K.O.) e a câmera é do gravador;
+   a ponte:
+   - `runner.reserva_do_letreiro(perfil)` mede a **caixa real** do letreiro
+     (`renderer.letreiro_do_ko`/`caixa_do_letreiro`: cada texto de K.O. do
+     config desenhado pelo próprio renderer no pico do pop-in, 1,35×) e a
+     duração do callout (+0,05 s). Celular: borda de baixo 0,2599 da altura
+     (y 356–499 px no pop-in, 374–479 depois); normal 0,2713;
+   - `capture.gravar_uma(reserva_pos_ko=)` → `fight_recorder
+     --reserva-pos-ko TOPO,SEGUNDOS` → `Câmera.reserva_pos_ko`; o Simulador
+     escreve `cam.t_pos_ko` (relógio de parede) antes de cada atualização
+     pós-K.O.; só os perfis com câmera DIRETOR recebem;
+   - enquanto o letreiro está na tela, o topo da área pós-K.O.
+     (`Câmera._area_pos_ko`, usada pelo enquadramento e pelo
+     `_garantir_rosto`) fica na borda de baixo dele (a margem de 4% do lado
+     menor fica entre os dois), e no quadro de agora o rosto é empurrado
+     para baixo dele (`_tirar_rosto_do_letreiro`: um ajuste pequeno, ou, no
+     1º quadro pós-K.O. de uma luta que acabou com o vencedor no alto, uma
+     vez só, junto com o K.O.). Quando ele some, o topo volta exponencial
+     (só desce, sem salto).
+   Teste genérico (`random_builds/tests/test_letreiro_do_ko_regressions.py`):
+   Vulcão e Torre, 3 cenas cada (longe, perto, encostado na parede), o
+   letreiro medido a cada passo com o pop-in: rosto+nome nunca cruzam o
+   letreiro enquanto o alfa > 0; o caso zero (sem reserva) acusa.
+
+Luta igual até o K.O.: 6/6 pelo gravador (com a reserva) contra `3e5e2a4` e
+48/48 headless. Provas em `E:\tmp_pytest\prova_fim_luta5\{torre,vulcao}\`
+(as da `prova_fim_luta4` ficam superadas), mais
+`letreiro_x_vencedor_{torre,vulcao}.json` (a mesma luta re-simulada pelo
+gravador com a mesma reserva; em cada um dos 82 quadros da cauda: caixa do
+rosto+nome na tela, caixa real do letreiro na idade daquele quadro, se
+cruzam, e a fração fora da arena) e `tira_letreiro_{torre,vulcao}.png`
+(K.O. → K.O.+1 s a cada 0,1 s):
+
+| | Torre | Vulcão |
+|---|---|---|
+| quadros com o letreiro na tela | 28 | 28 |
+| quadros em que rosto+nome cruzam o letreiro | **0** | **0** (era ~16,3–16,77 s) |
+| menor folga rosto ↔ letreiro | 22 px (no pop-in do K.O.) | 22 px |
+| fora da arena, largura (máx. / último quadro) | 25,1% (K.O., herdado) / 16,9% | 0% |
+| fora da arena, altura (máx. / último) | 0% | 21,3% (K.O., herdado) / 0,1% |
+| rosto fora da zona das plataformas e acima de 62%; veredito na faixa | 12/12; 4/4 | 12/12; 4/4 |
+| cauda / pico / integrado | 2,73 s / -1,6 dBTP / -15,5 LUFS | 2,73 s / -1,8 dBTP / -15,6 LUFS |
+
 ## Contratos com outras partes
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

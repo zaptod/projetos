@@ -35,7 +35,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
                sem_hud: bool = False,
                camera_largura_min: float | None = None,
                camera_espera_zoom: float | None = None,
-               corrente_v2: bool | None = None) -> dict:
+               corrente_v2: bool | None = None,
+               reserva_pos_ko: dict | None = None) -> dict:
     """Roda o gravador oficial num subprocesso e devolve o resultado da luta.
 
     `resolucao` grava em tamanho nativo (1080x1920 para o celular) — sem o
@@ -71,6 +72,11 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
         comando.append("--sem-hud")
     if corrente_v2 is not None:
         comando.append("--corrente-v2" if corrente_v2 else "--sem-corrente-v2")
+    if reserva_pos_ko:
+        # o letreiro do K.O. que o renderer vai desenhar (runner.reserva_do_letreiro):
+        # a camera da cauda poe o vencedor abaixo dele. So a cauda muda.
+        comando += ["--reserva-pos-ko",
+                    f"{float(reserva_pos_ko['topo']):.4f},{float(reserva_pos_ko['ate_s']):.3f}"]
 
     ambiente = dict(os.environ)
     ambiente.setdefault("SDL_VIDEODRIVER", "dummy")

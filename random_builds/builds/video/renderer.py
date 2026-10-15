@@ -2460,3 +2460,30 @@ class VideoRenderer:
             self._draw_mixed(draw, cx + x_offset, start_y, line, font, fill,
                              stroke, emoji_font)
             start_y += line_h
+
+
+def caixa_do_letreiro(render_config: dict, perfil: str, texto: str,
+                      idade: float = 0.0) -> tuple[int, int, int, int] | None:
+    """Caixa (px) que o letreiro (callout) ``texto`` pinta com ``idade`` s de
+    vida no perfil: o mesmo ``_callouts_preparados`` + ``_desenhar_callout``
+    do video, medido pelo que foi pintado. None se nada foi desenhado."""
+    renderer = VideoRenderer(render_config, perfil)
+    preparados = renderer._callouts_preparados(
+        {"callouts": [{"t": 0.0, "texto": texto, "duracao": max(1.0, idade + 0.5)}]})
+    if not preparados:
+        return None
+    img = Image.new("RGBA", (renderer.width, renderer.height), (0, 0, 0, 0))
+    renderer._desenhar_callout(img, preparados[0], float(idade))
+    return img.getchannel("A").getbbox()
+
+
+def letreiro_do_ko(render_config: dict, perfil: str, textos) -> float | None:
+    """Borda de baixo (fracao da altura) do MAIOR letreiro de K.O. possivel:
+    cada texto no pico do pop-in (idade 0, escala 1,35). E o que a camera
+    DIRETOR da cauda reserva (``runner.reserva_do_letreiro``)."""
+    altura = VideoRenderer(render_config, perfil).height
+    baixos = [caixa[3] for caixa in (caixa_do_letreiro(render_config, perfil, t)
+                                      for t in textos or []) if caixa]
+    if not baixos or altura <= 0:
+        return None
+    return max(baixos) / float(altura)

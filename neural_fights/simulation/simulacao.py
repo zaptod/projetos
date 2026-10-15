@@ -722,6 +722,9 @@ class Simulador:
             self.vida_visual_p2 += (max(0.0, self.p2.vida) - self.vida_visual_p2) * 5 * dt
         """Mantém o impacto final animado sem reabrir dano, IA ou física."""
         if getattr(self, "cam", None):
+            # a câmera pós-K.O. lê o relógio de PAREDE (o letreiro do K.O. do
+            # vídeo vive nele; o dt daqui é o do slow-mo)
+            self.cam.t_pos_ko = self._tempo_pos_ko()
             self.cam.atualizar(dt, self.p1, self.p2)
         atualizar_debug(dt)
 

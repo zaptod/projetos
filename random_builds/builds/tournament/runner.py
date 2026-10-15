@@ -321,6 +321,32 @@ def desempatar(p1: str, p2: str, hp1: float, hp2: float, dano_p1: float, dano_p2
     return (p1 if int(seed) % 2 == 0 else p2), "seed"
 
 
+def reserva_do_letreiro(perfil: str) -> dict | None:
+    """Onde o letreiro do K.O. do video ("K.O.", "NOCAUTE", "ACABOU") termina
+    e quanto tempo ele fica, para a camera DIRETOR da cauda nao pôr o
+    vencedor atras dele (conferente, 15/10/2026).
+
+    A caixa e a REAL: o renderer desenha cada texto de K.O. do config no
+    maior tamanho do pop-in e mede o que pintou (``renderer.letreiro_do_ko``).
+    A duracao e a do callout (``editing.json -> fight_callouts.duracao``).
+    Qualquer falha devolve None: a camera segue sem reserva (nunca derruba a
+    gravacao).
+    """
+    try:
+        from ..generation.session_generator import load_config
+        from ..video.renderer import letreiro_do_ko
+
+        callouts = (load_config("editing.json") or {}).get("fight_callouts") or {}
+        textos = list((callouts.get("textos") or {}).get("ko") or ["K.O."])
+        topo = letreiro_do_ko(load_config("render.json"), perfil, textos)
+        if topo is None:
+            return None
+        return {"topo": round(float(topo), 4),
+                "ate_s": round(float(callouts.get("duracao", 0.9)) + 0.05, 3)}
+    except Exception:
+        return None
+
+
 def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
                      pasta: Path, prefixo: str,
                      perfis: tuple[str, ...] = ("celular", "normal"), *,
@@ -361,6 +387,9 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             "camera_largura_min": gameplay.get("camera_largura_min"),
             "camera_espera_zoom": gameplay.get("camera_espera_zoom"),
             "corrente_v2": chave,
+            "reserva_pos_ko": (reserva_do_letreiro(perfil)
+                               if camera_do_perfil(gameplay, origem, perfil) == "DIRETOR"
+                               else None),
         } for perfil in perfis]
         gravacoes = capture.gravar_em_paralelo(tarefas, trabalhadores=len(tarefas))
 

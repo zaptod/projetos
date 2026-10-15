@@ -100,6 +100,15 @@ class Câmera:
         # um lutador só e a parede encostada mostrava 47% de nada (Torre,
         # 15/10). O rosto e o nome do vencedor ainda ganham deste limite.
         self.diretor_pos_ko_fora_arena = 0.0
+        # Letreiro do K.O. do vídeo ("K.O."/"ACABOU", desenhado pelo renderer
+        # do random_builds por cima do clipe; 15/10, conferente): enquanto ele
+        # está na tela, o topo da área pós-K.O. fica ABAIXO dele. Quem grava
+        # diz onde ele termina (``topo``: borda de baixo, fração da altura,
+        # lida da caixa real do letreiro) e até quando (``ate_s``: segundos de
+        # parede depois do K.O.). None = não há letreiro (jogo, palco).
+        self.reserva_pos_ko = None
+        self.t_pos_ko = None                  # o Simulador escreve, no pós-K.O.
+        self._pos_ko_topo = None
         self._diretor_t = 0.0
         self._diretor_estavel_desde = None
         self.shake_timer = 0.0
@@ -677,7 +686,7 @@ class Câmera:
         """Ponto fixo de ``zoom -> caixa(zoom) -> zoom que a enquadra``
         (o confete tem piso em px, então a caixa depende do zoom)."""
         margem = self.diretor_pos_ko_margem * min(self.screen_width, self.screen_height)
-        ax0, ay0, ax1, ay1 = self.diretor_pos_ko_area
+        ax0, ay0, ax1, ay1 = self._area_pos_ko()
         livre_w = max(1.0, (ax1 - ax0) * self.screen_width - 2 * margem)
         livre_h = max(1.0, (ay1 - ay0) * self.screen_height - 2 * margem)
         zoom = max(self.zoom, self.zoom_min)
@@ -713,7 +722,7 @@ class Câmera:
             zoom = self._zoom_que_cabe(festa)
             caixa, modo = festa(zoom), "vencedor"
         # o centro da caixa vai ao centro da ÁREA (não da tela)
-        ax0, ay0, ax1, ay1 = self.diretor_pos_ko_area
+        ax0, ay0, ax1, ay1 = self._area_pos_ko()
         desvio_x = ((ax0 + ax1) / 2.0 - 0.5) * self.screen_width / zoom
         desvio_y = ((ay0 + ay1) / 2.0 - 0.5) * self.screen_height / zoom
         cx = (caixa[0] + caixa[2]) / 2.0 - desvio_x
@@ -750,7 +759,7 @@ class Câmera:
     def _garantir_rosto(self, vencedor, cx, cy, zoom):
         """Empurra o centro o mínimo para o rosto/nome caberem na ÁREA."""
         margem = self.diretor_pos_ko_margem * min(self.screen_width, self.screen_height)
-        ax0, ay0, ax1, ay1 = self.diretor_pos_ko_area
+        ax0, ay0, ax1, ay1 = self._area_pos_ko()
         lim = (ax0 * self.screen_width + margem, ay0 * self.screen_height + margem,
                ax1 * self.screen_width - margem, ay1 * self.screen_height - margem)
         x0, y0, x1, y1 = self.caixa_do_rosto(vencedor, zoom)
@@ -767,17 +776,67 @@ class Câmera:
             cy += (sy1 - lim[3]) / zoom
         return cx, cy
 
+    def _topo_do_letreiro(self):
+        """Borda de baixo do letreiro do K.O. (fração da altura) enquanto ele
+        está na tela; None quando não há letreiro ou ele já saiu."""
+        reserva = self.reserva_pos_ko
+        t = self.t_pos_ko
+        if not reserva or t is None:
+            return None
+        try:
+            topo, ate = float(reserva["topo"]), float(reserva["ate_s"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if t >= ate:
+            return None
+        return max(0.0, min(topo, self.diretor_pos_ko_area[3] - 0.1))
+
+    def _area_pos_ko(self) -> tuple:
+        """``diretor_pos_ko_area`` com o topo abaixo do letreiro do K.O.
+        enquanto ele está na tela (e voltando suave depois, ``_pos_ko_topo``)."""
+        x0, y0, x1, y1 = self.diretor_pos_ko_area
+        topo = self._pos_ko_topo
+        letreiro = self._topo_do_letreiro()
+        if letreiro is not None:
+            topo = letreiro if topo is None else max(topo, letreiro)
+        return x0, y0 if topo is None else max(y0, topo), x1, y1
+
     def _enquadrar_pos_ko(self, dt, vencedor, perdedor):
         """Vai suave (exponencial, nunca salta) ao quadro de ``alvo_pos_ko``.
 
         Só lê posições; depois do K.O. a luta acabou e nada a muda."""
+        passo = 1.0 - math.exp(-self.diretor_pos_ko_lerp * dt)
+        # o topo reservado ao letreiro: segura enquanto ele está na tela e,
+        # quando ele sai, desce de volta suave (a área cresce sem salto)
+        letreiro = self._topo_do_letreiro()
+        if letreiro is not None:
+            self._pos_ko_topo = letreiro
+        elif self._pos_ko_topo is not None:
+            base = self.diretor_pos_ko_area[1]
+            self._pos_ko_topo += (base - self._pos_ko_topo) * passo
+            if self._pos_ko_topo - base < 1e-3:
+                self._pos_ko_topo = None
         cx, cy, zoom, modo = self.alvo_pos_ko(vencedor, perdedor)
         self._pos_ko_modo = modo
-        passo = 1.0 - math.exp(-self.diretor_pos_ko_lerp * dt)
         self.zoom += (zoom - self.zoom) * passo
         self.x += (cx - self.x) * passo
         self.y += (cy - self.y) * passo
         self.zoom = max(self.zoom_min, min(self._diretor_teto_zoom(), self.zoom))
+        if letreiro is not None:
+            self._tirar_rosto_do_letreiro(vencedor, letreiro)
+
+    def _tirar_rosto_do_letreiro(self, vencedor, letreiro):
+        """No quadro DE AGORA (não só no alvo): se o rosto/nome do vencedor
+        sobe até o letreiro, a câmera sobe o necessário. Depois do 1º quadro
+        pós-K.O. isso é sempre um ajuste pequeno (o alvo já está abaixo do
+        letreiro); só no 1º, se a luta acabou com o vencedor no alto da
+        tela, ele sai de trás do letreiro de uma vez — junto com o K.O."""
+        margem = self.diretor_pos_ko_margem * min(self.screen_width, self.screen_height)
+        limite = letreiro * self.screen_height + margem / 2.0
+        _x0, y0, _x1, _y1 = self.caixa_do_rosto(vencedor, self.zoom)
+        topo_tela = (y0 - self.y) * self.zoom + self.screen_height / 2
+        if topo_tela < limite:
+            self.y -= (limite - topo_tela) / self.zoom
 
     def _aplicar_punch(self, dt):
         # Transiente de <=0,15s; decai linearmente e não realimenta o lerp
