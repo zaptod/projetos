@@ -304,10 +304,59 @@ def test_agora_sem_resposta_do_pc_diz_sem_dados():
     carregar = js.split("async function orqCarregar()", 1)[1].split("\n}\n", 1)[0]
     assert "orqSemDados(err)" in carregar
     corpo = js.split("function orqSemDados", 1)[1].split("\n}\n", 1)[0]
-    for alvo in ("orq-principal", "orq-agora", "sem dados — ", "coordMesaSemDados"):
+    for alvo in ("orq-principal", "orq-agora", "sem dados — ", "coordMesaSemDados",
+                 # 2ª rodada da v72: a Fila, os resumos e os botões também
+                 "orq-fila-situacao", "orq-fila", "orq-capacidade-resumo", "orq-modelos-resumo",
+                 "orqControlesSemPC(true)", "pedidosSemDados", "diagnosticoPC(err)"):
         assert alvo in corpo, alvo
+    assert "orqControlesSemPC(false)" in carregar                 # o PC voltou: religa
     coord = (APP / "coordenador.js").read_text(encoding="utf-8")
-    assert "FORA DO AR" in coord.split("function coordMesaSemDados", 1)[1].split("\n}\n", 1)[0]
+    # a leitura que falhou não afirma FORA DO AR: isso só com `vivo: false`
+    linha = coord.split("function coordMesaSemDados", 1)[1].split("\n}\n", 1)[0]
+    assert "FORA DO AR" not in linha and "sem dados — " in linha
+    assert "pedidosSemDados(err)" in coord.split("async function pedidosCarregar", 1)[1].split(
+        "\n}\n", 1)[0]
+
+
+def test_um_diagnostico_so_para_a_faixa_e_os_cartoes():
+    """Com 502 a faixa dizia "o servidor do app está parado" e a Agora "PC fora
+    do ar" na mesma tela (conferente, 14/10, v72)."""
+    assert "diagnosticoPC(err)" in APP_JS.split("function conexao", 1)[1].split("\n}\n", 1)[0]
+    coord = (APP / "coordenador.js").read_text(encoding="utf-8")
+    assert "diagnosticoPC(err).motivo" in coord.split("async function coordCarregar", 1)[1]
+    for nome in ("orquestrador.js", "coordenador.js"):
+        assert "PC fora do ar" not in (APP / nome).read_text(encoding="utf-8"), nome
+
+
+def test_editor_deitado_tem_a_sobra_na_ultima_linha():
+    """Deitado, a folha em `grid-row: 1 / span 8` esticava a coluna da direita
+    ("Escolher folha" de y=109 para y=366). A folha atravessa as 10 linhas e a
+    última (1fr) leva a sobra: a conta tem de bater com os filhos do editor."""
+    assert "grid-template-rows: repeat(9, auto) 1fr" in CSS
+    assert "#anim-editor .anim-folha { grid-column: 1; grid-row: 1 / -1;" in CSS
+    from html.parser import HTMLParser
+
+    vazios = {"input", "img", "br", "meta", "link", "source", "hr"}
+
+    class Filhos(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.pilha, self.filhos = [], []
+
+        def handle_starttag(self, tag, attrs):
+            if self.pilha == ["anim-editor"]:
+                self.filhos.append(tag)
+            if self.pilha or dict(attrs).get("id") == "anim-editor":
+                if tag not in vazios:
+                    self.pilha.append(dict(attrs).get("id") or tag)
+
+        def handle_endtag(self, tag):
+            if self.pilha and tag not in vazios:
+                self.pilha.pop()
+
+    leitor = Filhos()
+    leitor.feed(HTML)
+    assert len(leitor.filhos) == 11, leitor.filhos           # 10 controles + a folha
 
 
 def test_caixinha_nao_herda_a_largura_do_campo_comum():

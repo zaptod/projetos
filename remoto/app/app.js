@@ -162,6 +162,35 @@ function quandoCurto(iso) {
 // E a mensagem diz de que lado esta o problema: sem rede (quase sempre o
 // Tailscale do celular, que o Android desliga) nao e o mesmo que o PC
 // respondendo com erro (502 = servidor parado atras do `tailscale serve`).
+// UM diagnóstico da falha, para a faixa, o topo e todo cartão "sem dados"
+// (conferente, 14/10, v72: com 502 a faixa dizia "o servidor do app está
+// parado" e a Agora "PC fora do ar" na mesma tela). Três casos: o PC não foi
+// alcançado (sem rede; quase sempre o Tailscale do celular), o PC atendeu
+// mas o servidor do app está parado (502/503/504 do `tailscale serve`), ou o
+// PC respondeu com erro N. `motivo` é o pedaço que entra nos cartões.
+function diagnosticoPC(err) {
+  const status = err && err.status;
+  if (!status) {
+    const semInternet = navigator.onLine === false;
+    return {tipo: "inalcancavel", selo: "sem conexão",
+            faixa: semInternet ? "O celular está sem internet."
+              : "Não consegui falar com o PC. Confira se o Tailscale está ligado neste celular.",
+            motivo: semInternet ? "o celular está sem internet" : "não consegui falar com o PC"};
+  }
+  if (status === 502 || status === 503 || status === 504)
+    return {tipo: "servidor_parado", selo: "PC sem o servidor",
+            faixa: "O PC atendeu, mas o servidor do app está parado.",
+            motivo: "o servidor do app está parado no PC"};
+  return {tipo: "erro", selo: "erro do PC", faixa: `O PC respondeu com erro: ${err.message}`,
+          motivo: `o PC respondeu com erro ${status}`};
+}
+
+// "às 10:36" hoje, "de 13/10 22:10" em outro dia (para "último dado …").
+function quandoFoi(iso) {
+  const q = quandoCurto(iso);
+  return !q ? "" : q.includes(" ") ? `de ${q}` : `às ${q}`;
+}
+
 function conexao(ok, err) {
   const alvo = $("conexao");
   if (ok) {
@@ -180,21 +209,10 @@ function conexao(ok, err) {
   if (err && !(err instanceof ErroApi)) { console.error("erro na tela:", err); return; }
   const contato = localStorage.getItem(CONTATO);
   const desde = contato ? ` desde ${quandoCurto(contato)}` : "";
+  const diag = diagnosticoPC(err);
   alvo.className = "off";
-  let texto;
-  if (!status) {
-    alvo.textContent = "sem conexão" + desde;
-    texto = navigator.onLine === false
-      ? "O celular está sem internet."
-      : "Não consegui falar com o PC. Confira se o Tailscale está ligado neste celular.";
-  } else if (status === 502 || status === 503 || status === 504) {
-    alvo.textContent = "PC sem o servidor" + desde;
-    texto = "O PC atendeu, mas o servidor do app está parado.";
-  } else {
-    alvo.textContent = "erro do PC" + desde;
-    texto = `O PC respondeu com erro: ${err.message}`;
-  }
-  $("aviso-texto").textContent = texto;
+  alvo.textContent = diag.selo + desde;
+  $("aviso-texto").textContent = diag.faixa;
   $("aviso").classList.remove("oculto");
 }
 

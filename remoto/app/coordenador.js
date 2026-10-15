@@ -154,19 +154,24 @@ async function coordenadorMesa() {
     linha.textContent = coordResumo(dados);
     linha.classList.remove("velho");
     linha.classList.toggle("fora", !dados.vivo);
-  } catch (err) { coordMesaSemDados(); }
+  } catch (err) { coordMesaSemDados(err); }
   if (typeof pedidosCarregar === "function") pedidosCarregar();
 }
 
-// A linha do coordenador em Agora sem resposta do PC: FORA DO AR e marcada
-// como velha, com a hora do último retrato bom. Nunca o "no ar · N/N" de
-// antes da queda (conferente, 14/10, v71).
-function coordMesaSemDados() {
+// A linha do coordenador em Agora sem resposta do PC: "sem dados", com o
+// diagnóstico da faixa e a hora do último retrato bom, marcada como velha.
+// Nunca o "no ar · N/N" de antes da queda (v71), e nunca FORA DO AR, que a
+// tela não sabe: FORA DO AR só quando o /api/coordenador responde `vivo:
+// false` (conferente, 14/10, v72).
+function coordMesaSemDados(err) {
+  if (err && err.status === 401) return;             // o pareamento já trata
+  if (err && !(err instanceof ErroApi)) { console.error("erro na tela:", err); return; }
   const linha = $("coord-mesa");
-  const ultimo = Coord.mesaEm ? quandoCurto(Coord.mesaEm) : "";
-  linha.textContent = "Coordenador: FORA DO AR · sem dados do PC"
-    + (ultimo ? ` (último ${ultimo.includes(" ") ? "de" : "às"} ${ultimo})` : "");
-  linha.classList.add("fora", "velho");
+  const ultimo = Coord.mesaEm ? quandoFoi(Coord.mesaEm) : "";
+  linha.textContent = `Coordenador: sem dados — ${diagnosticoPC(err).motivo}`
+    + (ultimo ? ` (último ${ultimo})` : "");
+  linha.classList.remove("fora");
+  linha.classList.add("velho");
 }
 
 // Os três cartões do painel sem dado: diz POR QUÊ, em vez de ficarem vazios
@@ -188,9 +193,8 @@ async function coordCarregar() {
     if (err && !(err instanceof ErroApi)) return;
     const contato = localStorage.getItem(CONTATO);
     const desde = contato ? ` (último contato ${quandoCurto(contato)})` : "";
-    const porque = !err.status ? `não consegui falar com o PC${desde}.`
-      : [502, 503, 504].includes(err.status) ? `o servidor do app está parado no PC${desde}.`
-      : `o PC respondeu com erro ${err.status}${desde}.`;
+    // o mesmo diagnóstico da faixa (diagnosticoPC, app.js): uma frase só na tela
+    const porque = `${diagnosticoPC(err).motivo}${desde}.`;
     $("coord-topo").replaceChildren(el("h2", {}, "Coordenador"),
       el("div", {class: "grande coord-fora"}, "SEM DADOS"),
       el("div", {class: "fraco"}, porque.charAt(0).toUpperCase() + porque.slice(1)));
@@ -500,7 +504,25 @@ async function coordConversaCarregar() {
 }
 
 async function pedidosCarregar() {
-  try { pedidosDesenhar(await api("/api/coordenador/conversa")); } catch (err) { /* o cartão espera o próximo pulso */ }
+  try {
+    pedidosDesenhar(await api("/api/coordenador/conversa"));
+    Coord.pedidosEm = new Date().toISOString();
+  } catch (err) { pedidosSemDados(err); }
+}
+
+// Sem resposta do PC, a lista de pedidos (PEDIR em Agora e a do Coordenador)
+// não fica com o "esperando você…" e o Responder de antes da queda como se
+// fossem de agora (conferente, 14/10, v72). A próxima leitura boa redesenha.
+function pedidosSemDados(err) {
+  if (err && err.status === 401) return;
+  if (err && !(err instanceof ErroApi)) { console.error("erro na tela:", err); return; }
+  const ativo = document.activeElement;            // escrevendo uma resposta: não apaga
+  if (ativo && ativo.classList && ativo.classList.contains("pedido-resposta")) return;
+  const ultimo = Coord.pedidosEm ? ` (último dado ${quandoFoi(Coord.pedidosEm)})` : "";
+  const linha = () => el("div", {class: "fraco orq-sem-dados"},
+    `sem dados — ${diagnosticoPC(err).motivo}${ultimo}`);
+  $("pedido-estado").replaceChildren(linha());
+  $("coord-pedidos").replaceChildren(linha());
 }
 
 // 05/10: chamava-se coordEnviar, o MESMO nome da função dos botões de serviço

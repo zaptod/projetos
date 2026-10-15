@@ -1171,6 +1171,7 @@ async function orqCarregar() {
   try {
     const d = await api("/api/orquestrador");
     Orq.dados = d;
+    orqControlesSemPC(false);                      // o PC voltou: religa antes de desenhar
     if (typeof claudeDesenhar === "function") claudeDesenhar(d.claude);
     orqFaixa(d);
     orqDesenharAgora(d);
@@ -1190,22 +1191,37 @@ async function orqCarregar() {
   } catch (err) { conexao(false, err); orqSemDados(err); }
 }
 
-// O PC não respondeu: RODANDO AGORA, AGENTES e o Codex dizem que não há
-// dado, e desde quando, em vez de ficarem vazios (antes de carregar) ou de
-// mostrar o retrato velho como se fosse de agora (conferente, 14/10, v71: a
-// linha do coordenador seguia "carregando…" para sempre, ou "no ar · 4/4"
-// de antes da queda). O mesmo padrão do Coordenador na v70; a próxima
-// leitura boa redesenha tudo.
+// O PC não respondeu: nada da Agora fica com o retrato de antes da queda
+// como se fosse de agora, nem vazio (antes de carregar). RODANDO AGORA,
+// AGENTES, Codex (v71) e a Fila, os resumos de Capacidade, Modelos e Limites
+// e a lista do PEDIR (v72) dizem "sem dados — <o diagnóstico da faixa>
+// (último dado às HH:MM)", e os botões que mandam algo ao PC ficam
+// desligados até ele voltar (conferente, 14/10). O mesmo padrão do
+// Coordenador na v70; a próxima leitura boa redesenha e religa.
+const ORQ_SEM_PC_CONTROLES = "#orq-sec-fila, #orq-sec-capacidade, #orq-sec-modelos, #pedir-cartao";
+function orqControlesSemPC(desligar) {
+  if (!desligar) {
+    for (const c of document.querySelectorAll("[data-sem-pc]")) {
+      c.disabled = false; c.removeAttribute("data-sem-pc");
+    }
+    return;
+  }
+  for (const caixa of document.querySelectorAll(ORQ_SEM_PC_CONTROLES))
+    for (const c of caixa.querySelectorAll("button, select, input:not([type=text]):not([type=search])")) {
+      if (c.disabled || c.id === "pedido-conversa") continue;   // "Ver a conversa" só navega
+      c.disabled = true; c.setAttribute("data-sem-pc", "1");
+    }
+}
+
 function orqSemDados(err) {
   if (err && err.status === 401) return;            // o pareamento já trata
   if (err && !(err instanceof ErroApi)) return;     // erro da tela: vai ao console
-  const fora = !err || !err.status || [502, 503, 504].includes(err.status);
-  const porque = fora ? "PC fora do ar" : `o PC respondeu com erro ${err.status}`;
+  const diag = diagnosticoPC(err);
   const contato = localStorage.getItem(CONTATO);
-  const quando = (iso) => { const q = quandoCurto(iso); return q.includes(" ") ? `de ${q}` : `às ${q}`; };
-  const desde = Orq.lidoEm ? ` (último dado ${quando(Orq.lidoEm)})`
-    : contato ? ` (último contato com o PC ${quando(contato)})` : "";
-  const linha = () => el("div", {class: "fraco orq-sem-dados"}, `sem dados — ${porque}${desde}`);
+  const desde = Orq.lidoEm ? ` (último dado ${quandoFoi(Orq.lidoEm)})`
+    : contato ? ` (último contato com o PC ${quandoFoi(contato)})` : "";
+  const texto = `sem dados — ${diag.motivo}${desde}`;
+  const linha = () => el("div", {class: "fraco orq-sem-dados"}, texto);
   $("orq-principal").replaceChildren(linha());
   $("orq-resumo").replaceChildren();
   $("orq-agentes-titulo").textContent = "Agentes";
@@ -1214,10 +1230,19 @@ function orqSemDados(err) {
   $("orq-concluidos").textContent = "";
   $("orq-codex").replaceChildren(linha());
   $("orq-faixa").classList.add("oculto");           // alarmes do retrato velho
-  if (typeof coordMesaSemDados === "function") {
-    if (fora) coordMesaSemDados();
-    else if (typeof coordenadorMesa === "function") coordenadorMesa();
-  }
+  const fila = $("orq-fila-situacao");
+  fila.className = "fraco";
+  fila.replaceChildren(linha());
+  $("orq-fila").replaceChildren();
+  for (const id of ["orq-capacidade-resumo", "orq-modelos-resumo", "orq-limites-resumo"])
+    orqResumoRecolhido(id, texto, true);
+  orqControlesSemPC(true);
+  // o PC não foi alcançado ou o servidor do app está parado: a leitura do
+  // coordenador falharia igual. Erro N do /api/orquestrador: ele pode estar bem.
+  if (diag.tipo !== "erro") {
+    if (typeof coordMesaSemDados === "function") coordMesaSemDados(err);
+    if (typeof pedidosSemDados === "function") pedidosSemDados(err);
+  } else if (typeof coordenadorMesa === "function") coordenadorMesa();
 }
 
 // O objeto Agora, na prateleira, avisa sem abrir. Vermelho só para problema

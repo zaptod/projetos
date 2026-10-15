@@ -502,6 +502,9 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
    velha: tracejada, para não passar por retrato de agora (14/10, v71) */
 .coord-mesa.fora { background: #f3dcd4; border-color: #a8321f; color: #7a2012; }
 .coord-mesa.velho { border-style: dashed; }
+/* sem dados (a leitura falhou): nem o verde do "no ar" nem o vermelho do
+   FORA DO AR, que a tela não sabe (14/10, v72) */
+.coord-mesa.velho:not(.fora) { background: #ece3cf; border-color: #8a7a5c; color: #4a3a26; }
 .orq-sem-dados { font-style: italic; }
 .orq-faixa { padding: 10px 12px; border-radius: 10px; margin-bottom: 12px;
   border: 2px solid #b8661b; background: #fbe9c8; color: #6b3a1a; font-size: 14px;
@@ -773,6 +776,7 @@ details.recolhido[open] > summary { margin-bottom: 8px; }
   .livro.coordenador .cartao h2 { color: #c9b48f; }
   .coord-mesa { background: #23442b; border-color: #5cc185; color: #dff5e4; }
   .coord-mesa.fora { background: #4a2420; border-color: #ff6b5b; color: #ffe1dc; }
+  .coord-mesa.velho:not(.fora) { background: #34312c; border-color: #8f8676; color: #ece6da; }
 }
 
 /* ================================================================
@@ -1001,8 +1005,17 @@ body.deitado:not(.objeto-aberto) .toast { right: calc(var(--coluna) + 16px); }
 }
 @media (min-width: 700px) and (max-height: 500px) {
   .atelie-novo { max-width: none; } .anim-lista { grid-template-columns: repeat(3, 1fr); }
-  #anim-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 14px; align-items: start; }
-  #anim-editor .anim-folha { grid-column: 1; grid-row: 1 / span 8; margin: 0; }
+  /* Deitado: a folha e a prévia à esquerda, os controles à direita, no topo.
+     Era uma grade com a folha em `grid-row: 1 / span 8`: a coluna alta da
+     esquerda esticava as linhas da direita e, com a folha escolhida,
+     "Escolher folha" caía de y=109 para y=366 (conferente, 14/10, v72).
+     Agora a folha atravessa todas as linhas e a ÚLTIMA (1fr) fica com a
+     sobra: as 9 primeiras têm a altura do controle. São 10 controles na
+     direita (título, herança, Escolher folha, corte, campos, FPS, caixinhas,
+     fundos, botões e o aviso); test_app_modulos confere a conta. */
+  #anim-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: repeat(9, auto) 1fr; gap: 8px 14px; align-items: start; }
+  #anim-editor .anim-folha { grid-column: 1; grid-row: 1 / -1; margin: 0; }
   #anim-editor > :not(.anim-folha) { grid-column: 2; }
 }
 /* ---- o interruptor do Claude (29/09): no topo, preso ao rolar. Compacto

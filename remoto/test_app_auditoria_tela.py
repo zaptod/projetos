@@ -531,7 +531,8 @@ def test_agora_com_o_pc_fora_diz_sem_dados_e_o_coordenador_fora_do_ar(  # noqa: 
     seguia "no ar · N/N serviços ok", o retrato velho como se fosse atual."""
     fora = _pc_fora(tela_isolada, monkeypatch)
     nome = _nome(tema, tamanho)
-    sem_dados = "sem dados — PC fora do ar"
+    # v72 (2ª rodada): o diagnóstico é o da faixa; com 502, "servidor parado"
+    sem_dados = "sem dados — o servidor do app está parado no PC"
     with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
         page.wait_for_timeout(3000)                         # a carga da Vila assenta
         # 1) o PC cai antes de a Agora carregar (a prova 6 do conferente)
@@ -547,7 +548,8 @@ def test_agora_com_o_pc_fora_diz_sem_dados_e_o_coordenador_fora_do_ar(  # noqa: 
         for alvo in ("#orq-principal", "#orq-agora"):
             assert sem_dados in page.locator(alvo).inner_text(), alvo
         linha = page.locator("#coord-mesa")
-        assert "FORA DO AR" in linha.inner_text() and "carregando" not in linha.inner_text()
+        assert linha.inner_text().startswith("Coordenador: sem dados — o servidor do app")
+        assert "FORA DO AR" not in linha.inner_text() and "carregando" not in linha.inner_text()
         assert "velho" in (linha.get_attribute("class") or "")
         # 2) o PC volta: o retrato de verdade substitui o aviso
         fora["sim"] = False
@@ -569,7 +571,8 @@ def test_agora_com_o_pc_fora_diz_sem_dados_e_o_coordenador_fora_do_ar(  # noqa: 
         assert "(último dado às " in agentes, agentes
         hora = agentes.split("(último dado às ", 1)[1][:5]
         assert hora[2] == ":" and hora.replace(":", "").isdigit(), agentes
-        assert "no ar ·" not in linha.inner_text() and "FORA DO AR" in linha.inner_text()
+        assert "no ar ·" not in linha.inner_text() and "sem dados" in linha.inner_text()
+        assert "(último às " in linha.inner_text(), linha.inner_text()
         assert "velho" in (linha.get_attribute("class") or "")
         assert not page.locator("#orq-resumo").inner_text().strip()   # as vagas velhas saem
 
@@ -655,3 +658,123 @@ def test_sem_faixa_a_agora_tem_o_mesmo_vao_que_o_coordenador(tela_isolada, taman
                 CAPTURAS / f"v72-sem-faixa-vao-{tela}-{tamanho[0]}x{tamanho[1]}.png"))
     assert abs(vaos["agora"] - vaos["coordenador"]) <= 1, vaos
     assert vaos["agora"] >= 5, vaos                       # as abas não somem sob o topo
+
+
+# ========================== achados do conferente na v72 (14/10, 2ª rodada)
+TELAS4 = [("light", (390, 844)), ("dark", (390, 844)), ("light", (844, 390)), ("dark", (844, 390))]
+SERVIDOR_PARADO = "o servidor do app está parado no PC"
+BOTOES_DE_ACAO = ("#orq-adicionar-fila", "#orq-pausar-fila", "#orq-retomar-fila", "#orq-menos",
+                  "#orq-mais", "#orq-teto", "#orq-forca", "#pedido-enviar")
+
+
+def _desligado(page, alvo):
+    return page.locator(alvo).evaluate("e => e.disabled")
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_com_o_pc_fora_fila_resumos_e_pedidos_dizem_sem_dados_e_os_botoes_desligam(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Conferente, 14/10 (v72): com o PC fora, a Fila ("▶ fila andando / A
+    fila está vazia" com Pôr na fila/Pausar/Retomar ativos), a lista do PEDIR
+    e os resumos de Capacidade e Modelos seguiam com o dado de antes da queda
+    como se fosse de agora. E a mesma tela dizia "o servidor do app está
+    parado" (faixa) e "PC fora do ar" / "Coordenador: FORA DO AR" (Agora)."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "agora", "agora")
+        page.wait_for_function("() => document.querySelector('#orq-fila-situacao')"
+                               ".innerText.includes('fila andando')", timeout=15000)
+        page.wait_for_function("() => document.querySelector('#pedido-estado').innerText.trim()",
+                               timeout=15000)
+        fora["sim"] = True
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=20000)
+        page.wait_for_timeout(11000)                         # um ciclo inteiro da Agora
+        page.locator("#orq-sec-fila").scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v72b-caiu-fila-{nome}.png"))
+        page.locator("#pedir-cartao").scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v72b-caiu-agora-topo-{nome}.png"))
+        # um diagnóstico só na tela: o da faixa
+        assert "servidor do app está parado" in page.locator("#aviso").inner_text()
+        agora = page.locator("#tela-agora").inner_text()
+        assert "PC fora do ar" not in agora and "FORA DO AR" not in agora, agora
+        for alvo in ("#orq-fila-situacao", "#pedido-estado", "#orq-capacidade-resumo",
+                     "#orq-modelos-resumo", "#orq-limites-resumo", "#orq-agora"):
+            texto = page.locator(alvo).inner_text()
+            assert texto.startswith(f"sem dados — {SERVIDOR_PARADO}"), (alvo, texto)
+        assert "(último dado às " in page.locator("#orq-fila-situacao").inner_text()
+        assert "fila está vazia" not in page.locator("#orq-fila").inner_text()
+        assert page.locator("#coord-mesa").inner_text().startswith(
+            f"Coordenador: sem dados — {SERVIDOR_PARADO}")
+        for botao in BOTOES_DE_ACAO:
+            assert _desligado(page, botao), botao
+        assert not _desligado(page, "#pedido-conversa")        # só navega
+        # a aba Coordenador diz a mesma coisa
+        _abrir_aba(page, "agora", "coordenador")
+        page.wait_for_function("() => document.querySelector('#coord-topo')"
+                               ".innerText.includes('SEM DADOS')", timeout=8000)
+        assert SERVIDOR_PARADO.lower() in page.locator("#coord-topo").inner_text().lower()
+        # o PC volta: dado de verdade e os botões religados
+        fora["sim"] = False
+        _abrir_aba(page, "coordenador", "agora")
+        _tentar_de_novo(page)
+        page.wait_for_function("() => document.querySelector('#orq-fila-situacao')"
+                               ".innerText.includes('fila andando')", timeout=15000)
+        for botao in ("#orq-adicionar-fila", "#orq-pausar-fila", "#orq-retomar-fila",
+                      "#pedido-enviar"):
+            assert not _desligado(page, botao), botao
+        assert not page.locator("#orq-capacidade-resumo").inner_text().startswith("sem dados")
+
+
+def test_fora_do_ar_so_quando_o_coordenador_responde_que_nao_esta_vivo(tela_isolada):  # noqa: F811
+    """FORA DO AR é afirmação: só quando o /api/coordenador responde `vivo:
+    false` (aqui, o último pulso tem 1 h). Leitura que falha é "sem dados"."""
+    import os
+    from pathlib import Path
+
+    from remoto.test_app_tela import _coordenador_pulsou
+
+    _coordenador_pulsou(Path(os.environ["LOCALAPPDATA"]), 3600)
+    with _pagina(tela_isolada) as page:
+        _abrir_objeto(page, "agora", "agora")
+        page.wait_for_function("() => document.querySelector('#coord-mesa')"
+                               ".innerText.includes('FORA DO AR')", timeout=15000)
+        linha = page.locator("#coord-mesa")
+        classe = linha.get_attribute("class") or ""
+        assert "fora" in classe and "velho" not in classe, classe
+        assert "sem dados" not in linha.inner_text()
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_editor_deitado_com_folha_deixa_os_controles_no_topo(  # noqa: F811
+        tela_isolada, tmp_path, tema, tamanho):
+    """Conferente, 14/10 (v72): deitado, com a folha escolhida, "Escolher
+    folha" caía de y=109 para y=366: a folha em `grid-row: 1 / span 8`
+    esticava as linhas da coluna da direita."""
+    from PIL import Image
+
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_editor_do_atelie(page)
+        titulo = page.locator("#anim-titulo")
+        botao = page.locator("label.anim-enviar")
+        titulo.scroll_into_view_if_needed()
+        antes = botao.bounding_box()["y"] - titulo.bounding_box()["y"]
+        imagem = tmp_path / "folha.png"
+        folha_png = Image.new("RGBA", (96, 64), (0, 0, 0, 0))     # 3 quadros num fundo vazio
+        for n in range(3):
+            folha_png.paste((40, 120, 200, 255), (n * 32 + 6, 6, n * 32 + 26, 58))
+        folha_png.save(imagem)
+        page.locator("#anim-arquivo").set_input_files(str(imagem))
+        page.wait_for_function("() => !document.querySelector('#anim-folha-canvas').hidden",
+                               timeout=8000)
+        page.wait_for_timeout(300)
+        titulo.scroll_into_view_if_needed()
+        page.screenshot(path=str(CAPTURAS / f"v72b-atelie-com-folha-topo-{nome}.png"))
+        depois = botao.bounding_box()["y"] - titulo.bounding_box()["y"]
+        assert abs(depois - antes) <= 4, (antes, depois)            # não desce com a folha
+        if tamanho[0] > tamanho[1]:                                 # deitado: duas colunas
+            assert depois < 90, depois                              # logo abaixo do título
+            fps = page.locator("#anim-fps-numero").bounding_box()
+            folha = page.locator("#anim-folha-canvas").bounding_box()
+            assert fps["x"] > folha["x"] + folha["width"], (fps, folha)   # na coluna da direita

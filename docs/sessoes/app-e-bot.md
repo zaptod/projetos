@@ -3138,19 +3138,34 @@ Só casca (`orquestrador.js`, `coordenador.js`, `atelie_novo.js`, `index.html`,
 
 - **Agora com o PC fora.** O `orqCarregar` só chamava a `conexao(false)` no
   erro: aberta com o PC fora, RODANDO AGORA e AGENTES ficavam vazios e a linha
-  "Coordenador: carregando…" para sempre (o `coordenadorMesa`, com o "FORA DO
-  AR", só rodava no sucesso); já carregada, a linha seguia "no ar · 0/0
-  serviços ok" e "Nenhum agente trabalhando agora." depois da queda (medido
-  na prova: 11 s depois do 502, os dois textos velhos). Agora `orqSemDados`
-  (o mesmo padrão da v70 no Coordenador): RODANDO AGORA, AGENTES e o Codex
-  dizem "sem dados — PC fora do ar (último dado às HH:MM)" (a hora é a da
-  última leitura boa do `/api/orquestrador`; sem nenhuma, "último contato com
-  o PC"; erro N que não é 502/503/504: "o PC respondeu com erro N"); as vagas,
-  o carteiro, os concluídos e a faixa de alarmes do retrato velho saem. A
-  linha do coordenador (`coordMesaSemDados`) vai a "Coordenador: FORA DO AR ·
-  sem dados do PC (último às HH:MM)", vermelha e tracejada (`.fora.velho`);
-  com o coordenador dizendo `vivo: false`, vermelha sem tracejado. A próxima
-  leitura boa redesenha tudo. Erro do próprio JavaScript e 401 não mexem.
+  "Coordenador: carregando…" para sempre (o `coordenadorMesa` só rodava no
+  sucesso); já carregada, a linha seguia "no ar · 0/0 serviços ok" e "Nenhum
+  agente trabalhando agora." depois da queda (medido na prova: 11 s depois do
+  502, os dois textos velhos). Na 2ª rodada do conferente (mesma v72), com o
+  PC fora a Fila ("▶ fila andando / A fila está vazia" e os botões ativos), a
+  lista do PEDIR (o `pedidosCarregar` engolia o erro) e os resumos de
+  Capacidade e Modelos também seguiam com o dado de antes. Agora
+  `orqSemDados` (o padrão da v70 no Coordenador):
+  - RODANDO AGORA, AGENTES, Codex, a situação da Fila, os resumos de
+    Capacidade, Modelos e Limites e a lista do PEDIR (`pedidosSemDados`) dizem
+    "sem dados — <diagnóstico> (último dado às HH:MM)" (a hora é a da última
+    leitura boa; sem nenhuma, "último contato com o PC"); os cards da fila, as
+    vagas, o carteiro, os concluídos e a faixa de alarmes velhos saem;
+  - os botões que mandam algo ao PC na Fila, Capacidade, Modelos e PEDIR
+    (`orqControlesSemPC`, marcados com `data-sem-pc`) ficam desligados até a
+    próxima leitura boa, que os religa ANTES de desenhar; o "Ver a conversa"
+    (só navega) e o texto do pedido continuam;
+  - **um diagnóstico só** (`diagnosticoPC`, `app.js`), o mesmo da faixa e do
+    topo do Coordenador: "não consegui falar com o PC" (ou "o celular está sem
+    internet"), "o servidor do app está parado no PC" (502/503/504) ou "o PC
+    respondeu com erro N". Antes, com 502, a faixa dizia "servidor parado" e
+    a Agora "PC fora do ar" na mesma tela;
+  - a linha do coordenador (`coordMesaSemDados`) diz "Coordenador: sem dados
+    — <diagnóstico> (último às HH:MM)", neutra e tracejada (`.velho`). **FORA
+    DO AR só quando o próprio `/api/coordenador` responde `vivo: false`**
+    (vermelha, `.fora`): leitura que falha não sabe se ele caiu.
+
+  Erro do próprio JavaScript e 401 não mexem. A próxima leitura boa redesenha.
 - **"Escolher folha" é botão.** Era `label.acao` com o `input file` escondido,
   e só o `button.acao` e o rótulo com caixinha tinham o visual: texto solto,
   alvo de 20 px (deitado 21,75). `label.acao:has(> input[type=file])` ganha
@@ -3164,6 +3179,14 @@ Só casca (`orquestrador.js`, `coordenador.js`, `atelie_novo.js`, `index.html`,
   Coordenador (deitado 19,7 contra 7,7). A moldura sai da conta sempre
   (`.livro.mesa` 64−12, deitado 56−12, deitado com faixa 64−12) e a de cima
   fica atrás do cabeçalho. Com a faixa o vão continua 10 px.
+- **Editor deitado com a folha.** `#anim-editor .anim-folha {grid-row: 1 /
+  span 8}`: a coluna da esquerda (folha, prévia, montado) esticava as linhas
+  da direita, e com a folha escolhida "Escolher folha" descia (o conferente
+  mediu y=109 → 366; a prova, 88 → 152 px abaixo do título). Agora a folha
+  atravessa a grade inteira (`grid-row: 1 / -1`) e a última linha (`1fr`) leva
+  a sobra (`grid-template-rows: repeat(9, auto) 1fr`): os 10 controles da
+  direita ficam no topo. `test_app_modulos` confere que o editor tem 11 filhos
+  diretos; controle novo no editor muda essa conta.
 
 **Provas:** `remoto/test_app_modulos.py` (três regras estáticas novas e a da
 moldura com os três casos), `remoto/test_app_auditoria_tela.py`
@@ -3173,6 +3196,12 @@ abrindo, folha escondida até escolher e à vista depois; vão sem faixa Agora �
 Coordenador em 390x844 e 844x390). Capturas `<TEMP>/tela_app/v72-*.png`,
 claro, escuro e 844x390. Medido antes do conserto: os 8 testes de tela novos
 falham.
+Da 2ª rodada: `test_com_o_pc_fora_fila_resumos_e_pedidos_dizem_sem_dados_e_os_botoes_desligam`,
+`test_fora_do_ar_so_quando_o_coordenador_responde_que_nao_esta_vivo` e
+`test_editor_deitado_com_folha_deixa_os_controles_no_topo`, nas 4
+combinações (claro e escuro, 390x844 e 844x390; capturas `v72b-*.png`).
+Medido antes: os 4 da Fila e os 2 deitados do editor falham; o de FORA DO
+AR com `vivo: false` passava (é a guarda do que não pode mudar).
 
 **Fica para quem reinicia:** a casca v72 só chega ao celular depois de
 `python -m coordenador reiniciar app`, fora de :25–:55.
