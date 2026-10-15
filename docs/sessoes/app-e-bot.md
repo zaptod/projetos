@@ -3252,3 +3252,49 @@ seguem tocáveis e a volta do PC) e
 
 **Fica para quem reinicia:** a casca v72 só chega ao celular depois de
 `python -m coordenador reiniciar app`, fora de :25–:55.
+
+# O que o conferente deixou na v72 (15/10/2026, casca v73)
+
+Só casca; nada muda no servidor nem no que o app pode disparar.
+
+- **A cena da Vila com o PC fora.** O canvas seguia com os balões do correio
+  ("✗ o Gemini respondeu sem…", "imagem pronta…") e o "!" vermelho de alarme
+  em cima dos prédios, do `Vila.correio`/retrato de antes da queda. Agora,
+  com `Vila.falha`, o `vilaDesenhar` não desenha selo, emote nem balão de
+  fala; os bonecos seguem (são a cena, não dado). A prova conta, no próprio
+  canvas, os pixels do vermelho do selo (#ff6b5b): >30 com o PC no ar, 0
+  com ele fora, e de volta quando ele volta.
+- **O placar "sem dados" se lê.** Era #e6d6b0 sem sombra direto no céu e
+  ficava atrás da faixa (placar y 48–94, faixa 62–125). Agora é uma
+  plaquinha #3b2a1a sobre #fff6d8 (~13:1, igual nos dois temas) e, com a
+  faixa à vista, o placar desce para baixo dela (`body.com-faixa`).
+- **Pergaminhos.** A marca aparecia e o relatório velho continuava inteiro
+  abaixo dela, no `<pre>`. Agora o `<pre>` some e a linha "sem dados" fica
+  num `#relatorio-sem-dados` fora dele, em fonte normal; quando o PC volta,
+  a aba escolhida é relida (`relerSempre`: mesmo com outra tela aberta, para
+  o texto velho não voltar ao reabrir).
+- **IAs.** A casa e o carteiro ("📮 pronto (sinal 14:56)") viram "sem
+  dados" com a hora da última leitura (`Conversa.lidoEm`), e trocar de IA
+  com o PC fora não deixa mais "carregando…" preso: a falha toma o lugar.
+- **"null" no cartão do prédio** (desde a v20): o último pedaço do
+  `replaceChildren` era `null` sempre que não havia aviso de gerador
+  indisponível; agora os pedaços nulos saem antes.
+- **Controles das abas escondidas.** Na volta do PC, `areasDeVolta` religa
+  TODO controle com `data-sem-pc` (eram 25 em Agora e Equipe esperando a
+  própria tela reler).
+
+**Provas** (`remoto/test_app_auditoria_tela.py`, `NF_TESTE_NAVEGADOR=1`,
+claro e escuro, 390x844 e 844x390): `test_vila_com_502_sem_balao_nem_alarme_e_placar_legivel_abaixo_da_faixa`
+(com o mundo de verdade da arte, todo prédio em alarme e uma resposta não
+vista em cada caixa), `test_cartao_do_predio_nao_escreve_null`,
+`test_pergaminho_com_502_troca_o_texto_e_rele_na_volta`,
+`test_ias_com_502_casa_e_carteiro_sem_dados_e_carregando_nao_fica_preso` e
+`test_na_volta_do_pc_nenhum_controle_fica_desligado_nas_abas_escondidas`;
+estáticos em `test_app_modulos.py`. Capturas `<TEMP>/tela_app/v73-*.png`.
+Medido em 18/10 contra o código da v72 (5bb5d83): os 17 testes de tela novos
+falham; com a v73 passam. O Pergaminho da prova usa um relatório de mentira
+(`painel_dados.relatorio`): o de verdade monta o funcionamento e passava de
+40 s com a máquina carregada.
+
+**Fica para quem reinicia:** a casca v73 só chega ao celular depois de
+`python -m coordenador reiniciar app`, fora da janela das postagens.

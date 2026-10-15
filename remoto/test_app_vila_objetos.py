@@ -156,7 +156,11 @@ def test_o_cache_da_casca_mudou_de_versao():
     # v72 = (14/10) a Agora com o PC fora diz "sem dados" e o coordenador
     # FORA DO AR, "Escolher folha" é botão, a folha vazia não abre buraco e a
     # Agora sem faixa tem o mesmo vão das outras.
-    assert "painel-casca-v72" in sw
+    # v73 = (15/10) a Vila sem balão nem alarme velho com o PC fora e o
+    # placar legível abaixo da faixa, o Pergaminho trocado (fora do <pre>) e
+    # relido, a casa e o carteiro das IAs "sem dados", o cartão sem "null" e
+    # os controles das abas escondidas religados na volta.
+    assert "painel-casca-v73" in sw
     assert '"orquestrador.js"' in sw and '"conversa.js"' in sw and '"oficina.js"' in sw
     assert '"biblioteca.js"' in sw
     assert '"coordenador.js"' in sw

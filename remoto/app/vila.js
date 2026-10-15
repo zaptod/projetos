@@ -502,8 +502,12 @@ function vilaDesenhar() {
 
   vilaPatos(ctx);
 
-  // o sinal de trabalho ou de erro, em cima do prédio
-  for (const [nome, info] of Object.entries(Vila.retrato.predios || {})) {
+  // o sinal de trabalho ou de erro, em cima do prédio. Com o PC fora
+  // (Vila.falha), nem selo nem balão: são do retrato de antes da queda, e o
+  // "!" vermelho de um alarme velho passava por atual (conferente, v72 → v73).
+  // Os bonecos seguem: são a cena, não dado.
+  const velho = !!Vila.falha;
+  for (const [nome, info] of Object.entries(velho ? {} : Vila.retrato.predios || {})) {
     const porta = (Vila.mundo.portas || {})[nome];
     if (!porta) continue;
     const sinal = info.status === "erro" ? "❗"
@@ -522,7 +526,7 @@ function vilaDesenhar() {
   }
   // os emotes por cima de todo mundo (um balão não fica atrás de ninguém)
   for (const h of gente) {
-    if (!h.emote) continue;
+    if (!h.emote || velho) continue;
     const [x, y] = vilaPosicao(h, t);
     const [ex, ey] = vilaDobrar(x, y);
     vilaBalao(ctx, ex, ey - alt - 2, h.emote);
@@ -530,7 +534,7 @@ function vilaDesenhar() {
   // a resposta de uma IA que ele ainda não viu (o correio, fase 2), por
   // cima de todo mundo: quando desvia para baixo do prédio, é ela a
   // novidade, não o habitante parado na porta
-  vilaDesenharCorreio(ctx);
+  if (!velho) vilaDesenharCorreio(ctx);
   ctx.restore();
 }
 
@@ -714,7 +718,9 @@ function vilaMostrarEscolhido() {
   }
   const resposta = vilaRespostaNova(nome);
   const caixa = vilaCaixa(nome);
-  alvo.replaceChildren(
+  // o null de um pedaço que não vale não pode virar a palavra "null" no
+  // cartão (o replaceChildren escreve; desde a v20, com o gerador disponível)
+  alvo.replaceChildren(...[
     el("div", {class: "linha"},
       el("span", {class: "emoji"}, predio.emoji || "•"),
       el("span", {class: "corpo"}, predio.rotulo || nome,
@@ -764,7 +770,7 @@ function vilaMostrarEscolhido() {
       ? el("div", {class: "fraco", id: "vila-criar-motivo"},
         `🎨 não gera imagem hoje: ${vilaGerador(nome).motivo}`
           + (vilaGerador(nome).proximo_passo ? " (próximo passo)" : ""))
-      : null);
+      : null].filter((x) => x != null));
   // PC fora (v72): o que o prédio faz agora, a caixa e a resposta são do
   // retrato de antes da queda; o cartão diz "sem dados" e o Conversar/Criar
   // desligam ("Ver no diário" só navega)

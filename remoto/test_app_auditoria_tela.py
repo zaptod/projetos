@@ -18,7 +18,11 @@ import time
 
 import pytest
 
-from remoto import api_http, painel_dados
+from remoto import api_http, painel_dados, vila_dados, vila_nova
+
+# o mundo de verdade da Vila (a arte do repositório), antes de o `tela_isolada`
+# trocá-lo pelo mínimo: a prova do canvas precisa de portas e prédios
+_MUNDO_REAL = vila_nova.mundo
 from remoto.test_app_tela import CAPTURAS, NAVEGADOR, tela_isolada  # noqa: F401
 
 pytestmark = pytest.mark.skipif(not NAVEGADOR, reason="so com NF_TESTE_NAVEGADOR=1")
@@ -839,7 +843,7 @@ VARREDURA = [
     ("mandar", "conversa", ["#conversa-historico"], ["#conversa-enviar"]),
     ("ver", "videos", ["#videos"], []),
     ("ver", "biblioteca", ["#biblioteca-lista"], []),
-    ("ver", "relatorios", ["#relatorio"], []),
+    ("ver", "relatorios", ["#relatorio-sem-dados"], []),       # v73: fora do <pre>
     ("ver", "diario", ["#diario"], []),
     ("arena", "arena", ["#arena-lutas"], ["#arena-lutar"]),
     ("arena", "atelie", ["#anim-lista", "#anim-progresso"], []),
@@ -901,3 +905,205 @@ def test_vila_com_502_placar_e_cartao_do_predio_dizem_sem_dados(tela_isolada, mo
                                " return p && p.innerText.includes('sem dados'); }", timeout=25000)
         page.screenshot(path=str(CAPTURAS / "v72c-varredura-vila.png"))
         assert SEM_DADOS in page.locator("#vila-placar").inner_text()
+
+
+# ========================== achados do conferente na v72 (15/10, casca v73)
+def _vila_de_verdade(servidor, monkeypatch):
+    """O mundo de verdade (portas e prédios), todo prédio com alarme, e uma
+    resposta não vista em cada caixa de chat: o que a Vila desenha como selo
+    vermelho e balão de fala. Tudo de mentira, na pasta do teste."""
+    mundo = _MUNDO_REAL()
+    monkeypatch.setattr(vila_nova, "mundo", lambda: mundo)
+    retrato = {"agora": "2026-10-15T15:00:00", "noite": False, "habitantes": [],
+               "versao": mundo["versao"], "erro_de_leitura": None,
+               "predios": {nome: {"status": "erro", "erro": "alarme de antes da queda"}
+                           for nome in mundo["portas"]}}
+    monkeypatch.setattr(vila_nova.MOTOR, "retrato", lambda: retrato)
+    monkeypatch.setattr(vila_dados, "estado", lambda: {
+        "placar": {}, "travas": [], "paralelismo": [],
+        "fabricas": [{"nome": "gemini", "emoji": "✨", "rotulo": "Gemini", "status": "ocioso"}]})
+    ias = [{"ia": ia, "nao_vistas": 1, "pendentes": 0, "em_andamento": 0,
+            "ultima": {"situacao": "respondida", "resposta": "✗ o Gemini respondeu sem imagem"}}
+           for ia in ("deepseek", "chatgpt", "gemini", "grok")]
+    resumo = {"ias": ias, "imagens": [], "geradores": [{"ia": "gemini", "disponivel": True}]}
+    monkeypatch.setattr(servidor.RequestHandlerClass, "_correio_resumo", lambda self: resumo)
+
+
+_CORES_DO_VELHO = """() => {
+  const c = document.querySelector('#vila-canvas');
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let vermelho = 0, branco = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    const [r, g, b] = [d[i], d[i + 1], d[i + 2]];
+    if (Math.abs(r - 255) < 4 && Math.abs(g - 107) < 6 && Math.abs(b - 91) < 6) vermelho++;
+    if (r > 250 && g > 250 && b > 250) branco++;
+  }
+  return [vermelho, branco];
+}"""
+
+
+def _contraste(frente, fundo):
+    def lum(rgb):
+        nums = [float(x) for x in rgb[rgb.index("(") + 1:rgb.index(")")].split(",")[:3]]
+        c = [(v / 255) / 12.92 if v / 255 <= 0.03928 else ((v / 255 + 0.055) / 1.055) ** 2.4 for v in nums]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+    a, b = sorted((lum(frente), lum(fundo)), reverse=True)
+    return (a + 0.05) / (b + 0.05)
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_vila_com_502_sem_balao_nem_alarme_e_placar_legivel_abaixo_da_faixa(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Conferente, v72: com o PC fora a Vila seguia com os balões ("✗ o
+    Gemini respondeu sem…") e o "!" vermelho de alarme do retrato velho, e a
+    linha "sem dados" do placar ficava atrás da faixa, #e6d6b0 sem sombra
+    sobre o céu. Os bonecos podem seguir; selo e balão de dado velho, não."""
+    _vila_de_verdade(tela_isolada, monkeypatch)
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        page.wait_for_function(f"() => ({_CORES_DO_VELHO})()[0] > 30", timeout=20000)
+        page.wait_for_timeout(1500)
+        page.screenshot(path=str(CAPTURAS / f"v73-vila-pc-no-ar-{nome}.png"))
+        vermelho, _ = page.evaluate(_CORES_DO_VELHO)
+        fora["sim"] = True
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=25000)
+        _tentar_de_novo(page)
+        page.wait_for_function("() => document.querySelector('#vila-placar').textContent.includes('sem dados')",
+                               timeout=25000)
+        page.wait_for_timeout(1500)
+        page.screenshot(path=str(CAPTURAS / f"v73-vila-pc-fora-{nome}.png"))
+        # o "!" do alarme é a única cor cheia (sem transparência) do selo: a
+        # medida que não depende da arte que ainda carrega. Os balões do
+        # correio saem pelo mesmo `Vila.falha` (test_app_modulos) e na captura
+        vermelho_fora, _ = page.evaluate(_CORES_DO_VELHO)
+        assert vermelho_fora == 0, (vermelho, vermelho_fora)        # nenhum "!" de alarme velho
+        linha = page.locator("#vila-placar .orq-sem-dados")
+        caixa, faixa = linha.bounding_box(), page.locator("#aviso").bounding_box()
+        assert caixa["y"] >= faixa["y"] + faixa["height"] - 1 or caixa["y"] + caixa["height"] <= faixa["y"], \
+            (caixa, faixa)                                         # nada atrás da faixa
+        cores = linha.evaluate("e => { const s = getComputedStyle(e);"
+                               " return [s.color, s.backgroundColor]; }")
+        assert _contraste(*cores) >= 4.5, cores
+        # o PC volta: o selo volta (é dado de agora)
+        fora["sim"] = False
+        _tentar_de_novo(page)
+        page.wait_for_function(f"() => ({_CORES_DO_VELHO})()[0] > 30", timeout=30000)
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_cartao_do_predio_nao_escreve_null(tela_isolada, monkeypatch, tema, tamanho):  # noqa: F811
+    """Desde a v20: com o gerador disponível, o último pedaço do cartão era
+    `null` e o replaceChildren escrevia a palavra "null" no cartão."""
+    _vila_de_verdade(tela_isolada, monkeypatch)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        # a linha do /api/vila (a da Vila, que seleciona o prédio), não a do /api/estado
+        achar = "[...document.querySelectorAll('#fabricas .linha')].find((l) => l.textContent.includes('Gemini'))"
+        page.wait_for_function(f"() => !!{achar}", timeout=25000)
+        page.evaluate(f"() => {achar}.click()")
+        page.locator("#vila-escolhido:not(.oculto)").wait_for(state="visible")
+        page.wait_for_timeout(300)
+        page.screenshot(path=str(CAPTURAS / f"v73-vila-cartao-{_nome(tema, tamanho)}.png"))
+        texto = page.locator("#vila-escolhido").inner_text()
+        assert "null" not in texto, texto
+        assert "Criar" in texto                                     # o gerador disponível
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_pergaminho_com_502_troca_o_texto_e_rele_na_volta(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Conferente, v72: a marca "sem dados" aparecia e o relatório velho
+    seguia inteiro abaixo dela, em monoespaçado dentro do <pre>; e o
+    Pergaminho não relia a aba já escolhida quando o PC voltava."""
+    monkeypatch.setattr(painel_dados, "relatorio",
+                        lambda n: f"RELATÓRIO {n} DE PROVA · linha 2 · linha 3")
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "ver", "videos")
+        _abrir_aba(page, "videos", "relatorios")
+        page.wait_for_function("() => { const t = document.querySelector('#relatorio').innerText;"
+                               " return t && !t.includes('carregando'); }", timeout=40000)
+        fora["sim"] = True
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=35000)
+        _tentar_de_novo(page)
+        page.wait_for_function("() => document.querySelector('#relatorio-sem-dados')"
+                               ".textContent.startsWith('sem dados')", timeout=25000)
+        page.wait_for_timeout(300)
+        page.screenshot(path=str(CAPTURAS / f"v73-pergaminho-pc-fora-{nome}.png"))
+        assert not page.locator("#relatorio").is_visible()           # o texto velho saiu
+        aviso = page.locator("#relatorio-sem-dados")
+        assert aviso.is_visible() and aviso.inner_text().startswith(SEM_DADOS)
+        assert aviso.evaluate("e => e.closest('pre') === null")
+        fonte = aviso.locator(".orq-sem-dados").evaluate("e => getComputedStyle(e).fontFamily")
+        assert "monospace" not in fonte and "Consolas" not in fonte, fonte
+        # o PC volta: relê a aba escolhida
+        pedidos = []
+        page.on("request", lambda r: pedidos.append(r.url) if "/api/relatorio/" in r.url else None)
+        fora["sim"] = False
+        _tentar_de_novo(page)
+        page.wait_for_function("() => document.querySelector('#relatorio-sem-dados')"
+                               ".classList.contains('oculto')", timeout=25000)
+        page.wait_for_function("() => { const t = document.querySelector('#relatorio').innerText;"
+                               " return t && !t.includes('carregando'); }", timeout=40000)
+        assert pedidos, "o Pergaminho não releu na volta"
+        assert page.locator("#relatorio").is_visible()
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_ias_com_502_casa_e_carteiro_sem_dados_e_carregando_nao_fica_preso(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Conferente, v72: "📮 carteiro pronto (sinal 14:56)" seguia como estado
+    atual, e trocar de IA com o PC fora deixava "carregando…" preso."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "mandar", "comandos")
+        _abrir_aba(page, "comandos", "conversa")
+        page.wait_for_function("() => document.querySelector('#conversa-carteiro').textContent.includes('📮')",
+                               timeout=15000)
+        fora["sim"] = True
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=35000)
+        _ver_sem_dados(page, ["#conversa-casa", "#conversa-carteiro"])
+        assert "(último dado às " in page.locator("#conversa-carteiro").inner_text()
+        # outra IA com o PC fora: a falha toma o lugar do "carregando…"
+        outra = page.evaluate("() => { const b = [...document.querySelectorAll('#conversa-ias button')]"
+                              ".find((x) => x.getAttribute('aria-pressed') !== 'true');"
+                              " b.click(); return b.dataset.ia; }")
+        page.wait_for_function("ia => document.querySelector(`#conversa-ias [data-ia='${ia}']`)"
+                               ".getAttribute('aria-pressed') === 'true'", arg=outra, timeout=5000)
+        page.wait_for_timeout(300)
+        _ver_sem_dados(page, ["#conversa-historico"], timeout=15000)
+        page.wait_for_timeout(1500)                              # nada volta a "carregando…"
+        page.screenshot(path=str(CAPTURAS / f"v73-ias-pc-fora-{nome}.png"))
+        assert "carregando" not in page.locator("#conversa-historico").inner_text()
+
+
+def test_na_volta_do_pc_nenhum_controle_fica_desligado_nas_abas_escondidas(  # noqa: F811
+        tela_isolada, monkeypatch):
+    """Conferente, v72: com o PC de volta, 25 controles de Agora e Equipe
+    (abas escondidas) seguiam com data-sem-pc até abrir uma aba que relê."""
+    fora = _pc_fora(tela_isolada, monkeypatch)
+    with _pagina(tela_isolada) as page:
+        _abrir_objeto(page, "agora", "agora")
+        page.wait_for_function("() => document.querySelector('#orq-fila-situacao')"
+                               ".innerText.includes('fila andando')", timeout=15000)
+        _abrir_aba(page, "agora", "equipe")
+        page.wait_for_timeout(2000)
+        fora["sim"] = True
+        page.locator("#aviso:not(.oculto)").wait_for(state="visible", timeout=25000)
+        _abrir_aba(page, "equipe", "agora")
+        page.wait_for_function("() => document.querySelectorAll('[data-sem-pc]').length > 10",
+                               timeout=25000)
+        antes = page.evaluate("() => document.querySelectorAll('[data-sem-pc]').length")
+        # vai a outra tela (Ver) e o PC volta lá
+        page.evaluate("() => document.querySelector('#btn-voltar').click()")
+        page.wait_for_timeout(500)
+        _abrir_objeto(page, "ver", "videos")
+        fora["sim"] = False
+        _tentar_de_novo(page)
+        page.wait_for_function("() => document.querySelector('#conexao').textContent.startsWith('ao vivo')",
+                               timeout=30000)
+        page.wait_for_timeout(500)
+        restam = page.evaluate("() => [...document.querySelectorAll('[data-sem-pc]')].map((e) => e.id)")
+        assert not restam, (antes, restam)

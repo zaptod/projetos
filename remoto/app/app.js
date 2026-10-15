@@ -258,13 +258,19 @@ const AREAS_SEM_PC = [
   {telas: ["comandos"], trocar: ["comandos-grupos", "tarefas-lista", "restantes", "orq-comandos",
                                  "claude-bancada", "coord-acoes"], desligar: "#tela-comandos", poupar: ".aba-objeto, #btn-fechar-log",
    reler: () => { if (typeof comandosMostrar === "function") comandosMostrar(); }},
-  {telas: ["conversa"], marcar: ["conversa-historico"],
+  // a casa e o carteiro ("📮 pronto (sinal 14:56)") também são estado (v73)
+  {telas: ["conversa"], marcar: ["conversa-historico"], trocar: ["conversa-casa", "conversa-carteiro"],
+   desde: () => typeof Conversa === "object" && Conversa.lidoEm,
    desligarIds: ["conversa-enviar", "criar-enviar", "conversa-anexo"],
    reler: () => typeof conversaMostrar === "function" && conversaMostrar()},
   {telas: ["videos"], trocar: ["videos"], reler: () => carregarVideos()},
   {telas: ["biblioteca"], trocar: ["biblioteca-lista"], marcar: ["biblioteca-leitor"],
    reler: () => typeof bibliotecaMostrar === "function" && bibliotecaMostrar()},
-  {telas: ["relatorios"], marcar: ["relatorio"]},
+  // o Pergaminho velho saía inteiro abaixo da marca (v72 → v73): o texto
+  // some e a linha fica FORA do <pre>, em fonte normal; na volta, relê a aba
+  {telas: ["relatorios"], aviso: "relatorio-sem-dados", esconder: ["relatorio"], relerSempre: true,
+   reler: () => { const b = document.querySelector('#abas-relatorio [aria-pressed="true"]');
+                  if (b) b.click(); else abrirPergaminho(); }},
   {telas: ["diario"], marcar: ["diario"]},
   {telas: ["arena"], trocar: ["arena-lutas"], desligarIds: ["arena-lutar"],
    reler: () => { desenharArenaEscolhas(); carregarArena(); }},
@@ -284,6 +290,8 @@ function areasSemPC(err) {
     const linha = () => desde ? linhaSemDados(err, desde)
       : linhaSemDados(err, contato, "último contato com o PC");
     for (const id of a.trocar || []) { const alvo = $(id); if (alvo) alvo.replaceChildren(linha()); }
+    if (a.aviso && $(a.aviso)) { $(a.aviso).replaceChildren(linha()); $(a.aviso).classList.remove("oculto"); }
+    for (const id of a.esconder || []) { const alvo = $(id); if (alvo) alvo.classList.add("oculto"); }
     for (const id of a.marcar || []) {
       const alvo = $(id);
       if (!alvo) continue;
@@ -300,17 +308,27 @@ function areasSemPC(err) {
 }
 
 function areasDeVolta() {
+  // Todo controle desligado por falta do PC religa na volta, inclusive os das
+  // abas escondidas (Agora, Equipe, o cartão da Vila), que antes esperavam a
+  // própria tela reler (conferente, v72 → v73: 25 ficavam com data-sem-pc)
+  for (const c of document.querySelectorAll("[data-sem-pc]")) {
+    c.disabled = false; c.removeAttribute("data-sem-pc");
+  }
   for (const a of AREAS_SEM_PC) {
     for (const id of a.marcar || []) {
       const alvo = $(id);
       if (alvo) for (const x of alvo.querySelectorAll(":scope > .sem-pc-marca")) x.remove();
     }
+    if (a.aviso && $(a.aviso)) { $(a.aviso).replaceChildren(); $(a.aviso).classList.add("oculto"); }
+    for (const id of a.esconder || []) { const alvo = $(id); if (alvo) alvo.classList.remove("oculto"); }
     if (a.desligar) controlesSemPC(a.desligar, false);
     for (const id of a.desligarIds || []) {
       const c = $(id);
       if (c && c.hasAttribute("data-sem-pc")) { c.disabled = false; c.removeAttribute("data-sem-pc"); }
     }
-    if (a.reler && a.telas.includes(tela)) {
+    // `relerSempre`: o conteúdo escondido não pode reaparecer velho quando a
+    // aba abrir depois (o Pergaminho não relê a aba já escolhida)
+    if (a.reler && (a.relerSempre || a.telas.includes(tela))) {
       try { a.reler(); } catch (err) { console.error("erro na tela:", err); }
     }
   }
@@ -798,7 +816,8 @@ function montarAbas() {
         $("relatorio").textContent = texto.replace(/[*_`]/g, "");
         conexao(true);
       } catch (err) {
-        $("relatorio").textContent = falhaDoPC(err) ? textoSemDados(err) : "falhou: " + err.message;
+        // falha do PC: o texto some e a área diz "sem dados" fora do <pre>
+        $("relatorio").textContent = falhaDoPC(err) ? "" : "falhou: " + err.message;
         conexao(false, err);
       }
     });

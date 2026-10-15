@@ -357,6 +357,7 @@ async function conversaCarregar() {
     const d = await api(`/api/correio/${ia}?n=60`);
     if (Conversa.ia !== ia) return;
     Conversa.dados = d;
+    Conversa.lidoEm = new Date().toISOString();
     const assinatura = conversaAssinatura(d);
     if (assinatura !== Conversa.assinatura) {
       const antes = Conversa.assinatura;
@@ -375,6 +376,10 @@ async function conversaCarregar() {
     if (Conversa.modo === "galeria") conversaGaleria();
   } catch (err) {
     if (err.status !== 401) conexao(false, err);
+    // a conversa ainda nem carregou: a falha toma o lugar do "carregando…",
+    // que ficava preso (conferente, v72 → v73)
+    if (falhaDoPC(err) && Conversa.ia === ia && !Conversa.assinatura)
+      $("conversa-historico").replaceChildren(linhaSemDados(err, Conversa.lidoEm));
   }
 }
 

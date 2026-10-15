@@ -352,6 +352,26 @@ def test_toda_tela_parada_tem_area_sem_pc_e_pulso():
         assert marca in (APP / nome).read_text(encoding="utf-8"), nome
 
 
+def test_v73_vila_sem_dado_velho_no_canvas_e_cartao_sem_null():
+    vila = (APP / "vila.js").read_text(encoding="utf-8")
+    desenhar = vila.split("function vilaDesenhar()", 1)[1].split("\n}\n", 1)[0]
+    assert "const velho = !!Vila.falha" in desenhar
+    assert "if (!velho) vilaDesenharCorreio(ctx)" in desenhar
+    assert "!h.emote || velho" in desenhar
+    cartao = vila.split("function vilaMostrarEscolhido", 1)[1].split("\n}\n", 1)[0]
+    assert ".filter((x) => x != null)" in cartao
+    assert "#tela-vila .placar > .orq-sem-dados" in CSS
+
+
+def test_v73_pergaminho_fora_do_pre_e_religa_tudo_na_volta():
+    assert '<div id="relatorio-sem-dados" class="oculto"' in HTML
+    assert 'aviso: "relatorio-sem-dados", esconder: ["relatorio"], relerSempre: true' in APP_JS
+    volta = APP_JS.split("function areasDeVolta", 1)[1].split("\n}\n", 1)[0]
+    assert 'document.querySelectorAll("[data-sem-pc]")' in volta
+    conversa = (APP / "conversa.js").read_text(encoding="utf-8")
+    assert "Conversa.lidoEm" in conversa and 'trocar: ["conversa-casa", "conversa-carteiro"]' in APP_JS
+
+
 def test_editor_deitado_tem_a_sobra_na_ultima_linha():
     """Deitado, a folha em `grid-row: 1 / span 8` esticava a coluna da direita
     ("Escolher folha" de y=109 para y=366). A folha atravessa as 10 linhas e a
