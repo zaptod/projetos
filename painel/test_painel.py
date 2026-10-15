@@ -9,6 +9,7 @@ from __future__ import annotations
 import gc
 import os
 import pathlib
+import time
 import tkinter as tk
 import unittest
 from unittest.mock import patch
@@ -1084,6 +1085,13 @@ class ConfiabilidadeTests(unittest.TestCase):
         if self.app._pulso_pipeline is not None:
             self.app._pulso_pipeline.desligar()
         self.app.supervisor.aguardar(60)
+        # `aguardar` so espera a THREAD; o valor fica na fila ate o `_drenar`
+        # (a cada 120 ms) entregar. Sem esvaziar a fila aqui, a leitura real
+        # caia no primeiro `update()` do teste (CI de e659500: 1 != 2 de novo).
+        fim = time.monotonic() + 10
+        while not self.app.supervisor._fila.empty() and time.monotonic() < fim:
+            self.app.update()
+            time.sleep(0.03)
         self.app.update()
         self.pagina = self.app.paginas["confiabilidade"]
         self.addCleanup(self._fechar)
