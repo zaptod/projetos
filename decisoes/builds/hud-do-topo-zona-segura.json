@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Achado do conferente em 15/10 (prova_fim_luta3): HUD do p2 em y 59-127 de 1920 e até 96% da largura. Vale para a luta toda.",
+  "criado": "2026-10-18T20:00:32.131908",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).",
+      "em": "2026-10-18T20:00:33",
+      "opcao": "descer",
+      "origem": "cli"
+    }
+  ],
+  "id": "hud-do-topo-zona-segura",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "nomes e barras fora das faixas cobertas pelas plataformas",
+      "id": "descer",
+      "pede_comentario": false,
+      "rotulo": "Descer o HUD para baixo de 10% da altura e fora dos 12% da direita (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "risco de cobrir nome e barra no celular",
+      "id": "manter",
+      "pede_comentario": false,
+      "rotulo": "Manter como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "As barras de vida e os nomes do duelo (3-7% da altura) ficam sob as abas 'Seguindo | Para você' do TikTok e os ícones do Shorts. Descer o HUD?",
+  "projeto": "builds",
+  "situacao": "decidida",
+  "titulo": "HUD do topo do duelo sob as abas do TikTok/Shorts",
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).",
+    "em": "2026-10-18T20:00:33",
+    "opcao": "descer"
+  }
+}
