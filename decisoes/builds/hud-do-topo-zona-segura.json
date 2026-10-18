@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-18T20:01:29",
+      "evento": "2026-10-18T20:00:33",
+      "linha": 187,
+      "nota": "agente de builds descendo o HUD numa worktree",
+      "opcao": "descer",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Achado do conferente em 15/10 (prova_fim_luta3): HUD do p2 em y 59-127 de 1920 e até 96% da largura. Vale para a luta toda.",
   "criado": "2026-10-18T20:00:32.131908",
   "depende_de": [],
