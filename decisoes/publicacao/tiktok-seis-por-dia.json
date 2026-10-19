@@ -10,6 +10,16 @@
       "opcao": "seis",
       "origem": "leitor",
       "tipo": "nada"
+    },
+    {
+      "alvo": "",
+      "em": "2026-10-19T10:22:54",
+      "evento": "2026-10-19T10:22:39",
+      "linha": 192,
+      "nota": "revisão pós-conferente",
+      "opcao": "seis",
+      "origem": "leitor",
+      "tipo": "nada"
     }
   ],
   "contexto": "Grade atual: 10/dia nos dois destinos. Com 6 o TikTok precisa de fila própria das partes de história para não pular parte.",
