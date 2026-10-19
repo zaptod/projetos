@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-19T16:13:08",
+      "evento": "2026-10-19T16:12:59",
+      "linha": 197,
+      "nota": "",
+      "opcao": "so-texto",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Medido em 19/10: a credencial de histórias não tem o escopo youtube (a de builds tem). O 'vídeo relacionado' do Shorts não existe na API. O código está pronto e desligado: postar.LIGAR_PELA_API + recuperar.acrescentar_na_descricao. Comando: python -m neural_fights.tools.youtube_oauth --conta <conta de histórias> --com-upload --com-analytics --com-edicao",
   "criado": "2026-10-19T14:25:16.351282",
   "depende_de": [
