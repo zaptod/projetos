@@ -154,6 +154,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Sprite-base aprovado vai para a biblioteca** — Fica na biblioteca (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).” `base-aprovado-na-biblioteca`
 - ✅ **Sprite-base rejeitado depois das folhas** — Folhas não aprovadas voltam a refazer com o base novo (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).” `base-rejeitado-depois`
 - ✅ **HUD do topo do duelo sob as abas do TikTok/Shorts** — Descer o HUD para baixo de 10% da altura e fora dos 12% da direita (recomendado) (18/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).” `hud-do-topo-zona-segura`
+- ✅ **Câmera da luta sabe do HUD; callouts cabem na zona segura** — Câmera DIRETOR com margem de topo abaixo do HUD durante a luta e callouts encolhidos para caber à esquerda de 88% (recomendado) (19/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).” `camera-da-luta-sob-o-hud`
 
 <!-- decisoes:fim -->
 
