@@ -8,7 +8,14 @@
       "opcao": "fazer"
     }
   ],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Mexer na autorização da conta é do Adrian; durante o teste, só o texto.",
+      "em": "2026-10-19T16:12:59",
+      "opcao": "so-texto",
+      "origem": "cli"
+    }
+  ],
   "id": "historias-escopo-de-edicao",
   "midias": [],
   "opcoes": [
@@ -32,7 +39,11 @@
   },
   "pergunta": "Para a parte N ganhar o link da N+1 quando ela sai (a ligação do teste da parte seguinte), o YouTube precisa que você autorize de novo a conta do canal de histórias com a permissão de edição — um clique no navegador. Hoje a parte só sobe com 'A parte seguinte já está no canal.' no fim da descrição. Autorizar?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Histórias: autorizar a edição para ligar a parte anterior",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Mexer na autorização da conta é do Adrian; durante o teste, só o texto.",
+    "em": "2026-10-19T16:12:59",
+    "opcao": "so-texto"
+  }
 }
