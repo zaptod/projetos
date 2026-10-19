@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-19T10:02:59",
+      "evento": "2026-10-19T10:02:28",
+      "linha": 190,
+      "nota": "implementar pela parte publicacao depois de o conferente refazer as contas da análise",
+      "opcao": "trocar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-10-19T10:02:25.890031",
   "depende_de": [],
