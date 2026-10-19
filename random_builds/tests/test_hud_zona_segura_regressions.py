@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -390,22 +391,34 @@ class CalloutNaFaixaSeguraTests(unittest.TestCase):
 
 
 class CameraDaLutaSobOHudTests(unittest.TestCase):
-    """Decisao builds/camera-da-luta-sob-o-hud, item 1: com ``hud`` na
-    reserva, a camera DIRETOR da luta nao deixa corpo + nome de ninguem sob o
-    HUD do video. Sem ``hud`` (16:9, jogo, palco), nada muda."""
+    """Decisao builds/camera-da-luta-sob-o-hud: com ``hud`` na reserva, a
+    camera DIRETOR da luta mantem corpo + nome + icone de cada lutador na
+    AREA da luta (abaixo do HUD, a esquerda da coluna dos 12%, dentro da
+    tela) no quadro que vai ser DESENHADO: o Simulador chama
+    ``depois_do_passo`` depois de mover o mundo. Sem ``hud``, nada muda."""
 
-    # (arena, p1 de -> ate, p2 de -> ate), em m, 4 s cada: alguem correndo
-    # para a parede de cima, os dois juntos no alto, alguem pulando (z)
+    # (arena, p1 de -> ate, p2 de -> ate, pulo), em m, 4 s cada: alguem
+    # correndo para a parede de cima, os dois juntos no alto, alguem pulando,
+    # alguem indo para a parede da direita
     CENAS = [
         ("Torre", ((5.0, 9.0), (5.0, 0.8)), ((5.0, 12.0), (5.5, 12.0)), 0.0),
         ("Torre", ((3.0, 2.0), (7.0, 1.0)), ((4.0, 2.5), (6.0, 1.5)), 0.0),
         ("Torre", ((5.0, 3.0), (5.0, 3.0)), ((5.0, 15.0), (5.0, 16.5)), 1.2),
+        ("Torre", ((5.0, 9.0), (9.6, 9.0)), ((3.0, 10.0), (4.0, 10.0)), 0.0),
         ("Vulcao", ((13.0, 13.0), (13.0, 0.8)), ((13.0, 16.0), (12.0, 18.0)), 0.0),
         ("Vulcao", ((4.0, 3.0), (22.0, 1.0)), ((6.0, 24.0), (20.0, 23.0)), 0.0),
         ("Vulcao", ((12.0, 2.0), (12.5, 1.5)), ((14.0, 2.5), (11.0, 2.0)), 0.8),
+        ("Vulcao", ((14.0, 12.0), (25.4, 11.0)), ((12.0, 13.0), (16.0, 14.0)), 0.0),
     ]
 
-    def _luta(self, arena, a, b, pulo, reserva, linha=None):
+    @staticmethod
+    def _fora(cam, lut, hud_px):
+        """O que o conferente mede no pixel: corpo + nome sob a linha do HUD,
+        na coluna dos 12% ou cortado pela borda da tela."""
+        x0, y0, x1, _y1 = cam._caixas_na_tela((lut,), cam.x, cam.y, cam.zoom)[0]
+        return y0 < hud_px or x1 > 0.88 * cam.screen_width or x0 < 0
+
+    def _cena(self, arena, a, b, pulo, reserva, depois=True, hud_px=None):
         from neural_fights.core.arena import ARENAS
         from neural_fights.effects.camera import Câmera
 
@@ -416,32 +429,32 @@ class CameraDaLutaSobOHudTests(unittest.TestCase):
         cam.diretor_largura_min_m = 5.5
         cam.diretor_espera_zoom_in = 2.5
         cam.reserva_pos_ko = reserva
+        if hud_px is None:
+            hud_px = (reserva or {}).get("hud", 0.0) * 1920
         p1, p2 = _lutador(*a[0]), _lutador(*b[0])
-        if linha is None:
-            linha = (reserva or {}).get("hud", 0.0) * 1920
-        sob, passos = [], 240
+        fora, passos = [], 240
         for k in range(passos):
-            f = (k + 1) / passos
+            cam.atualizar(1 / 60, p1, p2)          # o comeco do passo do Simulador
+            f = (k + 1) / passos                    # o mundo anda depois
             p1.pos = [a[0][0] + (a[1][0] - a[0][0]) * f, a[0][1] + (a[1][1] - a[0][1]) * f]
             p2.pos = [b[0][0] + (b[1][0] - b[0][0]) * f, b[0][1] + (b[1][1] - b[0][1]) * f]
             p1.z = pulo * max(0.0, 1.0 - abs(f - 0.5) * 4)            # um pulo no meio
-            cam.atualizar(1 / 60, p1, p2)
-            for nome, lut in (("p1", p1), ("p2", p2)):
-                if cam._topo_do_lutador_px(lut) < linha:
-                    sob.append((k, nome, round(cam._topo_do_lutador_px(lut))))
-        return sob, cam
+            if depois:
+                cam.depois_do_passo(p1, p2)
+            if k >= 1 and (self._fora(cam, p1, hud_px) or self._fora(cam, p2, hud_px)):
+                fora.append(k)                       # o quadro DESENHADO
+        return fora
 
-    def test_ninguem_fica_sob_o_hud_na_luta(self):
+    def test_ninguem_sai_da_area_da_luta_nas_cenas(self):
         reserva = reserva_do_letreiro("celular")
         for arena, a, b, pulo in self.CENAS:
             with self.subTest(arena=arena, p1=a, p2=b, pulo=pulo):
-                sob, cam = self._luta(arena, a, b, pulo, reserva)
-                self.assertEqual(sob, [], sob[:3])
+                self.assertEqual(self._cena(arena, a, b, pulo, reserva), [])
 
-    def test_caso_zero_sem_o_hud_na_reserva_alguem_passa_por_baixo(self):
+    def test_caso_zero_sem_o_hud_na_reserva_alguem_sai(self):
         reserva = reserva_do_letreiro("celular")
         sem_hud = {k: v for k, v in reserva.items() if k != "hud"}
-        acusou = sum(bool(self._luta(arena, a, b, pulo, sem_hud, linha=reserva["hud"] * 1920)[0])
+        acusou = sum(bool(self._cena(arena, a, b, pulo, sem_hud, hud_px=reserva["hud"] * 1920))
                      for arena, a, b, pulo in self.CENAS)
         self.assertGreater(acusou, 0)
 
@@ -449,16 +462,114 @@ class CameraDaLutaSobOHudTests(unittest.TestCase):
         from neural_fights.effects.camera import Câmera
 
         cam = Câmera(1080, 1920)
+        cam.modo = "DIRETOR"
         p1, p2 = _lutador(3.0, 3.0), _lutador(6.0, 9.0)
         teto = cam._diretor_teto_zoom()
         for reserva in (None, {"topo": 0.26, "ate_s": 0.95}):
             cam.reserva_pos_ko = reserva
+            self.assertIsNone(cam._area_da_luta())
             self.assertEqual(cam._zoom_necessario_da_luta(p1, p2, teto),
                              cam._calcular_zoom_necessario(p1, p2, zoom_max=teto))
-            self.assertEqual(cam._desvio_do_centro_da_luta(cam.zoom), 0.0)
-            self.assertFalse(cam._lutador_sob_o_hud(p1))
+            self.assertEqual(cam._desvio_do_centro_da_luta(cam.zoom), (0.0, 0.0))
+            self.assertFalse(cam.lutador_fora_da_area(p1))
+            antes = (cam.x, cam.y, cam.zoom)
+            cam.depois_do_passo(p1, p2)
+            self.assertEqual((cam.x, cam.y, cam.zoom), antes)
         # e o 16:9 (nao vai ao Shorts) nem recebe o HUD
         self.assertNotIn("hud", reserva_do_letreiro("normal") or {})
+
+
+class ArremessoDoVulcao4242Tests(unittest.TestCase):
+    """O defeito do conferente (19/10/2026), na luta DE VERDADE: Gunnar
+    Vexevok x Aurelia Argalacern, seed 4242, Vulcao, pelo gravador de
+    producao (1080x1920, DIRETOR do duelo, a reserva do runner), com os dois
+    lutadores do banco num fixture (``fixtures/duelo_4242``). No empurrao do
+    ESMAGAR (~17,2 s do bruto) o Gunnar sobe ~120 px por passo: a camera era
+    atualizada ANTES da fisica e o quadro desenhado o mostrava sob o HUD e na
+    coluna de botoes. Medido no desenho (o que vai para o quadro)."""
+
+    FIXTURE = Path(__file__).resolve().parent / "fixtures" / "duelo_4242"
+    # os quadros de transicao que sobram: o comeco de dois arremessos, em
+    # que o lutador anda mais que o teto de tranco (a correcao ja vai a ~46
+    # px por passo, o dobro do que a camera andava sozinha)
+    TRANSICAO = set(range(515, 519)) | {593, 594, 316}
+    # o gravador para aqui (a luta inteira leva 2x mais): os dois arremessos
+    # estao antes, e ate aqui a luta e a mesma do duelo inteiro
+    ATE_S = 20.5
+
+    @classmethod
+    def setUpClass(cls):
+        cls.com = cls._gravar(depois=True)
+        cls.sem = cls._gravar(depois=False)
+
+    @classmethod
+    def _gravar(cls, depois):
+        from neural_fights.effects import camera as cam_mod
+        from neural_fights.recording import fight_recorder
+        from neural_fights.simulation import simulacao as sim_mod
+        from neural_fights.tools import qualidade_luta as ql
+
+        reserva = reserva_do_letreiro("celular")
+        with mock.patch.object(ql, "FIXTURE_ENGINE", cls.FIXTURE):
+            fonte = ql.FonteDeDados("engine")
+        desenhos, fora, cameras = [0], [], []
+        original = sim_mod.Simulador.desenhar
+        hud_px = reserva["hud"] * 1920
+
+        def desenhar(self):
+            cam = self.cam
+            if desenhos[0] % 2 == 1:                    # 30 fps: 1 de cada 2 passos
+                cameras.append((cam.x, cam.y, cam.zoom, bool(self.p1.morto or self.p2.morto)))
+                if not (self.p1.morto or self.p2.morto):
+                    if any(CameraDaLutaSobOHudTests._fora(cam, lut, hud_px)
+                           for lut in (self.p1, self.p2)):
+                        fora.append(desenhos[0] // 2)
+            desenhos[0] += 1
+            return original(self)
+
+        patches = [mock.patch.object(sim_mod.Simulador, "desenhar", desenhar)]
+        if not depois:
+            patches.append(mock.patch.object(cam_mod.Câmera, "depois_do_passo",
+                                             lambda *_a: None))
+        for p in patches:
+            p.start()
+        try:
+            r = fight_recorder.gravar_luta(
+                p1="Gunnar Vexevok", p2="Aurelia Argalacern", saida=None, seed=4242,
+                cenario="Vulcao", resolucao=(1080, 1920), camera_modo="DIRETOR", hud=False,
+                camera_largura_min_m=5.5, camera_espera_zoom_in=2.5, som_no_video=False,
+                anotar_som=False, reserva_pos_ko=reserva, roster_provider=fonte.provider(None),
+                max_duracao=cls.ATE_S)
+        finally:
+            for p in patches:
+                p.stop()
+        from neural_fights.effects.camera import Câmera
+        medidor = Câmera(1080, 1920)
+        degraus = [medidor._degrau_na_tela(a[:3], b[:3])
+                   for a, b in zip(cameras, cameras[1:]) if not b[3]]
+        return {"r": r, "fora": sorted(set(fora)), "degraus": degraus}
+
+    def test_a_luta_e_a_mesma(self):
+        for chave in ("eventos_dano", "hp_final", "duracao_jogo", "serie_hp"):
+            self.assertEqual(self.com["r"].get(chave), self.sem["r"].get(chave), chave)
+        self.assertGreater(len(self.com["r"].get("eventos_dano") or []), 20)
+
+    def test_so_sobram_os_quadros_de_transicao_dos_arremessos(self):
+        self.assertTrue(set(self.com["fora"]) <= self.TRANSICAO, self.com["fora"])
+
+    def test_caso_zero_sem_a_correcao_depois_da_fisica(self):
+        """A camera so no comeco do passo (como ate 19/10): o arremesso do
+        ESMAGAR deixa o Gunnar fora da area por mais quadros, e ha outros."""
+        self.assertGreaterEqual(len(self.sem["fora"]), 3 * len(self.com["fora"]), self.sem["fora"])
+        self.assertTrue(set(range(519, 521)) <= set(self.sem["fora"]), self.sem["fora"])
+
+    def test_a_correcao_nao_aumenta_o_tranco(self):
+        """O maior degrau da luta e os degraus acima de 26 px/quadro nao
+        crescem com a correcao (eles ja existem: o quadro de emergencia de
+        quando alguem e arremessado)."""
+        self.assertLessEqual(max(self.com["degraus"]), max(self.sem["degraus"]) + 5.0)
+        acima = sum(d > 26.0 for d in self.com["degraus"])
+        self.assertLessEqual(acima, sum(d > 26.0 for d in self.sem["degraus"]) + 5)
 
 
 if __name__ == "__main__":

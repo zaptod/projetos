@@ -961,6 +961,13 @@ class Simulador:
         self._atualizar_transformacoes(dt)
         self._atualizar_canalizacoes(dt)
         self._atualizar_animacoes(dt)
+        # A camera foi atualizada no comeco do passo; o mundo andou depois.
+        # A area da luta do video (HUD + coluna de botoes) vale para o
+        # quadro que vai ser DESENHADO (decisao builds/camera-da-luta-sob-
+        # o-hud). So le posicoes; sem ``hud`` na reserva, nao faz nada.
+        depois = getattr(self.cam, "depois_do_passo", None)
+        if depois is not None:
+            depois(self.p1, self.p2)
 
     def _processar_hit_stop(self, dt):
         """Aplica o hit stop do frame.

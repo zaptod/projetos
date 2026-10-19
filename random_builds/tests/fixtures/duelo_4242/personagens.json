@@ -1,0 +1,40 @@
+[
+  {
+    "nome": "Aurelia Argalacern",
+    "tamanho": 1.46,
+    "forca": 7.8,
+    "mana": 5.5,
+    "nome_arma": "Argorath",
+    "cor_r": 20,
+    "cor_g": 205,
+    "cor_b": 252,
+    "classe": "Duelista (Precisão)",
+    "personalidade": "Masoquista",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Reverter"
+    ],
+    "genero": "f"
+  },
+  {
+    "nome": "Gunnar Vexevok",
+    "tamanho": 1.53,
+    "forca": 7.0,
+    "mana": 4.2,
+    "nome_arma": "Miraglonn",
+    "cor_r": 216,
+    "cor_g": 13,
+    "cor_b": 108,
+    "classe": "Berserker (Fúria)",
+    "personalidade": "Agressivo",
+    "kit_skills": [
+      "Mjolnir",
+      "Ritual Carmesim",
+      "Avanço Brutal",
+      "Estilhaço Vermelho"
+    ],
+    "genero": "m"
+  }
+]

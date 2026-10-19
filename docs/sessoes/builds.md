@@ -1244,6 +1244,62 @@ Testes: `random_builds/tests/test_hud_zona_segura_regressions.py`
 (HUD, callouts com todos os textos do config, câmera da luta em 6 cenas com
 pulo e parede; cada um com o seu caso zero).
 
+**3ª rodada (conferente de 19/10, mesmo nó): a garantia no quadro DESENHADO.**
+O conferente achou, no Vulcão (quadros 345–348 do clipe, 11,50–11,60 s), o
+caído encostando no canto de baixo à direita do HUD no empurrão do ESMAGAR,
+com o nome na faixa dele, e o lutador cortado pela coluna da direita em
+4,83 s, 11,23–12,03 s e 14,13–14,23 s (igual na base). Causa: o Simulador
+atualiza a câmera no COMEÇO do passo e move o mundo depois; num arremesso o
+lutador anda ~120 px por passo, e a garantia da 2ª rodada (e a medida
+interna dela, feita dentro de `atualizar`) via o mundo de antes. Agora:
+
+- `Simulador._update_step` chama `cam.depois_do_passo(p1, p2)` depois de
+  mover o mundo, antes do desenho (só lê posições; sem `hud` não faz nada);
+- a garantia (`Câmera._manter_na_area`) vale para a **área da luta**: abaixo
+  do HUD, à esquerda da coluna dos 12% (`diretor_pos_ko_area[2]`) e dentro
+  da tela, para `caixa_do_lutador` (corpo com os anéis + nome a `raio + 22`
+  + o ícone de status acima dele + o plano embaixo; 58/30 px de tela). O
+  zoom necessário e o centro contam essas margens; o push-in do "momento"
+  (ESMAGAR, arremesso) não fecha além do que cabe; se os dois não cabem, o
+  quadro abre;
+- **teto de tranco:** a correção gasta um orçamento de 26 px por quadro de
+  30 fps (`diretor_area_degrau_max_px`, por passo `dt × 30`), ou o tanto que
+  a câmera já andou sozinha no passo, se for mais (o quadro de emergência de
+  quem é arremessado já anda 90–190 px/quadro na base) — nunca mais que o
+  dobro do que já existia.
+
+**Medido** (base = `5890566`, antes do HUD; 2ª = `11477d2`):
+
+| | Torre 2ª → 3ª | Vulcão 2ª → 3ª |
+|---|---|---|
+| **detector de pixels** no clipe cru (`detector_px2`: mancha grande da cor do corpo + o nome azul/vermelho logo acima; nada da câmera), 756 / 476 quadros: sob o HUD | 0 → **0** | 1 → **0** |
+| idem, na coluna dos 12% da direita | 32 → **0** | 60 → **0** |
+| idem, cortado pela borda da tela | 7 → **2** (610–611) | 12 → **0** |
+| caixa da câmera NO DESENHO (`area_desenho_*.json`), 790 / 647 quadros da luta (base `5890566` entre parênteses): sob o HUD | (46) 6 → **1** | (50) 7 → **2** |
+| idem, na coluna da direita | (84) 65 → **0** | (127) 125 → **4** |
+| idem, cortado pela borda | (12) 10 → **3** | (36) 33 → **0** |
+| maior degrau da câmera na luta (9 pontos) | (245) 246 → 227 px | (197) 349 → 190 px |
+
+Os quadros que sobram são todos o começo de um arremesso, em que o lutador
+anda mais rápido que o teto de tranco: Vulcão 515–518 do bruto (= 344–347
+do clipe, o do conferente: o ícone de status e o anel claro **encostam** na
+linha do HUD e na coluna, sem cruzar no pixel —
+`E:\tmp_pytest\prova_hud3\vulcao_arremesso_344_349.png`) e 593–594; Torre
+416 e 643–645 (o "ESTATELOU" joga o Gunnar contra a borda da esquerda por 2
+quadros do clipe, 610–611 — `torre_borda_608_612.png`).
+
+Luta igual: 48/48 headless e 6/6 pelo gravador (vencedor, motivo, duração,
+K.O., HP, dano, narrativa, série de HP); os `sons` mantêm ids, tempos e
+pitch, e só `volume`/`pan` mudam (máx. 0,10: o ouvinte é a câmera, que agora
+anda também para a esquerda da coluna). A fração da tela fora da arena subiu
+(Torre 30,2% da largura, Vulcão 31,3% da altura; a luta aceita 35%), quase
+toda sob o HUD e a coluna. Provas em `E:\tmp_pytest\prova_hud3\{torre,vulcao}\`
+(mesmo caminho real), `detector2_{torre,vulcao}.json` (o detector de pixels
+quadro a quadro), `area_desenho_*.json`, `cauda_x_hud_*.json` e
+`folha_zona.png`. Teste com o caso zero na luta de verdade:
+`ArremessoDoVulcao4242Tests` (os dois lutadores num fixture,
+`random_builds/tests/fixtures/duelo_4242/`; o gravador até 20,5 s, ~45 s).
+
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre
   `outputs/` e devolve `Video(id, origem, perfil, titulo, descricao, hashtags,
