@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-19T10:02:55",
+      "evento": "2026-10-19T10:02:07",
+      "linha": 189,
+      "nota": "implementar pela parte publicacao depois de o conferente refazer as contas da análise",
+      "opcao": "seis",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Grade atual: 10/dia nos dois destinos. Com 6 o TikTok precisa de fila própria das partes de história para não pular parte.",
   "criado": "2026-10-19T10:02:03.132935",
   "depende_de": [],
