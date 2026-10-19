@@ -43,10 +43,22 @@ class ConformidadeTests(unittest.TestCase):
         self._padrao()
         self.assertEqual([], contas.conformidade())
 
-    def test_zombie_continua_escolhivel(self):
-        self.assertIn("zombie", contas.CANAIS)
-        contas.escolher("tiktok", "zombie", "zumbis")
-        self.assertEqual("zumbis", contas.ativa("tiktok", "zombie"))
+    def test_bluelock_continua_escolhivel(self):
+        """O canal que nao publica ainda escolhe conta (19/10: o `zombie`
+        virou `bluelock`, com as mesmas contas)."""
+        self.assertIn("bluelock", contas.CANAIS)
+        contas.escolher("tiktok", "bluelock", "zumbis")
+        self.assertEqual("zumbis", contas.ativa("tiktok", "bluelock"))
+
+    def test_bluelock_herdado_do_zombie_nao_gera_alerta(self):
+        """O registro real ainda diz `zombie`; a conformidade continua `[]`."""
+        self._padrao()
+        dados = contas.estado()
+        for servico in ("youtube", "youtube_web", "tiktok"):
+            dados["servicos"][servico]["ativa"]["zombie"] = "zombie_survivores"
+            dados["servicos"][servico]["contas"].append("zombie_survivores")
+        contas._gravar(dados)
+        self.assertEqual([], contas.conformidade())
 
     def test_canal_que_publica_sem_conta_continua_acusado(self):
         """Caso ZERO (registro vazio): builds e historias SAO acusados."""

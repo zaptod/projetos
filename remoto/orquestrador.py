@@ -2489,7 +2489,8 @@ def _contas() -> list[dict]:
     saida = []
     for servico, dados in contas.SERVICOS.items():
         canais = []
-        for canal in ("builds", "historias", "zombie"):
+        # 19/10/2026: o canal `zombie` virou `bluelock` (as mesmas contas)
+        for canal in ("builds", "historias", "bluelock"):
             try:
                 nome = contas.ativa(servico, canal)
                 quem = contas.identidade(servico, nome)

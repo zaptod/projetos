@@ -34,6 +34,9 @@ outputs/postar.txt
 vila_flutuante.cmd
 # Saida do app do celular (o app_celular.cmd redireciona para ca).
 outputs/app_celular.txt
+# Lancador e saida do vigia da main do Blue Lock: `python -m bluelock.vigia instalar`.
+bluelock_vigia.cmd
+outputs/bluelock_vigia.txt
 # Retratos crus do Studio do TikTok: JSON interno da conta DESTA maquina.
 outputs/_tiktok/
 # Patches que a apuracao automatica propoe: saida de maquina, um por erro.

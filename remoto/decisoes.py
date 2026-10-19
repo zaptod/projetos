@@ -78,11 +78,11 @@ TRAVA = None                  # o .lock (fora do repositorio)
 MIDIA_LOCAL = None            # %LOCALAPPDATA%/neural-fights/decisoes_midia
 
 PROJETOS = ("geral", "builds", "historias", "publicacao", "metricas",
-            "app-e-bot", "painel-e-vila", "jogo-zombie")
+            "app-e-bot", "painel-e-vila", "jogo-zombie", "blue-lock")
 ROTULOS = {"geral": "Geral", "builds": "Builds", "historias": "Histórias",
            "publicacao": "Publicação", "metricas": "Métricas",
            "app-e-bot": "App e bot", "painel-e-vila": "Painel e Vila",
-           "jogo-zombie": "Jogo zombie"}
+           "jogo-zombie": "Jogo zombie", "blue-lock": "Blue Lock"}
 SITUACOES = ("bloqueada", "pendente", "decidida", "a_rever")
 ICONES = {"decidida": "✅", "pendente": "⏳", "bloqueada": "🔒", "a_rever": "↺"}
 COMENTARIO_MAX = 2000

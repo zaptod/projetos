@@ -24,7 +24,7 @@ COFRE_PADRAO = Path(r"E:\Obsidian\Neural Fights")
 NOMES = {
     "geral": "Geral", "historias": "Histórias", "builds": "Neural Fights (builds)",
     "publicacao": "Publicação", "metricas": "Métricas", "app-e-bot": "App e bot",
-    "painel-e-vila": "Painel e Vila", "jogo-zombie": "Zombie",
+    "painel-e-vila": "Painel e Vila", "jogo-zombie": "Zombie", "blue-lock": "Blue Lock",
 }
 AVISO = "_Atualizada sozinha às {hora} de {data}. Não edite aqui: comente em 💡 Ideias._"
 INICIO = "[[00 Início|← Início]]"

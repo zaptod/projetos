@@ -7,7 +7,7 @@ Adrian ──► ORQUESTRADOR (chat principal)
               │  entende, divide, delega, cobra, responde
               ├──► partes do sistema (agentes Claude, .claude/agents/)
               │      publicacao · builds · historias · metricas
-              │      app-e-bot · painel-e-vila · jogo-zombie
+              │      app-e-bot · painel-e-vila · jogo-zombie · blue-lock
               ├──► Codex (remoto.delegar) — trabalho grande, em worktree
               │      └─► vigia do coordenador aplica ──► INTEGRADOR se parar
               ├──► INTEGRADOR — entrega parada, conflito, teste instável
@@ -25,7 +25,8 @@ Adrian ──► ORQUESTRADOR (chat principal)
 | metricas | agente | views, retenção, relatórios | número medido |
 | app-e-bot | agente | telas e rotas do app, bot do Telegram | conserto + teste |
 | painel-e-vila | agente | painel do PC, Vila, Oficina/Ateliê de sprites | conserto + teste |
-| jogo-zombie | agente | o jogo de `E:\jogo_ZOMBIE` | conserto + teste |
+| jogo-zombie | agente | o jogo de `E:\jogo_ZOMBIE` (parado desde 19/10) | conserto + teste |
+| blue-lock | agente | o simulador de futebol do Adrian (`E:\BLUE-Lock-project`, só leitura), gravação, vigia da main, canal `bluelock` | gravação provada + teste |
 | **integrador** | agente | entrega do Codex "olho"/não aplicada | entrega aplicada e commitada |
 | **conferente** | agente | ANTES de dizer "pronto" ao Adrian | APROVADO ou defeitos com prova |
 | Codex | `remoto.delegar` | tarefa grande e bem especificada | diff na worktree (o vigia aplica) |
@@ -59,6 +60,11 @@ desistencia por "fora dos caminhos permitidos". A politica editavel em
 negar. Com o gerente desligado, toda regra automatica vira pergunta ao Adrian.
 `jogo-zombie` trabalha no repositorio proprio e tem autorizacao permanente do
 gerente, exceto publicar, conta, push e decisoes de produto.
+`blue-lock` e o contrario: o repositorio do jogo (`E:\BLUE-Lock-project`) e do
+Adrian e e SO LEITURA — nada de commit, push ou edicao la; o trabalho da parte
+mora em `E:\projetos\bluelock\` e em `docs/sessoes/blue-lock.md`. O vigia da
+main (`python -m bluelock.vigia`, tarefa `NeuralFights_bluelock_main`, 30 min)
+abre o pedido "Blue Lock main mudou" na Mesa quando ele commita.
 
 ## Renovação do chat
 Veja o `CLAUDE.md` §2. `/renovar` fecha com a NOTA e o retrato, e `/assumir` abre o chat seguinte. O hook de início injeta o `docs/handoff/ATUAL.md`, e o de pré-compactação regenera o retrato.

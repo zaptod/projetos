@@ -1,0 +1,221 @@
+# Blue Lock
+
+<!-- decisoes:inicio -->
+<!-- decisoes:fim -->
+
+A parte que mora em **outro repositório**, do Adrian: <https://github.com/zaptod/BLUE-Lock-project> (público, ramo `main`). Aqui nós só **lemos** o jogo,
+**gravamos** partidas em mp4 e **acompanhamos** a main dele; conta, grade e postagem são da parte de Publicação, em `E:\projetos`.
+
+Escrito em 19/10/2026 pela sessão que integrou o projeto (pedido do Adrian: "inclua no nosso projeto o meu repositório de Blue Lock no GitHub; vou usar o TikTok
+e o YouTube do zombie, já que parei de desenvolver ele por um tempo; leia o projeto da main e verifique sempre que a main for atualizada para atualizarmos o
+projeto junto"). Tudo abaixo foi conferido lendo e rodando o espelho naquele dia; o que não deu para conferir está marcado **(não verificado)**.
+
+## 0. A regra
+
+**`E:\BLUE-Lock-project` é um espelho de LEITURA da main do Adrian.** Nunca commitar, empurrar, fazer checkout, reset, clean, stash nem editar nada lá. Só
+`git fetch` e o avanço fast-forward, e quem faz isso é o vigia (§5). O `npm ci` escreve `node_modules/` e `.npm-cache/` (o `.npmrc` dele aponta o cache para
+dentro do projeto), e o Vite escreve `node_modules/.vite/`: os três são ignorados pelo `.gitignore` dele. Se precisarmos de algo dentro do jogo, isso vira
+**proposta escrita para o Adrian** (§7), nunca edição. O nosso código mora em `E:\projetos\bluelock\`.
+
+## 1. O que é
+
+"blue-lock-simulation-lab" **v0.12.0**: um laboratório web (TypeScript + Vite + Three.js, sem backend, sem IA externa, sem credencial) de **futebol automático**
+1×1, 2×2 e 3×3, inspirado no mangá Blue Lock. O usuário só monta a formação (personagens, versões, posições, planos de time); a partida joga sozinha. O objetivo
+declarado dele (`Docs/BASE_DO_PROJETO.md`): **"gerar conteúdo para redes sociais"**, com prioridade na fidelidade dos personagens e na qualidade da IA.
+
+- **Elenco:** Isagi, Bachira, Kunigami, Chigiri, Nagi, Reo, Barou, Rin e "Referência" (a base sem armas). Cada personagem tem "switches" por época do mangá
+  (147 no total, 80 capacidades — Rin 25, Barou 22, Chigiri 18, Bachira e Reo 17, Isagi, Kunigami e Nagi 16); **"Ativar tudo do personagem"** liga todas as
+  épocas. Goleiro opcional em cada gol: o robô **Blue Lock Man**.
+- **IA:** cada jogador só sabe o que **percebe** (visão, alcance, frequência, memória com incerteza); decide entre passe, condução, drible, chute, apoio,
+  marcação; aprende sobre os outros durante a partida. Física fixa a **60 Hz**, semente registrada (determinístico **no mesmo runtime**; ele próprio não promete
+  entre plataformas).
+- **Arquitetura** (`src/`, ~13 mil linhas): `simulation.ts` (núcleo, sem DOM nem Three.js), `characters.ts` (registro dos perfis) + um arquivo por personagem
+  (`isagi-*.ts`, `bachira.ts`, `rin.ts`…), `cognition.ts`/`player-policy.ts`/`team-play.ts`/`cooperation.ts` (a IA comum), `field.ts` (a cena 3D e as
+  câmeras), `character-art.ts`/`character-animation.ts`/`keeper-art.ts`/`pitch-art.ts` (visual), `action-presentation.ts` (rastro da bola e marcas de
+  contato), `frame-clock.ts`/`visual-state.ts` (relógio fixo e interpolação), `replay.ts` (gravação de estados), `main.ts` (a interface do laboratório).
+- **Câmeras:** `overview` (campo inteiro, jogadores pequenos), `follow` (segue um jogador, de cima e de lado — o personagem fica bem reconhecível: cabelo,
+  número, cor do time) e `character` (três quartos, de perto).
+- **Replay e vídeo dentro do jogo:** o laboratório grava os estados a 60 Hz (até 200 s), revê, exporta/importa replay (`blue-lock-replay` v1), e tem
+  **"Gravar vídeo do campo"** (MediaRecorder, WebM, tempo real, sem áudio, até 2 min). Não há exportador de 1080p nem HUD no canvas (o placar é HTML).
+- **Validação dele:** `npm test` (vitest), ~40 auditorias `npm run audit:*` (centenas de partidas, com sementes de desenvolvimento e "holdout") e
+  checagens de navegador `check:*` em Python + Playwright que tiram PNG e até mp4 (`scripts/check-character-motion.py` renderiza quadros do renderer de
+  produção e junta com ffmpeg). CI em `.github/workflows/validate.yml` (Node 24; jobs `core` e `browser`).
+- **Ritmo:** 46 commits de 10/10 a 19/10 — cinco em 18/10 e sete só na madrugada/manhã de 19/10, enquanto esta integração era escrita. As datas dos
+  commits vêm em UTC (+0000): 12:18 no GitHub é 09:18 aqui (o vigia mostra no horário local). A pasta `artifacts/` (420 MB) é versionada: relatórios JSON, PNGs, o HTML independente
+  `artifacts/blue-lock-lab.html` e três mp4 de demonstração.
+
+**O que ele já faz bem para vídeo** (olhando `artifacts/character-art-v5-follow.png` e `graphics-scene-v5-*.png`): na câmera `follow`/`character` os oito
+personagens são reconhecíveis à primeira vista (o cabelo branco do Nagi, o laranja do Chigiri, o roxo do Reo, o vermelho do Barou, números nas costas); a
+arena "sala de treino" e o robô goleiro têm identidade; os contatos (chute, recepção, choque de corpo) deixam marcas e rastro da bola. Na câmera `overview` os
+jogadores ficam com ~15 px de altura num quadro de 1280: ilegível no celular.
+
+## 2. Como roda e como testa
+
+Node **24.15** nesta máquina (pede ≥ 22.12; algumas auditorias pedem ≥ 24.9). No espelho (só gera arquivo ignorado):
+
+```
+cd E:\BLUE-Lock-project
+npm ci            # 19/10: 34 s
+npm test          # vitest. 3e6e12d: 1369/1378 em 175 s; c6f2c87: 1551/1551 em 207 s (ver abaixo)
+npm run dev       # Vite em http://localhost:5173 (o laboratório)
+```
+
+**Os testes dependem da CPU livre.** Medido em 19/10 às 09:56, com a máquina a 100% (gravação de luta, histórias e builds rodando; 4 núcleos lógicos): **9 de
+1378 falharam, TODOS "Test timed out in 5000ms"** em `src/pass-diagnostics.test.ts` (o tempo padrão do vitest por teste); o arquivo sozinho, ainda sob carga,
+deu 11 de 92 por tempo. Com `npm test -- --testTimeout=60000` (como o vigia roda), às 10:12 e ainda com a máquina ocupada: **1551/1551 verdes em 207 s** já no
+`c6f2c87`. Timeout não é teste vermelho: rodar de novo antes de culpar a main. **(não verificado: a duração com a máquina livre.)**
+
+**As auditorias (`npm run audit:*`, `inventory:*`) ESCREVEM em `artifacts/` e `Docs/`, que são versionados**: 51 dos 56 `scripts/*.mjs` gravam arquivo.
+Rodar no espelho o sujaria (e o vigia pararia de puxar). Para auditar, use uma cópia: `git clone --no-hardlinks E:\BLUE-Lock-project
+E:\tmp_pytest\bluelock_build` + `npm ci` lá. Medido nela em 19/10: `npm run inventory:characters` em 3 s (147 switches, 80 capacidades; mexeu em 2 arquivos
+versionados); `npm run audit:nagi` em 12 s **falha** com `Old roster changed` — as auditorias de bloco por personagem comparam com o elenco de quando o bloco
+foi entregue e caem quando a main anda; elas não estão no CI. A referência é o CI dele.
+
+Não rodar o lote do CI inteiro aqui (são ~60 passos de auditoria): é hora de máquina, e quem garante a main é o CI dele.
+
+## 3. Gravar uma partida (nosso, sem mexer no repositório dele)
+
+`bluelock/gravar.py` faz de fora o que os `check-*.py` dele fazem: sobe o Vite do espelho numa porta própria (5199), abre o Chrome headless (Playwright,
+canal `chrome` — não há Chromium do Playwright instalado), esconde o laboratório, monta uma `Simulation` (formato, elenco, semente, goleiros, "Ativar tudo")
+e um `Field` do tamanho do vídeo, e a cada quadro dá `60/fps` passos de física, desenha e tira um JPEG do canvas, que vai ao ffmpeg com **faixa de áudio
+muda** (o `concat -c copy` da fábrica precisa dela). O tempo de parede não muda a partida. A câmera **`bola`** é nossa: troca o `updateCamera` da instância do
+`Field` (só na página) por um enquadramento que segue a BOLA, suavizado, no ângulo da câmera `follow` dele. O JSON ao lado traz semente, elenco, placar,
+eventos (gol, chute, defesa, passe, contato) em segundos de vídeo, `gols_em_video`, a GPU usada e o commit do jogo.
+
+```
+python -m bluelock.gravar --saida E:\tmp_pytest\bluelock\prova.mp4 --segundos 20 --progresso
+#   --formato 1|2|3  --azul isagi,bachira,nagi  --vermelho rin,barou,reo  --semente 42
+#   --camera bola|overview|follow|character  --resolucao 1080x1920  --fps 30  --pular 0
+#   --qualidade high|balanced|performance  --sem-goleiros  --so-basico  --software  --forcar
+```
+
+Recusa sozinho com o League of Legends aberto e de :19 a :55 das horas de postagem (`bluelock.comum.pode_pesado`; `--forcar` passa por cima) e segura a trava
+`bluelock_espelho`, a mesma do vigia (puxar a main com o Vite servindo recarregaria a página no meio).
+
+**Provado em 19/10/2026** (máquina carregada, GPU Intel HD 4600 por ANGLE/D3D11, Chrome headless; mp4 em `E:\tmp_pytest\bluelock\`):
+
+| Prova | Commit do jogo | Vídeo | Parede | O que saiu |
+|---|---|---|---|---|
+| `prova_gpu.mp4` | `3e6e12d` | 4 s, 1080×1920, 30 fps, h264 + aac mudo | 45 s (com ~20 s de subida) | 120 quadros, ffprobe ok |
+| `prova_30s.mp4` | `3e6e12d` | 30 s | 94 s | 0×2, 8 chutes, 4 defesas do Blue Lock Man, gols em 6,6 s e 12,7 s |
+| `prova_c6f2c87.mp4` | `c6f2c87` | 30 s | 122 s | 0×1, 5 chutes, 3 defesas, 7 passes, gol em 6,45 s |
+
+Elenco das provas: Azul Isagi, Bachira, Nagi × Vermelho Rin, Barou, Reo, 3×3, "Ativar tudo", dois goleiros, semente 42. Olhei os quadros (folhas de 4 a 6
+quadros extraídas com ffmpeg): os seis são reconhecíveis (cabelo branco do Nagi, roxo do Reo, números), o goleiro aparece no lance de gol, a bola e o rastro se
+leem. **A mesma semente deu outra partida em outro commit** (2 gols × 1): o JSON do clipe, com `commit_do_jogo`, é a fonte dos números dele. Defeitos vistos
+para o formato resolver: (1) logo depois do gol a câmera vai para o meio-campo vazio enquanto os jogadores voltam; (2) no 9:16 o enquadramento mostra ~10 m
+de largura do campo de 32 m e às vezes a parede/arquibancada no terço de cima; (3) não há placar nem relógio no canvas (o placar do laboratório é HTML); (4) mudo.
+Ritmo: ~3–4 s de parede por segundo de vídeo nesta máquina, carregada.
+
+## 4. O formato de vídeo que faz sentido
+
+**Proposta (a decisão é do Adrian; vira nó no Grimório, `--projeto blue-lock`):** o que o jogo já mostra bem é **o lance perto do gol com personagens
+reconhecíveis** — 30 s de 3×3 deram 5 a 8 chutes, 3 a 4 defesas do robô e 1 a 2 gols. Duas opções, da mais barata:
+
+- **(a) "Lance da partida" — recomendado para começar.** 3×3 com o elenco escolhido por time (ex.: Isagi/Bachira/Nagi × Rin/Barou/Reo), vertical 1080×1920,
+  câmera `bola`, **15–25 s** cortados do JSON: começa ~4 s antes de um `shot` que termina em `goal` ou `save` e acaba 2 s depois (antes do recomeço vazio).
+  Placa no 1º segundo com os seis nomes ("ISAGI × RIN"), placar queimado no topo, som de chute/defesa/torcida pelos eventos. Sai de partidas inteiras gravadas
+  por faixa de sementes, sem escolher semente.
+- **(b) "Golpe do personagem".** Os cenários do laboratório (`src/scenarios.ts`: "Rin · curva ao alvo", "Barou · chute do Rei", "Nagi · bola alta", "Duelo
+  de drible" do Bachira…) montam a situação e a IA decide sozinha; 8–12 s por golpe, câmera `character`. Mais fiel ao mangá, mas cada cenário precisa ser
+  chamado de fora (`prepareScenario`) e conferido um a um.
+- O que **não** serve: câmera `overview` no vertical (jogador de ~15 px) e a partida inteira de 2 min sem corte.
+
+Falta para qualquer opção: o corte por evento e a placa/placar (nosso, por ffmpeg, a partir do JSON), o som (o mp4 sai mudo), e a câmera depois do gol (§7).
+
+## 5. O vigia da main
+
+`bluelock/vigia.py`, uma olhada a cada 30 min pela tarefa do Agendador `NeuralFights_bluelock_main` (lançador `bluelock_vigia.cmd`, log em
+`outputs/bluelock_vigia.txt`, estado em `%LOCALAPPDATA%\neural-fights\bluelock\vigia.json`, histórico em `...\bluelock\mudancas.jsonl`):
+
+1. `git fetch origin main` no espelho. Sem rede: só log; na 6ª falha seguida (3 h), um aviso.
+2. Confere que o espelho continua espelho: no ramo `main` e limpo (`git status --porcelain` vazio). Sujo ou fora da main = alguém escreveu lá: **avisa uma
+   vez e para**, sem puxar nem limpar.
+3. `origin/main` igual ao HEAD: nada.
+4. `origin/main` andou mas não descende do HEAD (force-push/rebase): **avisa uma vez por commit remoto e para**, com o comando de alinhar à mão.
+5. Fast-forward (`git merge --ff-only origin/main`, o mesmo que o `pull --ff-only` faria depois do fetch); registra commits, arquivos, pastas, versão do
+   `package.json` e os **pontos de contato** que mudaram (`src/field.ts`, `src/simulation.ts`, `src/characters.ts`, `src/visual-state.ts`, `src/replay.ts`,
+   `src/main.ts`, `index.html`, `package.json`, `package-lock.json` — o que o nosso gravador usa).
+6. `npm ci` se o `package-lock.json` mudou (ou falta `node_modules`) e `npm test -- --testTimeout=60000` (§2: com 5 s, a máquina ocupada derruba testes
+   por tempo; o aviso ainda conta à parte quantos estouraram). Pesado: só com `pode_pesado()`; senão **adia** (o pull já foi feito) e
+   tenta na próxima olhada; passadas 3 h, avisa sem teste. Pushes seguidos durante o adiamento viram **um** aviso só.
+7. Aviso no Telegram (`remoto --avisar`, o mesmo porteiro dos outros) e **um pedido na Mesa** ("Blue Lock main mudou: … — rever a integração", Codex
+   executor, `alvo=bluelock-main`: enquanto o anterior estiver aberto, o novo junta nele).
+
+Nunca roda commit, push, checkout, reset, clean nem stash — há teste que confere os subcomandos usados (`bluelock/test_vigia.py`, contra repositórios git de
+verdade: main parada, main andou, lock mudou, teste vermelho, não-fast-forward, espelho sujo, fora da main, adiado e concluído, adiado além do prazo, dois
+pushes num aviso, espelho inexistente, sem rede, trava ocupada).
+
+```
+python -m bluelock.vigia olhar          # uma olhada agora (imprime o resultado)
+python -m bluelock.vigia status         # o estado guardado
+python -m bluelock.vigia instalar       # cria a tarefa (30 min, oculta, endurecida, limite 45 min)
+python -m bluelock.vigia remover
+```
+
+**Estado da main conferido:** `c6f2c87` (19/10/2026, 10:16 — o próprio vigia, rodado a seco com aviso e pedido dublados, puxou `3e6e12d..c6f2c87`: 7
+commits, 152 arquivos, mexeu em `package.json`, `src/main.ts`, `src/replay.ts`, `src/simulation.ts`; `npm test` 1551/1551; o gravador regravou 30 s sem erro
+nesse commit). Quem atender um pedido "Blue Lock main mudou" atualiza esta linha.
+
+## 6. Contas e o caminho até publicar
+
+**Contas (19/10).** O canal `zombie` de `random_builds/builds/contas.py` virou **`bluelock`**, com as MESMAS contas: YouTube (API) `zombie_survivores`
+(canal "Zombie survivores", `UCzQkLt06RV6SydW5vztBnmA`), YouTube web `zombie_survivores` (a sessão única do Google) e TikTok `zombie_surviv0rs`
+(`@zombie_surviv0rs`). Escolhido assim por ser o mais simples que não quebra nada:
+
+- **nada muda no registro** (`%LOCALAPPDATA%\neural-fights\contas.json`, que ainda diz `"zombie"`): `CANAIS_ANTIGOS = {"zombie": "bluelock"}` faz
+  `ativa()`/`explicita()` lerem a escolha antiga até alguém escolher para o `bluelock`; `escolher(..., "bluelock", ...)` grava no novo e apaga o antigo;
+- **nenhum login se move**: os nomes de conta são os destinos reais, e renomear moveria a pasta do Chrome/o arquivo de credencial (`renomear()`);
+- `"zombie"` continua aceito como apelido; `bluelock` **não** está em `CANAIS_PUBLICANDO` (não publica, não cobra conformidade).
+
+Login medido em 19/10 (leitura pura, `tem_login`): YouTube API `zombie_survivores` **tem credencial**; TikTok `zombie_surviv0rs` **tem perfil com
+cookies**; o YouTube web usa a sessão única do Google (a mesma dos outros canais) e o destino é o id do canal. Se algum vencer, o Adrian roda (janela
+visível, ele mesmo loga):
+
+```
+cd E:\projetos\random_builds
+python -m builds.publicar.tiktok --login --canal bluelock
+python -m builds.publicar.youtube_web --login --canal bluelock
+```
+
+**Renomear o canal nas plataformas** (de "Zombie survivores" para algo Blue Lock) é do Adrian, no Studio/TikTok; o id não muda, então nada aqui quebra. Se ele
+quiser o nome de conta no padrão "nome = destino", o comando é `contas.renomear(...)` com o Chrome daquele perfil FECHADO — fica para depois, com ele.
+
+**Até publicar (nada disso está feito; a publicação automática NÃO está ligada):**
+
+1. Formato aprovado pelo Adrian (§4) → nó no Grimório (`--projeto blue-lock`).
+2. Lote de gravações por faixa de sementes (nunca escolher a que deu gol), na fila de dia, fora da janela das postagens e sem LoL.
+3. A ponte com a Publicação: título no 1º segundo, placa/placar, som (o mp4 sai mudo; o JSON tem os eventos para desenhar som), estoque do `postar.py` lendo
+   o JSON, `CANAIS` das métricas e o `ID_DE_VIDEO` da confiabilidade (os mesmos buracos que o zombie tinha — ver `docs/sessoes/jogo-zombie.md` §6).
+4. Só então `bluelock` entra em `CANAIS_PUBLICANDO` e na grade — decisão do Adrian.
+
+## 7. Propostas para o Adrian (coisas que só ele faz no repositório dele)
+
+Nada disso é necessário para gravar hoje (o gravador funciona de fora); são o que deixaria o vídeo melhor e o nosso lado menos frágil:
+
+1. **Uma API de gravação estável**, por exemplo `src/recording.ts` exportando `montarPartida(config)` e `quadro()`. Hoje dependemos de `Field.updateCamera`
+   (privado no TypeScript) e da assinatura de `Field.draw` e do construtor de `Simulation`; um renome dele quebra o nosso gravador sem aviso (o vigia avisa
+   quando esses arquivos mudam, mas não sabe se o contrato mudou).
+2. **Câmera de transmissão** (segue a bola, sabe de gol e recomeço, enquadra o lance no 9:16) — a nossa `bola` é uma aproximação de fora.
+3. **Placar/relógio e nomes no canvas** (opcional, ligável), para não precisarmos queimar texto por ffmpeg.
+4. **Eventos com quem fez** (o `MatchEvent` tem `time`, `kind` e `message` em texto: "Vermelho 2 · Sliding Shot"); um `actor`/`character` estruturado
+   deixaria a placa "BAROU — SLIDING SHOT" sair sem ler texto.
+5. **Auditorias que escrevam fora de `artifacts/`** (ou com `--saida`), para rodar no espelho sem sujá-lo.
+
+## 8. O que NÃO fazer
+
+- Escrever no espelho (§0). Nem "só um arquivo de config".
+- Rodar as auditorias do CI em lote aqui sem janela: horas de máquina.
+- Gravar ou testar com o League aberto ou de :19 a :55 das horas de postagem.
+- Escolher semente porque deu gol bonito.
+- Confiar num vídeo gravado antes de uma mudança da main: o JSON do próprio clipe (com `commit_do_jogo`) é a fonte.
+- Publicar, ou pôr `bluelock` em `CANAIS_PUBLICANDO`, sem o Adrian.
+
+## Contratos com outras partes
+
+| Contrato | Quem manda | Quem consome |
+|---|---|---|
+| O jogo (`src/`, a main) | o Adrian, no GitHub | nós, pelo espelho |
+| mp4 + JSON do `bluelock.gravar` | esta parte | Publicação (quando estrear) |
+| Aviso "a main andou" + pedido na Mesa | `bluelock.vigia` | o orquestrador / a parte `blue-lock` |
+| Contas do canal `bluelock` | Publicação (`random_builds/builds/contas.py`) | — |

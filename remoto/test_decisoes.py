@@ -555,7 +555,7 @@ def test_nao_ha_projeto_fora_da_lista(mundo):
     with pytest.raises(D.Recusa, match="projeto desconhecido"):
         D.adicionar("zombie", "X", "?", ["a"])
     assert set(D.PROJETOS) == {"geral", "builds", "historias", "publicacao", "metricas",
-                               "app-e-bot", "painel-e-vila", "jogo-zombie"}
+                               "app-e-bot", "painel-e-vila", "jogo-zombie", "blue-lock"}
 
 
 # ================================ auditoria profunda 11/10 (consertos 14/10)

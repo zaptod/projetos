@@ -522,6 +522,11 @@ campo, nunca supor. O veredito do lote (quais clipes passam nos critérios) sai 
 JSON de duelo traz o veredito do próprio clipe em `criterios_duelo` (critérios 1–3 e o tamanho do aldeão; os critérios 4–5 são do lote e ficam no `veredito.json`):
 dá para o estoque filtrar por `criterios_duelo.passa` lendo só o JSON, sem rodar Node. Se o filtro vale é parte da resposta ao `mvp-corte`.
 
+**19/10/2026 — as contas passaram para o Blue Lock.** O Adrian parou de desenvolver o zombie "por um tempo" e passou o TikTok e o YouTube dele para o
+simulador de futebol Blue Lock (`docs/sessoes/blue-lock.md`). Em `contas.py` o canal `zombie` virou `bluelock` (com `CANAIS_ANTIGOS = {"zombie":
+"bluelock"}`: o registro ainda escrito como `zombie` vale para o `bluelock`, sem mexer em login). **Se o zombie voltar a ter canal, ele precisa de contas
+novas.** O parágrafo abaixo descreve o registro como estava antes disso.
+
 **O canal no registro de contas.** `random_builds/builds/contas.py` tem `"zombie": "Jogo zombie (gravações da partida)"`, com o comentário de 15/09/2026 dizendo que o jogo mora em
 outro repositório, só grava o mp4, e não tem login nem publicação própria. No registro (`%LOCALAPPDATA%\neural-fights\contas.json`) as contas ativas do canal `zombie` são:
 **YouTube `zombie_survivores`**, **YouTube web `zombie_survivores`** e **TikTok `zombie_surviv0rs`** (o `0` no lugar do `o` é o nome real da conta, não erro de digitação).

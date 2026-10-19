@@ -40,19 +40,48 @@ PADRAO = "principal"
 CANAIS = {
     "builds": "Vídeos de build (roleta)",
     "historias": "Histórias por IA",
-    # Vertente nova de 15/09/2026: o jogo de zumbis mora em OUTRO repositorio
-    # (E:\jogo_ZOMBIE), que so grava o mp4 — ele nao tem login nem publicacao
-    # propria, e nem vai ter. Conta e postagem saem daqui, como nos outros.
-    "zombie": "Jogo zombie (gravações da partida)",
+    # 19/10/2026, pedido do Adrian: o simulador de futebol dele (Blue Lock,
+    # outro repositorio, espelho em E:\BLUE-Lock-project) passa a usar o
+    # TikTok e o YouTube do zombie, que parou de ser desenvolvido "por um
+    # tempo" e nunca publicou. O canal do PRODUTO troca; as CONTAS nao: os
+    # nomes (`zombie_survivores`, `zombie_surviv0rs`) sao os destinos reais
+    # e renomea-las moveria pasta de login. Ver `CANAIS_ANTIGOS`.
+    "bluelock": "Blue Lock (partidas do simulador de futebol)",
     "geral": "Vale para tudo (quando o canal não tem conta própria)",
 }
 
+# Nome antigo de canal -> o canal que herdou as contas dele. O registro
+# (`contas.json`, fora do git) continua dizendo `"zombie": ...` em cada
+# servico ate alguem escolher conta para o `bluelock`; `ativa()` e
+# `explicita()` leem o antigo quando o novo nao tem escolha, e `escolher()`
+# grava no novo e apaga o antigo. Assim a troca vale JA, sem tocar no
+# registro nem em login. Pedir pelo nome velho (`canal="zombie"`) e o mesmo
+# que pedir pelo novo. Se o jogo zombie voltar a ter canal, ele precisa de
+# contas NOVAS — estas agora sao do Blue Lock — e sai daqui.
+CANAIS_ANTIGOS = {"zombie": "bluelock"}
+
 # Os canais que PUBLICAM hoje: so deles `conformidade()` cobra conta propria
-# (PUB-6, 14/10/2026). O `zombie` ainda nao publica e gerava 3 alertas que
-# nunca apagavam — o "TUDO DENTRO DO PADRAO" da auditoria de contas nunca
-# aparecia. Ele entra aqui quando estrear; `CANAIS` fica igual, para o app
-# poder escolher conta para ele antes disso.
+# (PUB-6, 14/10/2026). O `bluelock` (antes `zombie`) ainda nao publica e
+# gerava 3 alertas que nunca apagavam — o "TUDO DENTRO DO PADRAO" da
+# auditoria de contas nunca aparecia. Ele entra aqui quando estrear; `CANAIS`
+# fica igual, para o app poder escolher conta para ele antes disso.
 CANAIS_PUBLICANDO = ("builds", "historias")
+
+
+def canal_atual(canal: str) -> str:
+    """O nome de hoje de um canal (`zombie` -> `bluelock`)."""
+    return CANAIS_ANTIGOS.get(canal, canal)
+
+
+def _escolha(escolhas: dict, canal: str) -> str | None:
+    """A conta escolhida para o canal, lendo tambem o nome antigo dele."""
+    canal = canal_atual(canal)
+    if escolhas.get(canal):
+        return escolhas[canal]
+    for antigo, novo in CANAIS_ANTIGOS.items():
+        if novo == canal and escolhas.get(antigo):
+            return escolhas[antigo]
+    return None
 
 # Servicos com login. `tipo` diz o que e a credencial:
 #   perfil    -> uma pasta de Chrome (o login mora no cookie)
@@ -220,7 +249,7 @@ def ativa(servico: str, canal: str = "geral") -> str:
     """
     bloco = estado()["servicos"].get(servico, {})
     escolhas = bloco.get("ativa") or {}
-    nome = escolhas.get(canal) or escolhas.get("geral") or PADRAO
+    nome = _escolha(escolhas, canal) or escolhas.get("geral") or PADRAO
     disponiveis = bloco.get("contas") or [PADRAO]
     return nome if nome in disponiveis else PADRAO
 
@@ -408,6 +437,7 @@ def escolher(servico: str, canal: str, nome: str) -> None:
     """Define a conta ATIVA daquele servico naquele canal."""
     if servico not in SERVICOS:
         raise KeyError(f"servico desconhecido: {servico!r}")
+    canal = canal_atual(canal)
     if canal not in CANAIS:
         raise KeyError(f"canal desconhecido: {canal!r}")
     nome = _limpar_nome(nome)
@@ -415,7 +445,12 @@ def escolher(servico: str, canal: str, nome: str) -> None:
         bloco = dados["servicos"][servico]
         if nome not in bloco["contas"]:
             bloco["contas"].append(nome)
-        bloco.setdefault("ativa", {})[canal] = nome
+        escolhas = bloco.setdefault("ativa", {})
+        escolhas[canal] = nome
+        # o nome antigo deste canal sai do registro: a escolha nova manda
+        for antigo, novo in CANAIS_ANTIGOS.items():
+            if novo == canal:
+                escolhas.pop(antigo, None)
         _gravar(dados)
 
 
@@ -492,7 +527,7 @@ def explicita(servico: str, canal: str) -> bool:
     pergunta isto antes.
     """
     ativa_do_canal = (estado()["servicos"].get(servico, {}) or {}).get("ativa") or {}
-    return bool(ativa_do_canal.get(canal))
+    return bool(_escolha(ativa_do_canal, canal))
 
 
 def destino(servico: str, canal: str) -> dict:
@@ -620,6 +655,7 @@ def oauth_vivo(canal: str = "geral", *, conta: str | None = None) -> dict:
     A queda para `principal` continua valendo em `ativa()`, onde ela e regra.
     Aqui, onde a pergunta e sobre UM canal, ela so esconde o engano.
     """
+    canal = canal_atual(canal)
     if canal not in CANAIS:
         dica = (" — esse e o nome de uma CONTA; use conta=" + repr(canal)
                 if canal in contas("youtube") else "")

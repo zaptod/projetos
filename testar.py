@@ -107,6 +107,8 @@ SUITES = (
     ("esteira de sprites", RAIZ, _pytest("esteira_sprites")),
     ("palco", RAIZ, _pytest("palco/testes")),
     ("ferramentas", RAIZ, _pytest("ferramentas")),
+    # O vigia da main e o gravador do Blue Lock (19/10/2026).
+    ("blue lock", RAIZ, _pytest("bluelock")),
     # A maior suite do repositorio. Vem por ultimo por ser a mais cara.
     ("neural_fights", RAIZ, _pytest("tests")),
 )

@@ -17,7 +17,7 @@ Um chat longo piora: esquece decisões, repete erro e deixa entrega parada.
 - **Compactação:** antes de cada uma, o hook gera o retrato sozinho, mas a NOTA só sai do `/renovar`.
 
 ## 3. A equipe (detalhes em `docs/agentes/EQUIPE.md`)
-- **Partes do sistema:** `publicacao`, `builds`, `historias`, `metricas`, `app-e-bot`, `painel-e-vila`, `jogo-zombie`. Cada uma lê o seu `docs/sessoes/<parte>.md` antes de mexer.
+- **Partes do sistema:** `publicacao`, `builds`, `historias`, `metricas`, `app-e-bot`, `painel-e-vila`, `jogo-zombie`, `blue-lock`. Cada uma lê o seu `docs/sessoes/<parte>.md` antes de mexer.
 - **`integrador`:** aplica as entregas do Codex que o vigia barrou: resolve conflitos, roda os testes e commita por caminho.
 - **`conferente`:** NADA vai ao Adrian sem ele. Abre a tela de verdade (Chrome 390x844 para o app; captura para o launcher e o Godot), roda o caminho real em vez do dublê, e olha as imagens sobre fundo de contraste.
 - **Codex** (`python -m remoto.delegar`): trabalho grande e bem especificado, em worktree. Quem aplica é o vigia; quem confere é o `conferente`.
