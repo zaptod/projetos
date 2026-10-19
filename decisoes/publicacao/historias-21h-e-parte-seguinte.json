@@ -10,6 +10,16 @@
       "opcao": "fazer",
       "origem": "leitor",
       "tipo": "nada"
+    },
+    {
+      "alvo": "",
+      "em": "2026-10-19T10:22:57",
+      "evento": "2026-10-19T10:22:52",
+      "linha": 193,
+      "nota": "revisão pós-conferente",
+      "opcao": "fazer",
+      "origem": "leitor",
+      "tipo": "nada"
     }
   ],
   "contexto": "",
