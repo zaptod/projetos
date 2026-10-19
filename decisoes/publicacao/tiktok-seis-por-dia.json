@@ -38,6 +38,13 @@
       "em": "2026-10-19T10:22:39",
       "opcao": "seis",
       "origem": "cli"
+    },
+    {
+      "anterior": "seis",
+      "comentario": "REVISTO de novo após a 2ª conferência (19/10): teste de 1 semana com 6/dia e ~10-12 h sem postar à noite; essa pausa é a menos provada (1/5 no builds). Se a semana não mostrar efeito, o próximo teste é um dia inteiro sem postar (pausas de 22 h+ deram certo 6/6 e 3/3).",
+      "em": "2026-10-19T11:22:14",
+      "opcao": "seis",
+      "origem": "cli"
     }
   ],
   "id": "tiktok-seis-por-dia",
@@ -66,8 +73,8 @@
   "situacao": "decidida",
   "titulo": "TikTok: de 10 para 6 postagens por dia",
   "vigente": {
-    "comentario": "REVISTO pelo orquestrador após o conferente refazer as contas (19/10): vira TESTE de 1 semana, não regra. A pausa de 10-16 h só funcionou 1 em 7 vezes; o ganho veio das pausas de 22 h+. Medir views/dia antes e depois (meados de setembro, com 6/dia, deu ~300/dia; hoje ~15). Projeção honesta: 20 a 300/dia, certeza 'provável'.",
-    "em": "2026-10-19T10:22:39",
+    "comentario": "REVISTO de novo após a 2ª conferência (19/10): teste de 1 semana com 6/dia e ~10-12 h sem postar à noite; essa pausa é a menos provada (1/5 no builds). Se a semana não mostrar efeito, o próximo teste é um dia inteiro sem postar (pausas de 22 h+ deram certo 6/6 e 3/3).",
+    "em": "2026-10-19T11:22:14",
     "opcao": "seis"
   }
 }
