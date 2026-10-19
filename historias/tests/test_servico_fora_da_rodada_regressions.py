@@ -78,6 +78,10 @@ class _Dia13(unittest.TestCase):
         self._trocar(conferencia, "conferir_tudo",
                      lambda log=None, origem=None:
                      self.conferencias.append(origem))
+        from builds.publicar import analise
+        self.analises = []
+        self._trocar(analise, "do_dia",
+                     lambda log=None, **k: self.analises.append(1) or {})
         self.avisos = []
         self._trocar(metricas, "avisar_coleta_atrasada",
                      lambda agora=None, **k: self.avisos.append(

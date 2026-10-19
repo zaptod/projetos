@@ -60,8 +60,8 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 
 Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
 de novo em 28/09 (madrugada e noite), em 05/10 (a conferência no serviço do
-dia, §3) e em 14/10 (a coleta que nem rodou em 13/10, §3) está com a data e
-a hora. Onde um número da fotografia
+dia, §3), em 14/10 (a coleta que nem rodou em 13/10, §3) e em 19/10 (a
+análise dos vídeos e a cobertura da coleta, §3) está com a data e a hora. Onde um número da fotografia
 não reproduziu, está dito. O que eu não medi está marcado como **não medi**,
 nunca preenchido por suposição.
 
@@ -72,7 +72,10 @@ nunca preenchido por suposição.
 | views/likes/comentários | Data API v3 → `*/outputs/_metricas/<youtube_id>.json` | MEDIDO |
 | % assistido e curva | Analytics API (`yt-analytics.readonly`) → mesmo arquivo | MEDIDO |
 | origem do tráfego | Analytics, `dimensions=insightTrafficSourceType` | MEDIDO, **não fica em disco** |
-| inscritos / vídeos / views do canal | Data API `channels?part=statistics` | MEDIDO, **nenhum código consulta** |
+| inscritos / vídeos / views do canal | Data API `channels?part=statistics` → `random_builds/outputs/_analise/canal_<canal>.json` | MEDIDO (desde 19/10, pela análise) |
+| views do CANAL por dia, inscritos ganhos/perdidos | Analytics `dimensions=day` → mesmo arquivo | MEDIDO (desde 19/10) |
+| views ganhas desde ontem, por vídeo | `random_builds/outputs/_analise/historico/<dia>.json` (fotografia diária) | MEDIDO (a 1ª é de 19/10; antes disso não existe série por vídeo) |
+| achados (o que mudar) | `random_builds/outputs/_analise/analise.json` + `index.html`, Biblioteca do app | derivado, com teste de significância |
 | views/dia, "dias no ar" | `metricas.views_por_dia` (piso de 1 dia) | derivado |
 | TikTok (views, tempo, curva, tráfego) | JSON do Studio → `*/outputs/_metricas_tiktok/*.json` | MEDIDO |
 | o que saiu, quando, visibilidade | os dois `publicados.jsonl` | MEDIDO |
@@ -525,6 +528,108 @@ confere**.
 registros, um sem id** (medido em 28/09). Agora pula a marca **pelo nome
 exato** — id do YouTube pode começar com `_` (`_bHp95XZpgc`).
 
+### A análise dos vídeos (19/10/2026)
+
+Pedido do Adrian: "quero poder ver onde estou acertando, errando, o que
+mudar". `builds/publicar/analise.py` lê a coleta da manhã (nada de rede,
+salvo a série do canal), liga cada vídeo ao que ele é (canal, formato,
+arena/zebra do duelo, nota do build, parte/estrutura/narrador da história,
+duração, hora, dia da semana) e escreve achados com **uma** recomendação e o
+tamanho esperado do efeito. Mora em `builds` (e não em `panorama`) porque o
+serviço do dia das histórias a chama, e `contos` não importa `panorama`.
+
+Onde o Adrian vê: **app → Ver → Biblioteca → "Análise dos vídeos"** (página
+HTML trocada todo dia por `python -m remoto.biblioteca guardar`, por
+processo — `builds` não importa `remoto`); no PC,
+`random_builds/outputs/_analise/index.html`. Atualiza sozinha como **4º passo
+do serviço do dia** (`agenda._servico_do_dia_sem_trava`, depois da
+conferência). Nenhuma tarefa nova no Agendador.
+
+```bash
+python -m builds.publicar.analise --ver                 # só mostra, não grava
+python -m builds.publicar.analise                       # grava json + html + fotografia
+python -m builds.publicar.analise --rede --biblioteca   # o que o serviço do dia faz
+```
+
+Regras (as três perguntas da lei, respondidas no código e nos testes de
+`random_builds/tests/test_analise_dos_videos_regressions.py`):
+
+- **(a) zero**: sem vídeo, `estado: sem_dados`, faixa vermelha "Nada aqui
+  quer dizer que está tudo bem", zero achados, saída 1. Parte com ledger e
+  sem arquivo acende aviso. Sem marca de coleta = `velha`, nunca `ok`.
+  Tendência zero contra zero = `parado`, não "estável".
+- **(b) denominador**: mediana por vídeo (não média: o viral de 12.572 views
+  faria o TikTok de histórias parecer vivo); só vídeo público, com 3+ dias
+  no ar, dos últimos 28 dias; retenção só de vídeo com 20+ views; plataformas
+  e canais nunca somados.
+- **(c) exceção**: série do canal que não vem, Biblioteca que recusa, arquivo
+  ilegível → `falhas` → aviso na página e **uma** linha de erro `metricas` no
+  diário (`[analise] ...`).
+- Amostra pequena: cada comparação passa por Mann-Whitney; `claro` (p < 0,01
+  e 10+ de cada lado), `provável` (p < 0,05 e 8+) ou vai para "Ainda não dá
+  para dizer". Retenção por duração não vira achado (vídeo curto tem % maior
+  sozinho).
+
+**A coleta, medida em 19/10 ~09:30 (só disco):**
+
+| parte | linhas no ledger | vídeos medidos | com retenção | o que falta |
+| --- | --- | --- | --- | --- |
+| builds YouTube | 316 (29/08→19/10) | 311 (291 públicos) | 268 | 15 privados, 5 sem status, 43 sem linha na Analytics (poucas views) |
+| builds TikTok | 303 (27/08→19/10) | 303 (303/303 casados) | 285 | 218 com a curva relida há mais de 7 dias (o Studio relê só 40 por rodada) |
+| histórias YouTube | 340 (08/09→19/10) | 332 (314 públicos) | 244 | **8 linhas sem `youtube_id`** (09-10/09 e 07/10), 3 privados, 15 sem status, 88 sem linha na Analytics |
+| histórias TikTok | 339 (31/08→19/10) | 339 (336/339 casados) | 338 | 3 envios que o Studio não lista (números parados em 17 e 20/09) |
+
+Total: **1.285 vídeos com número**. Marca de 19/10 completa nas 4 partes
+(builds 311, 589 analytics, 7 data, 1 token, 1.281 s).
+
+**O canal por dia** (1ª busca, 19/10 09:56; 1 Analytics + 1 Data por canal; a
+Analytics vem com ~3 dias de atraso, último dia 16/10): builds **7.681 views
+nos 7 dias até 16/10 contra 5.615 nos 7 anteriores (+37%)**, 13 inscritos,
+27.446 views e 322 vídeos declarados; histórias **2.508 contra 5.347
+(−53%)**, 43 inscritos, 17.679 views, 341 vídeos. Em 56 dias: builds +17/−5
+inscritos, histórias +45/−11. (Em 27/09 eram 3 e 18 inscritos.) A queda das
+histórias casa com o achado 3: o horário das 21h ficou **vazio em 13, 15 e
+16/10**.
+
+Armadilha medida na 1ª rodada: vídeo postado **depois** da coleta (09:37,
+coleta às 07:24) aparecia como "do ledger sem número". Agora conta em
+`depois_da_coleta`, não em `sem_arquivo`.
+
+Dias de coleta, de 01 a 19/10, pela linha `[metricas] dia-...` de
+`historias/outputs/_logs/auto_*.txt`: **11 completos** (01, 04, 05, 06, 11,
+12, 15, 16, 17, 18, 19), **4 parciais** (03: histórias TikTok; 07 e 08:
+histórias YouTube com 401 no `playlistItems`; 14: histórias YouTube),
+**2 com tudo falhando** (02: DNS; 09: conexão) e **2 sem rodar** (10 e 13).
+28 a 30/09: **não medi** (a linha de marca ainda não existia). Como cada
+arquivo guarda o total da vida do vídeo, dia sem coleta não abre buraco no
+total — só não existe série diária por vídeo antes da fotografia de 19/10.
+
+**Os achados de 19/10** (`--ver`, dados de 19/10 07:24–08:03):
+
+1. **TikTok sufocado pela grade de 10** (os dois perfis, `claro`). Depois de
+   10 h ou mais sem postar, os 6 primeiros posts têm mediana de **97 views**
+   (builds, 57 posts) e **92,5** (histórias, 42); do 7º em diante, **1**
+   (221 e 274 posts). Com pausa de 6,5 h — a maior da grade de 10, 00:37 →
+   06:37 — a separação some. Hoje: 7,5 e 8,2 posts/dia, **~14 e ~8 views por
+   dia** no perfil. A grade diz (comentário de 15/09) que "a métrica do
+   TikTok diz se a distribuição aguenta os dez": **não aguenta**. Sugestão
+   da página: 6 por dia, 09:37 → 21:37 (pausa de 12 h); efeito se o padrão
+   se repetir: ~580 e ~555 views/dia.
+2. **Duelo × estreia no YouTube de builds** (`claro`): mediana 111 views /
+   54% visto (n=89) contra build 81 / 35% (n=47) e estreia 29 / 13% (n=27).
+   Trocar as ~1,3 estreias/dia por duelo: ~+105 views/dia.
+3. **Histórias no YouTube: um vídeo decide o dia** (`claro`): o mais visto
+   leva **93%** das views do dia (mediana de 24 dias); em 18 deles foi o das
+   21h (mediana 337 contra 3 dos outros horários). Os outros ~7 somam ~32/dia.
+   Em builds a fatia é 29% — lá cada vídeo é distribuído por si.
+4. **Histórias: ninguém segue para a parte seguinte** (`claro`): em 21 partes
+   com 100+ views, a seguinte teve **0,4 views para cada 100**.
+5. Sem diferença clara (a página põe em "ainda não dá para dizer"): horário
+   em builds, duração dentro do mesmo formato. Medido à parte (script de
+   exploração, os 93 duelos com 3+ dias; a página ainda não compara isto):
+   arena do duelo (Duto 117, Poço 111, Torre 99, n≈30 cada), zebra (138 ×
+   105, n=11), estrutura e narrador da história — nada que passe do acaso.
+
 ## 4. As conferências que faltam, e o número que deveria acender
 
 | Falta | Hoje, medido | Acende quando |
@@ -642,6 +747,10 @@ python -c "from builds.publicar import metricas as m; import json; print(json.du
 Nessa ordem eles respondem: o canal tem o que o ledger diz e a grade foi
 cumprida? saiu vídeo hoje? dá para provar? algum canal está morto? a medição
 ainda mede?
+
+E a sexta, que é a do Adrian — **o que está dando certo e o que mudar**:
+`python -m builds.publicar.analise --ver` (só lê; sai com 1 quando não há
+dado ou a coleta está velha).
 
 ## 7. O que NÃO fazer
 

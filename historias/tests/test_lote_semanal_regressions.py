@@ -480,9 +480,15 @@ class ServicoDoDiaTests(_Mundo):
                      lambda log=None, chave=None: chaves.append(chave))
         self._trocar(tempos, "consolidar", lambda: self.pasta / "t.json")
         self._trocar(conferencia, "conferir_tudo", lambda log=None: None)
+        from builds.publicar import analise
+        passos = []
+        self._trocar(analise, "do_dia",
+                     lambda log=None, **k: passos.append("analise") or {})
         self.agora = QUINTA
         agenda._servico_do_dia({}, False, lambda *_a: None)
         self.assertEqual(["dia-2026-10-08"], chaves)
+        # A analise da pagina "Analise dos videos" e o 4o passo do servico.
+        self.assertEqual(["analise"], passos)
         self.assertFalse(agenda.servico_pendente(self.agora))
 
     def test_trabalhar_so_chama_o_servico_quando_o_plano_pede(self):

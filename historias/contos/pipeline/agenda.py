@@ -1801,6 +1801,7 @@ def _servico_do_dia_sem_trava(config: dict, headless: bool, log) -> None:
        4000 linhas, entao a medicao fina dura menos de um dia nele: sem esta
        consolidacao, a serie que diz "o que piorou" nunca existiria.
     3. CONFERENCIA do canal.
+    4. ANALISE dos videos (`builds.publicar.analise.do_dia`).
 
     O parecer do Gemini no estoque (`revisar_estoque`) NAO mora aqui: ele
     roda a cada passo da janela, para a historia feita as 10h ser assistida
@@ -1827,6 +1828,16 @@ def _servico_do_dia_sem_trava(config: dict, headless: bool, log) -> None:
             conferencia.conferir_tudo, log))
     except Exception as exc:                                   # noqa: BLE001
         log(f"[auto] a conferencia do canal falhou: "
+            f"{type(exc).__name__}: {exc}")
+    # 4. ANALISE dos videos (19/10/2026): le a coleta do passo 1 e escreve a
+    #    pagina "Analise dos videos" da Biblioteca do app. Por ULTIMO porque
+    #    depende da coleta, e nunca derruba o servico: o que falha la dentro
+    #    ja vira linha de erro `metricas` no diario.
+    try:
+        from builds.publicar import analise
+        analise.do_dia(log=log)
+    except Exception as exc:                                   # noqa: BLE001
+        log(f"[auto] a analise dos videos falhou: "
             f"{type(exc).__name__}: {exc}")
     _marcar_servico(agora)
 
