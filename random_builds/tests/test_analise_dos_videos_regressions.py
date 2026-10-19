@@ -249,15 +249,81 @@ class PausaDoTikTokTests(unittest.TestCase):
         self.assertLess(blocos[1]["pausa"], 10.0)
         self.assertEqual("5 a 10 h", analise._faixa(blocos[1]["pausa"]))
 
-    def test_projecao_sai_da_semana_de_6_por_dia_e_e_uma_faixa(self):
+    def test_projecao_sai_so_dos_dias_de_6_e_nao_se_sobrepoe_aos_de_9(self):
+        # Medido pelo conferente em 19/10: TikTok de builds de 11 a 15/09 teve
+        # 8, 4, 6, 6, 9 posts por dia. O regime de 6 por dia (grade.py) foi de
+        # 13/09 ate a grade de 10 em 15/09: so 13 e 14/09 (331 e 581 views).
+        # O "piso" de 18 (11/09, 8 posts) e os 12.821 (15/09, 9 posts) saem, e o
+        # 15/09 conta so nos "9 ou mais".
         regs = _blocos_do_tiktok()
-        ini = analise.SEMANA_DE_6_POR_DIA[0]
-        for d, total in enumerate((18, 331, 581)):
-            regs.append(tk(f"s{d}", datetime(ini.year, ini.month, ini.day, 12) + timedelta(days=d),
-                           total))
+        for dia, n, total in ((11, 8, 18), (12, 4, 331), (13, 6, 331), (14, 6, 581),
+                              (15, 9, 12821)):
+            for i in range(n):
+                regs.append(tk(f"s{dia}-{i}", datetime(2026, 9, dia, 6, 5) + timedelta(hours=2 * i),
+                               total - (n - 1) if i == 0 else 1))
         a, _ = analise.achado_pausa_tiktok(regs, AGORA, "builds")
-        self.assertEqual([18, 331, 581], a["numeros"]["semana_de_6"])
-        self.assertIn("entre ~18 e ~331 views por dia", a["quanto"])
+        self.assertEqual(["2026-09-13", "2026-09-14"], a["numeros"]["dias_de_6"])
+        self.assertEqual([331, 581], a["numeros"]["semana_de_6"])
+        self.assertEqual(12821, a["numeros"]["dias_com_9_ou_mais"])
+        self.assertIn("só 2 dias inteiros", a["quanto"])
+        self.assertIn("331 views em 13/09 e 581 em 14/09", a["quanto"])
+        self.assertIn("entre ~331 e ~581 views por dia", a["quanto"])
+        self.assertIn("Com só 2 dias, é um sinal", a["quanto"])
+        self.assertNotIn("~18 ", a["quanto"])
+        self.assertNotIn("12.821 em", a["quanto"])
+
+    def test_dia_de_9_dentro_do_regime_nao_entra_nos_dois_grupos(self):
+        regs = _blocos_do_tiktok()
+        for dia, n in ((13, 6), (14, 9)):
+            for i in range(n):
+                regs.append(tk(f"r{dia}-{i}", datetime(2026, 9, dia, 6, 5) + timedelta(hours=2 * i),
+                               40))
+        a, _ = analise.achado_pausa_tiktok(regs, AGORA, "builds")
+        self.assertEqual(["2026-09-13"], a["numeros"]["dias_de_6"])
+        self.assertEqual(360, a["numeros"]["dias_com_9_ou_mais"])
+        self.assertIn("só 1 dia inteiro", a["quanto"])
+
+    def test_dia_com_video_novo_nao_entra_nos_9_ou_mais(self):
+        # Dia maduro pela IDADE de cada video: 16/10 tem a noite com 2,4 dias.
+        regs = _blocos_do_tiktok()
+        for i in range(9):
+            regs.append(tk(f"n{i}", datetime(2026, 9, 20, 6, 5) + timedelta(hours=2 * i), 2))
+            regs.append(tk(f"m{i}", datetime(2026, 10, 16, 6, 37) + timedelta(hours=2 * i), 50))
+        a, _ = analise.achado_pausa_tiktok(regs, AGORA, "builds")
+        self.assertEqual(18, a["numeros"]["dias_com_9_ou_mais"])
+
+    def test_a_pausa_do_teste_contra_um_dia_inteiro_parado(self):
+        # A frase "pausa longa nao garante" era desmentida pelos exemplos dela
+        # (30,1 h e 22,2 h deram certo; a de 12,1 h nao tinha 3 dias).
+        regs = _blocos_do_tiktok()
+        q = AGORA - timedelta(days=40)
+        # O primeiro post de todos nao tem pausa antes (nao conta); depois dele,
+        # 5 blocos de ~12 h sem postar, e so o primeiro da certo: 1 de 5.
+        regs.append(tk("abre", q - timedelta(hours=12), 1))
+        for d in range(5):
+            for i in range(3):
+                regs.append(tk(f"doze{d}-{i}", q + timedelta(hours=i), 100 if d == 0 else 1))
+            q += timedelta(hours=2 + 12)
+        a, _ = analise.achado_pausa_tiktok(regs, AGORA, "builds")
+        self.assertEqual(12.0, a["numeros"]["pausa_do_teste"])
+        self.assertEqual("10 a 16 h", a["numeros"]["faixa_do_teste"])
+        self.assertNotIn("Pausa longa não garante", a["vimos"])
+        self.assertIn("A pausa de ~12 h do teste é a que menos se provou (deu certo 1 de 5 vezes",
+                      a["vimos"])
+        self.assertIn("a de um dia inteiro parado (22 h ou mais) deu certo", a["vimos"])
+        self.assertIn("o próximo teste é um dia inteiro sem postar", a["vimos"])
+
+    def test_bloco_do_teste_que_ainda_junta_views_e_dito_e_nao_conta(self):
+        # Como o 18/10 12:47 (12,1 h): um bloco de ~12 h que ainda junta views.
+        regs = _blocos_do_tiktok()
+        base = AGORA - timedelta(days=1, hours=12) - timedelta(hours=12, minutes=6)
+        regs.append(tk("base", base, 1))
+        regs.append(tk("ontem", base + timedelta(hours=12, minutes=6), 1))
+        self.assertLess(regs[-1]["idade_dias"], analise.MADURO_DIAS)
+        a, _ = analise.achado_pausa_tiktok(regs, AGORA, "builds")
+        self.assertEqual(1, len(a["numeros"]["blocos_do_teste_juntando"]))
+        self.assertIn("ainda não tem 3 dias e não entra na conta", a["vimos"])
+        self.assertIn("ainda não foi medida", a["vimos"])
 
     def test_sem_a_semana_de_comparacao_nao_projeta(self):
         a, _ = analise.achado_pausa_tiktok(_blocos_do_tiktok(), AGORA, "builds")
@@ -374,6 +440,41 @@ class ConcentracaoESeguimentoTests(unittest.TestCase):
         # Os dias 1 a 3 atras nao tem post nenhum: "nenhum vídeo à noite".
         self.assertIn("nenhum vídeo à noite", a["vimos"])
 
+    def _noites(self):
+        regs = []
+        for d in range(12):
+            dia = AGORA - timedelta(days=4 + d)
+            for h in (6, 9, 12, 15, 18, 21, 22):
+                regs.append(yt(f"{d}-{h}", dia.replace(hour=h, minute=37),
+                               300 if h == 21 else 2, "historia", canal="historias"))
+        return regs
+
+    def test_maduro_e_a_idade_do_video_nao_o_dia_no_calendario(self):
+        # 19/10 09:00: "16/10 23:42 = 5" tem 2,4 dias no ar. Ficava sem "(ainda
+        # juntando views)" e contado como dia perdido porque o dia esta a 3
+        # dias no calendario.
+        regs = self._noites()
+        regs.append(yt("tarde", datetime(2026, 10, 16, 23, 42), 5, "historia", canal="historias"))
+        self.assertLess(regs[-1]["idade_dias"], analise.MADURO_DIAS)
+        a, _ = analise.achado_concentracao(regs, AGORA, "historias", "youtube")
+        dia = next(d for d in a["numeros"]["ultimos_7_dias"] if d["dia"] == "2026-10-16")
+        self.assertFalse(dia["maduro"])
+        self.assertIn("16/10 23:42 = 5 (ainda juntando views)", a["vimos"])
+        self.assertNotIn("2026-10-16", a["numeros"]["dias_perdidos"])
+
+    def test_dia_pela_metade_nao_entra_no_vencedor_do_dia(self):
+        # 16/10 tinha 3 de 8 videos com 3+ dias (a manha): o "vencedor" dele era
+        # da manha. Dia so entra inteiro.
+        regs = self._noites()
+        for h, v in ((0, 100), (3, 2), (6, 2)):
+            regs.append(yt(f"m{h}", datetime(2026, 10, 16, h, 37), v, "historia",
+                           canal="historias"))
+        regs.append(yt("noite", datetime(2026, 10, 16, 21, 38), 300, "historia",
+                       canal="historias"))
+        a, _ = analise.achado_concentracao(regs, AGORA, "historias", "youtube")
+        self.assertEqual(12, a["numeros"]["dias"])
+        self.assertEqual(12, a["numeros"]["dias_na_noite"])
+
     def test_vencedor_que_nao_e_da_noite_nao_vira_este_achado(self):
         regs = []
         for d in range(12):
@@ -478,6 +579,32 @@ class ColetaETextoTests(unittest.TestCase):
         self.assertTrue(any("não mostra mais; o número deles parou em 17/09" in x
                             for x in a["avisos"]), a["avisos"])
         self.assertFalse(any("nunca tiveram número" in x for x in a["avisos"]))
+
+    def test_retencao_conta_os_mesmos_videos_do_numero_de_hoje(self):
+        # Historias TikTok em 19/10: "336 com número desta coleta; em 338 dá
+        # para saber quanto as pessoas assistem" — a 2a conta incluia os 3
+        # parados. Agora: 3 com numero de hoje, 2 deles com retencao, e o
+        # parado dito a parte. E "1 postado" no singular.
+        hoje = [{"tiktok_id": f"t{i}", "post_time": 1, "views": 50,
+                 "media_percentual": 40.0 if i < 2 else None,
+                 "atualizado": "2026-10-19T07:30:00"} for i in range(3)]
+        parado = {"tiktok_id": "velho", "post_time": 1, "views": 5, "media_percentual": 30.0,
+                  "atualizado": "2026-09-17T07:00:00"}
+        linhas = [{"plataforma": "tiktok", "url": "x", "quando": "2026-10-10T12:07:00"}] * 4 + [
+            {"plataforma": "tiktok", "url": "x", "quando": "2026-10-19T09:37:00"}]
+        cob = analise.cobertura(entrada_vazia(
+            marca=MARCA_BOA, ledger={"historias": linhas},
+            salvas={("historias", "tiktok"): hoje + [parado]}))
+        parte = cob["partes"]["historias_tiktok"]
+        self.assertEqual((3, 3, 2, 1), (parte["medidos_hoje"], parte["com_retencao"],
+                                        parte["com_retencao_hoje"], parte["parados"]))
+        html_ = analise._cobertura_html(cob)
+        self.assertIn("3 vídeos têm número desta coleta; em 2 deles dá para saber quanto as "
+                      "pessoas assistem. Outro vídeo tem só o número antigo: o TikTok parou de "
+                      "mostrá-lo.", html_)
+        self.assertNotIn("em 3 dá para saber", html_)
+        self.assertIn("1 postado depois da coleta (entra na próxima)", html_)
+        self.assertNotIn("1 postados", html_)
 
     def test_view_no_singular(self):
         self.assertEqual("1 view", analise._v(1))

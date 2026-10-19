@@ -589,6 +589,14 @@ postados depois da coleta; histórias YouTube 341 linhas = 333 vídeos com id +
 arquivo = **336 com número de hoje + 3 com número parado** (17 e 20/09: o
 Studio não os lista mais — o "sem par" e o "parado" são os mesmos 3).
 
+Refeito às 11:4x (2ª volta do conferente): a página dizia "336 com número
+desta coleta; em 338 dá para saber quanto as pessoas assistem" — a 2ª conta
+(`com_retencao`) incluía os 3 parados. Agora a página usa
+`com_retencao_hoje`, dos MESMOS vídeos: **336 têm número desta coleta; em
+335 deles** dá para saber quanto assistem, e "outros 3 têm só o número
+antigo". `com_retencao` (338) continua no json. E "1 postados" virou "1
+postado (entra na próxima)" nas 3 partes em que aparecia.
+
 **O canal por dia** (1ª busca, 19/10 09:56; 1 Analytics + 1 Data por canal; a
 Analytics vem com ~3 dias de atraso, último dia 16/10): builds **7.681 views
 nos 7 dias até 16/10 contra 5.615 nos 7 anteriores (+37%)**, 13 inscritos,
@@ -596,11 +604,16 @@ nos 7 dias até 16/10 contra 5.615 nos 7 anteriores (+37%)**, 13 inscritos,
 (−53%)**, 43 inscritos, 17.679 views, 341 vídeos. Em 56 dias: builds +17/−5
 inscritos, histórias +45/−11. (Em 27/09 eram 3 e 18 inscritos.) A queda das
 histórias **não se explica só por noites sem vídeo às 21h**: em 13/10 (22:30
-= 286) e 15/10 (23:38 = 215) outro vídeo da noite levou o dia; só 16/10
-ficou sem vencedor (23:42 = 5) e 14/10 o das 21h fez 70. O que caiu foi o
-vencedor do dia: mediana de **286** views nos últimos 7 dias medidos contra
-**837** nos 7 anteriores. (A 1ª versão desta seção dizia "casa com as 21h
-vazias em 13, 15 e 16/10" — o conferente desmentiu.)
+= 286) e 15/10 (23:38 = 215) outro vídeo da noite levou o dia, e 14/10 o
+das 21h fez 70. O 16/10 (23:42 = 5) **ainda não conta**: em 19/10 11h esse
+vídeo tinha 2,5 dias no ar (a 2ª versão o chamava de "dia perdido" porque
+olhava o dia no calendário, não a idade do vídeo). O que caiu foi o
+vencedor do dia: mediana de **286** views nos últimos 7 dias inteiros
+medidos contra **934** nos 7 anteriores (a 2ª versão dizia 837: o 16/10
+entrava pela metade, 3 de 8 vídeos, com um "vencedor" da manhã de 3 views;
+agora só entra dia com TODOS os vídeos com 3+ dias). (A 1ª versão desta
+seção dizia "casa com as 21h vazias em 13, 15 e 16/10" — o conferente
+desmentiu.)
 
 Armadilha medida na 1ª rodada: vídeo postado **depois** da coleta (09:37,
 coleta às 07:24) aparecia como "do ledger sem número". Agora conta em
@@ -626,18 +639,38 @@ conserto está nos testes:
 - a projeção era "corte × mediana" (o melhor caso repetido);
 - a "parte seguinte" deixava entrar parte sem status e parte que saiu antes.
 
+A 2ª volta do conferente (sobre `89e6fc4`) achou mais cinco, também com
+teste que falha no `89e6fc4`: a "semana de 6 por dia" era 11 a 15/09 (só 13
+e 14/09 tiveram 6); "pausa longa não garante" desmentida pelos exemplos;
+"1 postados"; as duas contas da coleta do TikTok de histórias falando de
+vídeos diferentes; e "maduro" pela data no calendário em vez da idade do
+vídeo (no achado da noite e nos "dias com 9+ posts"). O mesmo erro de
+calendário deixava o dia pela metade entrar no "vencedor do dia".
+Números abaixo refeitos às 11:4x de 19/10 com o código novo.
+
 1. **TikTok: o perfil só aparece depois de descansar** (`provável`, os dois
    perfis). Unidade = **bloco** (posts depois de 5 h+ sem postar), em faixas
    fixas de pausa; "deu certo" = mediana dos 6 primeiros do bloco ≥ 20 views.
    Builds: **22 h+ → 6 de 6; 10–16 h → 1 de 5; 5–10 h → 4 de 32**. Histórias:
    **22 h+ → 3 de 3; 16–22 h → 1 de 1; 10–16 h → 2 de 3; 5–10 h → 3 de 33**.
-   Pausa longa não garante (12,1 h em 18/10 não deu certo em builds), e o
-   maior sucesso de histórias (12.572 views, 15/09 23:38) foi o **9º post do
-   dia**. Projeção pelo que já aconteceu: na semana de até 6 por dia (11 a
-   15/09) os vídeos de cada dia somaram 18 a 581 views em builds (dia do meio
-   331) e 20 a 12.821 em histórias (261); nos dias com 9+ posts, 15 e 11.
-   Faixa: **~18 a ~331** e **~20 a ~261** por dia, se repetir. Recomendação:
-   **testar 1 semana** com 6 por dia (09:37 → 21:37) e medir.
+   A pausa de ~12 h que o teste deixa (21:37 → 09:37) é a que menos se
+   provou (1 de 5 em builds, 2 de 3 em histórias; o bloco de 18/10, 12,1 h,
+   ainda não tem 3 dias e não conta); a de um dia inteiro parado (22 h+)
+   deu certo 6 de 6 e 3 de 3 — se a semana de teste não mostrar efeito, o
+   próximo teste é um dia inteiro sem postar. (A 2ª versão dizia "pausa
+   longa não garante", e os próprios exemplos a desmentiam: 30,1 h em 11/10
+   e 22,2 h em 09/10 deram certo nas histórias.) O maior sucesso de
+   histórias (12.572 views, 15/09 23:38) foi o **9º post do dia**.
+   Projeção pelo que já aconteceu: o regime de 6 por dia (`grade.py`) valeu
+   de 13/09 até a grade de 10 em 15/09 — **só 2 dias inteiros**. Posts por
+   dia de 11 a 15/09 (conferente, refeito às 11:3x): builds 8, 4, 6, 6, 9;
+   histórias 8, 1, 6, 6, 9. Nos 2 dias de 6: builds **331 (13/09) e 581
+   (14/09)**, histórias **574 e 261**; nos dias com 9+ posts (que nunca
+   dividem dia com os de 6), 15 e 11. Faixa: **~331 a ~581** e **~261 a
+   ~574** por dia, se repetir — com 2 dias, sinal, não medida. (A 2ª versão
+   usava 11 a 15/09: o "piso" de 18 era 11/09, 8 posts, e os 12.821 eram
+   15/09, 9 posts.) Recomendação: **testar 1 semana** com 6 por dia
+   (09:37 → 21:37) e medir.
 2. **Duelo × estreia no YouTube de builds** (`claro` nas views): duelo 111
    (n=89), build 81 (n=48), estreia 29 (n=27). Quanto assistem não se compara
    direto entre durações diferentes, e a estreia só tem **14** com retenção.
@@ -646,8 +679,10 @@ conserto está nos testes:
 3. **Histórias no YouTube: um vídeo da noite (21h–23h) leva o dia** (`claro`):
    o mais visto leva **93%** das views do dia (mediana de 24 dias), e em 23
    dos 24 ele saiu entre 21h e 23h. Últimos 7 dias: 12/10 21:38 = 321; 13/10
-   22:30 = 286; 14/10 21:38 = 70; 15/10 23:38 = 215; 16/10 23:42 = 5 (o único
-   dia perdido); 17/10 = 556 e 18/10 = 2 ainda juntando views. Em builds a
+   22:30 = 286; 14/10 21:38 = 70; 15/10 23:38 = 215; 16/10 23:42 = 5, 17/10
+   = 556 e 18/10 = 2 ainda juntando views (maduro = **idade do vídeo** ≥ 3
+   dias, não "3 dias atrás no calendário"; noite sem vídeo nenhum conta
+   como perdida na hora). Nenhum dia perdido entre os maduros. Em builds a
    fatia é 29% — lá cada vídeo é distribuído por si.
 4. **Histórias: a parte seguinte** (`ainda não dá para dizer`, vira teste):
    18 pares, **0,6 views para cada 100**; mas 17 dos 18 eram o vídeo da noite
