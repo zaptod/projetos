@@ -31,7 +31,18 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # nunca chega nela). Decisao da coordenacao de 14/10/2026.
 VEREDITO_ZONA = (0.62, 0.76)
 VEREDITO_LARGURA_MAX = 0.74
-ZONA_DAS_PLATAFORMAS = {"baixo": 0.20, "direita": 0.12}
+# O que o TikTok e o YouTube Shorts cobrem no 9:16 (fracoes da tela): no topo
+# as abas "Seguindo | Para voce", o LIVE e a linha de icones do Shorts; embaixo
+# legenda e nome do canal; a direita a coluna de botoes. O HUD, a identidade e
+# os callouts do celular ficam abaixo do topo e a esquerda da direita
+# (``_layout_do_topo``; decisao builds/hud-do-topo-zona-segura, 18/10/2026).
+ZONA_DAS_PLATAFORMAS = {"topo": 0.10, "baixo": 0.20, "direita": 0.12}
+# Escala do callout no 1o quadro (pop-in que encolhe para 1,0 em 0,12 s).
+POP_IN_CALLOUT = 1.35
+# Amostras para medir o pior caso de altura de uma linha: capitular acentuada
+# (sobe mais que a letra comum) e descendentes (desce mais).
+_AMOSTRA_TOPO = "ÁÂÃÉÊÍÓÔÕÚÇH#"
+_AMOSTRA_BAIXO = "ÇQgjpqy"
 
 
 def _entrada_de_som(som: Path | None, taxa: int) -> list[str]:
@@ -87,6 +98,7 @@ class VideoRenderer:
         self.audio_cfg = render_config.get("audio", {})
         self.ref = min(self.width, self.height)   # base para fontes nos 2 layouts
         self._bg_cache: Image.Image | None = None
+        self._topo_cache: dict | None = None
 
     # ------------------------------------------------------------------ public
     def render(self, edit_plan: dict, generation: dict, out_dir: Path,
@@ -495,6 +507,84 @@ class VideoRenderer:
                 pass
             proc.wait()
 
+    def _layout_do_topo(self) -> dict | None:
+        """Onde o celular desenha o que fica no alto, em px: o HUD (nomes,
+        molduras, barras, plano), a identidade (arma · classe · cartel) e o
+        selo, e o centro dos callouts — empilhados nessa ordem, sem se cruzar,
+        abaixo do topo de ``ZONA_DAS_PLATAFORMAS`` e a esquerda da coluna da
+        direita, com o p2 espelhado do p1 dentro dessa faixa.
+
+        Ate 18/10/2026 o HUD ficava em y 56-168 (2,9-8,8% da altura), sob as
+        abas do TikTok e os icones do Shorts, e o do p2 ia a 96,5% da largura
+        (decisao builds/hud-do-topo-zona-segura). Cada altura sai da fonte no
+        MAIOR corpo possivel (``fit_font`` so encolhe) e com a amostra de pior
+        caso, entao nenhum nome, rotulo ou letreiro passa do que esta aqui.
+
+        None no 16:9: ele nao vai ao TikTok nem ao Shorts e segue como era.
+        """
+        if self.horizontal:
+            return None
+        if self._topo_cache is not None:
+            return self._topo_cache
+        w, h, ref = self.width, self.height, self.ref
+        medir = ImageDraw.Draw(Image.new("L", (1, 1))).textbbox
+        folga = int(ref * 0.012)                     # entre um bloco e o outro
+        margem = int(w * 0.04)                       # da borda da faixa segura
+        calha = int(w * 0.06)                        # entre o p1 e o p2
+        direita = int(w * (1.0 - ZONA_DAS_PLATAFORMAS["direita"]))
+        topo = math.ceil(h * ZONA_DAS_PLATAFORMAS["topo"]) + int(ref * 0.01)
+        largura = (direita - 2 * margem - calha) // 2
+        x1 = margem
+        x2 = direita - margem - largura
+        altura = max(14, int(ref * 0.026))
+        # o nome sobe ``sobe`` px da barra; o topo dele (acento + contorno) e
+        # o topo do HUD inteiro
+        sobe = int(ref * 0.012)
+        fonte_nome = load_font(self.fonts["black"], int(ref * 0.036))
+        topo_nome = medir((0, 0), _AMOSTRA_TOPO, font=fonte_nome, anchor="ls",
+                          stroke_width=3)[1]
+        y = topo + sobe - topo_nome
+        # o rotulo do plano e a barrinha de progresso, sob a barra
+        fonte_plano = fit_font("QUEBRAR GUARDA", self.fonts["black"], largura,
+                               int(ref * 0.024))
+        yy = y + altura + int(ref * 0.008)
+        baixo_rotulo = yy + medir((0, 0), "QUEBRAR GUARDA " + _AMOSTRA_BAIXO,
+                                  font=fonte_plano, anchor="la", stroke_width=2)[3]
+        baixo_progresso = yy + int(ref * 0.024) + 3 + 4
+        hud_baixo = max(y + altura + 4, baixo_rotulo, baixo_progresso)
+        # identidade e selo (os ~1,5 s iniciais do duelo)
+        fonte_ident = load_font(self.fonts["bold"], int(ref * 0.026))
+        contorno_ident = max(2, int(ref * 0.004))
+        sobe_ident = medir((0, 0), _AMOSTRA_TOPO, font=fonte_ident, anchor="la",
+                           stroke_width=contorno_ident)[1]
+        ident_y = hud_baixo + folga - min(0, sobe_ident)
+        baixo_ident = ident_y + medir((0, 0), _AMOSTRA_BAIXO, font=fonte_ident,
+                                      anchor="la", stroke_width=contorno_ident)[3]
+        selo_y = ident_y + int(ref * 0.045)
+        fonte_selo = load_font(self.fonts["black"], int(ref * 0.034))
+        baixo_selo = selo_y + medir((0, 0), _AMOSTRA_BAIXO, font=fonte_selo, anchor="ma",
+                                    stroke_width=max(3, int(ref * 0.005)))[3]
+        ident_baixo = max(baixo_ident, baixo_selo)
+        # o callout no pico do pop-in (1,35x) comeca abaixo do HUD; o que
+        # NASCE com a identidade na tela comeca abaixo dela (os dois convivem:
+        # em 83 de 120 duelos do disco ha callout no 1,5 s inicial). O K.O.
+        # e um callout de depois da identidade: a camera da cauda le a caixa
+        # real dele (``letreiro_do_ko``), entao ela acompanha esta posicao.
+        contorno_callout = max(3, int(ref * 0.006))
+        fonte_callout = load_font(self.fonts["black"], int(ref * 0.115))
+        sobe_callout = -fonte_callout.getbbox(_AMOSTRA_TOPO, anchor="mm",
+                                              stroke_width=contorno_callout)[1]
+        sobe_callout = math.ceil(sobe_callout * POP_IN_CALLOUT) + 2
+        self._topo_cache = {
+            "x1": x1, "x2": x2, "y": y, "largura": largura, "altura": altura,
+            "direita": direita, "margem": margem, "hud_topo": topo,
+            "hud_baixo": hud_baixo, "ident_y": ident_y, "selo_y": selo_y,
+            "ident_baixo": ident_baixo,
+            "callout_cy": hud_baixo + folga + sobe_callout,
+            "callout_cy_identidade": ident_baixo + folga + sobe_callout,
+        }
+        return self._topo_cache
+
     def _hud_preparado(self, event: dict) -> dict | None:
         """Camada estatica (nomes + molduras) e a serie de HP para consulta."""
         hud = event.get("hud") or {}
@@ -508,15 +598,14 @@ class VideoRenderer:
             cor1, cor2 = (0, 217, 255), (233, 69, 96)
         serie = sorted((float(a[0]), float(a[1]), float(a[2])) for a in serie_bruta)
 
-        if self.horizontal:
+        topo = self._layout_do_topo()
+        if topo is None:                      # 16:9: como sempre foi
             largura = int(self.width * 0.30)
             y = int(self.height * 0.055)
             x1 = int(self.width * 0.035)
+            x2 = self.width - x1 - largura
         else:
-            largura = int(self.width * 0.43)
-            y = int(self.height * 0.052)
-            x1 = int(self.width * 0.04)
-        x2 = self.width - x1 - largura
+            largura, y, x1, x2 = topo["largura"], topo["y"], topo["x1"], topo["x2"]
         altura = max(14, int(self.ref * 0.026))
         raio = altura // 2
 
@@ -629,12 +718,25 @@ class VideoRenderer:
         # video inteiro. Repetir logo abaixo (como saiu no primeiro duelo,
         # 11/09/2026) gasta a unica faixa livre do topo dizendo o que ja
         # esta dito. Esta camada acrescenta o que falta — arma e classe.
+        topo = self._layout_do_topo()
         margem = int(self.width * 0.04)
-        y = int(self.height * (0.105 if not self.horizontal else 0.155))
-        # Cada lado tem METADE da tela, menos a margem e uma calha no meio.
-        # Sem esse teto os dois textos se encontram no centro e viram uma
-        # linha ilegivel (foi o que saiu no primeiro duelo, 11/09/2026).
-        cabe = max(1, self.width // 2 - margem - int(self.width * 0.02))
+        if topo is None:                      # 16:9: como sempre foi
+            y = int(self.height * 0.155)
+            esq, dir_ = margem, self.width - margem
+            # Cada lado tem METADE da tela, menos a margem e uma calha no meio.
+            # Sem esse teto os dois textos se encontram no centro e viram uma
+            # linha ilegivel (foi o que saiu no primeiro duelo, 11/09/2026).
+            cabe = max(1, self.width // 2 - margem - int(self.width * 0.02))
+            selo_x, selo_y = self.width // 2, y + int(self.ref * 0.045)
+            selo_cabe = int(self.width * 0.8)
+        else:
+            # celular: logo abaixo do HUD, cada lado na coluna da sua barra
+            # (o p2 espelhado dentro da faixa segura, longe dos botoes)
+            y = topo["ident_y"]
+            esq, dir_ = topo["x1"], topo["x2"] + topo["largura"]
+            cabe = topo["largura"]
+            selo_x, selo_y = topo["direita"] // 2, topo["selo_y"]
+            selo_cabe = topo["direita"] - 2 * topo["margem"]
         lados = []
         for slot, cor, lado in (("p1", cor1, "esq"), ("p2", cor2, "dir")):
             dados = ident.get(slot) or {}
@@ -652,7 +754,7 @@ class VideoRenderer:
             if cartel:
                 texto = f"{texto} · {cartel}" if texto else cartel
             lados.append({
-                "x": margem if lado == "esq" else self.width - margem,
+                "x": esq if lado == "esq" else dir_,
                 "y": y, "cor": cor, "texto": texto,
                 "fonte": fit_font(texto, self.fonts["bold"], cabe,
                                   int(self.ref * 0.026)),
@@ -668,9 +770,10 @@ class VideoRenderer:
             # e some junto com ela.
             saida["selo"] = {
                 "texto": selo,
-                "y": y + int(self.ref * 0.045),
+                "x": selo_x,
+                "y": selo_y,
                 "fonte": fit_font(selo, self.fonts["black"],
-                                  int(self.width * 0.8), int(self.ref * 0.034)),
+                                  selo_cabe, int(self.ref * 0.034)),
             }
         return saida
 
@@ -690,7 +793,7 @@ class VideoRenderer:
                       stroke_fill=(12, 10, 24))
         selo = ident.get("selo")
         if selo:
-            draw.text((self.width // 2, selo["y"]), selo["texto"],
+            draw.text((selo["x"], selo["y"]), selo["texto"],
                       font=selo["fonte"], fill=(255, 214, 92), anchor="ma",
                       stroke_width=max(3, int(self.ref * 0.005)),
                       stroke_fill=(12, 10, 24))
@@ -766,6 +869,13 @@ class VideoRenderer:
     def _callouts_preparados(self, event: dict) -> list[dict]:
         saida = []
         stroke = max(3, int(self.ref * 0.006))
+        # Celular: o centro de cada callout. O que nasce com a identidade do
+        # duelo na tela fica abaixo dela a vida toda (sem pular quando ela
+        # some); o resto fica logo abaixo do HUD (``_layout_do_topo``).
+        topo = self._layout_do_topo()
+        ident_ate = None
+        if topo is not None and self._identidade_preparada(event) is not None:
+            ident_ate = float((event.get("identidade") or {}).get("ate", 1.5))
         for callout in event.get("callouts") or []:
             texto = str(callout.get("texto") or "").strip()
             if not texto:
@@ -782,16 +892,22 @@ class VideoRenderer:
             ImageDraw.Draw(camada).text((largura / 2, altura / 2), texto, font=fonte,
                                         fill=cor, anchor="mm", stroke_width=stroke,
                                         stroke_fill=(15, 12, 30))
-            saida.append({"t": float(callout.get("t", 0.0)),
-                          "dur": float(callout.get("duracao", 0.9)),
-                          "camada": camada})
+            t = float(callout.get("t", 0.0))
+            if topo is None:                  # 16:9: como sempre foi
+                cy = int(self.height * 0.20)
+            elif ident_ate is not None and t < ident_ate:
+                cy = topo["callout_cy_identidade"]
+            else:
+                cy = topo["callout_cy"]
+            saida.append({"t": t, "dur": float(callout.get("duracao", 0.9)),
+                          "camada": camada, "cy": cy})
         return saida
 
     def _desenhar_callout(self, img: Image.Image, callout: dict, t: float) -> None:
         idade = t - callout["t"]
         if idade < 0 or idade > callout["dur"]:
             return
-        escala = 1.0 + 0.35 * max(0.0, 1.0 - idade / 0.12)      # pop-in
+        escala = 1.0 + (POP_IN_CALLOUT - 1.0) * max(0.0, 1.0 - idade / 0.12)   # pop-in
         alfa = 1.0 if idade < callout["dur"] - 0.25 \
             else max(0.0, (callout["dur"] - idade) / 0.25)        # fade-out
         camada = callout["camada"]
@@ -802,7 +918,7 @@ class VideoRenderer:
         if alfa < 1.0:
             camada = self._com_alfa(camada, alfa)
         cx = self.width // 2
-        cy = int(self.height * (0.20 if self.horizontal else 0.22))
+        cy = callout["cy"]
         img.paste(camada, (cx - camada.width // 2, cy - camada.height // 2), camada)
 
     def _concat(self, segments: list[Path], out_path: Path) -> None:
@@ -2475,6 +2591,36 @@ def caixa_do_letreiro(render_config: dict, perfil: str, texto: str,
     img = Image.new("RGBA", (renderer.width, renderer.height), (0, 0, 0, 0))
     renderer._desenhar_callout(img, preparados[0], float(idade))
     return img.getchannel("A").getbbox()
+
+
+def caixa_do_hud(render_config: dict, perfil: str) -> tuple[int, int, int, int] | None:
+    """Caixa (px) que o HUD da luta pinta no perfil, no pior caso: nomes
+    longos, o rotulo do plano mais largo e o que mais desce ("TROCAÇÃO": a
+    cedilha passa 6 px da barrinha), a barrinha de progresso e o contorno da
+    vida critica. O mesmo ``_hud_preparado`` + ``_desenhar_hud`` do video,
+    medido pelo que foi pintado."""
+    renderer = VideoRenderer(render_config, perfil)
+    hud = renderer._hud_preparado({"hud": {
+        "p1": "Genevieve o Destruidor #2", "p2": "Aurelia Argalacern Ç",
+        "serie_hp": [[0.0, 20.0, 20.0]],
+        "serie_plano": [[0.0, "QUEBRAR GUARDA", 1.0, "TROCAÇÃO", 1.0]]}})
+    if hud is None:
+        return None
+    img = Image.new("RGBA", (renderer.width, renderer.height), (0, 0, 0, 0))
+    renderer._desenhar_hud(img, hud, 0.0)
+    return img.getchannel("A").getbbox()
+
+
+def hud_do_topo(render_config: dict, perfil: str) -> float | None:
+    """Borda de baixo (fracao da altura) do HUD que o renderer desenha por
+    cima do clipe a luta inteira, cauda incluida. E o que a camera DIRETOR da
+    cauda reserva no alto da area da festa (``runner.reserva_do_letreiro``,
+    campo ``hud``): o rosto do vencedor nunca sobe para baixo das barras."""
+    caixa = caixa_do_hud(render_config, perfil)
+    altura = VideoRenderer(render_config, perfil).height
+    if not caixa or altura <= 0:
+        return None
+    return caixa[3] / float(altura)
 
 
 def letreiro_do_ko(render_config: dict, perfil: str, textos) -> float | None:

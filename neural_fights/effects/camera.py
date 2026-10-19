@@ -106,6 +106,8 @@ class Câmera:
         # diz onde ele termina (``topo``: borda de baixo, fração da altura,
         # lida da caixa real do letreiro) e até quando (``ate_s``: segundos de
         # parede depois do K.O.). None = não há letreiro (jogo, palco).
+        # ``hud`` (opcional, 18/10/2026): borda de baixo do HUD do vídeo, que
+        # fica na tela a cauda inteira; o topo da área nunca sobe acima dele.
         self.reserva_pos_ko = None
         self.t_pos_ko = None                  # o Simulador escreve, no pós-K.O.
         self.pulo_pos_ko = None               # idem: pulo da festa agora, em raios
@@ -799,10 +801,26 @@ class Câmera:
             return None
         return max(0.0, min(topo, self.diretor_pos_ko_area[3] - 0.1))
 
+    def _topo_base_pos_ko(self) -> float:
+        """Topo da área pós-K.O. sem o letreiro: o de ``diretor_pos_ko_area``
+        ou, se quem grava disse onde o HUD do vídeo termina (``hud`` da
+        reserva), abaixo dele — o HUD fica na tela a cauda inteira."""
+        base = self.diretor_pos_ko_area[1]
+        reserva = self.reserva_pos_ko
+        if not reserva:
+            return base
+        try:
+            hud = float(reserva.get("hud") or 0.0)
+        except (AttributeError, TypeError, ValueError):
+            return base
+        return max(base, min(hud, self.diretor_pos_ko_area[3] - 0.1))
+
     def _area_pos_ko(self) -> tuple:
-        """``diretor_pos_ko_area`` com o topo abaixo do letreiro do K.O.
-        enquanto ele está na tela (e voltando suave depois, ``_pos_ko_topo``)."""
-        x0, y0, x1, y1 = self.diretor_pos_ko_area
+        """``diretor_pos_ko_area`` com o topo abaixo do HUD do vídeo e,
+        enquanto ele está na tela, do letreiro do K.O. (voltando suave depois,
+        ``_pos_ko_topo``)."""
+        x0, _y0, x1, y1 = self.diretor_pos_ko_area
+        y0 = self._topo_base_pos_ko()
         topo = self._pos_ko_topo
         letreiro = self._topo_do_letreiro()
         if letreiro is not None:
@@ -820,7 +838,7 @@ class Câmera:
         if letreiro is not None:
             self._pos_ko_topo = letreiro
         elif self._pos_ko_topo is not None:
-            base = self.diretor_pos_ko_area[1]
+            base = self._topo_base_pos_ko()
             self._pos_ko_topo += (base - self._pos_ko_topo) * passo
             if self._pos_ko_topo - base < 1e-3:
                 self._pos_ko_topo = None

@@ -75,8 +75,11 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
     if reserva_pos_ko:
         # o letreiro do K.O. que o renderer vai desenhar (runner.reserva_do_letreiro):
         # a camera da cauda poe o vencedor abaixo dele. So a cauda muda.
-        comando += ["--reserva-pos-ko",
-                    f"{float(reserva_pos_ko['topo']):.4f},{float(reserva_pos_ko['ate_s']):.3f}"]
+        valor = f"{float(reserva_pos_ko['topo']):.4f},{float(reserva_pos_ko['ate_s']):.3f}"
+        if reserva_pos_ko.get("hud") is not None:
+            # e o HUD do video, que fica a cauda inteira: o rosto fica abaixo dele
+            valor += f",{float(reserva_pos_ko['hud']):.4f}"
+        comando += ["--reserva-pos-ko", valor]
 
     ambiente = dict(os.environ)
     ambiente.setdefault("SDL_VIDEODRIVER", "dummy")

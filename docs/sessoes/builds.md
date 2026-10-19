@@ -976,11 +976,12 @@ luta):
    15/10): inteiro entre 62% e 76% da altura (`renderer.VEREDITO_ZONA`; o
    bloco nome + cartel, com contorno, é centrado na faixa) e no máximo 74% da
    largura, centrado (`VEREDITO_LARGURA_MAX`), fora da coluna de botões. Os
-   ~20% de baixo e os ~12% da direita (`ZONA_DAS_PLATAFORMAS`) o TikTok e o
+   ~20% de baixo e os ~12% da direita (`ZONA_DAS_PLATAFORMAS`; desde 18/10 com o `topo` de
+   10%, §12) o TikTok e o
    YouTube Shorts cobrem com legenda, canal e botões; um 1º conserto a 0,80
    caía ali. HUD, identidade e callouts do duelo terminam antes de 62%
-   (teste). O HUD do topo (barra e nome do p2) ainda entra nos 12% da
-   direita: não mexido.
+   (teste). O HUD do topo (barra e nome do p2) entrava nos 12% da direita
+   e nos 10% de cima: **consertado em 18/10 (§12)**.
 4. **projétil/orbe/invocação parado no ar**: vivos no K.O., somem em fade em
    0,3 s de tempo real (`FADE_OBJETOS_POS_KO_S`; a tela antes deles é
    guardada e devolvida com opacidade 1 − fade).
@@ -1137,6 +1138,73 @@ o degrau (máximo dos 9 pontos e o do centro) de quadro a quadro.
 (A folga do `letreiro_x_vencedor_*.json` da prova 6 usa o pulo de agora —
 0 enquanto o letreiro está na tela —, como a câmera; o da prova 5 usava o
 pulo máximo e por isso dava 22 px.)
+
+## 12. O HUD do topo na zona segura (18/10/2026)
+
+Decisão `builds/hud-do-topo-zona-segura` (orquestrador, delegada pelo Adrian):
+o HUD do celular ficava em y 56–168 de 1920 (2,9–8,8% da altura), sob as
+abas "Seguindo | Para você"/LIVE do TikTok e os ícones do Shorts, e o do p2
+ia até x 1042 (96,5% da largura), sob a coluna de botões.
+
+**Como é agora** (`renderer._layout_do_topo`, só o 9:16; o 16:9 não é
+publicado e segue igual):
+- `ZONA_DAS_PLATAFORMAS` = topo 10%, baixo 20%, direita 12% — a mesma
+  constante do veredito, sem número solto;
+- empilhados, sem se cruzar, abaixo do topo e à esquerda de 88%: **HUD**
+  (nomes, molduras, barras, plano), **identidade + selo** (só o 1,5 s
+  inicial) e **callouts**. Cada altura sai da fonte no maior corpo com a
+  amostra de pior caso (capitular acentuada, descendentes);
+- o p2 é o espelho do p1 dentro da faixa segura (0–950 px): barras de 400
+  px em x 43 e 507, calha de 64 px;
+- callout que NASCE com a identidade na tela fica abaixo dela a vida toda
+  (`callout_cy_identidade`, sem pular quando ela some); os outros, e o build
+  e a estreia, logo abaixo do HUD. Em 83 de 120 duelos do disco há callout
+  no 1,5 s inicial;
+- a câmera da cauda: `runner.reserva_do_letreiro()` ganhou `hud` (borda de
+  baixo do HUD pintado, `renderer.hud_do_topo`, 0,1688 no celular), o
+  gravador aceita `--reserva-pos-ko TOPO,SEGUNDOS,HUD` e
+  `Câmera._topo_base_pos_ko` põe o topo da área da festa abaixo do HUD a
+  cauda inteira. Sem isso, um vencedor no alto da arena terminava com o rosto
+  em y 46–56 px (sob as abas; teste, caso zero). O letreiro desceu junto
+  (reserva `topo` 0,2599 → 0,2656, lida da caixa real como antes).
+
+| celular, px (1080×1920) | antes | depois |
+|---|---|---|
+| HUD (nomes, barras, plano) | y 56–168, x 39–1042 (2,9–8,8%; 96,5%) | y 209–324, x 39–912 (10,9–16,9%; 84,4%) |
+| identidade + selo | y 201–294, x 40–1041 | y 339–433, x 40–910 |
+| letreiro do K.O. no pop-in | y 356–499 | y 367–510 (K.O./NOCAUTE/ACABOU) |
+| callout nascido com a identidade | y 356–499 | y 483–626 |
+| veredito | y 1260–1389 | igual |
+
+**Medido.** Luta igual: 48/48 headless (8 arenas × 6 seeds; vencedor,
+motivo, duração, quadros, HP) e 6/6 pelo gravador (Torre, Vulcão ×2, Duto,
+Poço, Arena Pequena; dano, sons, narrativa e série de HP até o K.O., com a
+reserva nova contra a base `5890566` com a antiga). Prova pelo caminho real
+(`main.py duelo --p1 "Gunnar Vexevok" --p2 "Aurelia Argalacern" --seed 4242
+--arena Torre|Vulcao`, na worktree, runtime numa cópia do banco), vídeo final
+1080×1920 em `E:\tmp_pytest\prova_hud\{torre,vulcao}\`: quadros a cada 1 s
+da luta (`luta\`) e a cada 0,25 s da cauda (`cauda\`), cópias com a zona
+desenhada (`zona\`), `folha_zona.png`, `medida_hud.json` (o que o renderer
+pintou: diferença quadro a quadro, no índice exato, entre o vídeo final e o
+clipe cru) e `cauda_x_hud_*.json` (a luta re-simulada pelo gravador com a
+mesma reserva, câmera a cada passo):
+
+| | Torre | Vulcão |
+|---|---|---|
+| HUD pintado no vídeo (38 / 28 quadros) | y 208–327, x 39–911 | y 208–327, x 40–911 |
+| px pintados nos 10% de cima / na coluna dos 12% na faixa do HUD | ≤ 4 / ≤ 4 (bordas do jogo re-codificadas: rastro da arma, contorno do lutador; nada do HUD) | ≤ 2 / 0 |
+| rosto+nome do vencedor sob o HUD na cauda (82 quadros) | 0, folga mín. 185 px | 0, folga mín. 56 px |
+| rosto+nome × letreiro (28 quadros com ele) | 0 cruzam, folga mín. 107 px | 0 cruzam, folga mín. 31 px |
+| vencedor no último quadro (diâmetro / largura) | ~18,7% (era 15,3%) | ~16,7% (era 15,1%) |
+| duração / integrado | 27,93 s / -15,5 LUFS | 18,57 s / -15,6 LUFS |
+
+**O que piorou e ficou aberto:** na luta (antes do K.O.) a câmera DIRETOR
+não sabe do HUD, e ele agora cobre o alto da arena em vez do vazio acima
+dela: quadros com algum lutador (corpo + nome) sob o HUD, Torre 12 → 41 de
+790, Vulcão 7 → 44 de 647 (~5–7%). Os callouts longos ("ESTATELOU",
+"COMEU PAREDE") ainda entram nos 12% da direita (19–27% da altura, acima da
+coluna de botões) e saem da tela no pop-in, como antes.
+Testes: `random_builds/tests/test_hud_zona_segura_regressions.py`.
 
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

@@ -329,20 +329,31 @@ def reserva_do_letreiro(perfil: str) -> dict | None:
     A caixa e a REAL: o renderer desenha cada texto de K.O. do config no
     maior tamanho do pop-in e mede o que pintou (``renderer.letreiro_do_ko``).
     A duracao e a do callout (``editing.json -> fight_callouts.duracao``).
+
+    ``hud`` (18/10/2026, decisao builds/hud-do-topo-zona-segura): a borda de
+    baixo do HUD do video, que fica na tela a cauda inteira — medida do mesmo
+    jeito (``renderer.hud_do_topo``). Com o HUD fora das abas do TikTok e do
+    Shorts, o topo da area da festa fica abaixo dele.
+
     Qualquer falha devolve None: a camera segue sem reserva (nunca derruba a
     gravacao).
     """
     try:
         from ..generation.session_generator import load_config
-        from ..video.renderer import letreiro_do_ko
+        from ..video.renderer import hud_do_topo, letreiro_do_ko
 
         callouts = (load_config("editing.json") or {}).get("fight_callouts") or {}
         textos = list((callouts.get("textos") or {}).get("ko") or ["K.O."])
-        topo = letreiro_do_ko(load_config("render.json"), perfil, textos)
+        render = load_config("render.json")
+        topo = letreiro_do_ko(render, perfil, textos)
         if topo is None:
             return None
-        return {"topo": round(float(topo), 4),
-                "ate_s": round(float(callouts.get("duracao", 0.9)) + 0.05, 3)}
+        reserva = {"topo": round(float(topo), 4),
+                   "ate_s": round(float(callouts.get("duracao", 0.9)) + 0.05, 3)}
+        hud = hud_do_topo(render, perfil)
+        if hud is not None:
+            reserva["hud"] = round(float(hud), 4)
+        return reserva
     except Exception:
         return None
 

@@ -1038,23 +1038,34 @@ def build_parser() -> argparse.ArgumentParser:
     chave.add_argument("--sem-corrente-v2", dest="corrente_v2", action="store_const", const=False,
                        help="carimba corrente_v2=False (a corrente antiga)")
     parser.add_argument("--reserva-pos-ko", type=tipo_reserva_pos_ko, default=None,
-                        metavar="TOPO,SEGUNDOS",
+                        metavar="TOPO,SEGUNDOS[,HUD]",
                         help="letreiro do K.O. do video: borda de baixo (fracao da "
                              "altura) e quanto ele fica na tela depois do K.O.; a "
-                             "camera DIRETOR da cauda poe o vencedor abaixo dele")
+                             "camera DIRETOR da cauda poe o vencedor abaixo dele. "
+                             "HUD (opcional): borda de baixo do HUD do video, que "
+                             "fica a cauda inteira; o vencedor fica abaixo dele")
     return parser
 
 
 def tipo_reserva_pos_ko(texto: str) -> dict:
-    """``"0.27,0.9"`` -> ``{"topo": 0.27, "ate_s": 0.9}`` (argparse)."""
+    """``"0.27,0.9"`` -> ``{"topo": 0.27, "ate_s": 0.9}`` e
+    ``"0.27,0.9,0.17"`` -> ``{..., "hud": 0.17}`` (argparse)."""
     try:
-        topo, ate = (float(v) for v in str(texto).split(","))
+        valores = [float(v) for v in str(texto).split(",")]
     except ValueError:
+        valores = []
+    if len(valores) not in (2, 3):
         raise argparse.ArgumentTypeError(
-            f"use TOPO,SEGUNDOS (ex. 0.27,0.9): {texto}") from None
+            f"use TOPO,SEGUNDOS[,HUD] (ex. 0.27,0.9,0.17): {texto}") from None
+    topo, ate = valores[0], valores[1]
     if not (0.0 <= topo < 1.0) or ate < 0:
         raise argparse.ArgumentTypeError(f"fora da faixa: {texto}")
-    return {"topo": topo, "ate_s": ate}
+    reserva = {"topo": topo, "ate_s": ate}
+    if len(valores) == 3:
+        if not (0.0 <= valores[2] < 1.0):
+            raise argparse.ArgumentTypeError(f"HUD fora da faixa: {texto}")
+        reserva["hud"] = valores[2]
+    return reserva
 
 
 def main(argv: list[str] | None = None) -> int:
