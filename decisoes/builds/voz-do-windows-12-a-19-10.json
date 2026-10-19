@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "",
+  "criado": "2026-10-19T17:13:55.956187",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).",
+      "em": "2026-10-19T17:13:57",
+      "opcao": "refazer-estoque",
+      "origem": "cli"
+    }
+  ],
+  "id": "voz-do-windows-12-a-19-10",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "o estoque volta à voz normal",
+      "id": "refazer-estoque",
+      "pede_comentario": false,
+      "rotulo": "Refazer a voz só do que ainda não foi publicado; o que já foi ao ar fica (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "deixar",
+      "pede_comentario": false,
+      "rotulo": "Deixar como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "De 12 a 19/10 o edge-tts levou 403 e as falas saíram na voz do Windows (SAPI): 51 roletas (generation_00126..00185) e possivelmente partes de histórias. Refazer a voz?",
+  "projeto": "builds",
+  "situacao": "decidida",
+  "titulo": "Vídeos narrados com a voz do Windows (12 a 19/10)",
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).",
+    "em": "2026-10-19T17:13:57",
+    "opcao": "refazer-estoque"
+  }
+}
