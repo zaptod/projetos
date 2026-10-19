@@ -158,25 +158,14 @@ class PeloHorarioDaGradeTests(Base):
             "historias", "youtube", datetime(2026, 9, 28, 22, 20)))
 
     def test_recuperacao_depois_da_meia_noite_e_do_2337_da_vespera(self):
-        self._ledger([{"quando": "2026-09-29T00:10:00", "plataforma": "youtube",
+        self._ledger([{"quando": "2026-09-29T00:10:00", "plataforma": "tiktok",
                        "video_id": "x"}])
         # ainda o das 23:37 de 28/09 (o 00:37 nao venceu)
         self.assertIsNotNone(self.postar.publicou_neste_horario(
-            "historias", "youtube", datetime(2026, 9, 29, 0, 20)))
+            "historias", "tiktok", datetime(2026, 9, 29, 0, 20)))
         # a rodada das 00:37 e outro horario
         self.assertIsNone(self.postar.publicou_neste_horario(
-            "historias", "youtube", datetime(2026, 9, 29, 0, 40)))
-
-    def test_no_tiktok_de_seis_a_madrugada_e_do_2137(self):
-        """Grade de seis do TikTok (19/10/2026): 23:37 e 00:37 nao sao dele; o
-        post das 00:10 pertence ao 21:37 da vespera, e a rodada das 00:40
-        tambem — ela nao posta um segundo no TikTok."""
-        self._ledger([{"quando": "2026-09-29T00:10:00", "plataforma": "tiktok",
-                       "video_id": "x"}])
-        self.assertIsNotNone(self.postar.publicou_neste_horario(
             "historias", "tiktok", datetime(2026, 9, 29, 0, 40)))
-        self.assertIsNone(self.postar.publicou_neste_horario(
-            "historias", "tiktok", datetime(2026, 9, 29, 9, 40)))
 
     def test_dois_posts_no_mesmo_horario_barrado(self):
         self._ledger([{"quando": "2026-09-28T22:40:00", "plataforma": "youtube",

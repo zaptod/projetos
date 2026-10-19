@@ -208,7 +208,7 @@ class _Fila(unittest.TestCase):
         self.m = _postar()
         self.m._linha = lambda *_a, **_k: None
         self.m.repetir_titulo = lambda *_a, **_k: False
-        self.m._servidos_recentes = lambda n=16, **k: {}
+        self.m._servidos_recentes = lambda n=16: {}
         self.m.cota_da_grade = lambda config=None: {}
         self.m.a_conferir_no_tiktok = lambda canal="historias", plataforma="tiktok": set()
         self.video = _Video(Path("x.mp4"), vid="g1:build:celular")

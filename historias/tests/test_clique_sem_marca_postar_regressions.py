@@ -103,8 +103,8 @@ class BuildsTests(_Base):
         m._divida_do_youtube_dos_builds = lambda: (None, "", [])
         # A fila de verdade (`proximo_build`), com o catalogo e a cota dublados.
         m._builds_prontos = lambda *a, **k: [_Video(B), _Video(A)]
-        m._sem_fonte_cheia = lambda fila, canal, agora=None, **k: fila
-        m._servidos_recentes = lambda *a, **k: {}
+        m._sem_fonte_cheia = lambda fila, canal, agora=None: fila
+        m._servidos_recentes = lambda: {}
         m.cota_da_grade = lambda config=None: {}
         m.escolher_por_cota = lambda pendentes, servidos, cota: pendentes[0]
         m._audio_mudo = lambda v: ""

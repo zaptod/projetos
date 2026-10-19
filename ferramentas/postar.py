@@ -368,17 +368,15 @@ def fila_de_historias() -> list:
     # recriada com outro numero sai com o mesmo titulo da anterior, e o id
     # novo passaria pela deduplicacao sem ninguem notar.
     # O TETO POR HISTORIA VALE PARA O PERFIL INTEIRO, e nao so para a
-    # recuperacao (decisao do Adrian, 17/09/2026). Esta fila prefere
-    # "terminar a serie comecada" — entao, sozinha, uma historia ocupava ate
-    # seis horarios num dia. Foi parte do que ele viu no perfil em 16/09, e
-    # nao so a recuperacao. Desde 19/10/2026 esta e a fila do YOUTUBE (o
-    # TikTok tem a sua, `_vez_do_tiktok_historias`), e o teto que ela confere
-    # e o do YouTube; o do TikTok mora na fila dele.
+    # recuperacao (decisao do Adrian, 17/09/2026). Esta fila leva a parte do
+    # horario aos DOIS destinos, e ela prefere "terminar a serie comecada" —
+    # entao, sozinha, uma historia ocupava ate seis horarios num dia. Foi
+    # parte do que ele viu no perfil em 16/09, e nao so a recuperacao.
     #
     # A ordem das partes DENTRO da serie continua sagrada: o teto so decide
     # QUAL serie anda hoje, nunca em que ordem as partes dela saem.
     fila = _sem_a_conferir(fila, "historias")
-    fila = _sem_fonte_cheia(fila, "historias", plataformas=("youtube",))
+    fila = _sem_fonte_cheia(fila, "historias")
 
     novos, repetidos = _sem_titulo_repetido(fila, "historias")
     if repetidos:
@@ -551,144 +549,6 @@ def _ordenar_pela_serie(pendentes, comecadas, criado: dict,
         return (2, _ao_contrario(fonte), v.parte or 0)
 
     return sorted(pendentes, key=chave)
-
-
-# ------------------------------------------------------- a noite do YouTube
-# O VIDEO DA NOITE LEVA O DIA (decisao `publicacao/historias-21h-e-parte-
-# seguinte`, 19/10/2026). Medido na analise dos videos (YouTube, historias,
-# 24 dias): o mais visto do dia levou 93% das views (mediana) e saiu entre
-# 21h e 23h em 23 deles. Medido de novo antes deste codigo (videos de 3 a 40
-# dias, 19/10 13:4x): no 21:37 a mediana e 254 views (25 videos, 17 com 100+);
-# no 22:37, 6; no 23:37, 4 — o horario e o das 21h.
-#
-# "O MELHOR VIDEO PRONTO" = A PARTE 1 DE UMA SERIE QUE AINDA NAO COMECOU
-# (em nenhum destino), a primeira na ordem da fila (que ja respeita o
-# frescor), a limpa antes da retida/vetada. Por que a parte 1: quem ve o
-# video da noite nao veio da parte anterior (a seguinte recebe ~0,6 view a
-# cada 100 da que bombou), entao o video que mais gente nova ve deve ser a
-# porta de entrada da historia. Nos videos das 21h: parte 1, mediana 328,5
-# (10 videos, 7 com 100+); outras partes, 210 (15, 10 com 100+). E sinal
-# fraco: a diferenca nao passa do acaso (so as 21h, p = 0,93; na noite
-# inteira, p = 0,91). O que esta provado e o horario; a parte 1 e a escolha
-# por razao (a porta de entrada), e a analise mede.
-#
-# A RESERVA E SO DE ORDEM, NUNCA TIRA DA FILA: de dia a melhor vai para o fim
-# (sai se nada mais puder sair), no primeiro horario da noite ainda sem
-# video no YouTube vai para a frente (atras dos pedidos manuais). Tirar da
-# fila furaria a valvula de qualidade — com a melhor sendo a unica parte
-# limpa, o horario do dia sairia com uma RETIDA, e a retida so sai quando
-# nada mais pode (decisao de 27/09). Pela mesma razao, entre as retidas a
-# consertada continua na frente (decisao de 05/10).
-NOITE_DAS_HISTORIAS = (21, 22, 23)
-
-
-def _melhor_da_noite(fila: list, comecadas) -> object | None:
-    """A parte 1 de serie nao comecada, a primeira da fila; a limpa antes.
-
-    Le o veto e a retencao de arquivo (sem vistoria, sem IA). `None` sem
-    nenhuma parte 1 de serie nova.
-    """
-    novas = [v for v in fila or ()
-             if int(getattr(v, "parte", 0) or 0) == 1
-             and getattr(v, "fonte_id", None) not in comecadas]
-    if not novas:
-        return None
-    for v in novas:
-        try:
-            if not _veto_lembrado(v) and not _retencao(v):
-                return v
-        except Exception:                                      # noqa: BLE001
-            continue
-    return novas[0]
-
-
-def _noite_sem_video(publicados, agora=None) -> bool:
-    """O horario da rodada e o PRIMEIRO da noite (21h–23h) sem video do
-    YouTube neste dia de grade? (No 21:37, sempre; no 22:37, se o 21:37 nao
-    saiu; no 23:37, se nenhum dos dois.) Mesma chave de horario da guarda
-    (`conferencia.chave_do_horario`); fora da noite, False."""
-    from datetime import datetime
-    from builds.publicar import conferencia, metricas
-    agora = agora or datetime.now()
-    dia, hora = conferencia.chave_do_horario(agora, "youtube")
-    if hora not in NOITE_DAS_HISTORIAS:
-        return False
-    for linha in publicados or ():
-        if str(linha.get("plataforma") or "youtube").lower() != "youtube":
-            continue
-        if not metricas.publicado(linha):
-            continue
-        chave = conferencia.chave_do_horario(linha.get("quando"), "youtube")
-        if (chave and chave[0] == dia and chave[1] in NOITE_DAS_HISTORIAS
-                and chave[1] < hora):
-            return False
-    return True
-
-
-def _reordenar_pela_noite(fila: list, melhor, *, na_noite: bool,
-                          de_dia: bool, pedidos=()) -> list:
-    """A regra pura: a SERIE de `melhor` (ela e as partes seguintes que estao
-    na fila, na mesma ordem) vai a frente — atras dos pedidos manuais — quando
-    `na_noite`, ao fim quando `de_dia`; senao a fila fica como esta. Fila de
-    um so video, ou sem melhor, nao muda.
-
-    A SERIE INTEIRA, e nao so a parte 1: `proxima_historia` segura as partes
-    seguintes de uma serie atras da parte barrada PELA ORDEM da fila — com a
-    parte 1 movida sozinha para o fim, a 2 viria antes dela e sairia sem a 1
-    (o `test_adiada_nao_sai_limpa` pegou exatamente isso)."""
-    if melhor is None or len(fila) < 2 or melhor not in fila:
-        return list(fila)
-    fonte = getattr(melhor, "fonte_id", None)
-    serie = [v for v in fila if getattr(v, "fonte_id", None) == fonte]
-    resto = [v for v in fila if getattr(v, "fonte_id", None) != fonte]
-    if not resto:
-        return list(fila)
-    if na_noite:
-        frente = [v for v in resto if getattr(v, "id", None) in pedidos]
-        return frente + serie + [v for v in resto if v not in frente]
-    if de_dia:
-        return resto + serie
-    return list(fila)
-
-
-def _reserva_da_noite(fila: list, publicados=None, comecadas=None,
-                      agora=None) -> list:
-    """A fila do YouTube com a melhor parte guardada para a noite.
-
-    `publicados`/`comecadas` vem do ledger das historias quando nao passados
-    (comecada = serie com alguma parte publicada em qualquer destino, o
-    criterio de `fila_de_historias`). Nunca levanta e nunca tira ninguem:
-    errou, devolve a fila como veio.
-    """
-    from datetime import datetime
-    try:
-        if not fila:
-            return fila
-        agora = agora or datetime.now()
-        if publicados is None:
-            publicados = [l for l in _publicados_do_canal("historias")
-                          if _saiu(l)]
-        if comecadas is None:
-            comecadas = {str(l.get("fonte_id") or str(l.get("video_id") or "")
-                             .split(":")[0]) for l in publicados}
-        melhor = _melhor_da_noite(fila, comecadas)
-        if melhor is None:
-            if grade.slot(agora) == NOITE_DAS_HISTORIAS[0]:
-                _linha("[postar] historias: nenhuma parte 1 de serie nova "
-                       "para a noite; sai a fila normal.")
-            return fila
-        na_noite = _noite_sem_video(publicados, agora)
-        de_dia = grade.slot(agora) not in NOITE_DAS_HISTORIAS
-        nova = _reordenar_pela_noite(fila, melhor, na_noite=na_noite,
-                                     de_dia=de_dia, pedidos=set(_prioridades()))
-        if na_noite:
-            _linha(f"[postar] historias: a melhor parte pronta vai a noite: "
-                   f"{melhor.id}.")
-        return nova
-    except Exception as exc:                                   # noqa: BLE001
-        _linha(f"[postar] reserva da noite falhou ({type(exc).__name__}); a "
-               "fila segue como estava.")
-        return fila
 
 
 # A IA VETA, MAS NAO CALA A GRADE. Quando nao da para PERGUNTAR (conta
@@ -1101,11 +961,7 @@ def proxima_historia(*, vistoriar: bool = True):
     # serie no lugar. A seguinte so sai como ultimo recurso, la embaixo.
     bloqueadas, adiadas = set(), []
     from builds import travas
-    # A NOITE ESCOLHE PRIMEIRO (19/10/2026): a melhor parte pronta fica para
-    # o primeiro horario da noite sem video (`_reserva_da_noite`). E aqui, e
-    # nao em `fila_de_historias`, porque e sobre QUAL parte sai AGORA — a
-    # ordem da serie e da fila continua a mesma para quem a le.
-    for alvo in _reserva_da_noite(fila_de_historias()):
+    for alvo in fila_de_historias():
         if not vistoriar:
             return alvo, recusados
         if alvo.fonte_id in bloqueadas:
@@ -1416,107 +1272,6 @@ class ParteMeioNoAr(RuntimeError):
         self.ids = list(ids)
 
 
-# ------------------------------------------------- a parte seguinte (TESTE)
-# LIGAR CADA PARTE A SEGUINTE NO YOUTUBE (decisao `publicacao/historias-21h-
-# e-parte-seguinte`, 19/10/2026, como TESTE): na analise, das 18 partes com
-# 100+ views, a seguinte teve ~0,6 view a cada 100 da anterior. O que o
-# YouTube tem para isso, conferido em 19/10:
-#   - "video relacionado" do Shorts: so existe no Studio; a API oficial
-#     (Data API v3, `videos`) nao tem o campo. Automatizar o Studio para
-#     EDITAR video ja publicado seria um caminho novo, sem ensaio, na conta
-#     dele — fica de fora;
-#   - comentario fixado: a API cria comentario (escopo `youtube.force-ssl`),
-#     mas nao fixa;
-#   - descricao: a API edita (`videos.update`, escopo `youtube`), MAS a
-#     credencial do canal de historias nao tem esse escopo (medido: so a de
-#     builds tem), e reautorizar e mexer na conta — decisao dele.
-# Entao, sem mexer em conta: toda parte que tem seguinte sobe com
-# `PARTE_SEGUINTE` no fim da descricao, e com o LINK quando a seguinte ja esta
-# no YouTube (subida fora de ordem, divida). A ligacao de volta — editar a
-# parte N quando a N+1 sai — esta pronta (`_ligar_a_parte_anterior`) e
-# DESLIGADA (`LIGAR_PELA_API`): precisa do escopo de edicao no canal de
-# historias. A fala (narracao) e da parte Historias, nao daqui.
-PARTE_SEGUINTE = "A parte seguinte já está no canal."
-PARTE_SEGUINTE_NA_DESCRICAO = True
-LIGAR_PELA_API = False
-
-
-def _link_do_short(youtube_id: str) -> str:
-    return f"https://youtube.com/shorts/{youtube_id}" if youtube_id else ""
-
-
-def _id_da_parte_no_youtube(fonte_id: str, parte: int, publicados=None) -> str:
-    """O `youtube_id` da parte `parte` da serie no YouTube, ou "" (ledger)."""
-    try:
-        if publicados is None:
-            publicados = _publicados_do_canal("historias")
-    except Exception:                                          # noqa: BLE001
-        return ""
-    for linha in publicados:
-        if (str(linha.get("plataforma") or "youtube").lower() == "youtube"
-                and _saiu(linha)
-                and str(linha.get("fonte_id") or "") == str(fonte_id)
-                and int(linha.get("parte") or 0) == int(parte)
-                and linha.get("youtube_id")):
-            return str(linha["youtube_id"])
-    return ""
-
-
-def _com_a_parte_seguinte(alvo, publicados=None):
-    """Uma COPIA de `alvo` com `PARTE_SEGUINTE` (e o link, se houver) no fim da
-    descricao. A ultima parte, a parte unica, e quem ja tem o texto, voltam
-    iguais (o proprio objeto). Nunca levanta."""
-    import copy
-    try:
-        parte = int(getattr(alvo, "parte", 0) or 0)
-        partes = int(getattr(alvo, "partes", 0) or 0)
-        descricao = str(getattr(alvo, "descricao", "") or "")
-        if (not PARTE_SEGUINTE_NA_DESCRICAO or partes < 2 or parte < 1
-                or parte >= partes or PARTE_SEGUINTE in descricao):
-            return alvo
-        linhas = [PARTE_SEGUINTE]
-        link = _link_do_short(_id_da_parte_no_youtube(
-            getattr(alvo, "fonte_id", ""), parte + 1, publicados))
-        if link:
-            linhas.append(f"Parte {parte + 1}: {link}")
-        novo = copy.copy(alvo)
-        novo.descricao = (descricao.rstrip() + "\n\n"
-                          + "\n".join(linhas)).strip()
-        return novo
-    except Exception:                                          # noqa: BLE001
-        return alvo
-
-
-def _ligar_a_parte_anterior(alvo, provas, *, editar=None) -> dict:
-    """Depois que a parte N sobe, poe o link dela na descricao da N-1.
-
-    DESLIGADA (`LIGAR_PELA_API = False`) e sem escopo nao tenta. Nunca
-    levanta e nunca segura a rodada: a parte N ja esta no ar. `editar` e o
-    `recuperar.acrescentar_na_descricao` (injetavel para o teste).
-    """
-    try:
-        parte = int(getattr(alvo, "parte", 0) or 0)
-        if not LIGAR_PELA_API or parte < 2:
-            return {"ligou": False, "motivo": "desligado" if parte >= 2
-                    else "parte 1 nao tem anterior"}
-        novo_id = next((str((p or {}).get("youtube_id")) for p in provas or ()
-                        if (p or {}).get("youtube_id")), "")
-        anterior = _id_da_parte_no_youtube(getattr(alvo, "fonte_id", ""),
-                                           parte - 1)
-        if not novo_id or not anterior:
-            return {"ligou": False, "motivo": "falta o id de uma das partes"}
-        if editar is None:
-            from builds.publicar import recuperar
-            editar = recuperar.acrescentar_na_descricao
-        r = editar(anterior, f"Parte {parte}: {_link_do_short(novo_id)}",
-                   "historias")
-        return {"ligou": bool(r.get("mudou")), "motivo": r.get("motivo", "")}
-    except Exception as exc:                                   # noqa: BLE001
-        _linha(f"[postar] nao liguei a parte anterior a {getattr(alvo, 'id', '')}"
-               f" ({type(exc).__name__}: {str(exc)[:120]})")
-        return {"ligou": False, "motivo": f"{type(exc).__name__}"}
-
-
 @_voando("historias", "youtube")
 def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
     """`catalogo.publicar_youtube`, com a guarda da parte meio no ar.
@@ -1533,10 +1288,7 @@ def _subir_parte_no_youtube(alvo, visibilidade, provas: list):
     from contos.publicar import catalogo
     antes = len(provas)
     try:
-        url = catalogo.publicar_youtube(_com_a_parte_seguinte(alvo),
-                                        visibilidade, provas=provas)
-        _ligar_a_parte_anterior(alvo, provas)
-        return url
+        return catalogo.publicar_youtube(alvo, visibilidade, provas=provas)
     except Exception as exc:                                   # noqa: BLE001
         novos = provas[antes:]
         entregues = [p for p in novos if not (p or {}).get("falhou")]
@@ -1850,25 +1602,17 @@ def postar_historia(*, so_ver: bool = False) -> dict:
             return {"canal": "historias", "feito": False,
                     "motivo": f"o video {ja_yt.get('video_id')} saiu no "
                               "YouTube mas nao esta mais no catalogo"}
-        # O TIKTOK LEVA A VEZ DELE (19/10/2026, fila propria): o que saiu no
-        # YouTube e falta ao TikTok, na ordem — e a parte do YouTube deste
-        # horario esta nessa fila. A parte do YouTube pode ser DIVIDA
-        # (06/10/2026: ja esta no TikTok); entao a vez e a da fila, e com a
-        # fila vazia, a proxima parte nova.
-        recusados: list = []
-
-        def _nova():
-            parte, fora = proxima_historia()
-            recusados.extend(fora)
-            return parte
-
-        tk_alvo, sem_vez = _vez_do_tiktok_historias(
-            _nova if serie.ja_publicado(alvo.id, "tiktok") else alvo)
-        tk_alvo = _o_mesmo(tk_alvo, alvo)
-        if tk_alvo is None:
-            return {"canal": "historias", "feito": False,
-                    "motivo": f"o YouTube ja saiu nesta hora com {alvo.id}; "
-                              f"TikTok: {sem_vez}"[:300]}
+        # A PARTE DO YOUTUBE PODE SER DIVIDA (06/10/2026): ela ja esta no
+        # TikTok, e levar a mesma deixaria o TikTok do horario vazio
+        # (`_tiktok_das_historias` recusa repetir). O TikTok leva a proxima.
+        tk_alvo, recusados = alvo, []
+        if serie.ja_publicado(alvo.id, "tiktok"):
+            tk_alvo, recusados = proxima_historia()
+            if tk_alvo is None:
+                return {"canal": "historias", "feito": False,
+                        "motivo": f"o YouTube ja saiu nesta hora com "
+                                  f"{alvo.id}, que ja esta no TikTok, e nao "
+                                  f"ha outra parte publicavel para o TikTok"}
         _linha(f"[postar] historias: YouTube ja saiu nesta hora ({alvo.id}); "
                f"levando {tk_alvo.id} so para o TikTok.")
         falha_tk: dict = {}
@@ -1896,9 +1640,12 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         _linha(f"[postar] historias: divida do YouTube que nao sai agora — "
                f"{motivo}"[:200])
     if divida is not None:
-        alvo, recusados = divida, []
+        alvo, recusados, tk_alvo = divida, [], None
+        if tiktok_agora and not ja_tk:
+            tk_alvo, recusados = proxima_historia()
         _linha(f"[postar] historias: o YouTube deve {divida.id} (saiu no "
-               f"TikTok em {divida_quando[:16]}); sobe ela.")
+               f"TikTok em {divida_quando[:16]}); sobe ela"
+               + (f", e o TikTok leva {tk_alvo.id}" if tk_alvo else "") + ".")
     else:
         alvo, recusados = proxima_historia()
         if alvo is None:
@@ -1906,27 +1653,14 @@ def postar_historia(*, so_ver: bool = False) -> dict:
             if recusados:
                 motivo += " — recusadas: " + " | ".join(recusados[:3])
             return {"canal": "historias", "feito": False, "motivo": motivo}
-
-    # A VEZ DO TIKTOK (fila propria, 19/10/2026) e decidida DEPOIS do YouTube
-    # — a parte que o YouTube acabou de subir entra na fila de atraso dele —,
-    # e so em horario da grade do TikTok. Com divida no YouTube, a parte nova
-    # do TikTok e a proxima da fila (como desde 06/10), e o YouTube a alcanca.
-    def _parte_nova_do_tiktok():
-        if divida is None:
-            return alvo
-        parte, fora = proxima_historia()
-        recusados.extend(fora)
-        return parte
-
+        tk_alvo = alvo
     if so_ver:
         veria = {"canal": "historias", "feito": False, "veria": alvo.id,
                  "titulo": alvo.titulo, "recusados": recusados,
                  "motivo": "so vendo"}
         if divida is not None:
             veria["youtube_devido"] = divida_quando
-        if tiktok_agora:
-            tk_ver, _sem = _vez_do_tiktok_historias(_parte_nova_do_tiktok)
-            veria["veria_tiktok"] = tk_ver.id if tk_ver else ""
+            veria["veria_tiktok"] = tk_alvo.id if tk_alvo else ""
         return veria
     # EXPLICITO, e registrado. Antes ia `None` nos dois lugares: a publicacao
     # resolvia `public` pelo config (certo) mas o registro gravava `null`
@@ -1996,13 +1730,6 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         # mensagem tenha cara de rede; a marca "a conferir" ja foi tentada
         # por `_subir_parte_no_youtube`.
         ficha["youtube_clicou"] = True
-    tk_alvo = None
-    if tiktok_agora and not ja_tk:
-        tk_alvo, sem_vez = _vez_do_tiktok_historias(_parte_nova_do_tiktok)
-        tk_alvo = _o_mesmo(tk_alvo, alvo)
-        if tk_alvo is None:
-            _linha(f"[postar] historias: TikTok sem parte neste horario — "
-                   f"{sem_vez}"[:200])
     if not tiktok_agora:
         # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
         ficha["tiktok"] = ""
@@ -2015,7 +1742,7 @@ def postar_historia(*, so_ver: bool = False) -> dict:
         ficha["tiktok"] = ""
         ficha["so_youtube"] = True
     elif tk_alvo is None:
-        # A fila do TikTok nao tem parte que possa sair agora.
+        # O YouTube levou a divida e a fila nao tem outra parte para o TikTok.
         ficha["tiktok"] = ""
         ficha["tiktok_sem_parte"] = True
     else:
@@ -2391,18 +2118,13 @@ def _sem_a_conferir(fila: list, canal: str) -> list:
     return livres
 
 
-def _sem_fonte_cheia(fila: list, canal: str, agora=None,
-                     plataformas=("youtube",)) -> list:
+def _sem_fonte_cheia(fila: list, canal: str, agora=None) -> list:
     """Tira da fila as historias/geracoes que ja bateram o teto HOJE.
 
-    O teto vale por DESTINO (2 por dia de grade NO PERFIL, decisao de
-    17/09/2026 e `teto-por-fonte-dia-de-grade`). Ate 19/10/2026 a rodada
-    levava o MESMO video aos dois, e por isso esta fila olhava os dois tetos.
-    Com a fila propria do TikTok (decisao `tiktok-seis-por-dia`) as filas que
-    passam aqui sao do YOUTUBE, e o TikTok confere o dele em
-    `_fila_do_tiktok`: olhar o do TikTok aqui faria a serie que o TikTok
-    alcanca hoje (atrasado) sumir da fila do YouTube, que esta a frente dela.
-    O valor do teto nao muda.
+    O teto vale por DESTINO, e a rodada normal leva o video aos dois. Basta
+    um deles estar cheio para a fonte sair: publicar so no YouTube deixaria a
+    serie meio publicada, com a parte N num destino e nao no outro — pior que
+    esperar o dia virar.
 
     Se TODAS as fontes estiverem cheias, devolve vazio e o horario fica sem
     post, pela mesma regra do titulo repetido: repetir (ou empilhar a mesma
@@ -2414,9 +2136,8 @@ def _sem_fonte_cheia(fila: list, canal: str, agora=None,
         publicados = _publicados_do_canal(canal)
     except Exception:                                          # noqa: BLE001
         return fila                    # "nao sei" nao pode barrar a rodada
-    cheias = set()
-    for plataforma in plataformas:
-        cheias |= _fontes_cheias_hoje(publicados, plataforma, agora)
+    cheias = (_fontes_cheias_hoje(publicados, "tiktok", agora)
+              | _fontes_cheias_hoje(publicados, "youtube", agora))
     if not cheias:
         _avisar_variedade(canal, fila, publicados, agora)
         return fila
@@ -2749,8 +2470,7 @@ def reserva_do_tiktok(limite: int = 40) -> list:
     return _fila_do_tiktok("builds", limite, reserva=True)
 
 
-def atrasados_no_tiktok(limite: int = 40, canal: str = "historias",
-                        extra=()) -> list:
+def atrasados_no_tiktok(limite: int = 40, canal: str = "historias") -> list:
     """Videos que sairam no YouTube e NUNCA chegaram ao TikTok, do mais antigo.
 
     O buraco que isto fecha (achado pelo Adrian em 16/09/2026, quando ele viu
@@ -2781,14 +2501,8 @@ def atrasados_no_tiktok(limite: int = 40, canal: str = "historias",
        com o proprio titulo, ela recusaria TODOS — uma fila vazia, com os
        testes verdes, que ninguem notaria;
     5. titulo repetido dentro da propria fila fica so com o primeiro.
-
-    `extra`: videos que AINDA NAO SAIRAM em lugar nenhum (a parte da rodada,
-    o build novo), que entram no FIM da fila e passam pelos MESMOS crivos —
-    e assim que a fila propria do TikTok (`_vez_do_tiktok`, 19/10/2026) leva
-    o video novo quando esta em dia, sem um segundo jeito de dizer "pode ir
-    ao TikTok".
     """
-    return _fila_do_tiktok(canal, limite, reserva=False, extra=extra)
+    return _fila_do_tiktok(canal, limite, reserva=False)
 
 
 def _em_ordem_no_destino(candidatos: list, partes_no_destino: set,
@@ -2847,18 +2561,13 @@ def _em_ordem_no_destino(candidatos: list, partes_no_destino: set,
     return livres
 
 
-def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool,
-                    extra=()) -> list:
+def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool) -> list:
     """O corpo comum de `atrasados_no_tiktok` e `reserva_do_tiktok`.
 
     As duas filas sao o MESMO calculo sobre faixas de data complementares:
     atraso e o que falhou depois do corte, reserva e o que nunca teve chance
     antes dele. Uma so implementacao para que um crivo novo (desistencia,
     titulo) nunca exista em uma e falte na outra.
-
-    `extra` (so no atraso) entra no fim, depois dos que ja estao no YouTube,
-    e passa pelos mesmos crivos; quem ja esta no TikTok ou ja veio do ledger
-    nao entra de novo.
     """
     from builds.publicar import titulos
 
@@ -2906,13 +2615,6 @@ def _fila_do_tiktok(canal: str, limite: int, *, reserva: bool,
         alvo = no_catalogo.get(vid)
         if alvo is not None:
             candidatos.append(alvo)
-    for alvo in (() if reserva else extra or ()):
-        vid = getattr(alvo, "id", None)
-        if (alvo is None or not vid or vid in no_tiktok or vid in vistos
-                or vid in desistidos):
-            continue
-        vistos.add(vid)
-        candidatos.append(alvo)
 
     # A ORDEM DA SERIE, NESTE DESTINO. Vem antes do rodizio e do teto porque
     # e sobre o video, e nao sobre o dia.
@@ -2966,27 +2668,10 @@ def recuperar_no_tiktok(so_ver: bool = False,
     acumulado de builds (8) fecha em um dia e o passo fica ocioso depois. O
     custo maximo e uma postagem de TikTok a mais por rodada, e ele some
     sozinho quando nao ha atraso.
-
-    DESDE 19/10/2026 ELA SO TAPA BURACO (decisao `tiktok-seis-por-dia`): o
-    atraso e a cabeca da fila propria do TikTok (`_vez_do_tiktok`), entao a
-    rodada ja o leva no horario. Este passo so roda num horario DA GRADE DO
-    TIKTOK em que aquele perfil ainda nao recebeu nada — o post da rodada
-    falhou e sobrou tempo. Sem isto, os quatro horarios so do YouTube
-    virariam quatro posts "recuperados" por dia, e o teste de seis por dia
-    postaria dez. Fora da grade ou com o horario ja pago, nada e tentado (e
-    nada conta como falha do video).
     """
     if not RECUPERACAO_LIGADA:
         return {"feito": False, "fila": 0, "canal": canal,
                 "motivo": "recuperacao desligada (ver RECUPERACAO_LIGADA)"}
-    if not _tiktok_neste_horario():
-        return {"feito": False, "fila": 0, "canal": canal,
-                "motivo": "este horario nao e da grade do TikTok"}
-    ja_tk = None if so_ver else publicou_neste_horario(canal, "tiktok")
-    if ja_tk:
-        return {"feito": False, "fila": 0, "canal": canal,
-                "motivo": ja_tk.get("ledger_ilegivel")
-                or "o TikTok deste perfil ja saiu neste horario"}
     fila = atrasados_no_tiktok(canal=canal)
     if not fila:
         return {"feito": False, "fila": 0, "canal": canal}
@@ -3004,8 +2689,7 @@ def recuperar_no_tiktok(so_ver: bool = False,
     falha: dict = {}
     estado = (_tiktok_dos_builds(alvo, falha) if canal == "builds"
               else _tiktok_das_historias(alvo, falha))
-    desfecho = ("recusado" if falha.get("recusa")
-                else desfecho_do_tiktok(estado, falha))
+    desfecho = desfecho_do_tiktok(estado, falha)
     feito = desfecho == "publicado"
     valvula: dict = {"canal": canal, "alvo": alvo.id}
     if feito:
@@ -3227,8 +2911,7 @@ def publicar_da_reserva(so_ver: bool = False) -> dict:
            f"({len(fila)} na gordura).")
     falha: dict = {}
     estado = _tiktok_dos_builds(alvo, falha)
-    desfecho = ("recusado" if falha.get("recusa")
-                else desfecho_do_tiktok(estado, falha))
+    desfecho = desfecho_do_tiktok(estado, falha)
     feito = desfecho == "publicado"
     # A reserva tem a MESMA cabeca de fila que os atrasados, e portanto o
     # mesmo jeito de travar: um video que o TikTok sempre recusa seguraria os
@@ -3262,168 +2945,6 @@ def _tiktok_neste_horario(agora=None) -> bool:
     return grade.publica_em("tiktok", grade.slot(agora))
 
 
-# ------------------------------------------------ a porta do TikTok (funil)
-# SEIS POR DIA E A ORDEM DA SERIE, EM TODO CAMINHO (19/10/2026, decisao
-# `tiktok-seis-por-dia`). Contados os caminhos que chegam ao TikTok pelo
-# postar: a rodada de historias, a de builds, a recuperacao (dos dois
-# canais), a reserva e o escoar (`--tudo`) — seis, e so os dois funis abaixo
-# sao comuns a todos. A guarda mora neles, e nao em cada chamada: a regra
-# "fora da grade do TikTok nao posta" ja existia na rodada e na reserva, e a
-# recuperacao nao a tinha — com a grade de seis ela postaria nos quatro
-# horarios so do YouTube.
-def _recusa_do_tiktok(canal: str, alvo, agora=None) -> str:
-    """Por que `alvo` NAO pode ir ao TikTok agora; "" quando pode.
-
-    1. o horario da rodada nao e da grade do TikTok (`grade.HORAS_DO_TIKTOK`);
-    2. aquele perfil ja recebeu um post neste horario (o mesmo criterio de
-       `publicou_neste_horario`: `conferencia.chave_do_horario`) — e o que
-       segura o TikTok em UM por horario, seis por dia;
-    3. o video espera conferencia no TikTok (clique sem confirmacao, luta
-       muda): repostar seria o rascunho gemeo de novo;
-    4. (historias) a parte anterior da serie ainda nao esta NO TIKTOK — a
-       parte N+1 nunca sai antes da N, por caminho nenhum.
-
-    Ledger ou lista ilegivel RECUSA: as quatro sao guardas contra repetir ou
-    embaralhar no perfil, e repetir e pior que nao postar (17/09). Nunca
-    levanta.
-    """
-    try:
-        if not _tiktok_neste_horario(agora):
-            return "este horario nao e da grade do TikTok"
-        ja = publicou_neste_horario(canal, "tiktok", agora)
-        if ja:
-            return (ja.get("ledger_ilegivel")
-                    or f"o TikTok deste perfil ja saiu neste horario "
-                       f"({ja.get('video_id')})")
-        try:
-            marcados = _com_as_raizes(a_conferir_no_tiktok(canal, "tiktok"))
-        except Exception as exc:                               # noqa: BLE001
-            return (f"nao consegui ler quem espera conferencia no TikTok "
-                    f"({type(exc).__name__})")
-        if getattr(alvo, "id", None) in marcados:
-            return "esta na lista 'a conferir' do TikTok"
-        parte = int(getattr(alvo, "parte", 0) or 0)
-        fonte = str(getattr(alvo, "fonte_id", "") or "")
-        if canal == "historias" and parte > 1 and fonte:
-            no_tiktok = {int(l.get("parte") or 0)
-                         for l in _publicados_do_canal(canal)
-                         if l.get("plataforma") == "tiktok" and _saiu(l)
-                         and str(l.get("fonte_id") or "") == fonte}
-            faltam = [n for n in range(1, parte) if n not in no_tiktok]
-            if faltam:
-                return (f"a parte {faltam[0]} da serie ainda nao esta no "
-                        f"TikTok")
-        return ""
-    except Exception as exc:                                   # noqa: BLE001
-        return f"nao consegui conferir a porta do TikTok ({type(exc).__name__})"
-
-
-def _recusar_no_tiktok(canal: str, alvo, falha: dict | None) -> str:
-    """Aplica `_recusa_do_tiktok`; devolve o motivo (e o anota em `falha`).
-
-    A recusa nao e falha do video: `falha["recusa"]` faz a recuperacao e a
-    reserva nao contarem tentativa (`_anotar_falha_no_tiktok`), senao tres
-    recusas virariam uma desistencia de video bom.
-    """
-    motivo = _recusa_do_tiktok(canal, alvo)
-    if motivo:
-        _linha(f"   tiktok: {getattr(alvo, 'id', alvo)} nao vai agora — "
-               f"{motivo}."[:200])
-        if falha is not None:
-            falha.update({"tipo": "Recusa", "mensagem": motivo,
-                          "recusa": True})
-    return motivo
-
-
-# ------------------------------------------------ a fila propria do TikTok
-# COM SEIS HORARIOS CONTRA DEZ, O TIKTOK NAO PODE LEVAR "O VIDEO DA RODADA"
-# (19/10/2026, decisao `tiktok-seis-por-dia`). Era a regra desde 10/09: o
-# mesmo video nos dois destinos, e a recuperacao (um extra por rodada)
-# tapava o que o TikTok perdia. Com a grade de seis, os quatro horarios so do
-# YouTube deixam quatro partes por dia fora do TikTok: levando a parte da
-# rodada, o TikTok receberia a 3 sem a 2 (a guarda de ordem a barraria e o
-# horario ficaria vazio), e a recuperacao postaria dez por dia.
-#
-# Entao o TikTok tem FILA PROPRIA, e ela e a fila de atraso que ja existia
-# (`atrasados_no_tiktok`: o que saiu no YouTube e falta ao TikTok, na ordem
-# do YouTube, cada parte so depois da anterior NO TIKTOK, teto de 2 por dia
-# NO TIKTOK, rodizio de series, lista "a conferir" e desistencias), com o
-# video novo da rodada no fim, pelos mesmos crivos. Quando o TikTok esta em
-# dia, a cabeca e a parte da rodada — o comportamento de antes.
-def _o_mesmo(achado, alvo):
-    """`alvo` quando `achado` e o MESMO video (mesmo id), senao `achado`.
-
-    A fila do TikTok monta os videos de novo a partir do catalogo; quem
-    compara "o TikTok levou a parte do YouTube?" por identidade (`is`)
-    precisa do mesmo objeto.
-    """
-    if (achado is not None and alvo is not None
-            and getattr(achado, "id", None) == getattr(alvo, "id", None)):
-        return alvo
-    return achado
-
-
-def _vez_do_tiktok_historias(novo=None) -> tuple:
-    """(parte que o TikTok leva NESTE horario, motivo quando nenhuma).
-
-    `novo`: a parte nova da rodada (ou uma funcao que a devolve, chamada so
-    se a fila de atraso estiver vazia — a vistoria custa). Lista "a conferir"
-    ilegivel: nenhuma (falha fechada, como na recuperacao).
-    """
-    try:
-        fila = atrasados_no_tiktok(canal="historias")
-        if not fila and novo is not None:
-            candidato = novo() if callable(novo) else novo
-            if candidato is not None:
-                fila = atrasados_no_tiktok(canal="historias",
-                                           extra=[candidato])
-    except Exception as exc:                                   # noqa: BLE001
-        return None, (f"nao consegui montar a fila do TikTok "
-                      f"({type(exc).__name__}: {exc})")[:200]
-    if not fila:
-        return None, ("a fila do TikTok esta vazia: nada no YouTube falta ao "
-                      "TikTok, e nao ha parte nova que passe nos crivos dele")
-    return fila[0], ""
-
-
-def _vez_do_tiktok_builds(config=None) -> tuple:
-    """(build que o TikTok leva NESTE horario, motivo quando nenhum).
-
-    O candidato e o que ja saiu no YouTube e falta ao TikTok (desde
-    `CORTE_DO_TIKTOK`) e o build novo, que ainda nao saiu em lugar nenhum,
-    pelos mesmos crivos (`_fila_do_tiktok`). A escolha e pela MISTURA DO
-    TIKTOK (a do config, inteira — a troca da estreia e so do YouTube),
-    contada no que o TIKTOK serviu, o mais antigo de cada formato primeiro.
-    Video mudo sai da escolha (o publicador o barraria de qualquer jeito).
-    """
-    try:
-        # `_builds_prontos` vem do mais NOVO para o mais velho; a fila e do
-        # mais velho (como em `proximo_build`).
-        novos = list(reversed(_sem_a_conferir(
-            _builds_prontos(config, medir_audio=False), "builds")))
-        pool = atrasados_no_tiktok(limite=10_000, canal="builds", extra=novos)
-    except Exception as exc:                                   # noqa: BLE001
-        return None, (f"nao consegui montar a fila do TikTok "
-                      f"({type(exc).__name__}: {exc})")[:200]
-
-    def _idade(v):
-        try:
-            return float(getattr(v, "quando", 0) or 0)
-        except (TypeError, ValueError):
-            return 0.0
-    pool.sort(key=_idade)
-    servidos = _servidos_recentes(plataforma="tiktok")
-    cota = cota_da_plataforma(cota_da_grade(config), "tiktok")
-    while pool:
-        alvo = escolher_por_cota(pool, servidos, cota)
-        motivo = _audio_mudo(alvo)
-        if not motivo:
-            return alvo, ""
-        _linha(f"[postar] {alvo.id} fora da fila do TikTok: {motivo}")
-        pool = [v for v in pool if v.id != alvo.id]
-    return None, "a fila do TikTok dos builds esta vazia"
-
-
 @_voando("historias", "tiktok")
 def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
     """Mesmo video, segundo destino. Nunca derruba a postagem do YouTube.
@@ -3438,10 +2959,6 @@ def _tiktok_das_historias(alvo, falha: dict | None = None) -> str:
     # ledger do YouTube, e nada ali olhava se o TikTok ja o tinha.
     if serie.ja_publicado(alvo.id, "tiktok"):
         _linha(f"   tiktok: {alvo.id} ja esta no TikTok; nao posto de novo.")
-        return ""
-    # A PORTA DO TIKTOK (19/10/2026): grade de seis, um por horario, lista
-    # "a conferir" e a ordem da serie NO TIKTOK — para todo caminho.
-    if _recusar_no_tiktok("historias", alvo, falha):
         return ""
     laudo: dict = {}
     try:
@@ -3698,58 +3215,12 @@ def cota_da_grade(config=None) -> dict:
     return {str(k): max(0, int(v)) for k, v in bruta.items()}
 
 
-# O YOUTUBE DE BUILDS NAO LEVA ESTREIA (decisao `publicacao/duelo-no-lugar-
-# da-estreia`, 19/10/2026): na analise dos videos de 19/10, 28 dias, o duelo
-# fez 111 views por video (89 videos, 54% assistido) e a estreia 29 (27
-# videos, 13%). O peso da estreia passa ao duelo, e a estreia fica com cota
-# ZERO — que aqui nunca foi proibicao: "so quando ninguem mais quer"
-# (`escolher_por_cota`). Sem duelo, sai o build (roleta, 81 views); a estreia
-# so sobe se nao houver nem duelo nem build, para o horario nao ficar vazio.
-# O TikTok de builds NAO muda de mistura: la vale a do config, inteira.
-TROCAS_NA_COTA = {"youtube": {"estreia": "duelo"}}
-
-
-def _trocado_no_youtube(formato_ou_id) -> bool:
-    """O formato (`"estreia"`, ou o id `geracao:estreia:celular`) e um dos
-    que o YouTube de builds trocou por outro (`TROCAS_NA_COTA`)?"""
-    texto = str(formato_ou_id or "")
-    partes = texto.split(":")
-    formato = partes[1] if len(partes) > 1 else texto
-    return formato in TROCAS_NA_COTA.get("youtube", {})
-
-
-def cota_da_plataforma(cota: dict, plataforma: str) -> dict:
-    """A mistura daquele destino, pura: `TROCAS_NA_COTA` aplicada a `cota`.
-
-    Conta de mao (config de 19/10: duelo 4, build 3, estreia 1, torneio 0):
-    YouTube -> duelo 5, build 3, estreia 0, torneio 0; TikTok -> igual ao
-    config. Formato trocado por um que nao esta na cota ganha o peso inteiro.
-    """
-    saida = {str(k): max(0, int(v)) for k, v in (cota or {}).items()}
-    for de, para in TROCAS_NA_COTA.get(str(plataforma).lower(), {}).items():
-        peso = saida.get(de, 0)
-        if peso:
-            saida[para] = saida.get(para, 0) + peso
-            saida[de] = 0
-    return saida
-
-
-def _servidos_recentes(n: int = JANELA_DA_GRADE,
-                       plataforma: str | None = None) -> dict:
-    """Quantas das ultimas `n` publicacoes foram de cada formato.
-
-    `plataforma`: so as daquele destino (desde 19/10/2026 cada destino tem a
-    sua mistura e a sua fila; contando os dois juntos, as estreias do TikTok
-    fariam o YouTube achar que ja serviu estreia, e vice-versa). Linha sem
-    `plataforma` e do YouTube (era o unico destino antes de 10/09).
-    """
+def _servidos_recentes(n: int = JANELA_DA_GRADE) -> dict:
+    """Quantas das ultimas `n` publicacoes foram de cada formato."""
     from builds.publicar import metricas
 
     contagem: dict[str, int] = {}
-    linhas = [l for l in metricas.publicados() if _saiu(l)
-              and (plataforma is None
-                   or str(l.get("plataforma") or "youtube").lower()
-                   == plataforma)]
+    linhas = [l for l in metricas.publicados() if _saiu(l)]
     for linha in linhas[-n:]:
         origem = str(linha.get("origem") or "")
         if origem:
@@ -4214,11 +3685,7 @@ def _builds_prontos(config=None, *, medir_audio: bool = True,
 
 
 def proximo_build(config=None, *, marcar: bool = False):
-    """O proximo video de builds PARA O YOUTUBE, alternando entre os FORMATOS.
-
-    Desde 19/10/2026 esta e a fila do YouTube: a mistura e a dele (a estreia
-    trocada pelo duelo, `TROCAS_NA_COTA`) e o teto por geracao e o dele. O
-    TikTok escolhe pela fila e pela mistura proprias (`_vez_do_tiktok_builds`).
+    """O proximo video de builds, alternando entre os FORMATOS.
 
     `marcar` e so da rodada de VERDADE (`postar_build`): ela poe o video mudo
     na lista "a conferir" do YouTube, com o motivo, e solta a marca de audio
@@ -4260,20 +3727,14 @@ def proximo_build(config=None, *, marcar: bool = False):
     if not pendentes:
         return None
 
-    # O mesmo teto das historias, por geracao: 2 por dia NO PERFIL do
-    # YouTube — esta e a fila do YouTube; o TikTok tem a dele, com o teto
-    # dele (`_vez_do_tiktok_builds`, 19/10/2026).
-    pendentes = _sem_fonte_cheia(pendentes, "builds",
-                                 plataformas=("youtube",))
+    # O mesmo teto das historias, por geracao: 2 por dia no perfil.
+    pendentes = _sem_fonte_cheia(pendentes, "builds")
     if not pendentes:
         return None
 
     # o mais ANTIGO primeiro: o catalogo vem do mais novo para o mais velho
     pendentes.reverse()
-    # A MISTURA E A DO YOUTUBE (sem estreia, `TROCAS_NA_COTA`), contada no que
-    # o YOUTUBE serviu.
-    servidos = _servidos_recentes(plataforma="youtube")
-    cota = cota_da_plataforma(cota_da_grade(config), "youtube")
+    servidos, cota = _servidos_recentes(), cota_da_grade(config)
     # VIDEO MUDO NAO SAI (auditoria de 15/09/2026): a estreia da
     # generation_00065 media -91 dB e estava marcada para as 10:07, nas duas
     # plataformas. Desde 28/09 a LUTA muda debaixo da musica tambem nao (38 de
@@ -4354,12 +3815,6 @@ def _procurar_divida_dos_builds() -> tuple:
                 or quando < CORTE_DA_DIVIDA_DOS_BUILDS
                 or not vid or vid in no_youtube):
             continue
-        # A ESTREIA NAO E DIVIDA (19/10/2026, `duelo-no-lugar-da-estreia`):
-        # o YouTube de builds trocou a estreia pelo duelo, e a do TikTok fica
-        # so la. Sem isto a divida levaria ao YouTube toda estreia que o
-        # TikTok postou, e a troca nao aconteceria.
-        if _trocado_no_youtube(l.get("origem") or vid):
-            continue
         if vid not in devidas or quando < devidas[vid]:
             devidas[vid] = quando
     if not devidas:
@@ -4397,11 +3852,6 @@ def _alcance_do_youtube_dos_builds(ficha: dict, alvo) -> None:
     divida — "junto com o novo, ate zerar" (decisao `build-so-no-tiktok`)."""
     from builds.publicar import metricas
 
-    if _trocado_no_youtube(getattr(alvo, "origem", "") or alvo.id):
-        # A estreia que o TikTok levou nao vai ao YouTube (`TROCAS_NA_COTA`).
-        ficha["youtube_alcance"] = {"pulado": "o YouTube de builds nao leva "
-                                              "estreia (19/10/2026)"}
-        return
     if not _cabe_antes_do_proximo("a segunda subida do YouTube dos builds"):
         ficha["youtube_alcance"] = {"pulado": "sem tempo antes do horario "
                                               "seguinte"}
@@ -4456,15 +3906,8 @@ def postar_build(*, so_ver: bool = False) -> dict:
             return {"canal": "builds", "feito": False,
                     "motivo": f"o video {ja_yt.get('video_id')} saiu no "
                               "YouTube mas nao esta mais no catalogo"}
-        # O TIKTOK LEVA A VEZ DELE (fila e mistura proprias, 19/10/2026).
-        tk_alvo, sem_vez = _vez_do_tiktok_builds()
-        tk_alvo = _o_mesmo(tk_alvo, alvo)
-        if tk_alvo is None:
-            return {"canal": "builds", "feito": False,
-                    "motivo": f"o YouTube ja saiu nesta hora com {alvo.id}; "
-                              f"TikTok: {sem_vez}"[:300]}
-        _linha(f"[postar] builds: YouTube ja saiu nesta hora ({alvo.id}); "
-               f"levando {tk_alvo.id} so para o TikTok.")
+        _linha(f"[postar] builds: YouTube ja saiu nesta hora; "
+               f"levando {alvo.id} so para o TikTok.")
         falha_tk: dict = {}
         # `feito` SO DEPOIS de o TikTok rodar (11/10/2026): nascia `True`, e
         # um TikTok que falhava por motivo que nao e rede saia `[POSTADO]`,
@@ -4472,10 +3915,7 @@ def postar_build(*, so_ver: bool = False) -> dict:
         ficha = {"canal": "builds", "feito": False, "alvo": alvo.id,
                  "titulo": alvo.titulo, "url": ja_yt.get("url") or "",
                  "so_tiktok": True,
-                 "tiktok": _tiktok_dos_builds(tk_alvo, falha_tk)}
-        if tk_alvo is not alvo:
-            ficha.update({"tiktok_alvo": tk_alvo.id,
-                          "tiktok_titulo": tk_alvo.titulo})
+                 "tiktok": _tiktok_dos_builds(alvo, falha_tk)}
         _anotar_falha_do_tiktok(ficha, falha_tk)
         ficha["feito"] = _tiktok_confirmado(ficha["tiktok"])
         return ficha
@@ -4488,22 +3928,24 @@ def postar_build(*, so_ver: bool = False) -> dict:
         _linha(f"[postar] builds: divida do YouTube que nao sai agora — "
                f"{motivo}"[:200])
     if divida is not None:
-        alvo = divida
+        alvo, tk_alvo = divida, None
+        if tiktok_agora and not ja_tk:
+            tk_alvo = proximo_build(marcar=not so_ver)
         _linha(f"[postar] builds: o YouTube deve {divida.id} (saiu no TikTok "
-               f"em {divida_quando[:16]}); sobe ele.")
+               f"em {divida_quando[:16]}); sobe ele"
+               + (f", e o TikTok leva {tk_alvo.id}" if tk_alvo else "") + ".")
     else:
         alvo = proximo_build(marcar=not so_ver)
         if alvo is None:
             return {"canal": "builds", "feito": False,
                     "motivo": "nao ha video pendente"}
+        tk_alvo = alvo
     if so_ver:
         veria = {"canal": "builds", "feito": False, "veria": alvo.id,
                  "titulo": alvo.titulo, "motivo": "so vendo"}
         if divida is not None:
             veria["youtube_devido"] = divida_quando
-        if tiktok_agora:
-            tk_ver, _sem = _vez_do_tiktok_builds()
-            veria["veria_tiktok"] = tk_ver.id if tk_ver else ""
+            veria["veria_tiktok"] = tk_alvo.id if tk_alvo else ""
         return veria
     # `publicar_como_configurado` JA REGISTRA — e a porta unica, e o registro
     # mora dentro dela justamente para nenhum chamador esquecer. Chamar
@@ -4554,15 +3996,6 @@ def postar_build(*, so_ver: bool = False) -> dict:
             ficha["cota_youtube"] = True
     if divida is not None:
         ficha["youtube_devido"] = divida_quando
-    # A VEZ DO TIKTOK, depois do YouTube (fila e mistura proprias, 19/10/2026):
-    # o build que o YouTube acabou de subir entra na fila de atraso dele.
-    tk_alvo = None
-    if tiktok_agora and not ja_tk:
-        tk_alvo, sem_vez = _vez_do_tiktok_builds()
-        tk_alvo = _o_mesmo(tk_alvo, alvo)
-        if tk_alvo is None:
-            _linha(f"[postar] builds: TikTok sem video neste horario — "
-                   f"{sem_vez}"[:200])
     if not tiktok_agora:
         # FORA DA GRADE DO TIKTOK, e nao falha: ele posta seis por dia.
         ficha["tiktok"] = ""
@@ -4574,7 +4007,7 @@ def postar_build(*, so_ver: bool = False) -> dict:
         ficha["tiktok"] = ""
         ficha["so_youtube"] = True
     elif tk_alvo is None:
-        # A fila do TikTok nao tem build que possa sair agora.
+        # O YouTube levou a divida e a fila nao tem outro build para o TikTok.
         ficha["tiktok"] = ""
         ficha["tiktok_sem_parte"] = True
     else:
@@ -4642,8 +4075,6 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
     from builds.publicar import tiktok as _tk
     if _build_ja_no_tiktok(alvo.id):
         _linha(f"   tiktok: {alvo.id} ja esta no TikTok; nao posto de novo.")
-        return ""
-    if _recusar_no_tiktok("builds", alvo, falha):
         return ""
     # O `laudo` E PREENCHIDO NO LUGAR pelo `tiktok.publicar`, e e por isso que
     # ele nasce aqui fora do `try`: a marca `clicou` escrita la dentro precisa
@@ -5027,6 +4458,9 @@ def estoque_por_formato(por_dia: int | None = None) -> dict:
     formato a zero aparece como zero (e o aviso "sem estoque" dispara); so
     a falha de leitura devolve `{}`.
     """
+    por_dia = int(por_dia or len(HORAS_PADRAO)) or 1
+    cota = cota_da_grade()
+    total_cota = sum(cota.values()) or 1
     try:
         pendentes = _builds_prontos()
     except Exception:                                          # noqa: BLE001
@@ -5036,34 +4470,12 @@ def estoque_por_formato(por_dia: int | None = None) -> dict:
         origem = str(getattr(video, "origem", ""))
         contagem[origem] = contagem.get(origem, 0) + 1
     saida = {}
-    for origem, saidas_por_dia in consumo_por_formato(
-            cota_da_grade(), por_dia).items():
-        saida[origem] = int(contagem.get(origem, 0)
-                            // max(1e-9, saidas_por_dia))
+    for origem, peso in cota.items():
+        if peso <= 0:
+            continue  # cota zero nao tem ritmo proprio para medir
+        saidas_por_dia = max(1e-9, por_dia * peso / total_cota)
+        saida[origem] = int(contagem.get(origem, 0) // saidas_por_dia)
     return saida
-
-
-def consumo_por_formato(cota: dict, por_dia: int | None = None) -> dict:
-    """Quantos videos NOVOS de cada formato saem por dia, pura.
-
-    Desde 19/10/2026 cada destino tem a sua mistura e os seus horarios: o
-    YouTube (dez, `por_dia`) sem estreia, o TikTok (seis) com a do config. O
-    TikTok leva quase sempre o que o YouTube ja subiu (a fila de atraso dele),
-    entao o formato gasta o MAIOR dos dois ritmos, nao a soma. Conta de mao
-    (duelo 4, build 3, estreia 1): YouTube duelo 10*5/8 = 6,25, build 3,75;
-    TikTok estreia 6*1/8 = 0,75. Formato com cota zero nos dois nao entra.
-    """
-    ritmos: dict = {}
-    for plataforma in grade.PLATAFORMAS:
-        horas = (int(por_dia) if (por_dia and plataforma == "youtube")
-                 else len(grade.horas_da_plataforma(plataforma)))
-        dela = cota_da_plataforma(cota, plataforma)
-        total = sum(dela.values()) or 1
-        for origem, peso in dela.items():
-            if peso > 0:
-                ritmos[origem] = max(ritmos.get(origem, 0.0),
-                                     horas * peso / total)
-    return ritmos
 
 
 CANAIS = {"historias": {"emoji": "📖", "rotulo": "histórias"},
@@ -5170,8 +4582,8 @@ def avisar(resultados: list) -> None:
         elif r.get("so_youtube"):
             linhas.append("    ▸ TikTok    já saiu neste horário")
         elif r.get("tiktok_sem_parte"):
-            linhas.append("    ▸ TikTok    🚫 a fila do TikTok não tem "
-                          "vídeo que possa sair agora")
+            linhas.append("    ▸ TikTok    🚫 nenhuma outra parte "
+                          "publicável (a deste horário já estava lá)")
         else:
             linhas.append("    ▸ TikTok    "
                           f"{_estado_da_plataforma(r.get('tiktok'))}"

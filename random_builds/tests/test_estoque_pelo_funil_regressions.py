@@ -72,7 +72,7 @@ class EstoquePeloFunilTests(unittest.TestCase):
         self.m.repetir_titulo = lambda *_a, **_k: False
         self.m.cota_da_grade = lambda config=None: {"build": 3, "duelo": 4,
                                                     "estreia": 1}
-        self.m._servidos_recentes = lambda n=16, **k: {}
+        self.m._servidos_recentes = lambda n=16: {}
         self.m._audio_mudo = lambda v: ("calado em 95%" if "00066" in v.id
                                         else "")
         self.catalogo, self.metricas = catalogo, metricas
@@ -115,12 +115,8 @@ class EstoquePeloFunilTests(unittest.TestCase):
         prontos = self.m._builds_prontos()
         self.assertEqual(sorted(v.id for v in duelos),
                          sorted(v.id for v in prontos))
-        # Desde 19/10/2026 o ritmo e o maior dos dois destinos
-        # (`consumo_por_formato`): com 2 horarios no YouTube (duelo 5/8 sem a
-        # estreia = 1,25/dia) manda o TikTok, 6 x 4/8 = 3/dia -> 4 // 3 = 1 dia.
-        self.assertEqual(1, self.m.estoque_por_formato(por_dia=2)["duelo"])
-        self.assertAlmostEqual(3.0, self.m.consumo_por_formato(
-            self.m.cota_da_grade(), 2)["duelo"])
+        # 4 duelos / (10 disparos * 4/8) = 0 dias; com 2 disparos, 4 dias.
+        self.assertEqual(4, self.m.estoque_por_formato(por_dia=2)["duelo"])
         self.assertIn(self.m.proximo_build().id, {v.id for v in duelos})
 
     def test_falha_de_leitura_nao_vira_estoque(self):

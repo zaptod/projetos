@@ -31,10 +31,6 @@ from remoto import bot as bot_mod
 from remoto import comandos, config, relatorios
 from remoto.api import Telegram
 
-# Horarios de um canal num dia de grade, somando os destinos: YouTube 10 e,
-# desde 19/10/2026 (decisao `tiktok-seis-por-dia`), TikTok 6 = 16.
-DIA = sum(relatorios.grade.META_DIARIA_POR_PLATAFORMA.values())
-
 
 def _serie():
     from contos.publicar import serie
@@ -1922,9 +1918,8 @@ class ConteudoDosRelatoriosTests(BaseTemp):
         # "os dois canais publicaram" com um post de dez daria por batida uma
         # meta que faltou 9/10, e somar os destinos daria 11/10.
         alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
-        do_tiktok = relatorios.grade.META_DIARIA_POR_PLATAFORMA["tiktok"]
         self.assertIn(f"youtube 1/{alvo}", texto)
-        self.assertIn(f"tiktok 0/{do_tiktok}", texto)
+        self.assertIn(f"tiktok 0/{alvo}", texto)
 
     def test_metas_acusa_canal_que_ficou_sem_postar(self):
         self._publicar(_serie(), "historias", "2026-09-09T17:12:45",
@@ -1959,9 +1954,7 @@ class ConteudoDosRelatoriosTests(BaseTemp):
         texto = relatorios.metas(datetime(2026, 9, 9, 23, 0))
         alvo = relatorios.grade.META_DIARIA_POR_PLATAFORMA["youtube"]
         self.assertIn(f"youtube 5/{alvo}", texto)
-        # Desde 19/10/2026 o TikTok tem seis horarios: 6/6 la, e o canal
-        # continua em falta porque o YouTube fez 5/10.
-        self.assertIn("tiktok 6/6", texto)
+        self.assertIn(f"tiktok 6/{alvo}", texto)
         self.assertNotIn("✓ 📖", texto)
 
     def test_duas_publicacoes_no_mesmo_horario_pagam_UM_horario(self):
@@ -2018,13 +2011,13 @@ class ConteudoDosRelatoriosTests(BaseTemp):
 
         madrugada = relatorios.metas(datetime(2026, 9, 10, 5, 0))
         self.assertIn(f"histórias: youtube 3/{alvo}", madrugada)
-        self.assertIn(f"09/09  📖3/{DIA} ⚔️0/{DIA}  ✗", madrugada)
+        self.assertIn("09/09  📖3/20 ⚔️0/20  ✗", madrugada)
 
         noite = relatorios.metas(datetime(2026, 9, 10, 21, 0))
         self.assertIn("— 10/09", noite)
         self.assertIn(f"histórias: youtube 1/{alvo}", noite)
-        self.assertIn(f"09/09  📖3/{DIA}", noite)
-        self.assertIn(f"10/09  📖1/{DIA}", noite)
+        self.assertIn("09/09  📖3/20", noite)
+        self.assertIn("10/09  📖1/20", noite)
         hoje = noite.split("*Últimos")[0]
         self.assertIn("06:40", hoje)
         self.assertNotIn("00:10", hoje)
@@ -2035,19 +2028,19 @@ class ConteudoDosRelatoriosTests(BaseTemp):
         self._sem_estoque()
         self._dia_cheio("2026-09-09", "2026-09-10")
         texto = relatorios.metas(datetime(2026, 9, 10, 5, 0))
-        self.assertIn(f"09/09  📖{DIA}/{DIA} ⚔️{DIA}/{DIA}  ✓", texto)
+        self.assertIn("09/09  📖20/20 ⚔️20/20  ✓", texto)
         self.assertIn("dias completos: 1/7", texto)
-        self.assertIn("✓ 📖 histórias: youtube 10/10 · tiktok 6/6", texto)
+        self.assertIn("✓ 📖 histórias: youtube 10/10 · tiktok 10/10", texto)
 
     def test_o_dia_em_curso_fica_em_andamento_e_nao_reprovado(self):
         self._sem_estoque()
         self._publicar(_serie(), "historias", "2026-09-10T06:39:00",
                        "historia_00004:celular:p01", "public")
         texto = relatorios.metas(datetime(2026, 9, 10, 21, 0))
-        self.assertIn(f"10/09  📖1/{DIA} ⚔️0/{DIA}  ⏳", texto)
-        self.assertIn(f"09/09  📖0/{DIA} ⚔️0/{DIA}  ✗", texto)
+        self.assertIn("10/09  📖1/20 ⚔️0/20  ⏳", texto)
+        self.assertIn("09/09  📖0/20 ⚔️0/20  ✗", texto)
         fechado = relatorios.metas(datetime(2026, 9, 11, 1, 0))
-        self.assertIn(f"10/09  📖1/{DIA} ⚔️0/{DIA}  ✗", fechado)
+        self.assertIn("10/09  📖1/20 ⚔️0/20  ✗", fechado)
 
     def test_a_hora_de_cada_post_diz_o_horario_que_ele_pagou(self):
         self._sem_estoque()

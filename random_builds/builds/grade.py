@@ -14,13 +14,11 @@ A GRADE E DAS HORAS VAGAS DAS PESSOAS (pedido dele em 15/09/2026): indo para
 o trabalho, cafe, almoco, lanche, ida embora e a noite ociosa ate quase de
 madrugada. Ate entao eram oito horarios densos de manha (6, 7, 8), e o TikTok
 pulava 7h e 8h — o que deixava buracos na serie la. Agora sao dez, com minuto
-proprio em cada um. O YouTube posta nos dez; o TikTok, desde 19/10/2026, em
-seis deles, so de dia (`HORAS_DO_TIKTOK`), com fila propria.
+proprio em cada um, e o TikTok posta em todos.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from pathlib import Path
 
 # (hora, minuto), na ordem do calendario. O 00:37 e o ultimo da noite, mas no
 # calendario e o primeiro do dia — e assim que `vencidos` e `proximo` contam.
@@ -46,28 +44,16 @@ MINUTO = 37
 CANAIS = ("historias", "builds")
 PLATAFORMAS = ("youtube", "tiktok")
 
-# O TIKTOK POSTA SEIS POR DIA, SO DE DIA (decisao `publicacao/tiktok-seis-
-# por-dia`, 19/10/2026, TESTE de uma semana). Historia da regra:
-#   13/09  o TikTok pulava 7h e 8h (do 7o post do dia em diante a
-#          distribuicao caia);
-#   15/09  voltou aos dez ("tapar os buracos"): a fila andava com o YouTube e
-#          a parte publicada nos horarios pulados nunca chegava ao TikTok;
-#   19/10  a analise dos videos mediu o que a de 13/09 suspeitava — o perfil so
-#          aparece depois de descansar (blocos depois de 22 h+ sem postar: 6 de
-#          6 no builds, 3 de 3 nas historias; depois de 5 a 10 h: 4 de 32 e 3 de
-#          33). Seis horarios, de 09:37 a 21:37, deixam ~12 h sem postar a
-#          noite.
-# O buraco de 15/09 nao volta porque o TikTok agora tem FILA PROPRIA
-# (`postar._vez_do_tiktok`): a parte que saiu num horario so do YouTube e a
-# primeira da fila do TikTok, na ordem da serie — nunca pulada.
-#
-# QUANDO O TESTE ACABA A GRADE NAO VOLTA SOZINHA A DEZ: ela continua em seis,
-# e a analise mostra o resultado (`teste_do_tiktok`, `analise.
-# resultado_do_teste_tiktok`). Voltar e decisao dele.
-HORAS_DO_TIKTOK = (9, 12, 15, 17, 20, 21)
+# O TIKTOK POSTA EM TODOS OS HORARIOS (decisao dele em 15/09/2026: "quero
+# tapar esses buracos"). De 13/09 ate entao ele pulava 7h e 8h, por uma
+# medicao em que do setimo post do dia em diante a distribuicao caia — mas a
+# fila avancava com o YouTube e a parte publicada nesses horarios nunca
+# chegava ao TikTok. Com a grade espalhada, sem horarios colados, a serie sai
+# em sincronia nas duas plataformas; a metrica do TikTok diz se a distribuicao
+# aguenta os dez.
 HORAS_POR_PLATAFORMA = {
     "youtube": HORAS,
-    "tiktok": HORAS_DO_TIKTOK,
+    "tiktok": HORAS,
 }
 
 # Quantos videos cada canal deve por no ar por dia, POR PLATAFORMA.
@@ -78,47 +64,6 @@ META_DIARIA_POR_CANAL = len(HORAS)
 # A conta cheia do dia: cada canal, cada plataforma, com a grade de cada uma.
 META_DIARIA_TOTAL = len(CANAIS) * sum(META_DIARIA_POR_PLATAFORMA[p]
                                       for p in PLATAFORMAS)
-
-
-# AS DATAS DO TESTE moram no config da publicacao (o Adrian edita sem tocar
-# em codigo): `random_builds/config/publicacao.json` -> `testes` ->
-# `tiktok_6_por_dia` = {"inicio": "AAAA-MM-DD", "fim": "AAAA-MM-DD"}, os dois
-# inclusive. Elas NAO ligam nem desligam a grade (a grade e a constante
-# acima, e vale desde que o codigo entra): servem para a analise saber que
-# dias comparar. Ausente ou ilegivel = `None` ("nao sei" nao inventa teste).
-CONFIG_DA_PUBLICACAO = (Path(__file__).resolve().parents[1] / "config"
-                        / "publicacao.json")
-
-
-def teste(nome: str, config: dict | None = None) -> dict | None:
-    """`{"inicio": date, "fim": date}` do teste `nome`, ou `None`.
-
-    Data torta, fim antes do inicio, ou bloco ausente: `None`. Nunca levanta.
-    """
-    import json
-    from datetime import date
-    if config is None:
-        try:
-            config = json.loads(CONFIG_DA_PUBLICACAO.read_text(
-                encoding="utf-8-sig"))
-        except (OSError, ValueError):
-            return None
-    bloco = ((config or {}).get("testes") or {}).get(nome)
-    if not isinstance(bloco, dict):
-        return None
-    try:
-        inicio = date.fromisoformat(str(bloco.get("inicio"))[:10])
-        fim = date.fromisoformat(str(bloco.get("fim"))[:10])
-    except ValueError:
-        return None
-    if fim < inicio:
-        return None
-    return {"inicio": inicio, "fim": fim}
-
-
-def teste_do_tiktok(config: dict | None = None) -> dict | None:
-    """As datas do teste de seis por dia no TikTok (ver `HORAS_DO_TIKTOK`)."""
-    return teste("tiktok_6_por_dia", config)
 
 
 def minuto(hora: int) -> int:
@@ -211,7 +156,6 @@ def proximo_em(agora: datetime | None = None) -> datetime:
 
 __all__ = ["GRADE", "HORAS", "MINUTOS", "MINUTO", "META_DIARIA_POR_CANAL",
            "META_DIARIA_TOTAL", "META_DIARIA_POR_PLATAFORMA",
-           "HORAS_POR_PLATAFORMA", "HORAS_DO_TIKTOK", "CANAIS", "PLATAFORMAS",
-           "teste", "teste_do_tiktok", "minuto",
+           "HORAS_POR_PLATAFORMA", "CANAIS", "PLATAFORMAS", "minuto",
            "horario", "horarios", "horas_da_plataforma", "publica_em",
            "vencidos", "proximo", "proximo_em", "slot"]
