@@ -318,5 +318,148 @@ class HudNaZonaSeguraTests(unittest.TestCase):
                 fight_recorder.tipo_reserva_pos_ko(ruim)
 
 
+class CalloutNaFaixaSeguraTests(unittest.TestCase):
+    """Decisao builds/camera-da-luta-sob-o-hud, item 2: todo texto de callout
+    do config, no pico do pop-in (1,35x), cabe inteiro a esquerda de 88% da
+    largura (e dentro da tela); so o que nao cabe encolhe."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.render = load_config("render.json")
+        textos = (load_config("editing.json").get("fight_callouts") or {}).get("textos") or {}
+        cls.textos = sorted({t.replace("{N}", "10").replace("{ROTULO}", "QUEBRAR GUARDA")
+                             for lista in textos.values() for t in lista})
+
+    def _pico(self, renderer, texto):
+        preparado = renderer._callouts_preparados({"callouts": [{"t": 0.0, "texto": texto}]})[0]
+        img = Image.new("RGBA", (renderer.width, renderer.height), (0, 0, 0, 0))
+        renderer._desenhar_callout(img, preparado, 0.0)          # idade 0 = 1,35x
+        return img.getchannel("A").getbbox()
+
+    def test_todo_callout_do_config_cabe_inteiro_na_faixa_segura(self):
+        renderer = VideoRenderer(self.render, "celular")
+        direita = (1.0 - ZONA_DAS_PLATAFORMAS["direita"]) * renderer.width
+        hud = caixa_do_hud(self.render, "celular")
+        self.assertGreater(len(self.textos), 30)
+        for texto in self.textos:
+            with self.subTest(texto=texto):
+                caixa = self._pico(renderer, texto)
+                self.assertGreaterEqual(caixa[0], 0)
+                self.assertLessEqual(caixa[2], direita, caixa)
+                self.assertGreater(caixa[1], hud[3], caixa)
+
+    def test_so_o_texto_que_nao_cabe_encolhe(self):
+        renderer = VideoRenderer(self.render, "celular")
+        topo = renderer._layout_do_topo()
+        stroke = max(3, int(renderer.ref * 0.006))
+        cheio = int(renderer.ref * 0.115)
+        for curto in ("K.O.", "ACABOU", "PARRY!", "VIROU!"):
+            self.assertEqual(renderer._fonte_do_callout(curto, stroke, topo).size, cheio, curto)
+        longo = renderer._fonte_do_callout("TOMOU A INICIATIVA", stroke, topo)
+        self.assertLess(longo.size, cheio)
+        # o necessario e nada mais: 1 px maior ja nao caberia
+        from builds.video.renderer import load_font
+        maior = load_font(renderer.fonts["black"], longo.size + 1)
+        caixa = maior.getbbox("TOMOU A INICIATIVA", stroke_width=stroke)
+        largura = caixa[2] - caixa[0] + stroke * 2 + 8
+        self.assertGreater(largura * POP_IN_CALLOUT + 2, topo["direita"] - 2 * topo["margem"])
+
+    def test_caso_zero_o_corpo_antigo_passava_da_coluna_de_botoes(self):
+        """Com o corpo de antes (cabia em 90% da largura parado) e o centro na
+        tela, o pico do pop-in de varios textos entrava nos 12% da direita
+        (e saia da tela)."""
+        renderer = VideoRenderer(self.render, "celular")
+        direita = (1.0 - ZONA_DAS_PLATAFORMAS["direita"]) * renderer.width
+        from builds.video.renderer import fit_font
+
+        def antigo(texto, _stroke, _topo):
+            return fit_font(texto, renderer.fonts["black"], int(renderer.width * 0.9),
+                            int(renderer.ref * 0.115))
+
+        fora = []
+        with mock.patch.object(VideoRenderer, "_fonte_do_callout", side_effect=antigo):
+            for texto in self.textos:
+                preparado = renderer._callouts_preparados(
+                    {"callouts": [{"t": 0.0, "texto": texto}]})[0]
+                preparado["cx"] = renderer.width // 2
+                img = Image.new("RGBA", (renderer.width, renderer.height), (0, 0, 0, 0))
+                renderer._desenhar_callout(img, preparado, 0.0)
+                if img.getchannel("A").getbbox()[2] > direita:
+                    fora.append(texto)
+        self.assertGreater(len(fora), 10, fora)
+
+
+class CameraDaLutaSobOHudTests(unittest.TestCase):
+    """Decisao builds/camera-da-luta-sob-o-hud, item 1: com ``hud`` na
+    reserva, a camera DIRETOR da luta nao deixa corpo + nome de ninguem sob o
+    HUD do video. Sem ``hud`` (16:9, jogo, palco), nada muda."""
+
+    # (arena, p1 de -> ate, p2 de -> ate), em m, 4 s cada: alguem correndo
+    # para a parede de cima, os dois juntos no alto, alguem pulando (z)
+    CENAS = [
+        ("Torre", ((5.0, 9.0), (5.0, 0.8)), ((5.0, 12.0), (5.5, 12.0)), 0.0),
+        ("Torre", ((3.0, 2.0), (7.0, 1.0)), ((4.0, 2.5), (6.0, 1.5)), 0.0),
+        ("Torre", ((5.0, 3.0), (5.0, 3.0)), ((5.0, 15.0), (5.0, 16.5)), 1.2),
+        ("Vulcao", ((13.0, 13.0), (13.0, 0.8)), ((13.0, 16.0), (12.0, 18.0)), 0.0),
+        ("Vulcao", ((4.0, 3.0), (22.0, 1.0)), ((6.0, 24.0), (20.0, 23.0)), 0.0),
+        ("Vulcao", ((12.0, 2.0), (12.5, 1.5)), ((14.0, 2.5), (11.0, 2.0)), 0.8),
+    ]
+
+    def _luta(self, arena, a, b, pulo, reserva, linha=None):
+        from neural_fights.core.arena import ARENAS
+        from neural_fights.effects.camera import Câmera
+
+        cfg = ARENAS[arena]
+        cam = Câmera(1080, 1920)
+        cam.set_arena_bounds(cfg.largura / 2, cfg.altura / 2, cfg.largura, cfg.altura)
+        cam.modo = "DIRETOR"
+        cam.diretor_largura_min_m = 5.5
+        cam.diretor_espera_zoom_in = 2.5
+        cam.reserva_pos_ko = reserva
+        p1, p2 = _lutador(*a[0]), _lutador(*b[0])
+        if linha is None:
+            linha = (reserva or {}).get("hud", 0.0) * 1920
+        sob, passos = [], 240
+        for k in range(passos):
+            f = (k + 1) / passos
+            p1.pos = [a[0][0] + (a[1][0] - a[0][0]) * f, a[0][1] + (a[1][1] - a[0][1]) * f]
+            p2.pos = [b[0][0] + (b[1][0] - b[0][0]) * f, b[0][1] + (b[1][1] - b[0][1]) * f]
+            p1.z = pulo * max(0.0, 1.0 - abs(f - 0.5) * 4)            # um pulo no meio
+            cam.atualizar(1 / 60, p1, p2)
+            for nome, lut in (("p1", p1), ("p2", p2)):
+                if cam._topo_do_lutador_px(lut) < linha:
+                    sob.append((k, nome, round(cam._topo_do_lutador_px(lut))))
+        return sob, cam
+
+    def test_ninguem_fica_sob_o_hud_na_luta(self):
+        reserva = reserva_do_letreiro("celular")
+        for arena, a, b, pulo in self.CENAS:
+            with self.subTest(arena=arena, p1=a, p2=b, pulo=pulo):
+                sob, cam = self._luta(arena, a, b, pulo, reserva)
+                self.assertEqual(sob, [], sob[:3])
+
+    def test_caso_zero_sem_o_hud_na_reserva_alguem_passa_por_baixo(self):
+        reserva = reserva_do_letreiro("celular")
+        sem_hud = {k: v for k, v in reserva.items() if k != "hud"}
+        acusou = sum(bool(self._luta(arena, a, b, pulo, sem_hud, linha=reserva["hud"] * 1920)[0])
+                     for arena, a, b, pulo in self.CENAS)
+        self.assertGreater(acusou, 0)
+
+    def test_sem_hud_a_camera_da_luta_e_a_de_sempre(self):
+        from neural_fights.effects.camera import Câmera
+
+        cam = Câmera(1080, 1920)
+        p1, p2 = _lutador(3.0, 3.0), _lutador(6.0, 9.0)
+        teto = cam._diretor_teto_zoom()
+        for reserva in (None, {"topo": 0.26, "ate_s": 0.95}):
+            cam.reserva_pos_ko = reserva
+            self.assertEqual(cam._zoom_necessario_da_luta(p1, p2, teto),
+                             cam._calcular_zoom_necessario(p1, p2, zoom_max=teto))
+            self.assertEqual(cam._desvio_do_centro_da_luta(cam.zoom), 0.0)
+            self.assertFalse(cam._lutador_sob_o_hud(p1))
+        # e o 16:9 (nao vai ao Shorts) nem recebe o HUD
+        self.assertNotIn("hud", reserva_do_letreiro("normal") or {})
+
+
 if __name__ == "__main__":
     unittest.main()

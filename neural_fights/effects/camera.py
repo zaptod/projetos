@@ -579,7 +579,8 @@ class Câmera:
 
         # --- 1. zoom ---
         teto = self._diretor_teto_zoom()
-        necessario = self._calcular_zoom_necessario(p1, p2, zoom_max=teto)
+        # com o HUD do vídeo na reserva, a faixa dele não conta como altura útil
+        necessario = self._zoom_necessario_da_luta(p1, p2, teto)
         # Onda 10A: o zoom-in segue a distância FILTRADA (~2 s) — arremessos,
         # dash-ins e kiting mudam a distância de verdade e o quadro virava
         # sanfona (V7_zoom_calmo). Abrir continua imediato (segurança).
@@ -618,13 +619,15 @@ class Câmera:
         # estacionava exatamente na borda da zona e qualquer passo de 4 cm a
         # acordava — o "tremor de deriva" que a zona morta existe para matar.
         cx, cy = self._calcular_centro_ideal(p1, p2)
+        cy -= self._desvio_do_centro_da_luta(self.zoom)    # 0 sem HUD
         cx, cy = self._limitar_centro_a_arena(cx, cy)
         dx_px = (cx - self.x) * self.zoom
         dy_px = (cy - self.y) * self.zoom
         dist = math.hypot(dx_px, dy_px)
         zona = self.diretor_deadzone * min(self.screen_width, self.screen_height)
         urgente = (not self._lutador_na_zona_segura(p1)
-                   or not self._lutador_na_zona_segura(p2))
+                   or not self._lutador_na_zona_segura(p2)
+                   or self._lutador_sob_o_hud(p1) or self._lutador_sob_o_hud(p2))
         movendo = getattr(self, "_diretor_movendo", False)
         if dist > zona:
             movendo = True
@@ -652,6 +655,9 @@ class Câmera:
                 self.y -= (margem - sy) / self.zoom
             elif sy > self.screen_height - margem:
                 self.y += (sy - (self.screen_height - margem)) / self.zoom
+
+        # --- 4. o HUD do vídeo (só com ``hud`` na reserva): ninguém por baixo ---
+        self._tirar_lutadores_do_hud(p1, p2, teto)
 
     # ------------------------------------------------------- pós-K.O.
 
@@ -801,19 +807,97 @@ class Câmera:
             return None
         return max(0.0, min(topo, self.diretor_pos_ko_area[3] - 0.1))
 
+    def _fracao_do_hud(self) -> float:
+        """Borda de baixo do HUD do vídeo (fração da altura) que quem grava
+        passou em ``reserva_pos_ko["hud"]``; 0 sem HUD (jogo, palco, 16:9)."""
+        reserva = self.reserva_pos_ko
+        if not reserva:
+            return 0.0
+        try:
+            hud = float(reserva.get("hud") or 0.0)
+        except (AttributeError, TypeError, ValueError):
+            return 0.0
+        return max(0.0, min(hud, self.diretor_pos_ko_area[3] - 0.1))
+
     def _topo_base_pos_ko(self) -> float:
         """Topo da área pós-K.O. sem o letreiro: o de ``diretor_pos_ko_area``
         ou, se quem grava disse onde o HUD do vídeo termina (``hud`` da
         reserva), abaixo dele — o HUD fica na tela a cauda inteira."""
-        base = self.diretor_pos_ko_area[1]
-        reserva = self.reserva_pos_ko
-        if not reserva:
-            return base
-        try:
-            hud = float(reserva.get("hud") or 0.0)
-        except (AttributeError, TypeError, ValueError):
-            return base
-        return max(base, min(hud, self.diretor_pos_ko_area[3] - 0.1))
+        return max(self.diretor_pos_ko_area[1], self._fracao_do_hud())
+
+    # ------------------------------------------------ o HUD durante a luta
+    # Decisão builds/camera-da-luta-sob-o-hud (18/10/2026): com o HUD do
+    # celular abaixo das abas das plataformas (y 212–324 de 1920), ele cobria
+    # o alto da arena e o lutador passava por baixo dele em 5–7% dos quadros.
+    # Com ``hud`` na reserva, o DIRETOR enquadra a luta na tela ABAIXO dele:
+    # o zoom e o centro contam a faixa de cima como ocupada, e nenhum corpo +
+    # nome (``caixa_do_rosto``) sobe para baixo do HUD. Só lê posições.
+
+    def _topo_da_luta_px(self) -> float:
+        """Linha (px) que o corpo + nome de um lutador não cruzam na luta:
+        a borda de baixo do HUD + a folga crítica. 0 sem HUD."""
+        hud = self._fracao_do_hud()
+        if hud <= 0.0:
+            return 0.0
+        return hud * self.screen_height + self.margem_critica
+
+    def _margem_de_cima_da_luta(self) -> float:
+        """A margem de cima do enquadramento da luta (px): a de sempre ou,
+        com HUD, a linha dele + o rótulo do nome (~40 px) sobre a cabeça."""
+        topo = self._topo_da_luta_px()
+        if topo <= 0.0:
+            return float(self.margem_segura)
+        return max(float(self.margem_segura), topo + 40.0)
+
+    def _zoom_necessario_da_luta(self, p1, p2, zoom_max) -> float:
+        """``_calcular_zoom_necessario`` com a faixa do HUD fora da altura útil."""
+        if self._topo_da_luta_px() <= 0.0:
+            return self._calcular_zoom_necessario(p1, p2, zoom_max=zoom_max)
+        min_x, min_y, max_x, max_y = self._calcular_bounding_box(p1, p2)
+        largura_tela = self.screen_width - self.margem_segura * 2
+        altura_tela = self.screen_height - self.margem_segura - self._margem_de_cima_da_luta()
+        zoom_x = largura_tela / (max_x - min_x) if max_x > min_x else zoom_max
+        zoom_y = altura_tela / (max_y - min_y) if max_y > min_y else zoom_max
+        return max(self.zoom_min, min(zoom_max, zoom_x, zoom_y))
+
+    def _desvio_do_centro_da_luta(self, zoom) -> float:
+        """Quanto (px do mundo) o centro da câmera sobe para o meio da luta
+        cair no meio da área ABAIXO do HUD."""
+        extra = self._margem_de_cima_da_luta() - self.margem_segura
+        return extra / 2.0 / max(zoom, 1e-6)
+
+    def _topo_do_lutador_px(self, lutador) -> float:
+        _x0, y0, _x1, _y1 = self.caixa_do_rosto(lutador, self.zoom, 0.0)
+        return (y0 - self.y) * self.zoom + self.screen_height / 2
+
+    def _base_do_lutador_px(self, lutador) -> float:
+        _x0, _y0, _x1, y1 = self.caixa_do_rosto(lutador, self.zoom, 0.0)
+        return (y1 - self.y) * self.zoom + self.screen_height / 2
+
+    def _lutador_sob_o_hud(self, lutador) -> bool:
+        topo = self._topo_da_luta_px()
+        return topo > 0.0 and self._topo_do_lutador_px(lutador) < topo
+
+    def _tirar_lutadores_do_hud(self, p1, p2, teto) -> None:
+        """No quadro de agora: se o corpo + nome de alguém sobe para baixo do
+        HUD, a câmera sobe o mínimo; se isso empurra o outro para fora da
+        tela por baixo, o quadro abre até o zoom que cabe com o HUD."""
+        topo = self._topo_da_luta_px()
+        if topo <= 0.0:
+            return
+        baixo = self.screen_height - self.margem_critica
+        for _ in range(2):
+            subir = topo - min(self._topo_do_lutador_px(p1), self._topo_do_lutador_px(p2))
+            if subir > 0.0:
+                self.y -= subir / self.zoom
+            if max(self._base_do_lutador_px(p1), self._base_do_lutador_px(p2)) <= baixo:
+                return
+            necessario = self._zoom_necessario_da_luta(p1, p2, teto)
+            if self.zoom <= necessario + 1e-9:
+                return
+            self.zoom = necessario
+            cx, cy = self._calcular_centro_ideal(p1, p2)
+            self.y = cy - self._desvio_do_centro_da_luta(self.zoom)
 
     def _area_pos_ko(self) -> tuple:
         """``diretor_pos_ko_area`` com o topo abaixo do HUD do vídeo e,

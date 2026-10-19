@@ -883,8 +883,11 @@ class VideoRenderer:
             cor_hex = str(callout.get("cor") or "#ffffff")
             cor = hex_rgb(cor_hex) if cor_hex.startswith("#") and len(cor_hex) == 7 \
                 else (255, 255, 255)
-            fonte = fit_font(texto, self.fonts["black"], int(self.width * 0.9),
-                             int(self.ref * 0.115))
+            if topo is None:                  # 16:9: como sempre foi
+                fonte = fit_font(texto, self.fonts["black"], int(self.width * 0.9),
+                                 int(self.ref * 0.115))
+            else:
+                fonte = self._fonte_do_callout(texto, stroke, topo)
             caixa = fonte.getbbox(texto, stroke_width=stroke)
             largura = caixa[2] - caixa[0] + stroke * 2 + 8
             altura = caixa[3] - caixa[1] + stroke * 2 + 8
@@ -899,9 +902,27 @@ class VideoRenderer:
                 cy = topo["callout_cy_identidade"]
             else:
                 cy = topo["callout_cy"]
+            # celular: centrado na faixa segura (a esquerda da coluna de botoes)
+            cx = self.width // 2 if topo is None else topo["direita"] // 2
             saida.append({"t": t, "dur": float(callout.get("duracao", 0.9)),
-                          "camada": camada, "cy": cy})
+                          "camada": camada, "cx": cx, "cy": cy})
         return saida
+
+    def _fonte_do_callout(self, texto: str, stroke: int, topo: dict):
+        """Celular: o maior corpo (ate ``ref * 0,115``, o de sempre) em que o
+        callout INTEIRO, no pico do pop-in (``POP_IN_CALLOUT``), cabe na faixa
+        segura (``topo["direita"]`` menos a margem dos dois lados). So o texto
+        que nao cabe encolhe, de 1 em 1 px; os curtos ficam no corpo de sempre
+        (decisao builds/camera-da-luta-sob-o-hud, item dos callouts)."""
+        cabe = topo["direita"] - 2 * topo["margem"]
+        tamanho = int(self.ref * 0.115)
+        while True:
+            fonte = load_font(self.fonts["black"], tamanho)
+            caixa = fonte.getbbox(texto, stroke_width=stroke)
+            largura = caixa[2] - caixa[0] + stroke * 2 + 8
+            if tamanho <= 14 or math.ceil(largura * POP_IN_CALLOUT) + 2 <= cabe:
+                return fonte
+            tamanho -= 1
 
     def _desenhar_callout(self, img: Image.Image, callout: dict, t: float) -> None:
         idade = t - callout["t"]
@@ -917,7 +938,7 @@ class VideoRenderer:
                                    Image.BILINEAR)
         if alfa < 1.0:
             camada = self._com_alfa(camada, alfa)
-        cx = self.width // 2
+        cx = callout.get("cx", self.width // 2)
         cy = callout["cy"]
         img.paste(camada, (cx - camada.width // 2, cy - camada.height // 2), camada)
 

@@ -333,7 +333,9 @@ def reserva_do_letreiro(perfil: str) -> dict | None:
     ``hud`` (18/10/2026, decisao builds/hud-do-topo-zona-segura): a borda de
     baixo do HUD do video, que fica na tela a cauda inteira — medida do mesmo
     jeito (``renderer.hud_do_topo``). Com o HUD fora das abas do TikTok e do
-    Shorts, o topo da area da festa fica abaixo dele.
+    Shorts, o topo da area da festa fica abaixo dele; e, desde a decisao
+    builds/camera-da-luta-sob-o-hud, a luta inteira e enquadrada abaixo dele
+    (nenhum corpo + nome sob o HUD). So no 9:16.
 
     Qualquer falha devolve None: a camera segue sem reserva (nunca derruba a
     gravacao).
@@ -350,7 +352,12 @@ def reserva_do_letreiro(perfil: str) -> dict | None:
             return None
         reserva = {"topo": round(float(topo), 4),
                    "ate_s": round(float(callouts.get("duracao", 0.9)) + 0.05, 3)}
-        hud = hud_do_topo(render, perfil)
+        # So o 9:16 (o que vai ao TikTok e ao Shorts): a camera DIRETOR usa o
+        # HUD na luta inteira (decisao builds/camera-da-luta-sob-o-hud) e na
+        # cauda; o 16:9 nao e publicado e segue enquadrado como sempre.
+        horizontal = (render.get("profiles", {}).get(perfil, {}).get("layout")
+                      == "horizontal")
+        hud = None if horizontal else hud_do_topo(render, perfil)
         if hud is not None:
             reserva["hud"] = round(float(hud), 4)
         return reserva

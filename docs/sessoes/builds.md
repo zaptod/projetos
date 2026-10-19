@@ -1198,13 +1198,51 @@ mesma reserva, câmera a cada passo):
 | vencedor no último quadro (diâmetro / largura) | ~18,7% (era 15,3%) | ~16,7% (era 15,1%) |
 | duração / integrado | 27,93 s / -15,5 LUFS | 18,57 s / -15,6 LUFS |
 
-**O que piorou e ficou aberto:** na luta (antes do K.O.) a câmera DIRETOR
-não sabe do HUD, e ele agora cobre o alto da arena em vez do vazio acima
-dela: quadros com algum lutador (corpo + nome) sob o HUD, Torre 12 → 41 de
-790, Vulcão 7 → 44 de 647 (~5–7%). Os callouts longos ("ESTATELOU",
-"COMEU PAREDE") ainda entram nos 12% da direita (19–27% da altura, acima da
-coluna de botões) e saem da tela no pop-in, como antes.
-Testes: `random_builds/tests/test_hud_zona_segura_regressions.py`.
+**O que piorou na 1ª rodada (434c553):** a câmera DIRETOR da luta não
+sabia do HUD, que passou a cobrir o alto da arena em vez do vazio acima
+dela: lutador (corpo + nome) sob o HUD, Torre 12 → 41 de 790 quadros,
+Vulcão 7 → 44 de 647; e os callouts longos entravam nos 12% da direita e
+saíam da tela no pop-in. **Consertados na 2ª rodada** (decisão
+`builds/camera-da-luta-sob-o-hud`, 19/10):
+
+- **Câmera da luta** (`Câmera._atualizar_modo_diretor`, só com `hud` na
+  reserva, que agora só o 9:16 recebe — o 16:9 voltou a ser enquadrado como
+  antes, também na cauda): o zoom necessário não conta a faixa do HUD como
+  altura útil (`_zoom_necessario_da_luta`: margem de cima = linha do HUD +
+  folga crítica + ~40 px do nome), o centro desce para o meio da área abaixo
+  dele (`_desvio_do_centro_da_luta`), lutador sob o HUD conta como urgente no
+  pan, e no fim de cada passo nenhum corpo + nome (`caixa_do_rosto`) fica
+  acima da linha (`_tirar_lutadores_do_hud`: sobe o mínimo; se empurrar o
+  outro para fora por baixo, abre até o zoom que cabe). Sem `hud`, o mesmo
+  código de antes (teste).
+- **Callouts** (`renderer._fonte_do_callout`, só no 9:16): centrados na
+  faixa segura (x 475) e, no pico do pop-in (1,35x), inteiros entre a margem
+  e 88% − margem (x ≤ 907). O texto que não cabe encolhe de 1 em 1 px, só o
+  necessário; os curtos ficam no corpo de sempre (K.O., ACABOU, PARRY!,
+  VIROU!). Os 35 textos do config: pico em x 60–894. O letreiro do K.O.
+  não mudou de altura (reserva `topo` 0,2656).
+
+**Medido na 2ª rodada.** Luta igual: 48/48 headless; 6/6 pelo gravador
+(vencedor, motivo, duração, K.O., HP, dano, narrativa, série de HP). Os
+`sons` têm os mesmos ids, tempos e pitch; só `volume`/`pan` mudam (máx.
+0,02 de volume), porque o ouvinte do som é a câmera (`listener_x`) e ela
+anda diferente. Provas em `E:\tmp_pytest\prova_hud2\{torre,vulcao}\`
+(mesmo caminho real e mesmas medidas da 1ª; `lutador_x_hud_*.json` conta
+quadro a quadro, pela câmera do gravador re-simulada, lutador × HUD na
+luta e o vencedor na cauda; `folha_zona.png`):
+
+| | Torre | Vulcão |
+|---|---|---|
+| quadros da luta com lutador sob o HUD | **0 de 790** (era 41) | **0 de 647** (era 44) |
+| rosto do vencedor sob o HUD / × letreiro (cauda) | 0 / 0 (folgas 186 / 250 px) | 0 / 0 (folgas 57 / 142 px) |
+| px pintados nos 10% de cima / na coluna dos 12% | 0 / 3 (ruído do x264) | 1 / 5 (ruído) |
+| HUD pintado no vídeo | y 205–323, x 40–911 | y 205–323, x 39–911 |
+| fora da arena na tela, máx. (largura / altura) | 25,3% / 0% | 0% / 25,3% (era 19,6%; sob o HUD, dentro dos 35% da luta) |
+| duração | 27,93 s | 18,57 s |
+
+Testes: `random_builds/tests/test_hud_zona_segura_regressions.py`
+(HUD, callouts com todos os textos do config, câmera da luta em 6 cenas com
+pulo e parede; cada um com o seu caso zero).
 
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre
