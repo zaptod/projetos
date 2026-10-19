@@ -582,14 +582,25 @@ Regras (as três perguntas da lei, respondidas no código e nos testes de
 Total: **1.285 vídeos com número**. Marca de 19/10 completa nas 4 partes
 (builds 311, 589 analytics, 7 data, 1 token, 1.281 s).
 
+Refeito às 10:3x contando **vídeo, não linha** (conferente): builds YouTube
+318 linhas = **313 vídeos** (5 linhas repetidas), 311 com número, 2
+postados depois da coleta; histórias YouTube 341 linhas = 333 vídeos com id +
+8 sem id, 332 com número, 1 depois da coleta; histórias TikTok 339 com
+arquivo = **336 com número de hoje + 3 com número parado** (17 e 20/09: o
+Studio não os lista mais — o "sem par" e o "parado" são os mesmos 3).
+
 **O canal por dia** (1ª busca, 19/10 09:56; 1 Analytics + 1 Data por canal; a
 Analytics vem com ~3 dias de atraso, último dia 16/10): builds **7.681 views
 nos 7 dias até 16/10 contra 5.615 nos 7 anteriores (+37%)**, 13 inscritos,
 27.446 views e 322 vídeos declarados; histórias **2.508 contra 5.347
 (−53%)**, 43 inscritos, 17.679 views, 341 vídeos. Em 56 dias: builds +17/−5
 inscritos, histórias +45/−11. (Em 27/09 eram 3 e 18 inscritos.) A queda das
-histórias casa com o achado 3: o horário das 21h ficou **vazio em 13, 15 e
-16/10**.
+histórias **não se explica só por noites sem vídeo às 21h**: em 13/10 (22:30
+= 286) e 15/10 (23:38 = 215) outro vídeo da noite levou o dia; só 16/10
+ficou sem vencedor (23:42 = 5) e 14/10 o das 21h fez 70. O que caiu foi o
+vencedor do dia: mediana de **286** views nos últimos 7 dias medidos contra
+**837** nos 7 anteriores. (A 1ª versão desta seção dizia "casa com as 21h
+vazias em 13, 15 e 16/10" — o conferente desmentiu.)
 
 Armadilha medida na 1ª rodada: vídeo postado **depois** da coleta (09:37,
 coleta às 07:24) aparecia como "do ledger sem número". Agora conta em
@@ -604,26 +615,44 @@ histórias YouTube com 401 no `playlistItems`; 14: histórias YouTube),
 arquivo guarda o total da vida do vídeo, dia sem coleta não abre buraco no
 total — só não existe série diária por vídeo antes da fotografia de 19/10.
 
-**Os achados de 19/10** (`--ver`, dados de 19/10 07:24–08:03):
+**Os achados de 19/10, refeitos depois do conferente** (`--ver`, 10:32,
+dados de 07:24–08:03). A 1ª versão (`be2e368`) errava em quatro pontos, e o
+conserto está nos testes:
 
-1. **TikTok sufocado pela grade de 10** (os dois perfis, `claro`). Depois de
-   10 h ou mais sem postar, os 6 primeiros posts têm mediana de **97 views**
-   (builds, 57 posts) e **92,5** (histórias, 42); do 7º em diante, **1**
-   (221 e 274 posts). Com pausa de 6,5 h — a maior da grade de 10, 00:37 →
-   06:37 — a separação some. Hoje: 7,5 e 8,2 posts/dia, **~14 e ~8 views por
-   dia** no perfil. A grade diz (comentário de 15/09) que "a métrica do
-   TikTok diz se a distribuição aguenta os dez": **não aguenta**. Sugestão
-   da página: 6 por dia, 09:37 → 21:37 (pausa de 12 h); efeito se o padrão
-   se repetir: ~580 e ~555 views/dia.
-2. **Duelo × estreia no YouTube de builds** (`claro`): mediana 111 views /
-   54% visto (n=89) contra build 81 / 35% (n=47) e estreia 29 / 13% (n=27).
-   Trocar as ~1,3 estreias/dia por duelo: ~+105 views/dia.
-3. **Histórias no YouTube: um vídeo decide o dia** (`claro`): o mais visto
-   leva **93%** das views do dia (mediana de 24 dias); em 18 deles foi o das
-   21h (mediana 337 contra 3 dos outros horários). Os outros ~7 somam ~32/dia.
-   Em builds a fatia é 29% — lá cada vídeo é distribuído por si.
-4. **Histórias: ninguém segue para a parte seguinte** (`claro`): em 21 partes
-   com 100+ views, a seguinte teve **0,4 views para cada 100**.
+- a pausa do TikTok era medida no **minuto** (9 h 59 min 52 s de 14→15/09
+  virava 10 h); agora em segundos;
+- o "6 primeiros" e o limiar de 10 h tinham sido **ajustados nos mesmos
+  dados** que testavam, e a certeza contava **post** (≈280) e não bloco (≈10);
+- a projeção era "corte × mediana" (o melhor caso repetido);
+- a "parte seguinte" deixava entrar parte sem status e parte que saiu antes.
+
+1. **TikTok: o perfil só aparece depois de descansar** (`provável`, os dois
+   perfis). Unidade = **bloco** (posts depois de 5 h+ sem postar), em faixas
+   fixas de pausa; "deu certo" = mediana dos 6 primeiros do bloco ≥ 20 views.
+   Builds: **22 h+ → 6 de 6; 10–16 h → 1 de 5; 5–10 h → 4 de 32**. Histórias:
+   **22 h+ → 3 de 3; 16–22 h → 1 de 1; 10–16 h → 2 de 3; 5–10 h → 3 de 33**.
+   Pausa longa não garante (12,1 h em 18/10 não deu certo em builds), e o
+   maior sucesso de histórias (12.572 views, 15/09 23:38) foi o **9º post do
+   dia**. Projeção pelo que já aconteceu: na semana de até 6 por dia (11 a
+   15/09) os vídeos de cada dia somaram 18 a 581 views em builds (dia do meio
+   331) e 20 a 12.821 em histórias (261); nos dias com 9+ posts, 15 e 11.
+   Faixa: **~18 a ~331** e **~20 a ~261** por dia, se repetir. Recomendação:
+   **testar 1 semana** com 6 por dia (09:37 → 21:37) e medir.
+2. **Duelo × estreia no YouTube de builds** (`claro` nas views): duelo 111
+   (n=89), build 81 (n=48), estreia 29 (n=27). Quanto assistem não se compara
+   direto entre durações diferentes, e a estreia só tem **14** com retenção.
+   O duelo **vem caindo**: 119,5 → 102 → 86,5 por semana. Trocar as ~1,3
+   estreias/dia por duelo: **+74 a +116 views/dia**.
+3. **Histórias no YouTube: um vídeo da noite (21h–23h) leva o dia** (`claro`):
+   o mais visto leva **93%** das views do dia (mediana de 24 dias), e em 23
+   dos 24 ele saiu entre 21h e 23h. Últimos 7 dias: 12/10 21:38 = 321; 13/10
+   22:30 = 286; 14/10 21:38 = 70; 15/10 23:38 = 215; 16/10 23:42 = 5 (o único
+   dia perdido); 17/10 = 556 e 18/10 = 2 ainda juntando views. Em builds a
+   fatia é 29% — lá cada vídeo é distribuído por si.
+4. **Histórias: a parte seguinte** (`ainda não dá para dizer`, vira teste):
+   18 pares, **0,6 views para cada 100**; mas 17 dos 18 eram o vídeo da noite
+   e a seguinte saiu num horário comum (~3 views por si só). Mistura "não
+   seguem" com "o horário não ajuda".
 5. Sem diferença clara (a página põe em "ainda não dá para dizer"): horário
    em builds, duração dentro do mesmo formato. Medido à parte (script de
    exploração, os 93 duelos com 3+ dias; a página ainda não compara isto):

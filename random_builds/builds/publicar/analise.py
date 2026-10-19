@@ -80,11 +80,27 @@ JANELA_DIAS = 28
 MADURO_DIAS = 3
 MIN_VIEWS_RETENCAO = 20
 MIN_N = 8
-# Pausa que "zera" a conta do TikTok. Medido em 19/10/2026 nos dois perfis:
-# depois de 10 h ou mais sem postar, os posts 1 a 6 tem mediana de 86-111
-# views; do 7o em diante, 1-2. Com pausa de 6,5 h (a da grade de 10 por dia,
-# 00:37 -> 06:37) a separacao some.
-PAUSA_TIKTOK_H = 10.0
+# O TikTok e a pausa. A UNIDADE e o BLOCO (os posts depois de uma pausa de
+# `BLOCO_H` ou mais), nao o post: dez posts de um bloco so contam uma vez.
+# Cada bloco cai numa FAIXA FIXA de pausa, escolhida antes de olhar o
+# resultado e nunca ajustada nele (conferente, 19/10/2026: o corte "6
+# primeiros" e o limiar de 10 h tinham sido tirados dos mesmos dados que
+# testavam). "Deu certo" = mediana dos primeiros `POSTS_POR_BLOCO` posts do
+# bloco com `VIEWS_DE_BLOCO_BOM` views ou mais (dez vezes o 1-2 de sempre).
+PAUSA_TIKTOK_H = 10.0          # o que a grade sugerida deixa de pausa, no minimo
+BLOCO_H = 5.0
+FAIXAS_DE_PAUSA = ((22.0, None, "22 h ou mais"), (16.0, 22.0, "16 a 22 h"),
+                   (10.0, 16.0, "10 a 16 h"), (5.0, 10.0, "5 a 10 h"))
+POSTS_POR_BLOCO = 6
+VIEWS_DE_BLOCO_BOM = 20
+# O que JA ACONTECEU quando o TikTok postava ate 6 por dia: a decisao de
+# 13/09/2026 (6 por dia) valeu de 11 a 15/09, ate a grade de 10 (15/09). E a
+# base da projecao — nao "corte x mediana", que so repete o melhor caso.
+POSTS_DO_TESTE = 6
+SEMANA_DE_6_POR_DIA = (date(2026, 9, 11), date(2026, 9, 15))
+# A noite das historias no YouTube: o video que leva o dia sai entre 21h e
+# 23h (medido em 19/10: 13/10 22:30, 15/10 23:38, nao so as 21h).
+NOITE = (21, 22, 23)
 # Idade da coleta a partir da qual a pagina avisa que o numero e velho.
 COLETA_VELHA_DIAS = 2
 TAG_DA_BIBLIOTECA = "analise-dos-videos"
@@ -223,7 +239,10 @@ def registro(d: dict, canal: str, plataforma: str, agora: datetime,
         "video_id": d.get("video_id"), "fonte_id": d.get("fonte_id"),
         "titulo": str(d.get("titulo") or ""), "formato": _formato(d, canal),
         "parte": d.get("parte"), "partes": d.get("partes"),
-        "quando": quando.isoformat(timespec="minutes"),
+        # SEGUNDOS, nao minutos: cortado no minuto, 9 h 59 min 52 s (14 -> 15/09,
+        # TikTok de builds) virava 10 h e abria uma "pausa longa" que nao houve
+        # (conferente, 19/10/2026).
+        "quando": quando.isoformat(timespec="seconds"),
         "hora": quando.hour, "dia_semana": quando.weekday(),
         "idade_dias": round((agora - quando).total_seconds() / 86400.0, 2),
         "duracao_s": _numero(d.get("duracao")),
@@ -304,6 +323,11 @@ def carregar(agora: datetime | None = None) -> dict:
             entrada["series"][canal] = serie
     ontem = (agora.date() - timedelta(days=1)).isoformat()
     entrada["historico"] = _ler_json(pasta() / "historico" / f"{ontem}.json")
+    try:
+        entrada["dias_de_coleta"] = dias_de_coleta(agora)
+    except Exception as exc:                                  # noqa: BLE001
+        entrada["dias_de_coleta"] = []
+        entrada["falhas"].append(f"histórico da coleta ilegível: {type(exc).__name__}: {exc}")
     return entrada
 
 
@@ -361,6 +385,9 @@ def cobertura(entrada: dict) -> dict:
                                     if _numero(d.get("media_percentual")) is not None
                                     and not d.get("erro")),
                 "parados": len(velhos),
+                # Com numero DESTA coleta: o "parado" tem numero, mas velho.
+                "medidos_hoje": len(salvas) - len(velhos),
+                "parados_desde": sorted({str(d.get("atualizado") or "")[:10] for d in velhos}),
                 "desde": min((str(l.get("quando"))[:10] for l in linhas), default=""),
                 "ate": max((str(l.get("quando"))[:10] for l in linhas), default=""),
                 "coleta": ficha.get("estado") or "nunca",
@@ -379,6 +406,10 @@ def cobertura(entrada: dict) -> dict:
                            and str(l.get("quando") or "") < corte}
                 item["ids_no_ledger"] = len(ids)
                 item["sem_id"] = sum(1 for l in linhas if not l.get("youtube_id"))
+                # VIDEO, nao linha: o ledger repete linha do mesmo video
+                # (318 linhas = 313 videos em 19/10).
+                item["videos_postados"] = len(ids) + item["sem_id"]
+                item["linhas_repetidas"] = len(linhas) - item["videos_postados"]
                 item["sem_arquivo"] = len(antigos - medidos)
                 item["depois_da_coleta"] = len((ids - antigos) - medidos)
                 item["publicos"] = sum(1 for d in salvas if d.get("privacidade") == "public")
@@ -392,6 +423,13 @@ def cobertura(entrada: dict) -> dict:
                 item["envios"] = envios if isinstance(envios, int) else len(linhas)
                 item["casados"] = casados if isinstance(casados, int) else len(salvas)
                 item["sem_par"] = max(0, item["envios"] - item["casados"])
+                # O ledger do TikTok nao guarda id: cada linha e um envio.
+                item["videos_postados"] = len(linhas)
+                item["linhas_repetidas"] = 0
+                corte = str(ficha.get("ultimo_ok") or "9999")
+                antes = sum(1 for l in linhas if str(l.get("quando") or "") < corte)
+                item["depois_da_coleta"] = len(linhas) - antes
+                item["nunca_medidos"] = max(0, antes - len(salvas))
                 limite = (agora - timedelta(days=7)).isoformat()
                 item["retencao_relida_ha_mais_de_7_dias"] = sum(
                     1 for d in salvas if str(d.get("analisado_em") or "") < limite)
@@ -418,7 +456,50 @@ def cobertura(entrada: dict) -> dict:
             "coleta_mais_velha": mais_velha, "idade_dias": (round(idade, 1)
                                                            if idade is not None else None),
             "partes_que_nunca_coletaram": nunca,
-            "marca_completa": bool((entrada.get("marca") or {}).get("completa"))}
+            "marca_completa": bool((entrada.get("marca") or {}).get("completa")),
+            "dias_de_coleta": list(entrada.get("dias_de_coleta") or [])}
+
+
+def dias_de_coleta(agora: datetime, dias: int = 21, pasta_dos_logs: Path | None = None) -> list:
+    """Como foi a coleta em cada um dos ultimos `dias`, pela linha
+    `[metricas] dia-AAAA-MM-DD: ...` que a coleta escreve no log das historias
+    (`auto_AAAAMMDD.txt`). A ULTIMA linha do dia manda.
+
+    `completa` (as 4 partes ok), `parcial` (alguma falhou), `falhou` (todas),
+    `nao_rodou` (nenhuma linha no dia), `nao_medido` (antes da primeira linha
+    desse tipo em qualquer log — o formato nasceu em 01/10/2026)."""
+    import re as _re
+
+    pasta_dos_logs = pasta_dos_logs or (metricas.OUTRAS_RAIZES["historias"] / "outputs" / "_logs")
+    padrao = _re.compile(r"\[metricas\] dia-(\d{4}-\d{2}-\d{2}): (.*)$")
+    achados: dict[str, str] = {}
+    try:
+        arquivos = sorted(Path(pasta_dos_logs).glob("auto_*.txt"))
+    except OSError:
+        arquivos = []
+    for arquivo in arquivos:
+        try:
+            texto = arquivo.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for linha in texto.splitlines():
+            m = padrao.search(linha)
+            if m:
+                achados[m.group(1)] = m.group(2)
+    primeiro = min(achados) if achados else None
+    saida = []
+    for i in range(dias - 1, -1, -1):
+        dia = (agora.date() - timedelta(days=i)).isoformat()
+        resumo = achados.get(dia)
+        if resumo is None:
+            estado = "nao_medido" if primeiro is None or dia < primeiro else "nao_rodou"
+        else:
+            pedacos = [p.split(" (")[0] for p in resumo.split(" — ")[0].split(" · ")]
+            boas = sum(1 for p in pedacos if " ok " in f" {p} ")
+            estado = ("completa" if boas == len(pedacos) and boas else
+                      "falhou" if boas == 0 else "parcial")
+        saida.append({"dia": dia, "estado": estado})
+    return saida
 
 
 # ---------------------------------------------------------------- achados
@@ -449,6 +530,18 @@ def _fmt(n) -> str:
 
 def _pct(n) -> str:
     return "—" if n is None else f"{round(n)}%"
+
+
+def _qtd(n: int, um: str, varios: str) -> str:
+    """"1 vídeo postado", "3 vídeos postados"."""
+    return f"{n} {um if n == 1 else varios}"
+
+
+def _v(n) -> str:
+    """"1 view", "2 views", "0,5 view" — nunca "1 views"."""
+    if n is None:
+        return "— views"
+    return f"{_fmt(n)} {'view' if 0 < abs(float(n)) < 2 else 'views'}"
 
 
 def _dias_efetivos(regs: list) -> int:
@@ -495,77 +588,129 @@ def horarios_sugeridos(k: int, grade=None, margem_h: float = 1.5) -> list[str]:
     return [f"{x // 60:02d}:{x % 60:02d}" for x in melhor[1]]
 
 
-def achado_pausa_tiktok(regs: list, agora: datetime, canal: str) -> tuple:
-    """O TikTok so entrega os primeiros posts depois de uma pausa longa."""
-    tk = sorted((r for r in regs if r["plataforma"] == "tiktok"),
-                key=lambda r: r["quando"])
-    if len(tk) < 2 * MIN_N:
-        return None, "TikTok: poucos posts para medir o efeito da pausa"
-    posicao = []
+def _quando(r: dict) -> datetime:
+    return datetime.fromisoformat(r["quando"])
+
+
+def blocos_do_tiktok(tk: list) -> list[dict]:
+    """Os posts do TikTok em BLOCOS: um bloco comeca depois de `BLOCO_H` ou
+    mais sem postar. `pausa` = horas antes do bloco (em segundos exatos, nao
+    no minuto); `None` no primeiro de todos (nao se sabe a pausa)."""
+    blocos: list[dict] = []
     anterior = None
-    k = 0
-    for r in tk:
-        quando = datetime.fromisoformat(r["quando"])
-        if anterior is None or (quando - anterior).total_seconds() / 3600.0 >= PAUSA_TIKTOK_H:
-            k = 1
-        else:
-            k += 1
+    for r in sorted(tk, key=_quando):
+        quando = _quando(r)
+        pausa = None if anterior is None else (quando - anterior).total_seconds() / 3600.0
+        if pausa is None or pausa >= BLOCO_H:
+            blocos.append({"pausa": pausa, "inicio": r["quando"], "posts": []})
+        blocos[-1]["posts"].append(r)
         anterior = quando
-        if r["idade_dias"] >= MADURO_DIAS:
-            posicao.append((k, r["views"]))
-    por_pos = defaultdict(list)
-    for k, v in posicao:
-        por_pos[k].append(v)
-    primeiros = por_pos.get(1, []) + por_pos.get(2, []) + por_pos.get(3, [])
-    ref = mediana(primeiros)
-    if not ref or len(primeiros) < MIN_N:
-        return None, (f"TikTok de {canal}: só {len(primeiros)} post(s) logo depois de "
-                      f"uma pausa de {round(PAUSA_TIKTOK_H)} h — pouco para medir")
-    corte = 0
-    for k in range(1, 15):
-        m = mediana(por_pos.get(k, []))
-        if m is None or len(por_pos.get(k, [])) < 3 or m < 0.2 * ref:
-            break
-        corte = k
-    if corte < 1:
-        return None, None
-    bons = [v for k, v in posicao if k <= corte]
-    resto = [v for k, v in posicao if k > corte]
-    conf = confianca(bons, resto)
-    mb, mr = mediana(bons), mediana(resto)
-    if conf == "incerto" or not mb or (mr or 0) * 5 > mb:
-        return None, (f"TikTok de {canal}: posts logo depois de uma pausa "
-                      f"({_fmt(mb)}) e os seguintes ({_fmt(mr)}) — diferença não "
-                      f"se sustenta com a amostra")
-    janela = _na_janela(tk, agora)
-    por_dia = _views_do_dia(janela)
-    hoje_por_dia = mediana(por_dia.values()) or 0
-    posts_por_dia = len(janela) / _dias_efetivos(janela) if janela else 0
-    previsto = corte * mb
-    parte = nome_da_parte(canal, "tiktok")
+    for b in blocos:
+        primeiros = b["posts"][:POSTS_POR_BLOCO]
+        # Bloco com post de menos de 3 dias ainda esta juntando view: fora.
+        maduro = all(r["idade_dias"] >= MADURO_DIAS for r in primeiros)
+        b["mediana"] = mediana(r["views"] for r in primeiros) if maduro else None
+        b["deu_certo"] = None if b["mediana"] is None else b["mediana"] >= VIEWS_DE_BLOCO_BOM
+    return blocos
+
+
+def _faixa(pausa) -> str | None:
+    if pausa is None:
+        return None
+    for minimo, maximo, nome in FAIXAS_DE_PAUSA:
+        if pausa >= minimo and (maximo is None or pausa < maximo):
+            return nome
+    return None
+
+
+def _nome_curto(canal: str) -> str:
+    return NOME_DO_CANAL.get(canal, canal).split(" (")[0].lower()
+
+
+def achado_pausa_tiktok(regs: list, agora: datetime, canal: str) -> tuple:
+    """O TikTok entrega quando o perfil descansou? Por BLOCO, por faixa fixa
+    de pausa, e a projecao sai do que ja aconteceu (a semana de 6 por dia)."""
+    tk = [r for r in regs if r["plataforma"] == "tiktok" and r["canal"] == canal]
+    nome = _nome_curto(canal)
+    blocos = [b for b in blocos_do_tiktok(tk) if b["deu_certo"] is not None
+              and _faixa(b["pausa"])]
+    if len(blocos) < 4:
+        return None, (f"TikTok de {nome}: só {len(blocos)} bloco(s) de posts com 3+ dias "
+                      f"— pouco para medir o efeito da pausa")
+    faixas = []
+    for _minimo, _maximo, rotulo in FAIXAS_DE_PAUSA:
+        g = [b for b in blocos if _faixa(b["pausa"]) == rotulo]
+        if g:
+            faixas.append({"faixa": rotulo, "blocos": len(g),
+                           "deram_certo": sum(1 for b in g if b["deu_certo"]),
+                           "mediana": mediana(b["mediana"] for b in g)})
+    longos = [b["mediana"] for b in blocos if b["pausa"] >= FAIXAS_DE_PAUSA[0][0]]
+    curtos = [b["mediana"] for b in blocos if b["pausa"] < FAIXAS_DE_PAUSA[-1][1]]
+    p = p_valor(longos, curtos)
+    # Certeza por BLOCO (~10 de cada lado no maximo): nunca "clara".
+    conf = "provavel" if min(len(longos), len(curtos)) >= 3 and p < 0.05 else "incerto"
+    descricao = "; ".join(f"pausa de {f['faixa']}: {f['deram_certo']} de {f['blocos']}"
+                          for f in faixas)
+    if conf == "incerto":
+        return None, (f"TikTok de {nome}: blocos que deram certo por pausa antes ({descricao}) "
+                      f"— ainda não separa do acaso")
+    # O que ja aconteceu: a semana em que postava ate 6 por dia.
+    por_dia = defaultdict(list)
+    for r in tk:
+        por_dia[r["quando"][:10]].append(r)
+    ini, fim = SEMANA_DE_6_POR_DIA
+    semana = sorted(sum(r["views"] for r in lista) for d, lista in por_dia.items()
+                    if ini.isoformat() <= d <= fim.isoformat())
+    maduros = {d: lista for d, lista in por_dia.items()
+               if (agora.date() - date.fromisoformat(d)).days >= MADURO_DIAS}
+    muitos = [sum(r["views"] for r in lista) for lista in maduros.values()
+              if len(lista) >= 9]
+    hoje = mediana(muitos)
+    # As maiores pausas recentes: pausa longa ja houve, e nem sempre bastou.
+    recentes = [b for b in blocos_do_tiktok(tk) if b["pausa"]
+                and (agora - _quando(b["posts"][0])).days <= 14]
+    maiores = sorted(recentes, key=lambda b: -b["pausa"])[:2]
+    pausas = ", ".join(f"{_fmt(round(b['pausa'], 1))} h ({_data_br(b['inicio'])})"
+                       for b in maiores)
+    # O maior sucesso do perfil: em que posicao do dia ele saiu?
+    topo = max(tk, key=lambda r: r["views"])
+    do_dia = sorted(por_dia[topo["quando"][:10]], key=_quando)
+    posicao = do_dia.index(topo) + 1
+    excecao = (f" Mas a regra não é absoluta: o vídeo mais visto do perfil "
+               f"({_v(topo['views'])}, {_data_br(topo['quando'])}) foi o {posicao}º post do dia."
+               if posicao > POSTS_DO_TESTE else "")
     try:
-        sugeridos = horarios_sugeridos(corte)
+        sugeridos = horarios_sugeridos(POSTS_DO_TESTE)
     except Exception:                                         # noqa: BLE001
         sugeridos = []
-    exemplo = (f"nos horários {', '.join(sugeridos)}" if sugeridos else
-               "todos dentro de uma janela de 14 horas")
+    exemplo = (f" ({', '.join(sugeridos)})" if sugeridos else "")
+    if semana:
+        comparado = (f" Nos dias com 9 ou mais posts, os vídeos do dia somam {_v(hoje)} (o dia "
+                     f"do meio)." if hoje is not None else "")
+        quanto = (f"Na semana em que o TikTok postava até {POSTS_DO_TESTE} por dia "
+                  f"({_data_br(ini.isoformat())} a {_data_br(fim.isoformat())}), os vídeos de "
+                  f"cada dia somaram de {_fmt(semana[0])} a {_fmt(semana[-1])} views (dia do "
+                  f"meio: {_fmt(mediana(semana))}).{comparado} Se o teste repetir aquela semana: "
+                  f"entre ~{_fmt(semana[0])} e ~{_fmt(mediana(semana))} views por dia neste perfil "
+                  f"(somando os vídeos postados no dia; não é medida do perfil inteiro).")
+        ganho = max((mediana(semana) or 0) - (hoje or 0), 0) / 2
+    else:
+        quanto = "Não dá para estimar: não há semana com poucos posts por dia para comparar."
+        ganho = 0
     return _achado(
-        f"pausa-tiktok:{canal}", parte, "erro",
-        f"TikTok de {NOME_DO_CANAL[canal].split(' (')[0].lower()}: postar demais está apagando o perfil",
-        (f"Depois de {round(PAUSA_TIKTOK_H)} horas ou mais sem postar, os {corte} primeiros "
-         f"posts têm mediana de {_fmt(mb)} views ({len(bons)} posts medidos). Do "
-         f"{corte + 1}º em diante, {_fmt(mr)} ({len(resto)} posts). Hoje sai uma média de "
-         f"{_fmt(posts_por_dia)} posts por dia sem nenhuma pausa longa, e o perfil faz "
-         f"cerca de {_fmt(hoje_por_dia)} views por dia."),
-        (f"Poste no máximo {corte} vídeos por dia no TikTok, {exemplo}, deixando "
-         f"{round(PAUSA_TIKTOK_H)} horas ou mais sem postar de uma noite para o dia "
-         f"seguinte."),
-        (f"Se o padrão se repetir: de ~{_fmt(hoje_por_dia)} para ~{_fmt(previsto)} views "
-         f"por dia neste perfil ({corte} × {_fmt(mb)})."),
-        conf, max(previsto - hoje_por_dia, 0),
-        corte=corte, mediana_primeiros=mb, mediana_resto=mr, n_primeiros=len(bons),
-        n_resto=len(resto), views_por_dia_hoje=hoje_por_dia,
-        posts_por_dia=round(posts_por_dia, 1), horarios=sugeridos), None
+        f"pausa-tiktok:{canal}", nome_da_parte(canal, "tiktok"), "erro",
+        f"TikTok de {nome}: o perfil só aparece depois de descansar",
+        (f"Separando os posts em blocos pelo tempo sem postar antes de cada um (o bloco "
+         f"deu certo quando os primeiros posts tiveram {VIEWS_DE_BLOCO_BOM} views ou mais): "
+         f"{descricao}. Com a grade de 10 por dia, a maior pausa é a da madrugada (6 h), "
+         f"então quase todo bloco é de 5 a 10 h. Pausa longa não garante: nos últimos 14 "
+         f"dias as maiores foram de {pausas or 'nenhuma'}." + excecao),
+        (f"Testar por 1 semana no máximo {POSTS_DO_TESTE} vídeos por dia no TikTok, todos "
+         f"de dia{exemplo}, com 10 horas ou mais sem postar à noite, e medir aqui."),
+        quanto, conf, ganho,
+        faixas=faixas, p=round(p, 4), semana_de_6=semana, dias_com_9_ou_mais=hoje,
+        maiores_pausas=[round(b["pausa"], 2) for b in maiores], posicao_do_maior=posicao,
+        horarios=sugeridos), None
 
 
 def achado_formato(regs: list, agora: datetime, canal: str, plataforma: str) -> tuple:
@@ -585,27 +730,48 @@ def achado_formato(regs: list, agora: datetime, canal: str, plataforma: str) -> 
     mm, mp = mediana(vm), mediana(vp)
     rotulo = rotulo_da_parte(canal, plataforma)
     if conf == "incerto" or not mm or (mp or 0) * 1.5 > mm:
-        return None, (f"{rotulo}: {NOME_DO_FORMATO.get(melhor, melhor)} ({_fmt(mm)} views) × "
-                      f"{NOME_DO_FORMATO.get(pior, pior)} ({_fmt(mp)}) — diferença dentro do acaso")
+        return None, (f"{rotulo}: {NOME_DO_FORMATO.get(melhor, melhor)} ({_v(mm)}) × "
+                      f"{NOME_DO_FORMATO.get(pior, pior)} ({_v(mp)}) — diferença dentro do acaso")
     def ret(f):
         return mediana(r["retencao"] for r in grupos[f])
+
+    def n_ret(f):
+        return sum(1 for r in grupos[f] if r["retencao"] is not None)
     linhas = []
     for f in reversed(ordem):
-        linhas.append(f"{NOME_DO_FORMATO.get(f, f)}: {_fmt(mediana(r['views'] for r in grupos[f]))} "
-                      f"views e as pessoas veem {_pct(ret(f))} do vídeo ({len(grupos[f])} vídeos)")
+        linhas.append(f"{NOME_DO_FORMATO.get(f, f)}: {_v(mediana(r['views'] for r in grupos[f]))} "
+                      f"({len(grupos[f])} vídeos; assistem {_pct(ret(f))}, medido em {n_ret(f)})")
+    # O melhor formato semana a semana (segunda a domingo, so semana com 5+
+    # videos): se ele vem caindo, o ganho e uma FAIXA, nao um numero.
+    semanas = defaultdict(list)
+    for r in grupos[melhor]:
+        d = _quando(r).date()
+        semanas[(d - timedelta(days=d.weekday())).isoformat()].append(r["views"])
+    serie = [mediana(v) for _k, v in sorted(semanas.items()) if len(v) >= 5]
+    caindo = len(serie) >= 3 and all(b < a for a, b in zip(serie, serie[1:]))
     por_dia_pior = len(grupos[pior]) / _dias_efetivos(janela)
-    ganho = por_dia_pior * (mm - mp)
+    baixo = por_dia_pior * max(min(serie + [mm]) - mp, 0)
+    alto = por_dia_pior * max(max(serie + [mm]) - mp, 0)
+    texto_serie = ""
+    if caindo:
+        texto_serie = (f" Atenção: {o_(melhor)} vem caindo semana a semana ("
+                       + " → ".join(_fmt(x) for x in serie) + " views por vídeo).")
     return _achado(
         f"formato:{canal}:{plataforma}", nome_da_parte(canal, plataforma),
         "acerto",
-        f"{rotulo}: {o_(melhor)} é o que funciona; {o_(pior)} é o que menos rende",
-        f"Mediana por vídeo nos últimos {JANELA_DIAS} dias — " + "; ".join(linhas) + ".",
+        f"{rotulo}: {o_(melhor)} é o que mais rende views; {o_(pior)} é o que menos rende",
+        (f"Views por vídeo (o do meio da fila) nos últimos {JANELA_DIAS} dias — "
+         + "; ".join(linhas) + ". Quanto as pessoas assistem não se compara direto entre "
+         "vídeos de duração diferente (vídeo curto tem porcentagem maior sozinho)."
+         + texto_serie),
         (f"Troque os vídeos de {NOME_DO_FORMATO.get(pior, pior)} por "
          f"{NOME_DO_FORMATO.get(melhor, melhor)} (hoje sai {_fmt(por_dia_pior)} "
          f"{NOME_DO_FORMATO.get(pior, pior)} por dia)."),
-        f"Cerca de +{_fmt(ganho)} views por dia neste canal.",
-        conf, ganho, melhor=melhor, pior=pior, mediana_melhor=mm, mediana_pior=mp,
-        n_melhor=len(vm), n_pior=len(vp)), None
+        (f"Entre +{_fmt(baixo)} e +{_fmt(alto)} views por dia neste canal (a faixa sai das "
+         f"semanas {do_(melhor)})."),
+        conf, (baixo + alto) / 2, melhor=melhor, pior=pior, mediana_melhor=mm,
+        mediana_pior=mp, n_melhor=len(vm), n_pior=len(vp), semanas_do_melhor=serie,
+        caindo=caindo, n_retencao={f: n_ret(f) for f in ordem}), None
 
 
 def achado_concentracao(regs: list, agora: datetime, canal: str, plataforma: str) -> tuple:
@@ -629,74 +795,112 @@ def achado_concentracao(regs: list, agora: datetime, canal: str, plataforma: str
     fatia = mediana(fatias)
     if fatia is None or fatia < 0.6:
         return None, None
-    hora, vezes = horas.most_common(1)[0]
-    da_hora = [r["views"] for r in janela if r["hora"] == hora]
-    outras = [r["views"] for r in janela if r["hora"] != hora]
-    conf = confianca(da_hora, outras)
+    na_noite = sum(n for h, n in horas.items() if h in NOITE)
+    if na_noite * 2 < len(fatias):
+        # O vencedor do dia nao e da noite: o achado e outro (horario), nao este.
+        return None, None
+    hora, _vezes = max(((h, n) for h, n in horas.items() if h in NOITE), key=lambda x: x[1])
+    da_noite = [r["views"] for r in janela if r["hora"] in NOITE]
+    outras = [r["views"] for r in janela if r["hora"] not in NOITE]
+    conf = confianca(da_noite, outras)
     posts_por_dia = len(janela) / _dias_efetivos(janela)
     rotulo = rotulo_da_parte(canal, plataforma)
-    # A vitrine ficou VAZIA? Dia sem video naquele horario e o dia que o
-    # canal perde. Ultimos 7 dias completos (hoje ainda nao acabou).
-    postados = {r["quando"][:10] for r in regs if r["canal"] == canal
-                and r["plataforma"] == plataforma and r["hora"] == hora
-                and r.get("publico") is True}
-    semana = [(agora.date() - timedelta(days=i)).isoformat() for i in range(1, 8)]
-    vazios = [d for d in semana if d not in postados]
-    falta = ""
-    if len(vazios) >= 2:
-        falta = (f" Nos últimos 7 dias, o horário das {hora}h ficou vazio em "
-                 f"{len(vazios)} ({', '.join(_data_br(d) for d in sorted(vazios))}).")
+    # Os ultimos 7 dias, um por um: qual video da noite levou o dia. Os de
+    # menos de 3 dias ainda estao juntando view e sao ditos como tal.
+    publicos = [r for r in regs if r["canal"] == canal and r["plataforma"] == plataforma
+                and r.get("publico") is True]
+    dias_recentes = []
+    for i in range(1, 8):
+        dia = (agora.date() - timedelta(days=i)).isoformat()
+        noite = [r for r in publicos if r["quando"][:10] == dia and r["hora"] in NOITE]
+        topo = max(noite, key=lambda r: r["views"]) if noite else None
+        dias_recentes.append({"dia": dia, "hora": topo["quando"][11:16] if topo else None,
+                              "views": topo["views"] if topo else None,
+                              "maduro": i >= MADURO_DIAS})
+    def _dia_txt(d):
+        if d["views"] is None:
+            return f"{_data_br(d['dia'])}: nenhum vídeo à noite"
+        extra = "" if d["maduro"] else " (ainda juntando views)"
+        return f"{_data_br(d['dia'])} {d['hora']} = {_fmt(d['views'])}{extra}"
+    perdidos = [d for d in dias_recentes if d["maduro"]
+                and (d["views"] is None or d["views"] < 30)]
+    # O vencedor do dia rendeu menos? Ultimos 7 dias medidos contra os 7 antes.
+    vencedores = []
+    for dia, lista in sorted(dias.items()):
+        if len(lista) >= 3:
+            vencedores.append(max(r["views"] for r in lista))
+    ultimos, antes = vencedores[-7:], vencedores[-14:-7]
+    comparacao = ""
+    if len(ultimos) >= 5 and len(antes) >= 5:
+        comparacao = (f" O vídeo que leva o dia também rendeu menos: mediana de "
+                      f"{_v(mediana(ultimos))} nos últimos 7 dias medidos, contra "
+                      f"{_v(mediana(antes))} nos 7 anteriores.")
     return _achado(
         f"concentracao:{canal}:{plataforma}", nome_da_parte(canal, plataforma),
         "atencao",
-        f"{rotulo}: o dia é decidido por um vídeo só, quase sempre o das {hora}h",
+        f"{rotulo}: um vídeo da noite (21h às 23h) leva o dia inteiro",
         (f"Em {len(fatias)} dias medidos, o vídeo mais visto levou {_pct(fatia * 100)} das "
-         f"views do dia (mediana). Em {vezes} desses dias foi o das {hora}h: mediana de "
-         f"{_fmt(mediana(da_hora))} views, contra {_fmt(mediana(outras))} dos outros horários. "
-         f"Os outros ~{_fmt(posts_por_dia - 1)} vídeos do dia somam ~{_fmt(mediana(resto))} "
-         f"views." + falta),
-        ((f"Nunca deixe o horário das {hora}h vazio. " if falta else "")
-         + f"Trate o vídeo das {hora}h como a vitrine do dia: é ali que entra o melhor "
-           f"vídeo pronto. Os outros horários rendem pouco; dá para postar menos neles "
-           f"e guardar estoque."),
+         f"views do dia (mediana), e em {na_noite} desses dias ele saiu à noite, entre 21h e "
+         f"23h (mais vezes às {hora}h). Vídeos da noite: {_v(mediana(da_noite))} por vídeo; "
+         f"dos outros horários: {_v(mediana(outras))}. Os outros ~{_fmt(posts_por_dia - 1)} "
+         f"vídeos do dia somam ~{_v(mediana(resto))}. Últimos 7 dias, o melhor da noite: "
+         + "; ".join(_dia_txt(d) for d in dias_recentes) + "." + comparacao),
+        (f"Ponha o melhor vídeo pronto no primeiro horário da noite ({hora}h) e nunca deixe "
+         f"a noite sem vídeo. Os outros horários rendem pouco; dá para postar menos neles "
+         f"e guardar estoque."),
         (f"Postar menos nos outros horários mexe pouco nas views (~{_fmt(mediana(resto))} "
-         f"por dia) e economiza vídeo. O ganho de verdade está em o vídeo das {hora}h ser bom."),
-        conf, (mediana(da_hora) or 0) * 0.2, hora=hora, dias=len(fatias), vezes=vezes,
-        fatia_mediana=round(fatia, 3), mediana_hora=mediana(da_hora),
-        mediana_outras=mediana(outras), resto_por_dia=mediana(resto),
-        dias_sem_a_vitrine=vazios), None
+         f"por dia) e economiza vídeo. O ganho de verdade está em o vídeo da noite ser bom."),
+        conf, (mediana(da_noite) or 0) * 0.2, hora=hora, dias=len(fatias),
+        dias_na_noite=na_noite, fatia_mediana=round(fatia, 3),
+        mediana_noite=mediana(da_noite), mediana_outras=mediana(outras),
+        resto_por_dia=mediana(resto), ultimos_7_dias=dias_recentes,
+        dias_perdidos=[d["dia"] for d in perdidos],
+        vencedor_ultimos_7=mediana(ultimos), vencedor_7_antes=mediana(antes)), None
 
 
 def achado_seguimento(regs: list, agora: datetime, canal: str, plataforma: str) -> tuple:
     """Quem ve uma parte que foi bem vai atras da parte seguinte?"""
+    # So PUBLICO (com status): video sem status ou rascunho nao tem view que
+    # se compare. E a seguinte tem de ter saido DEPOIS da anterior (historia
+    # republicada fora de ordem nao mede "seguir").
     proprios = [r for r in regs if r["canal"] == canal and r["plataforma"] == plataforma
-                and r.get("publico") is not False and r.get("parte")]
+                and r.get("publico") is True and r.get("parte")]
     por_serie = defaultdict(dict)
     for r in proprios:
         por_serie[r.get("fonte_id")].setdefault(int(r["parte"]), r)
-    razoes = []
+    pares = []
     for partes in por_serie.values():
         for n, r in partes.items():
             seguinte = partes.get(n + 1)
-            if r["views"] >= 100 and seguinte and seguinte["idade_dias"] >= MADURO_DIAS:
-                razoes.append(seguinte["views"] / r["views"])
-    if len(razoes) < 5:
+            if (r["views"] >= 100 and seguinte and seguinte["idade_dias"] >= MADURO_DIAS
+                    and _quando(seguinte) > _quando(r)):
+                pares.append((r, seguinte))
+    if len(pares) < 5:
         return None, None
-    razao = mediana(razoes)
+    razao = mediana(s["views"] / r["views"] for r, s in pares)
     if razao is None or razao >= 0.25:
         return None, None
+    na_noite = sum(1 for r, _s in pares if r["hora"] in NOITE)
+    comuns = [x["views"] for x in _na_janela(proprios, agora) if x["hora"] not in NOITE]
     rotulo = rotulo_da_parte(canal, plataforma)
+    # Vies que impede a conclusao: a parte que passou de 100 e quase sempre a
+    # da noite (a que leva o dia) e a seguinte cai num horario comum, que
+    # rende pouco por si so. "Nao seguem" e "o horario nao ajuda" se misturam.
     return _achado(
-        f"seguimento:{canal}:{plataforma}", nome_da_parte(canal, plataforma), "erro",
-        f"{rotulo}: quem vê uma parte não vai atrás da próxima",
-        (f"Em {len(razoes)} partes que passaram de 100 views, a parte seguinte da mesma "
-         f"história teve, na mediana, {_fmt(razao * 100)} views para cada 100 da anterior."),
-        ("Ligue cada parte à seguinte dentro do próprio Shorts (o \"vídeo relacionado\" "
-         "embaixo do vídeo) e termine a fala com \"a parte seguinte já está no canal\"."),
-        (f"Não dá para estimar antes de testar. Meta de 2 semanas: passar de "
-         f"{_fmt(razao * 100)} para 10 em cada 100."),
-        "claro" if len(razoes) >= 10 else "provavel", 40,
-        razao_mediana=round(razao, 3), pares=len(razoes)), None
+        f"seguimento:{canal}:{plataforma}", nome_da_parte(canal, plataforma), "atencao",
+        f"{rotulo}: quase ninguém vai da parte que bombou para a seguinte — mas ainda "
+        f"não dá para separar isso do horário",
+        (f"Em {len(pares)} partes que passaram de 100 views, a parte seguinte teve "
+         f"{_fmt(razao * 100)} views para cada 100 da anterior. Só que {na_noite} dessas "
+         f"{len(pares)} eram o vídeo da noite, e a seguinte saiu num horário comum, que "
+         f"rende ~{_v(mediana(comuns))} por si só. Então o número mistura \"não seguem\" "
+         f"com \"o horário não ajuda\"."),
+        ("Testar por 1 semana: ligar cada parte à seguinte dentro do próprio Shorts (o "
+         "\"vídeo relacionado\" embaixo do vídeo) e terminar a fala com \"a parte seguinte "
+         "já está no canal\". Depois medir aqui quantos seguem."),
+        "Não dá para estimar antes do teste.",
+        "incerto", 5, razao_mediana=round(razao, 4), pares=len(pares),
+        pares_da_noite=na_noite, mediana_horario_comum=mediana(comuns)), None
 
 
 def achado_horario(regs: list, agora: datetime, canal: str, plataforma: str,
@@ -720,7 +924,9 @@ def achado_horario(regs: list, agora: datetime, canal: str, plataforma: str,
     hora, p, vs, outras = melhor
     if p >= 0.005:
         fora = sorted(h for h in ja_dito if h is not None)
-        prefixo = (f"fora o das {', '.join(f'{h}h' for h in fora)}, nenhum outro horário"
+        prefixo = ("fora os da noite (21h a 23h), nenhum outro horário"
+                   if set(fora) == set(NOITE) else
+                   f"fora o das {', '.join(f'{h}h' for h in fora)}, nenhum outro horário"
                    if fora else "nenhum horário")
         return None, f"{rotulo}: {prefixo} se destaca dos outros (diferenças dentro do acaso)"
     mh, mo = mediana(vs), mediana(outras)
@@ -729,7 +935,7 @@ def achado_horario(regs: list, agora: datetime, canal: str, plataforma: str,
         f"horario:{canal}:{plataforma}:{hora}", nome_da_parte(canal, plataforma),
         "acerto" if bom else "atencao",
         f"{rotulo}: o horário das {hora}h {'rende mais' if bom else 'rende menos'} que os outros",
-        (f"Vídeos das {hora}h: mediana de {_fmt(mh)} views ({len(vs)} vídeos); os outros "
+        (f"Vídeos das {hora}h: {_v(mh)} por vídeo ({len(vs)} vídeos); os outros "
          f"horários, {_fmt(mo)} ({len(outras)})."),
         (f"Ponha às {hora}h o vídeo mais forte do dia." if bom else
          f"Não ponha às {hora}h o vídeo mais forte do dia."),
@@ -762,8 +968,8 @@ def achado_duracao(regs: list, agora: datetime, canal: str, plataforma: str) -> 
         mc, ml = mediana(curtos), mediana(longos)
         nome = NOME_DO_FORMATO.get(formato, formato)
         if conf == "incerto" or not mc or not ml or max(mc, ml) < 1.3 * min(mc, ml):
-            incertos.append(f"{rotulo}: duração {do_(formato)} (até {_fmt(corte)} s: {_fmt(mc)} "
-                            f"views; mais longo: {_fmt(ml)}) — não muda as views de forma clara")
+            incertos.append(f"{rotulo}: duração {do_(formato)} (até {_fmt(corte)} s: {_v(mc)}; "
+                            f"mais longo: {_v(ml)}) — não muda as views de forma clara")
             continue
         curto_ganha = mc > ml
         por_dia = len(lista) / _dias_efetivos(janela)
@@ -774,7 +980,7 @@ def achado_duracao(regs: list, agora: datetime, canal: str, plataforma: str) -> 
             f"{rotulo}: {o_(formato)} mais "
             f"{('curt' if curto_ganha else 'long') + ('a' if formato in FEMININOS else 'o')} "
             f"rende mais",
-            (f"{nome.capitalize()} de até {_fmt(corte)} s: mediana de {_fmt(mc)} views "
+            (f"{nome.capitalize()} de até {_fmt(corte)} s: {_v(mc)} por vídeo "
              f"({len(curtos)}); acima disso, {_fmt(ml)} ({len(longos)})."),
             (f"Mire {o_(formato)} em {'até' if curto_ganha else 'mais de'} {_fmt(corte)} segundos."),
             f"Cerca de +{_fmt(ganho)} views por dia.", conf, ganho,
@@ -900,13 +1106,23 @@ def analisar(regs: list, cob: dict, agora: datetime, series: dict | None = None,
                          "número da última coleta boa.")
     for p in cob.get("partes", {}).values():
         if p["linhas_no_ledger"] and not p["medidos"]:
-            avisos.append(f"{p['rotulo']}: {p['linhas_no_ledger']} vídeos postados e "
+            avisos.append(f"{p['rotulo']}: "
+                          f"{_qtd(p['linhas_no_ledger'], 'vídeo postado', 'vídeos postados')} e "
                           f"NENHUM com número medido.")
         if p.get("sem_arquivo"):
-            avisos.append(f"{p['rotulo']}: {p['sem_arquivo']} vídeos do ledger sem número.")
-        if p.get("sem_par"):
-            avisos.append(f"{p['rotulo']}: {p['sem_par']} envios que o Studio não lista "
-                          f"(sem número).")
+            avisos.append(f"{p['rotulo']}: "
+                          f"{_qtd(p['sem_arquivo'], 'vídeo postado', 'vídeos postados')} antes "
+                          f"da coleta ficaram sem número.")
+        if p.get("parados"):
+            # O mesmo video, dito UMA vez: o TikTok parou de mostra-lo, entao
+            # o arquivo dele nao e mais renovado ("sem par" e "parado" sao ele).
+            datas = ", ".join(_data_br(d) for d in p.get("parados_desde") or []) or "antes"
+            avisos.append(f"{p['rotulo']}: {_qtd(p['parados'], 'vídeo', 'vídeos')} que o "
+                          f"{NOME_DA_PLATAFORMA[p['plataforma']]} não mostra mais; o número "
+                          f"deles parou em {datas}.")
+        if p.get("nunca_medidos"):
+            avisos.append(f"{p['rotulo']}: {_qtd(p['nunca_medidos'], 'vídeo postado', 'vídeos postados')} "
+                          f"antes da coleta que nunca tiveram número.")
     achados, nao_da = [], []
 
     def junta(resultado):
@@ -930,8 +1146,10 @@ def analisar(regs: list, cob: dict, agora: datetime, series: dict | None = None,
             antes = len(achados)
             junta(achado_formato(canal_regs, agora, canal, plataforma))
             junta(achado_concentracao(canal_regs, agora, canal, plataforma))
-            ditas = {a["numeros"].get("hora") for a in achados[antes:]
-                     if a["id"].startswith("concentracao")}
+            # A noite ja foi dita pelo achado da concentracao: o de horario
+            # olha os outros.
+            ditas = (set(NOITE) if any(a["id"].startswith("concentracao")
+                                        for a in achados[antes:]) else set())
             junta(achado_horario(canal_regs, agora, canal, plataforma, ditas))
             junta(achado_duracao(canal_regs, agora, canal, plataforma))
             if canal == "historias":
@@ -972,9 +1190,10 @@ def analisar(regs: list, cob: dict, agora: datetime, series: dict | None = None,
                 "ganho_desde_ontem": ganho,
             }
         partes[f"{canal}_par"] = _par_youtube_tiktok(canal_regs, agora, canal)
-    # Do que mais mexe para o que menos: `peso` e o ganho estimado em views
-    # por dia. Achado incerto nem chega aqui (vai para `nao_da`).
-    achados.sort(key=lambda a: -a["peso"])
+    # Os firmes primeiro, do que mais mexe para o que menos (`peso` = ganho
+    # estimado em views por dia); depois os que so pedem TESTE (incertos com
+    # recomendacao de testar — o resto dos incertos vai para `nao_da`).
+    achados.sort(key=lambda a: (a["confianca"] == "incerto", -a["peso"]))
     return {"gerado_em": agora.isoformat(timespec="minutes"), "estado": estado,
             "avisos": avisos, "achados": achados, "nao_da": nao_da,
             "partes": partes, "cobertura": cob,
@@ -1172,8 +1391,15 @@ main,p,h3,li,.faixa{overflow-wrap:anywhere}
 table{border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed}
 th,td{text-align:left;padding:5px 4px;border-bottom:1px solid var(--linha);vertical-align:top;
 overflow-wrap:anywhere}
-th.n,td.n{width:4.6em}table.cob{font-size:12px}table.cob th.n,table.cob td.n{width:4.2em}table.cob th{font-size:11px}
-th{color:var(--tinta2);font-weight:600}td.n{text-align:right;white-space:nowrap}
+th.n,td.n{width:4.8em}
+th{color:var(--tinta2);font-weight:600}td.n{text-align:right}
+.poucos{display:block;color:var(--tinta2);font-size:11px;line-height:1.2}
+.coleta-dias{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.coleta-dias span{border:1px solid var(--linha);border-radius:6px;padding:2px 5px;font-size:12px;
+min-width:3.2em;text-align:center}
+.coleta-dias .ruim{color:var(--ruim);border-color:var(--ruim)}
+.coleta-dias .meio{color:var(--alerta);border-color:var(--alerta)}
+.parte-coleta{border-top:1px solid var(--linha);padding:8px 0}.parte-coleta:first-child{border-top:0}
 details{margin:8px 0}summary{cursor:pointer;color:var(--tinta2)}
 svg .b{fill:var(--barra)}svg .b:hover{opacity:.75}svg text{fill:var(--tinta2);font-size:10px}
 svg .eixo{stroke:var(--linha)}
@@ -1184,7 +1410,7 @@ TIPO = {"erro": ("✖", "Está errando"), "acerto": ("✔", "Está acertando"),
         "atencao": ("!", "Preste atenção")}
 CONF = {"claro": "Certeza: clara (muitos vídeos, diferença grande)",
         "provavel": "Certeza: provável (vale testar)",
-        "incerto": "Certeza: ainda não dá para dizer"}
+        "incerto": "Certeza: ainda não dá para dizer — vale testar"}
 SENTIDO = {"subindo": "▲ subindo", "caindo": "▼ caindo", "estavel": "● estável",
            "parado": "■ parado (quase nenhuma view)", "sem_dados": "sem dados"}
 
@@ -1214,7 +1440,7 @@ def _barras(pontos: list, titulo: str) -> str:
         h = max(1.0, (v / maior) * (base - 8)) if v else 0.0
         x = i * passo + 1
         barras.append(f"<rect class='b' x='{x:.1f}' y='{base - h:.1f}' width='{max(passo - 2, 1):.1f}' "
-                      f"height='{h:.1f}' rx='2'><title>{_e(_data_br(d))}: {_fmt(v)} views</title></rect>")
+                      f"height='{h:.1f}' rx='2'><title>{_e(_data_br(d))}: {_v(v)}</title></rect>")
     return (f"<figure style='margin:6px 0'><figcaption class='sub'>{_e(titulo)} — maior "
             f"dia: {_fmt(maior)}</figcaption>"
             f"<svg viewBox='0 0 {largura} {altura}' width='100%' role='img' aria-label='{_e(titulo)}'>"
@@ -1244,20 +1470,22 @@ def _linha_video(r: dict) -> str:
 def _tabela_videos(lista: list) -> str:
     if not lista:
         return "<p class='sub'>Nenhum vídeo com 3+ dias nos últimos 28 dias.</p>"
-    return ("<table><tr><th>vídeo</th><th class='n'>views</th><th class='n'>veem</th></tr>"
+    return ("<table><tr><th>vídeo</th><th class='n'>views</th><th class='n'>assistem</th></tr>"
             + "".join(_linha_video(r) for r in lista) + "</table>")
 
 
 def _tabela_grupos(linhas: list, nome, rotulo: str) -> str:
     if not linhas:
         return ""
+    # "poucos" em LINHA PROPRIA, menor: ao lado da porcentagem ela atravessava
+    # a borda do cartao em 56 de 73 celulas (conferente, 19/10/2026).
     corpo = "".join(
         f"<tr><td>{_e(nome(x['grupo']))}</td><td class='n'>{x['n']}</td>"
         f"<td class='n'>{_fmt(x['views'])}</td><td class='n'>{_pct(x['retencao'])}"
-        f"{'' if x['n_retencao'] >= MIN_N else ' <span class=sub>(poucos)</span>'}</td></tr>"
+        f"{'' if x['n_retencao'] >= MIN_N else '<br><span class=poucos>poucos</span>'}</td></tr>"
         for x in linhas)
     return (f"<table><tr><th>{_e(rotulo)}</th><th class='n'>vídeos</th><th class='n'>views"
-            f"</th><th class='n'>veem</th></tr>{corpo}</table>")
+            f"</th><th class='n'>assistem</th></tr>{corpo}</table>")
 
 
 def _parte_html(p: dict) -> str:
@@ -1266,18 +1494,18 @@ def _parte_html(p: dict) -> str:
                 f"Sem nenhum vídeo medido. Isso não é zero views: é falta de dado.</div></div>")
     t = p["tendencia"]
     if t.get("fonte") == "canal":
-        trend = (f"{SENTIDO[t['sentido']]}: {_fmt(t['ultimos_7'])} views no canal nos 7 dias "
+        trend = (f"{SENTIDO[t['sentido']]}: {_v(t['ultimos_7'])} no canal nos 7 dias "
                  f"até {_data_br(t['ate'])}, contra {_fmt(t['anteriores_7'])} nos 7 anteriores")
     elif t.get("mediana_recente") is not None and t.get("mediana_antes") is not None:
-        trend = (f"{SENTIDO[t['sentido']]}: mediana de {_fmt(t['mediana_recente'])} views por "
-                 f"vídeo nas 2 últimas semanas, contra {_fmt(t['mediana_antes'])} nas 2 anteriores"
+        trend = (f"{SENTIDO[t['sentido']]}: o vídeo do meio da fila fez {_v(t['mediana_recente'])} "
+                 f"nas 2 últimas semanas, contra {_fmt(t['mediana_antes'])} nas 2 anteriores"
                  + (" (diferença dentro do acaso)" if t.get("confianca") == "incerto" else ""))
     else:
         trend = "sem dados suficientes para dizer se sobe ou cai"
     numeros = [
-        (_fmt(p["mediana_views"]), "views por vídeo (mediana, 28 dias)"),
+        (_fmt(p["mediana_views"]), "views do vídeo do meio da fila (28 dias)"),
         (_pct(p["mediana_retencao"]) if p["n_retencao"] >= MIN_N else "—",
-         f"do vídeo que as pessoas veem ({p['n_retencao']} vídeos com 20+ views)"),
+         f"do vídeo que as pessoas assistem ({p['n_retencao']} vídeos com 20+ views)"),
         (_fmt(p["views_total"]), f"views somadas de {p['videos']} vídeos"),
     ]
     if p.get("inscritos") is not None:
@@ -1297,7 +1525,7 @@ def _parte_html(p: dict) -> str:
     ext = p["extremos"]
     formatos = ""
     if len(p["formatos"]) > 1:
-        formatos = ("<h3>Formato × formato</h3>"
+        formatos = ("<h3>Qual tipo de vídeo rende mais</h3>"
                     + _tabela_grupos(p["formatos"], lambda g: NOME_DO_FORMATO.get(g, g), "formato"))
     return (f"<div class='cartao'><h3>{_e(p['rotulo'])}</h3><p>{_e(trend)}.</p>"
             f"<div class='numeros'>{caixas}</div>{grafico}{formatos}"
@@ -1323,31 +1551,56 @@ def _achado_html(i: int, a: dict) -> str:
 
 
 def _cobertura_html(cob: dict) -> str:
-    linhas = []
+    """Em FRASES, uma parte por bloco (a tabela de 6 colunas nao cabia em
+    390 px e falava "sem par no Studio", "sem status")."""
+    blocos = []
     for p in cob.get("partes", {}).values():
         falta = []
+        if p.get("depois_da_coleta"):
+            falta.append(f"{p['depois_da_coleta']} postados depois da coleta (entram na próxima)")
         if p.get("sem_id"):
-            falta.append(f"{p['sem_id']} sem id")
+            falta.append(f"{p['sem_id']} sem o código do vídeo no registro (não dá para medir)")
         if p.get("sem_arquivo"):
-            falta.append(f"{p['sem_arquivo']} sem número")
-        if p.get("sem_par"):
-            falta.append(f"{p['sem_par']} sem par no Studio")
+            falta.append(f"{p['sem_arquivo']} postados antes da coleta e sem número")
         if p.get("parados"):
-            falta.append(f"{p['parados']} parados")
+            datas = ", ".join(_data_br(d) for d in p.get("parados_desde") or [])
+            falta.append(f"{p['parados']} que o {NOME_DA_PLATAFORMA[p['plataforma']]} não mostra "
+                         f"mais (número parado em {datas})")
         if p.get("privados"):
-            falta.append(f"{p['privados']} privados")
+            falta.append(f"{p['privados']} privados (rascunhos: ninguém vê)")
         if p.get("sem_status"):
-            falta.append(f"{p['sem_status']} sem status")
-        coleta = {"ok": "✔ ok", "vazio": "vazia", "erro": "✖ falhou",
-                  "nunca": "✖ nunca"}.get(p["coleta"], p["coleta"])
-        linhas.append(
-            f"<tr><td>{_e(p['rotulo'])}<br><span class='sub'>desde {_e(_data_br(p['desde']))}"
-            f"</span></td><td class='n'>{p['linhas_no_ledger']}</td><td class='n'>{p['medidos']}"
-            f"</td><td class='n'>{p['com_retencao']}</td><td>{_e(coleta)}<br><span class='sub'>"
-            f"{_e(_data_br(p['ultimo_ok']))}</span></td><td>{_e(', '.join(falta) or '—')}</td></tr>")
-    return ("<table class='cob'><tr><th>parte</th><th class='n'>saíram</th><th class='n'>com nº</th>"
-            "<th class='n'>com %</th><th>coleta</th><th>falta</th></tr>"
-            + "".join(linhas) + "</table>")
+            falta.append(f"{p['sem_status']} sem a informação de público ou privado (ficam fora "
+                         f"das comparações)")
+        repetidas = (f" (o registro tem {p['linhas_no_ledger']} linhas: "
+                     f"{p['linhas_repetidas']} repetidas)" if p.get("linhas_repetidas") else "")
+        coleta = {"ok": "✔ deu certo", "vazio": "✖ veio vazia", "erro": "✖ falhou",
+                  "nunca": "✖ nunca rodou"}.get(p["coleta"], p["coleta"])
+        quando = f" ({_data_br(p['ultimo_ok'])})" if p.get("ultimo_ok") else ""
+        blocos.append(
+            f"<div class='parte-coleta'><b>{_e(p['rotulo'])}</b><br>"
+            f"{p.get('videos_postados', p['linhas_no_ledger'])} vídeos postados desde "
+            f"{_e(_data_br(p['desde']))}{_e(repetidas)}. {p['medidos_hoje']} com número desta "
+            f"coleta; em {p['com_retencao']} dá para saber quanto as pessoas assistem.<br>"
+            f"Última coleta boa: {_e(coleta)}{_e(quando)}.<br>"
+            f"<span class='sub'>Falta: {_e('; '.join(falta) or 'nada')}.</span></div>")
+    simbolo = {"completa": ("✔", ""), "parcial": ("◐", "meio"), "falhou": ("✖", "ruim"),
+               "nao_rodou": ("○", "ruim"), "nao_medido": ("?", "")}
+    dias = cob.get("dias_de_coleta") or []
+    fila = "".join(f"<span class='{simbolo.get(d['estado'], ('?', ''))[1]}' "
+                   f"title='{_e(d['estado'])}'>{_e(d['dia'][8:10])}/{_e(d['dia'][5:7])}<br>"
+                   f"{simbolo.get(d['estado'], ('?', ''))[0]}</span>" for d in dias)
+    ruins = [d for d in dias if d["estado"] in ("falhou", "nao_rodou", "parcial")]
+    resumo = ""
+    if dias:
+        resumo = ("<p class='sub'>✔ completa · ◐ só uma parte · ✖ falhou · ○ não rodou · ? sem "
+                  "registro (antes de 01/10 a coleta não escrevia o resumo do dia). "
+                  + (f"Nos últimos {len(dias)} dias: {sum(1 for d in dias if d['estado'] == 'completa')} "
+                     f"completos, {len(ruins)} com problema"
+                     + (" (" + ", ".join(f"{_data_br(d['dia'])}" for d in ruins) + ")" if ruins else "")
+                     + ". Um dia sem coleta não apaga número: o total de cada vídeo vem completo "
+                       "na coleta seguinte.") + "</p>")
+    return ((f"<h3>Dia a dia</h3><div class='coleta-dias'>{fila}</div>{resumo}" if dias else "")
+            + "<h3>Hoje, parte por parte</h3>" + "".join(blocos))
 
 
 def pagina(analise: dict) -> str:
@@ -1370,8 +1623,8 @@ def pagina(analise: dict) -> str:
         par = partes.get(f"{canal}_par") or {}
         comparacao = ""
         if par.get("pares"):
-            comparacao = (f"<p class='sub'>O mesmo vídeo nos dois lugares ({par['pares']} pares, "
-                          f"28 dias): mediana de {_fmt(par['youtube'])} views no YouTube e "
+            comparacao = (f"<p class='sub'>O mesmo vídeo nos dois lugares ({par['pares']} vídeos postados nos dois, "
+                          f"28 dias): o vídeo do meio da fila fez {_v(par['youtube'])} no YouTube e "
                           f"{_fmt(par['tiktok'])} no TikTok.</p>")
         secoes.append(f"<h2>{_e(NOME_DO_CANAL.get(canal, canal))}</h2>{comparacao}"
                       + "".join(_parte_html(partes[nome_da_parte(canal, p)])
@@ -1396,10 +1649,10 @@ def pagina(analise: dict) -> str:
 <div class="cartao">{_cobertura_html(analise.get('cobertura', {}))}</div>
 <p class="sub">Como se lê: "views" é a mediana por vídeo (o vídeo do meio da fila), nunca a
 média — um vídeo que bomba não esconde os outros. Só entram vídeos com {regras.get('maduro_dias')}
-dias ou mais no ar, dos últimos {regras.get('janela_dias')} dias. "Veem" é quanto do vídeo as pessoas
+dias ou mais no ar, dos últimos {regras.get('janela_dias')} dias. "Assistem" é quanto do vídeo as pessoas
 assistem, em média, e só conta vídeo com {regras.get('min_views_retencao')} views ou mais.
 Cada diferença passa por um teste: "clara" e "provável" passaram; o resto está em "ainda não dá
-para dizer". "Veem" acima de 100% quer dizer que muita gente assistiu mais de uma vez.
+para dizer". "Assistem" acima de 100% quer dizer que muita gente assistiu mais de uma vez.
 Nas tabelas, "views" é sempre a mediana. O TikTok não informa inscritos por aqui.</p>
 </main></body></html>
 """

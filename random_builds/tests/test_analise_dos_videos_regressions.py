@@ -209,35 +209,83 @@ class RegistroTests(unittest.TestCase):
         self.assertEqual((21, 5), (r["hora"], r["dia_semana"]))   # 10/10/2026: sabado
 
 
-def _rodadas_do_tiktok(canal="builds", bons=6, total=9, dias=12, views_bons=100):
+def _blocos_do_tiktok(canal="builds", rodadas=6, views_descansado=100, views_cansado=1,
+                     inicio=None):
+    """Cada rodada: 3 posts depois de 23 h sem postar (descansado) e 3 posts
+    6 h depois (a pausa da madrugada da grade de 10)."""
     regs = []
-    inicio = AGORA - timedelta(days=dias + 4)
-    for d in range(dias):
-        for i in range(total):
-            quando = inicio + timedelta(days=d, hours=9 + i)
-            regs.append(tk(f"{canal}{d}-{i}", quando, views_bons if i < bons else 1, canal))
+    q = inicio or (AGORA - timedelta(days=rodadas * 2 + 6))
+    for d in range(rodadas):
+        for i in range(3):
+            regs.append(tk(f"{canal}{d}a{i}", q + timedelta(hours=i), views_descansado, canal))
+        q2 = q + timedelta(hours=2 + 6)
+        for i in range(3):
+            regs.append(tk(f"{canal}{d}b{i}", q2 + timedelta(hours=i), views_cansado, canal))
+        q = q2 + timedelta(hours=2 + 23)
     return regs
 
 
 class PausaDoTikTokTests(unittest.TestCase):
 
-    def test_so_os_primeiros_depois_da_pausa_recebem_views(self):
-        a, _ = analise.achado_pausa_tiktok(_rodadas_do_tiktok(), AGORA, "builds")
+    def test_por_bloco_e_por_faixa_fixa_de_pausa(self):
+        a, _ = analise.achado_pausa_tiktok(_blocos_do_tiktok(), AGORA, "builds")
         self.assertIsNotNone(a)
-        self.assertEqual(6, a["numeros"]["corte"])
-        self.assertEqual(100, a["numeros"]["mediana_primeiros"])
-        self.assertEqual("claro", a["confianca"])
-        self.assertIn("no máximo 6", a["mudar"])
+        faixas = {f["faixa"]: (f["deram_certo"], f["blocos"]) for f in a["numeros"]["faixas"]}
+        self.assertEqual((5, 5), faixas["22 h ou mais"])      # o 1o bloco nao tem pausa antes
+        self.assertEqual((0, 6), faixas["5 a 10 h"])
+        # A unidade e o BLOCO (~10), nao o post: nunca "clara".
+        self.assertEqual("provavel", a["confianca"])
+        self.assertIn("Testar por 1 semana", a["mudar"])
+        self.assertNotIn("sem nenhuma pausa longa", a["vimos"])
+        self.assertNotIn("corte", a["numeros"])
+
+    def test_a_pausa_e_medida_em_segundos_nao_no_minuto(self):
+        # 14 -> 15/09/2026, TikTok de builds: 20:09:00 -> 06:08:52 = 9,9978 h.
+        # Cortado no minuto virava 10 h e abria um bloco "de 10 a 16 h".
+        a = tk("a", datetime(2026, 9, 14, 20, 9, 0), 5)
+        b = tk("b", datetime(2026, 9, 15, 6, 8, 52), 5)
+        self.assertEqual("2026-09-15T06:08:52", b["quando"])
+        blocos = analise.blocos_do_tiktok([a, b])
+        self.assertLess(blocos[1]["pausa"], 10.0)
+        self.assertEqual("5 a 10 h", analise._faixa(blocos[1]["pausa"]))
+
+    def test_projecao_sai_da_semana_de_6_por_dia_e_e_uma_faixa(self):
+        regs = _blocos_do_tiktok()
+        ini = analise.SEMANA_DE_6_POR_DIA[0]
+        for d, total in enumerate((18, 331, 581)):
+            regs.append(tk(f"s{d}", datetime(ini.year, ini.month, ini.day, 12) + timedelta(days=d),
+                           total))
+        a, _ = analise.achado_pausa_tiktok(regs, AGORA, "builds")
+        self.assertEqual([18, 331, 581], a["numeros"]["semana_de_6"])
+        self.assertIn("entre ~18 e ~331 views por dia", a["quanto"])
+
+    def test_sem_a_semana_de_comparacao_nao_projeta(self):
+        a, _ = analise.achado_pausa_tiktok(_blocos_do_tiktok(), AGORA, "builds")
+        self.assertIn("Não dá para estimar", a["quanto"])
+
+    def test_o_maior_sucesso_fora_da_regra_e_dito(self):
+        regs = _blocos_do_tiktok(canal="historias")
+        dia = datetime(2026, 9, 25, 6, 0)
+        for i in range(9):
+            regs.append(tk(f"v{i}", dia + timedelta(hours=2 * i), 12572 if i == 8 else 1,
+                           "historias"))
+        a, _ = analise.achado_pausa_tiktok(regs, AGORA, "historias")
+        self.assertEqual(9, a["numeros"]["posicao_do_maior"])
+        self.assertIn("foi o 9º post do dia", a["vimos"])
 
     def test_perfil_parado_por_igual_nao_vira_achado(self):
-        regs = _rodadas_do_tiktok(views_bons=1)
-        a, _ = analise.achado_pausa_tiktok(regs, AGORA, "builds")
+        a, incerto = analise.achado_pausa_tiktok(_blocos_do_tiktok(views_descansado=1),
+                                                 AGORA, "builds")
         self.assertIsNone(a)
+        self.assertIn("ainda não separa do acaso", incerto)
 
-    def test_poucos_posts_vai_para_ainda_nao_da(self):
-        a, incerto = analise.achado_pausa_tiktok(_rodadas_do_tiktok(dias=1), AGORA, "builds")
-        self.assertIsNone(a)
-        self.assertTrue(incerto)
+    def test_poucos_blocos_diz_o_canal(self):
+        # Caso zero: a mensagem saia igual para os dois canais, sem dizer qual.
+        _, b = analise.achado_pausa_tiktok([], AGORA, "builds")
+        _, h = analise.achado_pausa_tiktok([], AGORA, "historias")
+        self.assertIn("TikTok de builds", b)
+        self.assertIn("TikTok de histórias", h)
+        self.assertIn("só 0 bloco", b)
 
     def test_horarios_sugeridos_saem_da_grade_e_respeitam_a_pausa(self):
         self.assertEqual(["09:37", "12:07", "15:37", "17:57", "20:37", "21:37"],
@@ -282,6 +330,24 @@ class FormatoTests(unittest.TestCase):
         self.assertIsNone(a)
         self.assertIsNone(incerto)
 
+    def test_melhor_formato_caindo_vira_faixa_e_aviso(self):
+        # Duelo 119,5 -> 102 -> 86,5 (medido em 19/10): "+105/dia" vira faixa.
+        regs = []
+        segunda = (AGORA - timedelta(days=25)).date()
+        segunda -= timedelta(days=segunda.weekday())
+        for s, base in enumerate((120, 100, 85)):
+            for i in range(7):
+                q = datetime.combine(segunda + timedelta(weeks=s, days=i), datetime.min.time()) \
+                    + timedelta(hours=12)
+                if (AGORA - q).days >= 3 and q >= AGORA - timedelta(days=analise.JANELA_DIAS):
+                    regs.append(yt(f"d{s}{i}", q, base, "duelo"))
+                    regs.append(yt(f"e{s}{i}", q + timedelta(hours=2), 20, "estreia"))
+        a, _ = analise.achado_formato(regs, AGORA, "builds", "youtube")
+        self.assertTrue(a["numeros"]["caindo"], a["numeros"]["semanas_do_melhor"])
+        self.assertIn("vem caindo semana a semana", a["vimos"])
+        self.assertIn("Entre +", a["quanto"])
+        self.assertIn("não se compara direto", a["vimos"])
+
     def test_formatos_iguais_vao_para_ainda_nao_da(self):
         a, incerto = analise.achado_formato(self._regs(12, 12, 50, 50), AGORA,
                                             "builds", "youtube")
@@ -291,19 +357,32 @@ class FormatoTests(unittest.TestCase):
 
 class ConcentracaoESeguimentoTests(unittest.TestCase):
 
-    def test_o_dia_decidido_pelo_video_das_21h(self):
+    def test_um_video_da_noite_leva_o_dia_nao_so_o_das_21h(self):
+        # Como em 13/10 (22:30 = 286) e 15/10 (23:38 = 215): a noite, nao a hora.
         regs = []
         for d in range(12):
             dia = AGORA - timedelta(days=4 + d)
-            for h in (6, 9, 12, 15, 18, 20, 21, 23):
+            vencedora = (21, 22, 23)[d % 3]
+            for h in (6, 9, 12, 15, 18, 20, 21, 22, 23):
                 regs.append(yt(f"{d}-{h}", dia.replace(hour=h, minute=37),
-                               300 if h == 21 else 2, "historia", canal="historias"))
+                               300 if h == vencedora else 2, "historia", canal="historias"))
         a, _ = analise.achado_concentracao(regs, AGORA, "historias", "youtube")
-        self.assertEqual(21, a["numeros"]["hora"])
-        self.assertIn("vitrine", a["mudar"])
-        # Os dias 1 a 3 atras nao tem post: a vitrine ficou vazia, e isso e dito.
-        self.assertEqual(3, len(a["numeros"]["dias_sem_a_vitrine"]))
-        self.assertIn("Nunca deixe o horário das 21h vazio", a["mudar"])
+        self.assertIn("um vídeo da noite (21h às 23h) leva o dia", a["titulo"])
+        self.assertEqual(12, a["numeros"]["dias_na_noite"])
+        self.assertIn("nunca deixe a noite sem vídeo", a["mudar"])
+        self.assertEqual(7, len(a["numeros"]["ultimos_7_dias"]))
+        # Os dias 1 a 3 atras nao tem post nenhum: "nenhum vídeo à noite".
+        self.assertIn("nenhum vídeo à noite", a["vimos"])
+
+    def test_vencedor_que_nao_e_da_noite_nao_vira_este_achado(self):
+        regs = []
+        for d in range(12):
+            dia = AGORA - timedelta(days=4 + d)
+            for h in (6, 9, 12, 15, 18, 21):
+                regs.append(yt(f"{d}-{h}", dia.replace(hour=h, minute=37),
+                               300 if h == 9 else 2, "historia", canal="historias"))
+        a, _ = analise.achado_concentracao(regs, AGORA, "historias", "youtube")
+        self.assertIsNone(a)
 
     def test_views_espalhadas_nao_viram_concentracao(self):
         regs = [yt(f"{d}-{h}", (AGORA - timedelta(days=4 + d)).replace(hour=h), 50,
@@ -323,6 +402,113 @@ class ConcentracaoESeguimentoTests(unittest.TestCase):
         a, _ = analise.achado_seguimento(regs, AGORA, "historias", "youtube")
         self.assertEqual(6, a["numeros"]["pares"])
         self.assertAlmostEqual(0.006, a["numeros"]["razao_mediana"])
+        # Vies do horario: nao vira conclusao, vira TESTE.
+        self.assertEqual("incerto", a["confianca"])
+        self.assertIn("Testar por 1 semana", a["mudar"])
+        self.assertIn("não dá para separar isso do horário", a["titulo"])
+
+    def test_par_sem_status_ou_fora_de_ordem_nao_conta(self):
+        # 00064 p2 e 00058 p2 (sem status) e 00010 (a seguinte saiu ANTES).
+        regs = []
+        for s in range(5):
+            q = AGORA - timedelta(days=10 + s)
+            regs.append(yt(f"s{s}p1", q, 500, "historia", canal="historias",
+                           fonte_id=f"h{s}", parte=1, partes=2))
+            regs.append(yt(f"s{s}p2", q + timedelta(hours=3), 3, "historia",
+                           canal="historias", fonte_id=f"h{s}", parte=2, partes=2))
+        q = AGORA - timedelta(days=20)
+        regs.append(yt("x1", q, 500, "historia", canal="historias", fonte_id="semstatus",
+                       parte=1, partes=2))
+        regs.append(yt("x2", q + timedelta(hours=3), 400, "historia", canal="historias",
+                       fonte_id="semstatus", parte=2, partes=2, priv=None))
+        regs.append(yt("y1", q, 500, "historia", canal="historias", fonte_id="foradeordem",
+                       parte=1, partes=2))
+        regs.append(yt("y2", q - timedelta(hours=5), 400, "historia", canal="historias",
+                       fonte_id="foradeordem", parte=2, partes=2))
+        a, _ = analise.achado_seguimento(regs, AGORA, "historias", "youtube")
+        self.assertEqual(5, a["numeros"]["pares"])
+
+
+class ColetaETextoTests(unittest.TestCase):
+
+    def test_dias_de_coleta_pelo_log(self):
+        pasta = Path(tempfile.mkdtemp(prefix="logs-"))
+        (pasta / "auto_20261009.txt").write_text(
+            "07:08:36 [metricas] dia-2026-10-09: builds erro 0 (2 data) · builds_tiktok erro 0 · "
+            "historias erro 0 · historias_tiktok erro 0 — noite PENDENTE\n", encoding="utf-8")
+        (pasta / "auto_20261011.txt").write_text(
+            "07:39 [metricas] dia-2026-10-11: builds ok 245 (461 analytics) · builds_tiktok ok 235 "
+            "(235 de 235 envios, lista suficiente) · historias ok 264 · historias_tiktok ok 268\n",
+            encoding="utf-8")
+        (pasta / "auto_20261014.txt").write_text(
+            "10:13 [metricas] dia-2026-10-14: builds ok 267 · builds_tiktok ok 258 · historias "
+            "erro 0 (252 analytics) · historias_tiktok ok 293\n", encoding="utf-8")
+        dias = {d["dia"]: d["estado"] for d in analise.dias_de_coleta(
+            datetime(2026, 10, 14, 12), dias=7, pasta_dos_logs=pasta)}
+        self.assertEqual({"2026-10-08": "nao_medido", "2026-10-09": "falhou",
+                          "2026-10-10": "nao_rodou", "2026-10-11": "completa",
+                          "2026-10-12": "nao_rodou", "2026-10-13": "nao_rodou",
+                          "2026-10-14": "parcial"}, dias)
+
+    def test_sem_log_nenhum_e_nao_medido_nunca_completa(self):
+        vazio = Path(tempfile.mkdtemp(prefix="logs-"))
+        estados = {d["estado"] for d in analise.dias_de_coleta(AGORA, 5, vazio)}
+        self.assertEqual({"nao_medido"}, estados)
+
+    def test_conta_video_nao_linha_e_separa_o_numero_parado(self):
+        linhas = [{"plataforma": "youtube", "youtube_id": "a", "url": "x",
+                   "quando": "2026-10-10T12:07:00"},
+                  {"plataforma": "youtube", "youtube_id": "a", "url": "x",
+                   "quando": "2026-10-10T12:08:00"},
+                  {"plataforma": "tiktok", "url": "x", "quando": "2026-10-10T12:07:00"},
+                  {"plataforma": "tiktok", "url": "x", "quando": "2026-10-19T09:00:00"}]
+        salvas = {("builds", "youtube"): [{"youtube_id": "a", "quando": "2026-10-10T12:07:00",
+                                           "views": 5, "privacidade": "public",
+                                           "atualizado": "2026-10-19T07:30:00"}],
+                  ("builds", "tiktok"): [{"tiktok_id": "t", "post_time": 1, "views": 5,
+                                          "atualizado": "2026-09-17T07:00:00"}]}
+        cob = analise.cobertura(entrada_vazia(marca=MARCA_BOA, ledger={"builds": linhas},
+                                              salvas=salvas))
+        yt_, tk_ = cob["partes"]["builds"], cob["partes"]["builds_tiktok"]
+        self.assertEqual((1, 1), (yt_["videos_postados"], yt_["linhas_repetidas"]))
+        self.assertEqual((1, 0, ["2026-09-17"]), (tk_["parados"], tk_["medidos_hoje"],
+                                                  tk_["parados_desde"]))
+        self.assertEqual((1, 0), (tk_["depois_da_coleta"], tk_["nunca_medidos"]))
+        a = analise.analisar([], cob, AGORA)
+        self.assertTrue(any("não mostra mais; o número deles parou em 17/09" in x
+                            for x in a["avisos"]), a["avisos"])
+        self.assertFalse(any("nunca tiveram número" in x for x in a["avisos"]))
+
+    def test_view_no_singular(self):
+        self.assertEqual("1 view", analise._v(1))
+        self.assertEqual("1,5 view", analise._v(1.5))
+        self.assertEqual("0 views", analise._v(0))
+        self.assertEqual("12.572 views", analise._v(12572))
+        self.assertEqual("1 vídeo", analise._qtd(1, "vídeo", "vídeos"))
+
+    def test_pagina_sem_jargao_e_poucos_em_linha_propria(self):
+        regs = [yt(f"v{i}", AGORA - timedelta(days=4 + i), 10 + i, ret=50.0) for i in range(12)]
+        cob = analise.cobertura(entrada_vazia(
+            marca=MARCA_BOA, dias_de_coleta=[{"dia": "2026-10-13", "estado": "nao_rodou"}]))
+        pagina = analise.pagina(analise.analisar(regs, cob, AGORA))
+        for jargao in ("sem par no Studio", "sem status", "com %", "Formato × formato",
+                       "(poucos)", " 1 views"):
+            self.assertNotIn(jargao, pagina)
+        self.assertIn("<br><span class=poucos>poucos</span>", pagina)
+        self.assertIn("13/10<br>○", pagina)
+        self.assertNotIn("white-space:nowrap", analise.CSS)
+
+    def test_achado_que_pede_teste_vem_depois_dos_firmes(self):
+        firme = analise._achado("a", "p", "erro", "t", "v", "m", "q", "provavel", 1)
+        teste = analise._achado("b", "p", "atencao", "t", "v", "m", "q", "incerto", 999)
+        cob = analise.cobertura(entrada_vazia(marca=MARCA_BOA))
+        originais = analise.achado_pausa_tiktok
+        self.addCleanup(setattr, analise, "achado_pausa_tiktok", originais)
+        fila = [(teste, None), (firme, None)]
+        analise.achado_pausa_tiktok = lambda *a, **k: fila.pop(0) if fila else (None, None)
+        regs = [yt("x", AGORA - timedelta(days=4), 10)]
+        ordem = [a["id"] for a in analise.analisar(regs, cob, AGORA)["achados"]]
+        self.assertEqual(["a", "b"], ordem)
 
 
 class TendenciaTests(unittest.TestCase):
