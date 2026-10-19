@@ -50,6 +50,23 @@ decide o que a rodada faz e `planejar`, ANTES da trava — o mesmo desenho de
 O ESTOQUE QUE DECIDE E O DA PUBLICACAO (`contar_estoque`): o funil de
 `postar._builds_prontos`, que e literalmente `pendentes_por_canal()["builds"]`.
 As historias erraram isso no mesmo dia (a agenda contou 27, o `--ver` 8).
+
+POR FORMATO, NAO PELO TOTAL (19/10/2026). Medido nos diarios de 13 a 19/10:
+14 duelos em 7 dias (todos no dia 19), 39 roletas e 38 estreias. O estoque
+de duelos caiu de 43 para 13 sem a geracao fazer nenhum, porque o gatilho
+era o TOTAL do canal, e o total estava cheio de ESTREIAS (26 -> 54): cada
+roleta grava uma, o YouTube deixou de postar estreia (decisao
+`publicacao/duelo-no-lugar-da-estreia`) e o TikTok leva ~0,75 por dia. Com
+75 videos "no estoque", a reposicao (piso 20) nunca criava, e o lote dizia
+"88 para um alvo de 88; so o worker" com 26 duelos. Agora cada formato tem
+a sua meta (`metas_do_plano`), medida pelo que a publicacao TIRA dele por
+dia (`consumo_por_dia`: duelo 6,25 e build 3,75 no YouTube, estreia 0,75 no
+TikTok), e o piso de cada um em dias (`piso_por_formato_em_dias`). A
+estreia continua nascendo dentro da roleta (a build precisa da luta dela no
+fim), mas o VIDEO dela so e renderizado quando o estoque de estreias esta
+abaixo da meta (`estreia_so_abaixo_da_meta`): o render das duas estreias e
+~9 dos ~26 min de uma roleta. E nada pesado comeca com o League of Legends
+aberto (`jogo_que_segura`), a nao ser com o canal sem duelo nem build.
 """
 from __future__ import annotations
 
@@ -91,6 +108,26 @@ PADRAO = {
 # proposito: `builds` nao importa `ferramentas/`, e o valor vivo vem do
 # `publicacao.json` (que e meu) — esta so vale se o bloco sumir.
 COTA_DE_QUEDA = {"duelo": 4, "build": 3, "estreia": 1, "torneio": 0}
+
+# A troca da mistura por destino, igual a `postar.TROCAS_NA_COTA` (decisao
+# `publicacao/duelo-no-lugar-da-estreia`, 19/10/2026: o YouTube de builds
+# poe duelo no lugar da estreia). Duplicada pelo mesmo motivo da cota; um
+# teste compara as duas.
+TROCAS_NA_COTA = {"youtube": {"estreia": "duelo"}}
+
+# O que cada destino tira do ESTOQUE NOVO (nunca publicado). O YouTube posta
+# nos 10 horarios e e o primeiro a levar duelo e build; o TikTok (6 por dia,
+# fila propria desde 19/10/2026) leva primeiro o que JA saiu no YouTube e
+# falta a ele (`postar.atrasados_no_tiktok`): de novo, so a estreia, que o
+# YouTube nao posta mais.
+FORMATOS_NOVOS_POR_DESTINO = {"youtube": ("duelo", "build"),
+                              "tiktok": ("estreia",)}
+
+# Piso de cada formato, em dias do consumo dele, quando o config nao diz.
+PISO_EM_DIAS_DE_QUEDA = {"duelo": 4, "build": 2, "estreia": 2}
+
+# O processo da partida do League of Legends (o mesmo do `bluelock.comum`).
+JOGO_PADRAO = "League of Legends.exe"
 
 # Duas falhas seguidas de duelo param a rodada: a terceira quase sempre
 # falharia pelo mesmo motivo, e cada uma custa minutos de janela.
@@ -336,7 +373,11 @@ def metas_por_formato(meta: int, config_publicacao: dict | None = None
                       ) -> dict:
     """A meta do canal dividida pela COTA da grade (a mesma que escolhe):
     `ceil(meta x peso / soma)`. Com duelo 4, build 3, estreia 1 e meta 90:
-    45, 34 e 12. Formato de cota zero (torneio) nao tem meta."""
+    45, 34 e 12. Formato de cota zero (torneio) nao tem meta.
+
+    E a conta de ANTES de 19/10/2026 (uma meta do canal, repartida). O plano
+    usa `metas_do_plano`, por formato; esta fica para quem so quer a
+    reparticao (painel, testes antigos)."""
     pesos = cota(config_publicacao)
     total = sum(pesos.values())
     if total <= 0 or meta <= 0:
@@ -345,6 +386,67 @@ def metas_por_formato(meta: int, config_publicacao: dict | None = None
     for formato in ("duelo", "build", "estreia"):
         saida[formato] = int(math.ceil(meta * pesos.get(formato, 0) / total
                                        - 1e-9))
+    return saida
+
+
+def postagens_da_plataforma(inicio: datetime, fim: datetime,
+                            plataforma: str) -> int:
+    """Quantos horarios DAQUELE destino caem em (inicio, fim]. O YouTube usa
+    os 10; o TikTok, desde 19/10/2026, 6 (`grade.HORAS_DO_TIKTOK`)."""
+    from .. import grade
+
+    horas = set(getattr(grade, "HORAS_POR_PLATAFORMA", {})
+                .get(plataforma, grade.HORAS))
+    total, dia = 0, inicio.date()
+    while dia <= fim.date():
+        for hora, minuto in grade.GRADE:
+            if hora not in horas:
+                continue
+            momento = datetime(dia.year, dia.month, dia.day, hora, minuto)
+            if inicio < momento <= fim:
+                total += 1
+        dia += timedelta(days=1)
+    return total
+
+
+def piso_do_formato(formato: str, config: dict,
+                    config_publicacao: dict | None = None) -> int:
+    """O piso do formato em VIDEOS: `piso_por_formato_em_dias` x o que a
+    publicacao tira dele por dia. Duelo 4 x 6,25 = 25; build 2 x 3,75 = 8;
+    estreia 2 x 0,75 = 2."""
+    dias = dict(PISO_EM_DIAS_DE_QUEDA)
+    dias.update(config.get("piso_por_formato_em_dias") or {})
+    try:
+        em_dias = max(0.0, float(dias.get(formato, 0)))
+    except (TypeError, ValueError):
+        em_dias = float(PISO_EM_DIAS_DE_QUEDA.get(formato, 0))
+    consumo = consumo_por_dia(config_publicacao).get(formato, 0.0)
+    return int(math.ceil(em_dias * consumo - 1e-9))
+
+
+def metas_do_plano(config: dict, agora: datetime, modo: str,
+                   config_publicacao: dict | None = None) -> dict:
+    """A meta de CADA formato, em videos, no modo do plano.
+
+    lote       o que a publicacao tira do formato ate `fim_da_cobertura`
+               (a proxima segunda 07h) + o piso do formato
+    reposicao, zero, madrugada   o piso do formato
+
+    Medido contra o config de 19/10/2026 (cota 4/3/1, YouTube sem estreia):
+    segunda 07:02 = duelo 70 x 5/8 + 25 = 69, build 70 x 3/8 + 8 = 35,
+    estreia 42 x 1/8 + 2 = 8 (a estreia so sai no TikTok, 6 por dia).
+    """
+    saida = {f: piso_do_formato(f, config, config_publicacao)
+             for f in ("duelo", "build", "estreia")}
+    if modo != "lote":
+        return saida
+    alvo = config.get("alvo_do_lote") or {}
+    if not alvo.get("mais_o_piso", True):
+        saida = {f: 0 for f in saida}
+    fim = fim_da_cobertura(config, agora)
+    for formato, (plataforma, fracao) in fatias(config_publicacao).items():
+        cobre = postagens_da_plataforma(agora, fim, plataforma) * fracao
+        saida[formato] = int(math.ceil(saida[formato] + cobre - 1e-9))
     return saida
 
 
@@ -371,6 +473,37 @@ def disco_apertado(config: dict) -> str | None:
     if livre >= minimo:
         return None
     return f"so {livre:.1f} GB livres em {alvo} (minimo {minimo:g} GB)"
+
+
+def jogo_aberto(config: dict, rodar=None) -> str | None:
+    """O nome do jogo quando a partida esta rodando; senao None.
+
+    Pedido do orquestrador (19/10/2026), a mesma regra do `bluelock.comum`:
+    o Adrian joga League of Legends de dia, e render com o jogo aberto
+    derruba o FPS dele (e o render dobra: 126 ms por letra no navegador com
+    a partida, medido em 25-27/09). Sem `jogo_que_segura` no config (o
+    PADRAO), nao ha guarda. NA DUVIDA (tasklist falhou), NAO segura: o
+    bluelock adia 30 min um teste, aqui a duvida pararia o canal.
+    """
+    nome = str(config.get("jogo_que_segura") or "").strip()
+    if not nome:
+        return None
+    import os
+    import subprocess
+    rodar = rodar or subprocess.run
+    try:
+        saida = rodar(["tasklist", "/FI", f"IMAGENAME eq {nome}", "/NH",
+                       "/FO", "CSV"], capture_output=True, timeout=20,
+                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW",
+                                            0))
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if getattr(saida, "returncode", 1) != 0:
+        return None
+    texto = getattr(saida, "stdout", b"") or b""
+    if isinstance(texto, bytes):
+        texto = texto.decode("oem" if os.name == "nt" else "utf-8", "replace")
+    return nome if nome.lower() in texto.lower() else None
 
 
 def modo_da_hora(config: dict, agora: datetime) -> str:
@@ -437,40 +570,44 @@ def planejar(config: dict, agora: datetime, *, contagem: dict | None = None,
     if contagem is None:
         contagem = contar_estoque()
     total = int(contagem.get("total", 0))
-    piso = piso_de_reposicao(config)
+    tem = {f: int(contagem.get(f, 0) or 0)
+           for f in ("duelo", "build", "estreia")}
+    # O que o YOUTUBE pode levar (19/10/2026): duelo e build. Com 50
+    # estreias paradas o total nunca zerava, e o YouTube cairia nelas.
+    do_youtube = tem["duelo"] + tem["build"]
 
     if modo == "noite":
         janela = config.get("janela_pesada") or {}
         if not (config.get("estoque_zero_libera_a_noite", True)
-                and total <= 0):
+                and do_youtube <= 0):
             return {"modo": modo, "fazer": False, "criar": False,
                     "metas": None, "total": total, "motivo": "fora da janela",
                     "impedimento": None, "limite_min": limite_min,
                     "por_que": (f"fora da janela do trabalho pesado "
                                 f"({int(janela.get('inicio', 0)):02d}h as "
                                 f"{int(janela.get('fim', 0)):02d}h) e com "
-                                f"{total} video(s) no estoque"),
+                                f"{do_youtube} duelo(s)/build(s) no estoque"),
                     "config": config}
         impedido = disco_apertado(config)
-        meta = max(1, piso)
+        metas = metas_do_plano(config, agora, "zero", config_publicacao)
         return {"modo": "zero", "fazer": not impedido,
-                "criar": not impedido, "meta": meta,
-                "metas": metas_por_formato(meta, config_publicacao),
+                "criar": not impedido, "meta": sum(metas.values()),
+                "metas": metas,
                 "total": total, "motivo": "impedido" if impedido else "",
                 "impedimento": impedido, "limite_min": limite_min,
-                "por_que": ("ESTOQUE ZERO fora da janela: nenhum video para o "
-                            "proximo horario; libera tudo (decisao de "
-                            "30/09/2026)")
+                "por_que": ("ESTOQUE ZERO fora da janela: nenhum duelo nem "
+                            "build para o proximo horario do YouTube; libera "
+                            "tudo (decisao de 30/09/2026)")
                            + (f", mas {impedido}" if impedido else ""),
                 "config": {**_config_de_dia(config), "janela_pesada": None}}
 
-    if modo == "lote":
-        meta = alvo_do_lote(config, agora)
-        rotulo = f"lote: {total} video(s) para um alvo de {meta}"
-    else:
-        meta = piso
-        rotulo = f"reposicao: {total} video(s), piso {meta}"
-    criar = total < meta
+    metas = metas_do_plano(config, agora, modo, config_publicacao)
+    faltas = {f: max(0, metas[f] - tem[f]) for f in metas}
+    rotulo = f"{modo}: " + ", ".join(
+        f"{f}s {tem[f]}/{metas[f]}" for f in ("duelo", "build", "estreia"))
+    # A falta de ESTREIA sozinha nao cria (ver `planos`): ela so decide se a
+    # roleta que ja vai acontecer renderiza o video dela.
+    criar = bool(faltas["duelo"] or faltas["build"])
     impedido = disco_apertado(config) if criar else None
     if impedido:
         criar = False
@@ -478,10 +615,14 @@ def planejar(config: dict, agora: datetime, *, contagem: dict | None = None,
     if impedido:
         motivos.append(f"NAO gero: {impedido}")
     elif not criar:
-        motivos.append("so o worker")
-    return {"modo": modo, "fazer": True, "criar": criar, "meta": meta,
-            "metas": (metas_por_formato(meta, config_publicacao) if criar
+        motivos.append("todos na meta; so o worker")
+    # `metas` zeradas quando nao cria (o contrato de antes: `planos` le
+    # meta 0 e a rodada fica so com o worker); `alvos` guarda as de verdade.
+    return {"modo": modo, "fazer": True, "criar": criar,
+            "meta": sum(metas.values()),
+            "metas": (dict(metas) if criar
                       else {"duelo": 0, "build": 0, "estreia": 0}),
+            "alvos": metas, "faltas": faltas,
             "total": total, "motivo": "impedido" if impedido else "",
             "impedimento": impedido, "limite_min": limite_min,
             "por_que": "; ".join(motivos),
@@ -499,18 +640,60 @@ def cota(config_publicacao: dict | None = None) -> dict:
     return {str(k): max(0, int(v)) for k, v in bruta.items()}
 
 
+def cota_da_plataforma(pesos: dict, plataforma: str) -> dict:
+    """A mistura daquele destino: `TROCAS_NA_COTA` aplicada (a mesma conta de
+    `postar.cota_da_plataforma`). YouTube 4/3/1 -> duelo 5, build 3,
+    estreia 0; TikTok igual ao config."""
+    saida = {str(k): max(0, int(v)) for k, v in (pesos or {}).items()}
+    for de, para in TROCAS_NA_COTA.get(str(plataforma).lower(), {}).items():
+        peso = saida.get(de, 0)
+        if peso:
+            saida[para] = saida.get(para, 0) + peso
+            saida[de] = 0
+    return saida
+
+
+def fatias(config_publicacao: dict | None = None) -> dict:
+    """`{formato: (destino, fracao de cada horario dele)}` — de onde sai o
+    consumo de cada formato NOVO (`FORMATOS_NOVOS_POR_DESTINO`)."""
+    pesos = cota(config_publicacao)
+    saida = {}
+    for plataforma, formatos in FORMATOS_NOVOS_POR_DESTINO.items():
+        mistura = cota_da_plataforma(pesos, plataforma)
+        soma = sum(mistura.values())
+        for formato in formatos:
+            saida[formato] = (plataforma, (mistura.get(formato, 0) / soma)
+                              if soma > 0 else 0.0)
+    return saida
+
+
+def consumo_por_dia(config_publicacao: dict | None = None,
+                    horarios: int | None = None) -> dict:
+    """Quantos videos NOVOS de cada formato a publicacao tira do estoque por
+    dia: duelo 10 x 5/8 = 6,25 e build 10 x 3/8 = 3,75 (YouTube, sem
+    estreia desde 19/10/2026); estreia 6 x 1/8 = 0,75 (TikTok). `horarios`
+    troca os do YouTube (os testes antigos passam 10)."""
+    from .. import grade
+
+    por_destino = getattr(grade, "HORAS_POR_PLATAFORMA", {})
+    saida = {}
+    for formato, (plataforma, fracao) in fatias(config_publicacao).items():
+        if plataforma == "youtube" and horarios is not None:
+            n = int(horarios)
+        else:
+            n = len(por_destino.get(plataforma, grade.HORAS))
+        saida[formato] = n * fracao
+    return saida
+
+
 def por_dia(formato: str, config_publicacao: dict | None = None,
             horarios: int | None = None) -> float:
-    """Quantos horarios do dia a cota da ao formato (duelo 4/8 de 10 = 5,
-    build 3/8 de 10 = 3,75)."""
-    if horarios is None:
-        from .. import grade
-        horarios = len(grade.HORAS)
-    pesos = cota(config_publicacao)
-    total = sum(pesos.values())
-    if total <= 0:
-        return 0.0
-    return horarios * pesos.get(formato, 0) / total
+    """Quantos videos novos do formato saem por dia (`consumo_por_dia`).
+
+    Ate 19/10/2026 era a cota do config sobre os 10 horarios (duelo 5): o
+    YouTube passou a postar duelo no lugar da estreia, e o duelo e 6,25."""
+    return float(consumo_por_dia(config_publicacao, horarios)
+                 .get(formato, 0.0))
 
 
 def duelos_por_dia(config_publicacao: dict | None = None,
@@ -817,17 +1000,24 @@ def _duelo_de_verdade():
     return gerar
 
 
-def _build_de_verdade():
+def _build_de_verdade(renderizar_estreia=None):
     """A roleta inteira (`generate-video`): build, insercao no banco, estreia,
     render e a fila de identidade. O controller e criado so aqui: a rodada
-    que nao gera build nao paga o carregamento dele."""
+    que nao gera build nao paga o carregamento dele.
+
+    `renderizar_estreia`: funcao chamada a cada roleta. Falso = a estreia e
+    GRAVADA (a luta do fim da build vem dela) mas o video proprio dela nao e
+    renderizado (`generate(estreia_render=False)`); sai depois com
+    `main.py fight --rerender <generation>/estreia`."""
     from .controller import PipelineController
     controlador = {}
 
     def gerar() -> Path:
         if "c" not in controlador:
             controlador["c"] = PipelineController()
-        return controlador["c"].generate()
+        renderizar = True if renderizar_estreia is None else bool(
+            renderizar_estreia())
+        return controlador["c"].generate(estreia_render=renderizar)
     return gerar
 
 
@@ -862,8 +1052,11 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
           relogio=None, gerar_duelo=None, drenar_worker=None,
           jobs=None, estoque=None, proximo=None, tela=None,
           builds: int | None = None, gerar_build=None,
-          estoque_builds=None, contagem=None) -> dict:
+          estoque_builds=None, contagem=None, jogo=None) -> dict:
     """Uma rodada. Devolve o que aconteceu; nunca levanta por conta da tarefa.
+
+    `jogo`: duble de `jogo_aberto` (funcao sem argumento que devolve o nome
+    do jogo aberto ou None).
 
     `ensaio`: faz TODAS as conferencias e diz o que faria, sem gerar nada e
     sem escrever no diario compartilhado. E o duble do teste de ponta a
@@ -895,7 +1088,7 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
                        jobs=jobs, estoque=estoque, proximo=proximo,
                        travas=travas, controle=controle, builds=builds,
                        gerar_build=gerar_build, estoque_builds=estoque_builds,
-                       contagem=contagem)
+                       contagem=contagem, jogo=jogo)
     finally:
         try:
             sys.stdout.flush()
@@ -923,7 +1116,7 @@ def _contagem_para_o_plano(contagem, estoque, estoque_builds):
 def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
             drenar_worker, jobs, estoque, proximo, travas, controle,
             builds=None, gerar_build=None, estoque_builds=None,
-            contagem=None) -> dict:
+            contagem=None, jogo=None) -> dict:
     agora = relogio()
     rotulo = " (ENSAIO: nada e gerado)" if ensaio else ""
     print(f"[noite] disparo das {agora:%H:%M}{rotulo}")
@@ -1010,7 +1203,11 @@ def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                 builds=builds, gerar_build=gerar_build,
                 estoque_builds=estoque_builds,
                 metas=plano.get("metas"), contagem=contado,
-                limite=limite)
+                limite=limite,
+                # O jogo aberto segura tudo, menos o canal sem duelo nem
+                # build (estoque zero): "a prioridade e nao ficar sem video".
+                jogo=(None if modo == "zero"
+                      else jogo or (lambda: jogo_aberto(config))))
         finally:
             ficha_da_rodada.close()
         resultado["modo"] = modo
@@ -1086,8 +1283,16 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
 
     Pedido manual (`--duelos`/`--builds`): so o que foi pedido, ignorando o
     teto; formato nao pedido fica de fora.
+
+    Desde 19/10/2026: a ordem e REFEITA A CADA PASSO em `_trabalhar` (uma
+    roleta de 26 min nao come mais a rodada inteira com o duelo mais curto
+    que ela); a meta da build e em VIDEOS e cada roleta da
+    `videos_por_roleta` (A e B = 2, medido: 5 roletas da madrugada de 19/10
+    levaram o estoque de build de 0 a 10); e o plano da build diz se a
+    estreia da proxima roleta e renderizada (`renderizar_estreia`).
     """
     manual = duelos is not None or builds is not None
+    por_roleta = max(1, int(config.get("videos_por_roleta", 1) or 1))
     saida = []
 
     if estoque:
@@ -1110,7 +1315,8 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
     if estoque_builds:
         na_fila_b = len(estoque_builds())
     else:
-        preparo = len(builds_em_preparo())
+        # Cada roleta em preparo vira `por_roleta` videos (A e B).
+        preparo = len(builds_em_preparo()) * por_roleta
         base = (int(contagem.get("build", 0)) if contagem is not None
                 else len(estoque_de_builds()))
         na_fila_b = base + preparo
@@ -1122,10 +1328,23 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
         "pedido": builds, "maximo": int(config.get(
             "maximo_de_builds_por_rodada", 1)),
         "minutos": float(config.get("minutos_por_build", 15)),
+        "minutos_sem_estreia": float(config.get(
+            "minutos_por_build_sem_estreia",
+            config.get("minutos_por_build", 15))),
+        "por_roleta": por_roleta,
         "ligado": bool(config.get("builds", True))}
-    if metas is not None and contagem is not None and metas.get("estreia"):
-        plano_b["estreias"] = int(contagem.get("estreia", 0)) + preparo
-        plano_b["meta_estreia"] = int(metas["estreia"])
+    # ESTREIA SO ABAIXO DA META (19/10/2026): quantas ha e quantas a
+    # publicacao quer, para decidir o RENDER da estreia de cada roleta. Ate
+    # 19/10 a falta de estreia tambem pedia roleta (`meta_estreia` no alvo);
+    # agora estreia so sai de roleta que ja ia acontecer pela build — o
+    # YouTube nao a posta, e o TikTok cede o horario dela a quem tem.
+    # A estreia nao tem pendencia: a das roletas em preparo ja esta na
+    # contagem.
+    if contagem is not None:
+        plano_b["estreias_no_estoque"] = int(contagem.get("estreia", 0))
+    plano_b["estreias_meta"] = (
+        int(metas.get("estreia", 0)) if metas is not None and metas.get(
+            "estreia") else piso_do_formato("estreia", config))
     saida.append(plano_b)
 
     for plano in saida:
@@ -1135,14 +1354,51 @@ def planos(config: dict, *, duelos=None, builds=None, estoque=None,
             plano["alvo"] = 0
         else:
             falta = plano["teto"] - plano["na_fila"]
-            if "meta_estreia" in plano:
-                falta = max(falta, plano["meta_estreia"] - plano["estreias"])
+            if plano["formato"] == "build":
+                # a meta e em videos; o passo e uma roleta
+                falta = int(math.ceil(max(0, falta) / por_roleta))
             plano["alvo"] = min(max(0, falta), plano["maximo"])
-        plano["dias"] = (plano["na_fila"] / plano["por_dia"]
-                         if plano["por_dia"] > 0 else float("inf"))
-    ordem = {"duelo": 0, "build": 1}
-    saida.sort(key=lambda p: (p["dias"], ordem[p["formato"]]))
+        _refazer_dias(plano)
+    saida.sort(key=_ordem_do_passo)
     return saida
+
+
+_ORDEM_DE_EMPATE = {"duelo": 0, "build": 1}
+
+
+def _refazer_dias(plano: dict) -> None:
+    plano["dias"] = (plano["na_fila"] / plano["por_dia"]
+                     if plano["por_dia"] > 0 else float("inf"))
+
+
+def _ordem_do_passo(plano: dict) -> tuple:
+    """Quem tem MENOS DIAS de estoque vai primeiro (decisao de 28/09/2026);
+    empate, o duelo."""
+    return (plano["dias"], _ORDEM_DE_EMPATE.get(plano["formato"], 9))
+
+
+def renderizar_estreia(plano_b: dict, config: dict) -> bool:
+    """A estreia da PROXIMA roleta vira video proprio?
+
+    So abaixo da meta de estreias (`estreia_so_abaixo_da_meta`, 19/10/2026):
+    o YouTube nao posta mais estreia e o TikTok leva ~0,75 por dia; com 54
+    paradas, renderizar as duas estreias de cada roleta (~9 dos ~26 min,
+    medido na generation_00176) e trabalho que fica na prateleira. Estoque
+    desconhecido (sem contagem) renderiza, como antes."""
+    if not config.get("estreia_so_abaixo_da_meta", False):
+        return True
+    estreias = plano_b.get("estreias_no_estoque")
+    if estreias is None:
+        return True
+    return int(estreias) < int(plano_b.get("estreias_meta") or 0)
+
+
+def minutos_do_passo(plano: dict, config: dict) -> float:
+    """A reserva do PROXIMO passo do formato: a roleta sem o render da
+    estreia leva menos (`minutos_por_build_sem_estreia`)."""
+    if plano["formato"] == "build" and not renderizar_estreia(plano, config):
+        return float(plano.get("minutos_sem_estreia", plano["minutos"]))
+    return float(plano["minutos"])
 
 
 def _limite_da_geracao(config, limite, pendentes_no_comeco: bool,
@@ -1163,7 +1419,7 @@ def _limite_da_geracao(config, limite, pendentes_no_comeco: bool,
 def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                drenar_worker, jobs, estoque, proximo=None, builds=None,
                gerar_build=None, estoque_builds=None, metas=None,
-               contagem=None, limite=None) -> dict:
+               contagem=None, limite=None, jogo=None) -> dict:
     erros: list[str] = []
     feitos: list[str] = []
     roletas: list[str] = []
@@ -1181,12 +1437,16 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
                   else f"meta {plano['teto']}" if metas is not None
                   else f"teto {plano['teto']}")
         extra = ""
-        if "meta_estreia" in plano:
-            extra = (f"; estreias {plano['estreias']}, meta "
-                     f"{plano['meta_estreia']}")
+        unidade = ""
+        if plano["formato"] == "build" and plano.get("por_roleta", 1) > 1:
+            unidade = (f" roleta(s), {plano['por_roleta']} video(s) cada; "
+                       f"video da estreia: "
+                       f"{'sim' if renderizar_estreia(plano, config) else 'nao'}"
+                       f" (estreias {plano.get('estreias_no_estoque', '?')}, "
+                       f"meta {plano.get('estreias_meta')})")
         print(f"[noite] {rotulo} no estoque que a grade escolheria: "
               f"{plano['na_fila']} ({plano['dias']:.1f} dia(s); {origem}"
-              f"{extra}). Vou gerar {plano['alvo']}.")
+              f"{extra}). Vou gerar {plano['alvo']}{unidade}.")
 
     pendentes_no_comeco = False
     if limite is not None and any(p["alvo"] for p in fila_de_planos):
@@ -1200,42 +1460,97 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
         print(f"[noite] rodada ate {limite:%H:%M}; passo novo de geracao so "
               f"se termina ate {limite_geracao:%H:%M}.")
 
+    plano_b = next(p for p in fila_de_planos if p["formato"] == "build")
+    for plano in fila_de_planos:
+        plano["na_fila_antes"] = plano["na_fila"]
     geradores = {
         "duelo": gerar_duelo or (_duelo_ensaiado() if ensaio
                                  else _duelo_de_verdade()),
         "build": gerar_build or (_build_ensaiado() if ensaio
-                                 else _build_de_verdade()),
+                                 else _build_de_verdade(
+                                     lambda: renderizar_estreia(plano_b,
+                                                                config))),
     }
-    for plano in fila_de_planos:
-        formato, minutos = plano["formato"], plano["minutos"]
+
+    def segura_o_jogo() -> str | None:
+        """O nome do jogo aberto (a rodada para), ou None."""
+        if jogo is None:
+            return None
+        try:
+            nome = jogo()
+        except Exception:                                      # noqa: BLE001
+            return None
+        if not nome:
+            return None
+        if ensaio:
+            print(f"[noite] {nome} aberto: numa rodada real eu pararia "
+                  f"aqui; o ensaio segue.")
+            return None
+        print(f"[noite] {nome} aberto: nada pesado com o jogo rodando. "
+              f"Fica para a proxima.")
+        return nome
+
+    # A ORDEM E REFEITA A CADA PASSO (19/10/2026). Antes cada formato ia ate
+    # o fim do alvo dele: no 19/10 as 10:03 e as 12:34 a roleta (34 e 94
+    # min) levou a rodada inteira e nenhum duelo saiu. Agora, depois de cada
+    # passo, o formato ganha o que acabou de entrar (`por_roleta` videos por
+    # roleta) e quem ficou com MENOS DIAS vai de novo.
+    vivos = {p["formato"]: p["alvo"] > 0 for p in fila_de_planos}
+    falhas = {p["formato"]: 0 for p in fila_de_planos}
+    tentativas = {p["formato"]: 0 for p in fila_de_planos}
+    while any(vivos.values()):
+        if segura_o_jogo():
+            parou = "jogo"
+            break
+        plano = min((p for p in fila_de_planos if vivos[p["formato"]]),
+                    key=_ordem_do_passo)
+        formato = plano["formato"]
+        minutos = minutos_do_passo(plano, config)
         destino = feitos if formato == "duelo" else roletas
-        falhas = 0
-        for _ in range(plano["alvo"]):
-            if not cabe(relogio(), minutos, config, limite_geracao):
-                parou = "janela"
-                print(f"[noite] outro {formato} ({minutos:.0f} min) nao cabe "
-                      f"antes da proxima postagem, do fim da janela ou do "
-                      f"fim da rodada. Fica para a proxima.")
-                if not ensaio:
-                    break
-            try:
-                pasta = geradores[formato]()
-            except Exception as exc:                           # noqa: BLE001
-                falhas += 1
-                erros.append(f"{formato}: {type(exc).__name__}: "
-                             f"{str(exc)[:160]}")
-                print(f"[noite] o {formato} falhou: {type(exc).__name__}: "
-                      f"{exc}")
-                if falhas >= FALHAS_SEGUIDAS:
-                    print(f"[noite] duas falhas seguidas; paro os {formato}s.")
-                    break
+        if not cabe(relogio(), minutos, config, limite_geracao):
+            parou = "janela"
+            print(f"[noite] outro {formato} ({minutos:.0f} min) nao cabe "
+                  f"antes da proxima postagem, do fim da janela ou do "
+                  f"fim da rodada. Fica para a proxima.")
+            if not ensaio:
+                vivos[formato] = False
                 continue
-            falhas = 0
-            destino.append(Path(str(pasta)).name)
+        if formato == "build":
+            com_estreia = renderizar_estreia(plano, config)
+            if not com_estreia:
+                print(f"[noite] roleta sem o video da estreia (estreias "
+                      f"{plano.get('estreias_no_estoque')}, meta "
+                      f"{plano.get('estreias_meta')}): a luta e gravada "
+                      f"para o fim da build; o render fica para "
+                      f"`fight --rerender <id>/estreia`.")
+        # Cada passo e uma TENTATIVA do alvo, deu certo ou nao (como antes:
+        # a roleta que falha nao e refeita na mesma rodada).
+        tentativas[formato] += 1
+        if tentativas[formato] >= plano["alvo"]:
+            vivos[formato] = False
+        try:
+            pasta = geradores[formato]()
+        except Exception as exc:                               # noqa: BLE001
+            falhas[formato] += 1
+            erros.append(f"{formato}: {type(exc).__name__}: "
+                         f"{str(exc)[:160]}")
+            print(f"[noite] o {formato} falhou: {type(exc).__name__}: "
+                  f"{exc}")
+            if falhas[formato] >= FALHAS_SEGUIDAS:
+                print(f"[noite] duas falhas seguidas; paro os {formato}s.")
+                vivos[formato] = False
+            continue
+        falhas[formato] = 0
+        destino.append(Path(str(pasta)).name)
+        plano["na_fila"] += plano.get("por_roleta", 1)
+        if formato == "build" and com_estreia and (
+                plano.get("estreias_no_estoque") is not None):
+            plano["estreias_no_estoque"] += 1
+        _refazer_dias(plano)
 
     # ---- 2. worker de identidade (capa e payoff das builds)
     feitos_worker = 0
-    if config.get("worker", True) and not sem_worker:
+    if config.get("worker", True) and not sem_worker and parou != "jogo":
         try:
             pendentes = listar_jobs()
         except Exception as exc:                               # noqa: BLE001
@@ -1261,6 +1576,9 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
             # O prazo vai para dentro do worker, que nao comeca job nem
             # tentativa nova depois dele — `limite` nao bastava, porque um
             # job que falha e repescado na mesma passada.
+            if segura_o_jogo():
+                parou = "jogo"
+                break
             try:
                 provedor = qual(excluir=frozenset(tentados))
             except Exception as exc:                           # noqa: BLE001
@@ -1311,11 +1629,14 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
              else "worker" if feitos_worker else "nada")
     return {"feito": feito, "duelos": feitos, "builds": roletas,
             "jobs_do_worker": feitos_worker,
-            "estoque_antes": duelo["na_fila"], "teto": duelo["teto"],
+            "estoque_antes": duelo.get("na_fila_antes", duelo["na_fila"]),
+            "teto": duelo["teto"],
             "alvo": duelo["alvo"], "planos": fila_de_planos,
             "parou": parou, "erros": erros,
             "motivo": "" if (feitos or roletas or feitos_worker or erros)
-            else ("estoque cheio" if alvos == 0 else parou or "nada feito")}
+            else ("jogo aberto" if parou == "jogo"
+                  else "estoque cheio" if alvos == 0
+                  else parou or "nada feito")}
 
 
 # ---------------------------------------------------------------- ensaio
@@ -1338,6 +1659,10 @@ def _duelo_ensaiado():
     config = catalogo.carregar_config()
     pares = rodizio.duelos_recentes(n=None)
     ocupados = rodizio.titulos_ocupados(pares, config=config)
+    fora = rodizio.suspensos()
+    if fora:
+        print("[ensaio] fora do rodizio por gravacao que falhou: "
+              + ", ".join(f"{n} ({c}x)" for n, c in sorted(fora.items())))
     ledger = Ledger()
     contador = {"n": 0}
 
@@ -1346,7 +1671,7 @@ def _duelo_ensaiado():
         rng = RandomEngine(RandomEngine.new_seed()).fork("duelo:participantes")
         p1, p2 = rodizio.escolher_par(fichas, gerados, rng, pares=pares,
                                       ledger=ledger, ocupados=ocupados,
-                                      config=config)
+                                      config=config, fora=fora)
         if not (p1 and p2):
             raise ValueError("nao ha par com titulo livre no banco")
         pares.append((p1, p2))
@@ -1404,4 +1729,7 @@ __all__ = ["CONFIG", "TRAVA", "alvo_do_lote", "contar_estoque",
            "planos", "por_dia", "teto_de_builds",
            "fim_da_folga", "jobs_do_worker", "minutos_do_job", "na_grade",
            "na_janela", "proximo_do_worker", "quantos_cabem", "rodar",
-           "teto_de_duelos"]
+           "teto_de_duelos", "consumo_por_dia", "cota_da_plataforma",
+           "fatias", "jogo_aberto", "metas_do_plano", "minutos_do_passo",
+           "piso_do_formato", "postagens_da_plataforma",
+           "renderizar_estreia"]

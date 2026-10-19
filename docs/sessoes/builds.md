@@ -225,6 +225,11 @@ senão poder próximo). **Par com título já ocupado nunca é escolhido**, em
 nenhuma ordem: o título do duelo é `{p1} x {p2}` e a guarda de título
 repetido barraria o vídeo para sempre. Antes era "o último criado na roleta",
 e sem roleta nova isso deu 5 de 8 duelos com o mesmo p1 (Wren Telgyll, 27/09).
+**Quem derruba a gravação sai do rodízio por 7 dias** (19/10): o duelo que
+falha grava `falhou.json` na pasta dele, e quem aparece em 2 falhas na semana
+fica de fora (`rodizio.suspensos`; `--p1`/`--p2` passam por cima). Sem isso
+o par que estourou os 600 s (Ardeth Morturth × Zael Ossarvarn, 16:23 e 16:34
+de 19/10) era "o menos usado" para sempre e toda rodada fechava com 0 duelos.
 
 **A rodada** (`builds/pipeline/noite.py`, config em `config/geracao.json`)
 gera duelos **e builds (roleta, `generate-video` inteiro: build, inserção no
@@ -236,16 +241,18 @@ mesmo desenho da agenda das histórias:
 
 | modo | quando | o que faz |
 |---|---|---|
-| `lote` | seg–qua (`dias_de_lote [0,1,2]`), 07h–22h, a partir de `lote_a_partir_de` 05/10 | gera até o alvo: horários da grade até a próxima segunda 07h + o piso (seg 07:02 = 70 + 20 = **90**; ter 07:02 = 80; qua 07:02 = 70), dividido pela cota (4/3/1 → **45 duelos, 34 builds, 12 estreias** na segunda). A quarta entrou em 01/10 (nó `builds/lote-builds-quarta`): ela só gera se a terça não fechou — com o alvo cheio, não faz nada |
-| `reposicao` | qui–dom 07h–22h (e seg–qua antes de 05/10) | só gera se o canal tem menos que o **piso de 20** (2 dias); metas 10/8/3 |
-| `madrugada` | 01h–06h enquanto existir `madrugada_na_transicao` | o esquema antigo: teto de gordura (10 duelos, 8 builds), no máximo 6 duelos e 1 build por disparo |
-| `zero` | fora da janela com **estoque zero** | libera tudo (`estoque_zero_libera_a_noite`), até o piso |
+| `lote` | seg–qua (`dias_de_lote [0,1,2]`), 07h–22h, a partir de `lote_a_partir_de` 05/10 | gera até a meta **de cada formato** (desde 19/10, §13): o que a publicação tira dele até a próxima segunda 07h + o piso dele (seg 07:02 = **69 duelos, 35 vídeos de build, 8 estreias**; qua 07:02 = 57/27/6). A quarta entrou em 01/10 (nó `builds/lote-builds-quarta`): ela só gera se a terça não fechou — com as metas cheias, não faz nada |
+| `reposicao` | qui–dom 07h–22h (e seg–qua antes de 05/10) | gera o formato que está abaixo do **piso dele** (duelo 25 = 4 dias, build 8 = 2 dias); até 19/10 era o total do canal contra 20, e as estreias paradas enchiam o total |
+| `madrugada` | 01h–06h enquanto existir `madrugada_na_transicao` | o esquema antigo: teto de gordura (13 duelos, 8 builds desde 19/10), no máximo 6 duelos e 1 build por disparo |
+| `zero` | fora da janela **sem duelo nem build** (estreia não conta: o YouTube não a posta) | libera tudo (`estoque_zero_libera_a_noite`), até os pisos; o League of Legends aberto não segura |
 | `noite` | fora de tudo, com estoque | nada |
 
-A estreia só nasce dentro da roleta: a meta da build é a maior das duas
-faltas (build e estreia). **Quem tem menos dias de estoque vai primeiro**
-(dias = estoque ÷ horários/dia pela cota; empate, duelo) — decisão do Adrian
-de 28/09. **O número que decide é o da publicação** (`noite.contar_estoque`
+**Quem tem menos dias de estoque vai primeiro** (dias = estoque ÷ o que a
+publicação tira dele por dia; empate, duelo) — decisão do Adrian de 28/09 —
+e desde 19/10 a ordem é **refeita a cada passo**: depois de cada duelo ou
+roleta o formato ganha o que entrou e quem ficou com menos dias vai de novo
+(antes uma roleta de 34–94 min levava a rodada inteira). A estreia só nasce
+dentro da roleta, mas a falta dela **não pede roleta** (§13). **O número que decide é o da publicação** (`noite.contar_estoque`
 = `postar._builds_prontos` agrupado por formato, o mesmo que
 `pendentes_por_canal()["builds"]`, o `--ver` e o alerta de piso contam; o
 piso da publicação, `postar.piso_de_alerta("builds")`, lê o
@@ -253,9 +260,11 @@ piso da publicação, `postar.piso_de_alerta("builds")`, lê o
 não publicada, só com pendência que o worker resolve e com job vivo na fila).
 As histórias contaram por critério próprio em 30/09 e erraram 27 × 8.
 
-**Relógio.** Nada roda na **meia hora em volta de cada um dos 10 horários**
-(`folga_da_grade` 15/15, `builds.grade.GRADE`, inclusive 12:07 e 17:57): um
-passo só começa se termina antes de post−15. A regra velha (`grade_proibida`
+**Relógio.** Nada roda **de post−18 a post+18** em cada um dos 10 horários
+(`folga_da_grade` 18/18 desde 19/10 — era 15/15 —, `builds.grade.GRADE`,
+inclusive 12:07 e 17:57; nas horas de :37 é de :19 a :55): um
+passo só começa se termina antes de post−18. **Nem com a partida do League
+of Legends aberta** (`jogo_que_segura`, §13), menos no estoque zero. A regra velha (`grade_proibida`
 :25–:55 de toda hora) está `null` no config — tirava metade do dia e não via
 12:07 nem 17:57; o padrão do código ainda a tem, para config ilegível
 (`PADRAO` = esquema antigo de madrugada). Uma rodada dura até 55 min
@@ -1394,3 +1403,93 @@ quadro a quadro), `area_desenho_*.json`, `cauda_x_hud_*.json` e
   **Ponte do Ateliê (07/10):** o catálogo de animações é a entrada da arte do
   Ateliê. PNG avulso de `manifesto_slots.json` não é instanciado pelo palco,
   pois dependia de um script removido. Regras em `docs/sprites/CONTRATO_SLOTS.md`.
+
+## 13. A geração por formato (19/10/2026)
+
+**O que estava errado (medido nos diários `outputs/_logs/gerar_*.txt`, 13 a
+19/10):**
+
+| dia | duelos | roletas | estreias renderizadas |
+|---|---|---|---|
+| 13/10 (ter) | 0 | 12 | 12 |
+| 14/10 | 0 | 4 | 4 |
+| 15/10 | 0 | 5 | 5 |
+| 16/10 | 0 | 4 | 4 |
+| 17/10 | 0 | 3 | 3 |
+| 18/10 | 0 | 2 | 2 |
+| 19/10 (até 16:12) | 14 | 9 | 8 (+2 não gravadas) |
+| **7 dias** | **14 (2/dia)** | **39** | **38** |
+
+O estoque de duelos da publicação caiu de **43 (13/10) para 13 (19/10,
+01h)** sem a geração fazer um só. O gatilho era o TOTAL do canal, e o total
+estava cheio de **estreias** (26 → 54): cada roleta grava uma, o YouTube não
+posta mais estreia (`publicacao/duelo-no-lugar-da-estreia`) e o TikTok leva
+~0,75 por dia. Com 66–77 vídeos "no estoque", a reposição (piso 20) dizia
+"so o worker" o dia inteiro, e o lote de 19/10 às 14:03 dizia "88 vídeos para
+um alvo de 88" com 26 duelos. A madrugada da transição só fez roletas (o teto
+dela era 10 duelos e havia 13). Duas roletas de dia (10:03 e 12:34 de 19/10,
+34 e 94 min — a de 94 com 7 erros 403 da voz e a pista das histórias junto)
+levaram a rodada inteira, porque cada formato ia até o fim do alvo dele.
+
+**Custo medido:** duelo 4,35–5,0 min (11 em 47,9 min às 07:02 de 19/10;
+mediana 4,5). Roleta sozinha de madrugada: 10–17 min até 16/10; **25–29 min
+em 19/10** (com o gancho B e o HUD novo), dos quais o vídeo das duas
+estreias leva ~9 (`generation_00176`: gravação da estreia 3,4 + render das
+estreias 8,9 + voz e build A/B 14,2 min). De dia, 27–35 min.
+
+**A voz:** o 403 do edge-tts não começou em 19/10 às 11:32 — está nos
+diários **desde 12/10 01:07** (233 falhas no dia 12; 40–222 por dia até 19/10)
+e o cache de voz não ganhou nenhum mp3 de 12/10 a 19/10: **todas as falas
+novas dessas roletas são do SAPI** (`.wav`, a voz do Windows, que é o
+reserva de `voz.sintetizar`). O conserto (edge-tts 7.3.1, b38efe2) vale para
+as próximas; as **51 roletas** de `generation_00126` (12/10 01:17) a `00185`
+saíram com as falas novas na voz do SAPI (fala que já estava no cache ficou
+no edge). Refazer a voz delas é decisão do Adrian (o som só ele julga).
+
+**Como é agora** (`builds/pipeline/noite.py`, chaves novas no `geracao.json`):
+- `consumo_por_dia`: o que a publicação tira do estoque NOVO por dia — duelo
+  10 × 5/8 = **6,25** e build 10 × 3/8 = **3,75** (YouTube, com a troca
+  `TROCAS_NA_COTA`, espelho da do `postar.py`, comparada por teste); estreia
+  6 × 1/8 = **0,75** (TikTok, que tira duelo e build do que já saiu no
+  YouTube). É ele que dá os dias de cada formato;
+- `piso_por_formato_em_dias` {duelo 4, build 2, estreia 2} → **25, 8 e 2**
+  vídeos; `metas_do_plano`: reposição e estoque zero = o piso; lote = o que
+  sai até a próxima segunda 07h + o piso. O `piso_de_reposicao` (20) segue
+  sendo só o alerta da publicação;
+- `videos_por_roleta` 2: a meta da build é em vídeos (A e B), o passo é uma
+  roleta, e a roleta em preparo conta 2;
+- a ordem é refeita a cada passo (menos dias primeiro; empate, duelo). Caso
+  zero: sem duelo, o duelo vai primeiro, com 50 estreias e 10 builds;
+- `estreia_so_abaixo_da_meta`: a estreia é **gravada** em toda roleta (a luta
+  do fim da build e o cartel saem dela), mas o vídeo dela só é renderizado com
+  as estreias abaixo da meta (`generate(estreia_render=False)`; reserva da
+  roleta sem ele `minutos_por_build_sem_estreia` = 20). O vídeo que não saiu
+  sai depois: `python main.py fight --rerender generation_XXXXX/estreia`. O
+  `fluxo` mostra a estreia gravada sem vídeo como pronta, com esse comando. A
+  falta de estreia não pede roleta;
+- `jogo_que_segura` "League of Legends.exe": nenhum passo novo (duelo, roleta
+  ou job do worker) começa com a partida aberta; na dúvida (tasklist falhou)
+  não segura. Exceção: o estoque zero;
+- `folga_da_grade` 18/18 (de :19 a :55 nas horas de :37);
+- o duelo que falha deixa `falhou.json` e 2 falhas na semana tiram o nome do
+  rodízio (§2). **Pendente:** por que as lutas de Zael Ossarvarn
+  (`generation_00182`) são tão lentas — a estreia dele estourou os 600 s às
+  10:17, os rounds da estreia da `generation_00185` contra ele levaram ~8
+  min cada (12:35–12:51; um round normal leva 1,5–3,6), e o duelo Ardeth ×
+  Zael estourou duas vezes. Não investigado aqui.
+
+**Projeção** (a rodada de verdade com relógio, geradores e publicação em
+dublê — duelo 4,6 min, roleta 19 min sem o vídeo da estreia e 28 com, 3 jobs
+de imagem por roleta de 7/7/15 min, a roleta entra no estoque quando eles
+acabam; YouTube 10 horários duelo 5/build 3; TikTok 6 com 1 estreia em 8;
+começo 19/10 16:30 com 26 duelos, 10 builds e 52 estreias; sem jogo aberto):
+
+| | antes (HEAD) | depois |
+|---|---|---|
+| menor estoque de duelos por dia, 20/10–02/11 | **3–4** de 22/10 em diante (vive no teto de 10 da madrugada) | **25–52**; o mínimo (25–26) é na segunda antes do lote |
+| duelos por semana (seg 26/10–dom 01/11) | 44: 22 na segunda e 22 de madrugada, qui–dom, só quando o estoque fura 10 | 43, seg–ter de dia; qua–dom nada |
+| roletas na mesma semana | 13, todas com o vídeo da estreia | 13, nenhuma com o vídeo da estreia (as 52 duram ~2 meses no TikTok) |
+| máquina de geração na semana | 9,5 h + worker 6,3 h | 7,4 h (duelos 3,3 h + roletas 4,1 h) + worker 6,3 h |
+
+Script da projeção (fora do git):
+`C:\Users\adrian\AppData\Local\Temp\claude\e--projetos\3494d475-f7b5-498b-8dd1-7421616e2724\scratchpad\projetar_a832.py novo|antigo [dias]`.
