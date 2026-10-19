@@ -21,6 +21,13 @@
       "em": "2026-10-19T10:02:39",
       "opcao": "fazer",
       "origem": "cli"
+    },
+    {
+      "anterior": "fazer",
+      "comentario": "REVISTO pelo orquestrador após o conferente (19/10): o padrão é 'um vídeo da noite (21h-23h) leva o dia', não só as 21h — reservar o melhor vídeo pronto para a faixa 21h-23h. Ligar as partes entra como TESTE (o 0,4/100 é em parte efeito do horário).",
+      "em": "2026-10-19T10:22:52",
+      "opcao": "fazer",
+      "origem": "cli"
     }
   ],
   "id": "historias-21h-e-parte-seguinte",
@@ -49,8 +56,8 @@
   "situacao": "decidida",
   "titulo": "Histórias: as 21h nunca vazias e a parte seguinte ligada",
   "vigente": {
-    "comentario": "Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Base: análise dos vídeos de 19/10 (be2e368).",
-    "em": "2026-10-19T10:02:39",
+    "comentario": "REVISTO pelo orquestrador após o conferente (19/10): o padrão é 'um vídeo da noite (21h-23h) leva o dia', não só as 21h — reservar o melhor vídeo pronto para a faixa 21h-23h. Ligar as partes entra como TESTE (o 0,4/100 é em parte efeito do horário).",
+    "em": "2026-10-19T10:22:52",
     "opcao": "fazer"
   }
 }
