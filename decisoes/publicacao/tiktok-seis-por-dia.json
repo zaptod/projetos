@@ -61,7 +61,9 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "tiktok-atraso-depois-do-teste"
+      ],
       "descricao": "esperado ~580 views/dia por perfil",
       "id": "seis",
       "pede_comentario": false,

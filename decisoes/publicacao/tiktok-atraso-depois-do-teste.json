@@ -1,0 +1,45 @@
+{
+  "comentario": true,
+  "contexto": "Decisão tiktok-seis-por-dia (teste de 20 a 26/10). Fila própria do TikTok em ferramentas/postar.py (_vez_do_tiktok_historias/_builds).",
+  "criado": "2026-10-19T14:25:13.477094",
+  "depende_de": [
+    {
+      "decisao": "tiktok-seis-por-dia",
+      "opcao": "seis"
+    }
+  ],
+  "historico": [],
+  "id": "tiktok-atraso-depois-do-teste",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "recomendado durante o teste",
+      "id": "fifo",
+      "pede_comentario": false,
+      "rotulo": "Manter: o TikTok posta o que falta, na ordem (cada vez mais velho)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "pular",
+      "pede_comentario": false,
+      "rotulo": "O TikTok pula séries antigas inteiras e segue das novas (nunca pula parte de uma série começada)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "menos",
+      "pede_comentario": false,
+      "rotulo": "Produzir menos para o YouTube também (decidir junto com o resultado do teste)"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Com 10 por dia no YouTube e 6 no TikTok, o TikTok fica ~4 vídeos por dia atrás em cada perfil, e o atraso não para de crescer (na semana simulada de 19/10: 70 no YouTube, 42 no TikTok). Durante o teste o TikTok leva o que falta, na ordem (nunca pula parte). Depois do teste, o que fazer com o atraso?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "TikTok: o atraso que cresce com 6 contra 10",
+  "vigente": null
+}

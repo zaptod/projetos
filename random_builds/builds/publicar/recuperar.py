@@ -602,6 +602,58 @@ def mudar_visibilidade(video_id: str, alvo: str, canal: str = "builds",
                       f"pedi {_ROTULO[alvo]} e o canal diz '{depois}'"}
 
 
+# Os campos de `snippet` que o PUT aceita de volta. `videos.update` SUBSTITUI
+# a parte inteira (como no `status`, acima): mandar so `description` apagaria
+# titulo, categoria e tags — e `title`/`categoryId` sao obrigatorios.
+CAMPOS_DO_SNIPPET = ("title", "description", "categoryId", "tags",
+                     "defaultLanguage", "defaultAudioLanguage")
+
+
+def acrescentar_na_descricao(video_id: str, texto: str, canal: str = "historias",
+                             token: str | None = None) -> dict:
+    """Poe `texto` no FIM da descricao de um video ja publicado, e CONFERE.
+
+    Para ligar a parte N a N+1 quando a N+1 sai (decisao `publicacao/
+    historias-21h-e-parte-seguinte`, 19/10/2026). Exige o escopo de edicao
+    (`FaltaEscopo` sem ele — medido em 19/10: a credencial de historias NAO o
+    tem; a de builds tem). Idempotente: se o texto ja esta la, nao muda nada.
+    O canal e conferido antes (`conferir_o_canal`), como em toda mudanca.
+    """
+    import requests
+    token = token or _token(canal)
+    meu = _get(token, "channels", part="snippet", mine="true")
+    conferir_o_canal(canal, (meu.get("items") or [{}])[0])
+    atual = _get(token, "videos", part="snippet", id=video_id)
+    itens = atual.get("items") or []
+    if not itens:
+        raise PublicacaoFalhou(f"{video_id}: o canal nao tem esse video.")
+    snippet = itens[0].get("snippet") or {}
+    descricao = str(snippet.get("description") or "")
+    if texto.strip() and texto.strip() in descricao:
+        return {"id": video_id, "mudou": False, "motivo": "ja estava la"}
+    novo = {k: snippet[k] for k in CAMPOS_DO_SNIPPET if k in snippet}
+    novo["description"] = (descricao.rstrip() + "\n\n" + texto.strip()).strip()
+    r = requests.put(API + "videos", timeout=60, params={"part": "snippet"},
+                     headers={"Authorization": f"Bearer {token}",
+                              "Content-Type": "application/json"},
+                     data=json.dumps({"id": video_id, "snippet": novo})
+                     .encode("utf-8"))
+    if r.status_code == 403:
+        raise FaltaEscopo(COMO_AUTORIZAR.format(escopo=ESCOPO_EDICAO,
+                                                conta=canal)
+                          + f"\n\nO YouTube respondeu: {r.text[:200]}")
+    if not r.ok:
+        raise PublicacaoFalhou(
+            f"{video_id}: o YouTube recusou ({r.status_code}): {r.text[:200]}")
+    confere = _get(token, "videos", part="snippet", id=video_id)
+    itens = confere.get("items") or []
+    depois = str(((itens[0].get("snippet") or {}).get("description")
+                  if itens else "") or "")
+    return {"id": video_id, "mudou": texto.strip() in depois,
+            "motivo": "" if texto.strip() in depois else
+                      "pedi a descricao nova e o canal nao mostra o texto"}
+
+
 def recolher_duplicata(video_id: str, gemeo_id: str, canal: str = "builds",
                        token: str | None = None) -> dict:
     """Volta a PRIVADO um video publico que tem GEMEO publico de mesmo titulo.

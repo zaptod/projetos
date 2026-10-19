@@ -84,6 +84,12 @@
       "build": 3,
       "estreia": 1,
       "torneio": 0
-    }
+    },
+    "_porque_mistura_por_destino": "Desde 19/10/2026 (decisao publicacao/duelo-no-lugar-da-estreia) esta mistura vale INTEIRA so no TikTok. No YouTube de builds a estreia e trocada pelo duelo no codigo (ferramentas/postar.py, TROCAS_NA_COTA): duelo 5, build 3, estreia 0 - a estreia so sobe se nao houver nem duelo nem build. Medido na analise de 19/10 (28 dias, YouTube): duelo 111 views por video, build 81, estreia 29."
+  },
+  "_porque_testes": "Datas dos TESTES de 19/10/2026, inclusive nas duas pontas. Elas NAO ligam nem desligam nada: a grade de 6 por dia do TikTok (builds/grade.py) e o texto 'a parte seguinte ja esta no canal' valem desde que o codigo entra, e NAO voltam sozinhos quando o teste acaba. Servem para a Analise dos videos comparar o antes (os mesmos 7 dias logo antes do inicio) com o durante. Se o codigo entrar depois de 20/10, mude o inicio para o primeiro dia inteiro com ele (e o fim para 6 dias depois).",
+  "testes": {
+    "tiktok_6_por_dia": {"inicio": "2026-10-20", "fim": "2026-10-26"},
+    "parte_seguinte": {"inicio": "2026-10-20", "fim": "2026-10-26"}
   }
 }

@@ -58,16 +58,20 @@ class GradeUnicaTests(unittest.TestCase):
         self.assertEqual(10, grade.META_DIARIA_POR_CANAL)
 
     def test_a_meta_total_conta_os_dois_lugares(self):
-        """Dez horarios, duas plataformas, dois canais: 10 x 2 x 2 = 40."""
-        self.assertEqual(40, grade.META_DIARIA_TOTAL)
+        """Dois canais, YouTube com dez e TikTok com seis (decisao
+        `tiktok-seis-por-dia`, 19/10/2026): (10 + 6) x 2 = 32."""
+        self.assertEqual(32, grade.META_DIARIA_TOTAL)
 
-    def test_o_tiktok_posta_em_todos_os_horarios(self):
-        """Decisao dele em 15/09/2026 ("tapar esses buracos"): de 13 a 15/09 o
-        TikTok pulava 7h e 8h e a parte desses horarios nunca chegava la."""
-        self.assertEqual(grade.HORAS, grade.horas_da_plataforma("tiktok"))
+    def test_o_tiktok_posta_seis_so_de_dia(self):
+        """De 15/09 a 19/10/2026 o TikTok postou nos dez ("tapar esses
+        buracos"). Desde 19/10 (TESTE de uma semana, que nao volta sozinho)
+        ele posta seis, de 09:37 a 21:37, com fila propria — o buraco de 15/09
+        era a fila andando sem ele."""
+        self.assertEqual((9, 12, 15, 17, 20, 21), grade.horas_da_plataforma("tiktok"))
         self.assertEqual(grade.HORAS, grade.horas_da_plataforma("youtube"))
         for h in grade.HORAS:
-            self.assertTrue(grade.publica_em("tiktok", h))
+            self.assertEqual(h in (9, 12, 15, 17, 20, 21),
+                             grade.publica_em("tiktok", h), h)
         self.assertFalse(grade.publica_em("tiktok", 8))
 
     def test_o_tiktok_so_usa_horario_que_existe_na_grade(self):
@@ -79,7 +83,9 @@ class GradeUnicaTests(unittest.TestCase):
     def test_so_conta_o_horario_que_ja_venceu(self):
         cedo = datetime(2026, 9, 11, 9, 0)
         self.assertEqual([0, 6], grade.vencidos(cedo))
-        self.assertEqual([0, 6], grade.vencidos(cedo, "tiktok"))
+        # o TikTok so abre as 09:37 (grade de seis, 19/10/2026)
+        self.assertEqual([], grade.vencidos(cedo, "tiktok"))
+        self.assertEqual([9], grade.vencidos(datetime(2026, 9, 11, 9, 40), "tiktok"))
 
     def test_antes_do_primeiro_horario_nao_ha_divida(self):
         self.assertEqual([], grade.vencidos(datetime(2026, 9, 11, 0, 36)))

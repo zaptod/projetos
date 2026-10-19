@@ -44,7 +44,9 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "historias-escopo-de-edicao"
+      ],
       "descricao": "meta 10 a cada 100",
       "id": "fazer",
       "pede_comentario": false,

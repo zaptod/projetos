@@ -73,6 +73,10 @@ class PedacoNoArTests(unittest.TestCase):
         self.m.proxima_historia = lambda **k: (ALVO, [])
         # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
         self.m._divida_do_youtube = lambda: (None, "", [])
+        # A fila propria do TikTok (19/10/2026) tambem: aqui ela leva a parte
+        # da rodada.
+        self.m._vez_do_tiktok_historias = lambda novo=None: (
+            novo() if callable(novo) else novo, "")
         self.marcas = {}
         # A marca que "nao grava" fica na memoria do processo (PUB-1,
         # 14/10/2026); entre testes ela vazaria para quem le a mesma lista.

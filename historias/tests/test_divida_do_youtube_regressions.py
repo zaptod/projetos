@@ -231,13 +231,18 @@ class DividaDoYoutubeTests(unittest.TestCase):
         self.assertIn("tiktok_falha", ficha)
 
     def test_alcance_nao_repete_parte_ja_no_youtube(self):
+        """A p03 ja esta no YouTube e falta ao TikTok. Ate 19/10 o TikTok
+        levava a p04 (a "proxima" da fila) SEM a p03 — e o YouTube a alcancava.
+        Com a fila propria do TikTok (decisao `tiktok-seis-por-dia`) a vez do
+        TikTok e a p03, que ja esta no YouTube: nada a alcancar, nada repete."""
         self.ledger.append(_linha_do_ledger(P2, "tiktok",
                                             "2026-10-06T00:39:00"))
         self.ledger.append(_linha_do_ledger(P3, "youtube",
                                             "2026-10-06T00:40:00"))
         ficha = self.m.postar_historia()
-        self.assertEqual([P2.id, P4.id], self.no_youtube)
-        self.assertNotEqual(P3.id, ficha["youtube_alcance"]["alvo"])
+        self.assertEqual([P2.id], self.no_youtube)
+        self.assertEqual([P3.id], self.no_tiktok)
+        self.assertNotIn("youtube_alcance", ficha)
 
     def test_ver_mostra_o_que_o_youtube_levaria(self):
         self.ledger.append(_linha_do_ledger(P2, "tiktok",
@@ -327,8 +332,12 @@ class DividaDoYoutubeTests(unittest.TestCase):
                                             "2026-10-06T00:39:00"))
         chamadas = 0
 
-        def cheias(*_a, **_k):
+        def cheias(_publicados=None, plataforma="tiktok", agora=None):
+            # So o teto do YOUTUBE enche (a fila do TikTok confere o dele,
+            # desde 19/10/2026, e aqui ele tem espaco).
             nonlocal chamadas
+            if plataforma != "youtube":
+                return set()
             chamadas += 1
             return set() if chamadas == 1 else {"historia_00054"}
         self.m._fontes_cheias_hoje = cheias

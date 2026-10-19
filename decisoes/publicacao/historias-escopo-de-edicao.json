@@ -1,0 +1,38 @@
+{
+  "comentario": true,
+  "contexto": "Medido em 19/10: a credencial de histórias não tem o escopo youtube (a de builds tem). O 'vídeo relacionado' do Shorts não existe na API. O código está pronto e desligado: postar.LIGAR_PELA_API + recuperar.acrescentar_na_descricao. Comando: python -m neural_fights.tools.youtube_oauth --conta <conta de histórias> --com-upload --com-analytics --com-edicao",
+  "criado": "2026-10-19T14:25:16.351282",
+  "depende_de": [
+    {
+      "decisao": "historias-21h-e-parte-seguinte",
+      "opcao": "fazer"
+    }
+  ],
+  "historico": [],
+  "id": "historias-escopo-de-edicao",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "precisa de você no navegador",
+      "id": "autorizar",
+      "pede_comentario": false,
+      "rotulo": "Autorizar e ligar (a parte N ganha o link da N+1 ao sair)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "recomendado: não mexe em conta",
+      "id": "so-texto",
+      "pede_comentario": false,
+      "rotulo": "Ficar só com o texto na descrição durante o teste"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Para a parte N ganhar o link da N+1 quando ela sai (a ligação do teste da parte seguinte), o YouTube precisa que você autorize de novo a conta do canal de histórias com a permissão de edição — um clique no navegador. Hoje a parte só sobe com 'A parte seguinte já está no canal.' no fim da descrição. Autorizar?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Histórias: autorizar a edição para ligar a parte anterior",
+  "vigente": null
+}

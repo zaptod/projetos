@@ -406,17 +406,21 @@ class QuedaDeEnergiaTests(unittest.TestCase):
 
 
 class TikTokSoNaGradeDeleTests(unittest.TestCase):
-    """O TikTok segue a grade de `builds.grade`, e desde 15/09/2026 ela e a
-    mesma do YouTube: de 13 a 15/09 ele pulava 7h e 8h e a fila avancava sem
-    ele, deixando buracos na serie. Hora fora da grade continua fora."""
+    """O TikTok segue a grade de `builds.grade`. De 15/09 a 19/10/2026 ela foi
+    a mesma do YouTube (de 13 a 15/09 ele pulava 7h e 8h e a fila avancava sem
+    ele, deixando buracos na serie). Desde 19/10 (decisao `tiktok-seis-por-
+    dia`) ele posta seis, so de dia, com fila propria — e o buraco de 15/09
+    nao volta porque a fila dele leva o que falta, na ordem. Hora fora da
+    grade continua fora."""
 
-    def test_o_tiktok_posta_em_toda_hora_da_grade(self):
+    def test_o_tiktok_posta_so_nos_seis_horarios_dele(self):
         from datetime import datetime
         from builds import grade
         m = _postar()
         for h in grade.HORAS:
-            momento = datetime(2026, 9, 15, h, grade.minuto(h))
-            self.assertTrue(m._tiktok_neste_horario(momento), h)
+            momento = datetime(2026, 10, 20, h, grade.minuto(h))
+            self.assertEqual(h in grade.HORAS_DO_TIKTOK,
+                             m._tiktok_neste_horario(momento), h)
 
     def test_upload_que_cruza_a_hora_NAO_perde_o_tiktok(self):
         """15/09/2026, 18:01: o disparo das 17:57 publicou a historia as 17:59

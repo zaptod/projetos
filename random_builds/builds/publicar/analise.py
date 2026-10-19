@@ -327,6 +327,14 @@ def carregar(agora: datetime | None = None) -> dict:
             entrada["series"][canal] = serie
     ontem = (agora.date() - timedelta(days=1)).isoformat()
     entrada["historico"] = _ler_json(pasta() / "historico" / f"{ontem}.json")
+    entrada["fotos"] = _fotos()
+    try:
+        from .. import grade
+        entrada["testes"] = {TESTE_DO_TIKTOK: grade.teste(TESTE_DO_TIKTOK),
+                             TESTE_DA_PARTE_SEGUINTE: grade.teste(TESTE_DA_PARTE_SEGUINTE)}
+    except Exception as exc:                                  # noqa: BLE001
+        entrada["testes"] = {}
+        entrada["falhas"].append(f"datas dos testes ilegíveis: {type(exc).__name__}: {exc}")
     try:
         entrada["dias_de_coleta"] = dias_de_coleta(agora)
     except Exception as exc:                                  # noqa: BLE001
@@ -787,6 +795,191 @@ def _frase_da_pausa(pausa_do_teste, faixas: list, juntando: list) -> str:
     return f" A pausa de ~{horas} h do teste {teste}{pendentes}."
 
 
+# ------------------------------------------------------------------ testes
+# OS TESTES EM ANDAMENTO (decisoes de 19/10/2026). As datas moram no config
+# da publicacao (`grade.teste`), e nenhuma delas liga ou desliga nada: a
+# grade de seis do TikTok vale desde que o codigo entra e NAO volta a dez
+# sozinha quando o teste acaba. Aqui so se mede o antes e o durante.
+TESTE_DO_TIKTOK = "tiktok_6_por_dia"
+TESTE_DA_PARTE_SEGUINTE = "parte_seguinte"
+# Views de cada video aos `IDADE_DA_MEDIDA` dias (pela fotografia diaria):
+# o video de antes do teste tem mais dias no ar, e comparar o total de hoje
+# daria vantagem a ele so pela idade.
+IDADE_DA_MEDIDA = MADURO_DIAS
+
+
+def _fotos(pasta_do_historico: Path | None = None) -> dict:
+    """{'AAAA-MM-DD': fotografia} de todas as fotografias diarias gravadas."""
+    pasta_h = pasta_do_historico or (pasta() / "historico")
+    saida = {}
+    try:
+        arquivos = sorted(Path(pasta_h).glob("*.json"))
+    except OSError:
+        return saida
+    for arquivo in arquivos:
+        dado = _ler_json(arquivo)
+        if dado:
+            saida[arquivo.stem] = dado
+    return saida
+
+
+def _views_na_idade(r: dict, fotos: dict, dias: int = IDADE_DA_MEDIDA):
+    """Views do video na fotografia do dia em que ele fez `dias` dias; `None`
+    sem essa fotografia."""
+    try:
+        postado = date.fromisoformat(r["quando"][:10])
+    except (KeyError, ValueError):
+        return None
+    foto = (fotos or {}).get((postado + timedelta(days=dias)).isoformat()) or {}
+    valor = (foto.get(nome_da_parte(r["canal"], r["plataforma"])) or {}).get(r["id"])
+    if isinstance(valor, list) and valor and isinstance(valor[0], (int, float)):
+        return int(valor[0])
+    return None
+
+
+def _dias(inicio: date, fim: date) -> list:
+    return [inicio + timedelta(days=i) for i in range((fim - inicio).days + 1)]
+
+
+def _janela_do_tiktok(tk: list, ledger: list, dias: list, fotos: dict,
+                      hoje: date) -> dict:
+    """Um lado do teste: por dia, posts (do ledger), views somadas dos videos
+    postados no dia e se o dia ja tem todos os videos com 3+ dias."""
+    por_dia = []
+    for d in dias:
+        dia = d.isoformat()
+        medidos = [r for r in tk if r["quando"][:10] == dia]
+        postados = sum(1 for l in ledger
+                       if str(l.get("plataforma") or "youtube") == "tiktok"
+                       and str(l.get("quando") or "")[:10] == dia)
+        na_idade = [_views_na_idade(r, fotos) for r in medidos]
+        pela_foto = bool(medidos) and all(v is not None for v in na_idade)
+        views = [v if pela_foto else r["views"] for v, r in zip(na_idade, medidos)]
+        por_dia.append({"dia": dia, "posts": max(postados, len(medidos)),
+                        "medidos": len(medidos), "views": sum(views),
+                        "por_post": views, "pela_foto": pela_foto,
+                        # Dia que ainda nao fez 3 dias (ou nem chegou) nao e
+                        # um dia de ZERO views: e um dia que ainda nao conta.
+                        "maduro": (d + timedelta(days=MADURO_DIAS) <= hoje
+                                   and all(r["idade_dias"] >= MADURO_DIAS
+                                           for r in medidos))})
+    maduros = [d for d in por_dia if d["maduro"]]
+    return {"dias": por_dia, "dias_maduros": len(maduros),
+            "views_por_dia": mediana(d["views"] for d in maduros),
+            "por_post": mediana(v for d in maduros for v in d["por_post"]),
+            "posts_por_dia": mediana(d["posts"] for d in maduros),
+            "dias_sem_post": sum(1 for d in maduros if not d["posts"]),
+            "sem_numero": sum(d["posts"] - d["medidos"] for d in por_dia
+                              if d["posts"] > d["medidos"])}
+
+
+def resultado_do_teste_tiktok(regs: list, agora: datetime, teste: dict | None,
+                              ledger: dict | None = None,
+                              fotos: dict | None = None) -> dict:
+    """O teste de seis por dia no TikTok: ANTES x DURANTE, por perfil.
+
+    ANTES = os mesmos tantos dias logo antes do inicio. Por dia: as views
+    somadas dos videos POSTADOS naquele dia (nao e views do perfil por dia), aos
+    3 dias de idade quando ha fotografia, e a mediana por post. So dia com
+    todos os videos com 3+ dias entra nas medianas — o fim do teste so fecha 3
+    dias depois do ultimo dia.
+
+    Veredito por perfil, so com os dois lados inteiros: "efeito" quando a
+    mediana do durante passa a do antes e o teste de postos (dia contra dia)
+    da p < 0,05; senao "sem efeito claro" e a recomendacao (so recomendacao)
+    e o teste seguinte: um dia inteiro sem postar. ZERO nao e efeito: perfil
+    sem nenhum video medido nos dois lados e "sem dados".
+    """
+    if not teste:
+        return {"estado": "sem_teste"}
+    inicio, fim = teste["inicio"], teste["fim"]
+    n = (fim - inicio).days + 1
+    antes = _dias(inicio - timedelta(days=n), inicio - timedelta(days=1))
+    durante = _dias(inicio, fim)
+    hoje = agora.date()
+    saida = {"inicio": inicio.isoformat(), "fim": fim.isoformat(),
+             "antes_de": antes[0].isoformat(), "posts_no_teste": POSTS_DO_TESTE,
+             "perfis": {}}
+    if hoje < inicio:
+        saida["estado"] = "nao_comecou"
+    elif hoje <= fim + timedelta(days=MADURO_DIAS):
+        saida["estado"] = "em_andamento"
+    else:
+        saida["estado"] = "terminado"
+    for canal in metricas.CANAIS:
+        tk = [r for r in regs if r["canal"] == canal and r["plataforma"] == "tiktok"]
+        linhas = list((ledger or {}).get(canal) or [])
+        a = _janela_do_tiktok(tk, linhas, antes, fotos or {}, hoje)
+        b = _janela_do_tiktok(tk, linhas, durante, fotos or {}, hoje)
+        # A MESMA MEDIDA NOS DOIS LADOS: aos 3 dias so se TODO dia com video
+        # tem a fotografia; senao o total de hoje dos dois (o de antes tem mais
+        # dias no ar — vies CONTRA o teste, e e dito).
+        pela_foto = all(d["pela_foto"] for d in a["dias"] + b["dias"] if d["medidos"])
+        if not pela_foto:
+            a = _janela_do_tiktok(tk, linhas, antes, {}, hoje)
+            b = _janela_do_tiktok(tk, linhas, durante, {}, hoje)
+        fora = [d["dia"] for d in b["dias"] if d["posts"] > POSTS_DO_TESTE]
+        perfil = {"antes": a, "durante": b, "dias_fora_do_regime": fora,
+                  "medida": ("views aos 3 dias" if pela_foto else
+                             "views de hoje (os vídeos de antes têm mais dias no ar)")}
+        if not any(d["medidos"] for d in a["dias"] + b["dias"]):
+            perfil["veredito"] = "sem_dados"
+        elif a["dias_maduros"] < n or b["dias_maduros"] < n:
+            perfil["veredito"] = "juntando"
+        else:
+            va = [d["views"] for d in a["dias"]]
+            vb = [d["views"] for d in b["dias"]]
+            p = p_valor(vb, va)
+            perfil["p"] = round(p, 4)
+            perfil["veredito"] = ("efeito" if (b["views_por_dia"] or 0)
+                                  > (a["views_por_dia"] or 0) and p < 0.05
+                                  else "sem_efeito")
+        if perfil["veredito"] == "sem_efeito":
+            perfil["proximo_teste"] = ("um dia inteiro sem postar no TikTok (as "
+                                       "pausas de 22 h ou mais deram certo 6 de 6 "
+                                       "no builds e 3 de 3 nas histórias)")
+        saida["perfis"][canal] = perfil
+    return saida
+
+
+def resultado_da_parte_seguinte(regs: list, agora: datetime,
+                                teste: dict | None) -> dict:
+    """Quantos seguem da parte N para a N+1 no YouTube das historias, com a
+    parte N postada ANTES do teste x DURANTE (o texto "a parte seguinte ja esta
+    no canal" no fim da descricao). Mesmo criterio do `achado_seguimento`:
+    N com 100+ views, N+1 com 3+ dias e postada depois; a medida e a mediana
+    de views da N+1 para cada 100 da N."""
+    if not teste:
+        return {"estado": "sem_teste"}
+    inicio, fim = teste["inicio"], teste["fim"]
+    proprios = [r for r in regs if r["canal"] == "historias"
+                and r["plataforma"] == "youtube" and r.get("publico") is True
+                and r.get("parte")]
+    por_serie = defaultdict(dict)
+    for r in proprios:
+        por_serie[r.get("fonte_id")].setdefault(int(r["parte"]), r)
+    lados = {"antes": [], "durante": []}
+    for partes in por_serie.values():
+        for n_, r in partes.items():
+            seguinte = partes.get(n_ + 1)
+            if not (r["views"] >= 100 and seguinte
+                    and seguinte["idade_dias"] >= MADURO_DIAS
+                    and _quando(seguinte) > _quando(r)):
+                continue
+            dia = date.fromisoformat(r["quando"][:10])
+            lado = ("durante" if inicio <= dia <= fim else
+                    "antes" if dia < inicio else None)
+            if lado:
+                lados[lado].append(seguinte["views"] / r["views"] * 100)
+    estado = ("nao_comecou" if agora.date() < inicio else
+              "em_andamento" if agora.date() <= fim + timedelta(days=MADURO_DIAS)
+              else "terminado")
+    return {"estado": estado, "inicio": inicio.isoformat(), "fim": fim.isoformat(),
+            "pares_antes": len(lados["antes"]), "pares_durante": len(lados["durante"]),
+            "por_100_antes": mediana(lados["antes"]),
+            "por_100_durante": mediana(lados["durante"])}
+
+
 def achado_formato(regs: list, agora: datetime, canal: str, plataforma: str) -> tuple:
     janela = _na_janela([r for r in regs if r["canal"] == canal
                          and r["plataforma"] == plataforma], agora)
@@ -1174,9 +1367,16 @@ _NOME_DO_TIPO = {"builds": "arena do duelo", "historias": "tipo de história"}
 
 
 def analisar(regs: list, cob: dict, agora: datetime, series: dict | None = None,
-             historico: dict | None = None, falhas: list | None = None) -> dict:
-    """A analise inteira, sem disco e sem rede. `regs` vazio = `sem_dados`."""
+             historico: dict | None = None, falhas: list | None = None, *,
+             testes: dict | None = None, ledger: dict | None = None,
+             fotos: dict | None = None) -> dict:
+    """A analise inteira, sem disco e sem rede. `regs` vazio = `sem_dados`.
+
+    `testes`: {nome: {"inicio", "fim"}} (`grade.teste`); `ledger` (por canal)
+    e `fotos` (fotografias diarias) servem ao resultado deles.
+    """
     series = series or {}
+    testes = testes or {}
     avisos = list(falhas or [])
     estado = cob.get("estado", "sem_dados")
     if not regs:
@@ -1280,8 +1480,25 @@ def analisar(regs: list, cob: dict, agora: datetime, series: dict | None = None,
     # estimado em views por dia); depois os que so pedem TESTE (incertos com
     # recomendacao de testar — o resto dos incertos vai para `nao_da`).
     achados.sort(key=lambda a: (a["confianca"] == "incerto", -a["peso"]))
+    resultado_dos_testes = {
+        TESTE_DO_TIKTOK: resultado_do_teste_tiktok(
+            regs, agora, testes.get(TESTE_DO_TIKTOK), ledger, fotos),
+        TESTE_DA_PARTE_SEGUINTE: resultado_da_parte_seguinte(
+            regs, agora, testes.get(TESTE_DA_PARTE_SEGUINTE)),
+    }
+    # Com o teste marcado, a recomendacao "testar" vira "esta em teste".
+    marcados = {TESTE_DO_TIKTOK: "pausa-tiktok:", TESTE_DA_PARTE_SEGUINTE: "seguimento:"}
+    for nome, prefixo in marcados.items():
+        r = resultado_dos_testes[nome]
+        if r.get("estado") in ("nao_comecou", "em_andamento", "terminado"):
+            for a in achados:
+                if a["id"].startswith(prefixo):
+                    a["mudar"] = (f"Em teste de {_data_br(r['inicio'])} a {_data_br(r['fim'])} "
+                                  f"({ESTADO_DO_TESTE[r['estado']]}): o resultado está em "
+                                  f"\"Testes\".")
     return {"gerado_em": agora.isoformat(timespec="minutes"), "estado": estado,
             "avisos": avisos, "achados": achados, "nao_da": nao_da,
+            "testes": resultado_dos_testes,
             "partes": partes, "cobertura": cob,
             "regras": {"janela_dias": JANELA_DIAS, "maduro_dias": MADURO_DIAS,
                        "min_views_retencao": MIN_VIEWS_RETENCAO, "min_n": MIN_N,
@@ -1425,7 +1642,8 @@ def do_dia(log=print, agora: datetime | None = None, rede: bool = True,
     regs = registros(entrada)
     cob = cobertura(entrada)
     analise = analisar(regs, cob, agora, entrada["series"], entrada["historico"],
-                       entrada["falhas"])
+                       entrada["falhas"], testes=entrada.get("testes"),
+                       ledger=entrada.get("ledger"), fotos=entrada.get("fotos"))
     caminho = gravar(analise, regs, agora)
     if biblioteca:
         try:
@@ -1636,6 +1854,59 @@ def _achado_html(i: int, a: dict) -> str:
             f"<p class='sub'>Quanto deve mexer: {_e(a['quanto'])}</p></div>")
 
 
+ESTADO_DO_TESTE = {"nao_comecou": "ainda não começou", "em_andamento": "em andamento",
+                   "terminado": "terminou", "sem_teste": "sem datas no config"}
+VEREDITO = {"efeito": ("ok", "deu efeito"),
+            "sem_efeito": ("ruim", "sem efeito claro"),
+            "juntando": ("alerta", "ainda juntando (dia com vídeo de menos de 3 dias não conta)"),
+            "sem_dados": ("ruim", "sem dados: nenhum vídeo medido nos dois lados")}
+
+
+def frases_dos_testes(testes: dict) -> list:
+    """Os testes em frases curtas (a pagina e o `--ver` usam as mesmas)."""
+    linhas = []
+    t = (testes or {}).get(TESTE_DO_TIKTOK) or {}
+    if t.get("estado") and t["estado"] != "sem_teste":
+        linhas.append(f"TikTok com {t.get('posts_no_teste')} por dia, de "
+                      f"{_data_br(t['inicio'])} a {_data_br(t['fim'])} "
+                      f"({ESTADO_DO_TESTE.get(t['estado'], t['estado'])}); antes = "
+                      f"{_data_br(t['antes_de'])} em diante.")
+        for canal, p in (t.get("perfis") or {}).items():
+            a, b = p["antes"], p["durante"]
+            texto = (f"  {NOME_DO_CANAL.get(canal, canal)}: views por dia (somando os vídeos "
+                     f"postados no dia) {_fmt(a['views_por_dia'])} antes x "
+                     f"{_fmt(b['views_por_dia'])} durante; por post {_fmt(a['por_post'])} x "
+                     f"{_fmt(b['por_post'])}; posts por dia {_fmt(a['posts_por_dia'])} x "
+                     f"{_fmt(b['posts_por_dia'])}; dias contados {a['dias_maduros']} x "
+                     f"{b['dias_maduros']} — {VEREDITO.get(p['veredito'], ('', p['veredito']))[1]}")
+            if p.get("p") is not None:
+                texto += f" (p = {_fmt(p['p'])})"
+            if p.get("medida"):
+                texto += f"; medida: {p['medida']}"
+            if p.get("dias_fora_do_regime"):
+                texto += (f"; dias com mais de {t.get('posts_no_teste')} posts: "
+                          + ", ".join(_data_br(d) for d in p["dias_fora_do_regime"]))
+            if p.get("proximo_teste"):
+                texto += f". Próximo teste recomendado: {p['proximo_teste']}"
+            linhas.append(texto + ".")
+    s = (testes or {}).get(TESTE_DA_PARTE_SEGUINTE) or {}
+    if s.get("estado") and s["estado"] != "sem_teste":
+        linhas.append(f"Parte seguinte ligada (YouTube, histórias), de {_data_br(s['inicio'])} "
+                      f"a {_data_br(s['fim'])} ({ESTADO_DO_TESTE.get(s['estado'], s['estado'])}): "
+                      f"a seguinte teve {_fmt(s['por_100_antes'])} views a cada 100 da anterior "
+                      f"antes ({s['pares_antes']} pares) x {_fmt(s['por_100_durante'])} durante "
+                      f"({s['pares_durante']} pares).")
+    return linhas
+
+
+def _testes_html(testes: dict) -> str:
+    linhas = frases_dos_testes(testes)
+    if not linhas:
+        return ""
+    return ("<h2>Testes</h2><div class='cartao'>"
+            + "".join(f"<p>{_e(x.strip())}</p>" for x in linhas) + "</div>")
+
+
 def _cobertura_html(cob: dict) -> str:
     """Em FRASES, uma parte por bloco (a tabela de 6 colunas nao cabia em
     390 px e falava "sem par no Studio", "sem status")."""
@@ -1745,6 +2016,7 @@ def pagina(analise: dict) -> str:
 {f'<ul>{avisos}</ul>' if avisos else ''}
 <h2>O que mudar, do mais importante para o menos</h2>
 {corpo_achados}
+{_testes_html(analise.get('testes') or {})}
 {''.join(secoes)}
 <h2>Ainda não dá para dizer</h2>
 {f'<ul>{nao_da}</ul>' if nao_da else '<p class="sub">Nada pendente.</p>'}
@@ -1768,6 +2040,9 @@ def _texto(analise: dict) -> str:
     for i, a in enumerate(analise["achados"], 1):
         linhas += [f"{i}. [{a['tipo']}/{a['confianca']}] {a['titulo']}",
                    f"   {a['vimos']}", f"   MUDAR: {a['mudar']}", f"   QUANTO: {a['quanto']}"]
+    testes = frases_dos_testes(analise.get("testes") or {})
+    if testes:
+        linhas += ["Testes:"] + [f"  {x}" for x in testes]
     linhas += ["Ainda não dá para dizer:"] + [f"  - {x}" for x in analise["nao_da"]]
     return "\n".join(linhas)
 
@@ -1788,7 +2063,10 @@ def main(argv: list[str] | None = None) -> int:
         entrada = carregar(agora)
         regs = registros(entrada)
         analise = analisar(regs, cobertura(entrada), agora, entrada["series"],
-                           entrada["historico"], entrada["falhas"])
+                           entrada["historico"], entrada["falhas"],
+                           testes=entrada.get("testes"),
+                           ledger=entrada.get("ledger"),
+                           fotos=entrada.get("fotos"))
     else:
         analise = do_dia(agora=agora, rede=args.rede, biblioteca=args.biblioteca)
     print(json.dumps(analise, ensure_ascii=False, indent=1, default=str)

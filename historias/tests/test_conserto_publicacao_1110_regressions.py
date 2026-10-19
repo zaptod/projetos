@@ -380,6 +380,9 @@ class FichasDeBuildsTests(unittest.TestCase):
                                    "titulo": "Duelo"})()
         self.m._build_por_id = lambda vid: self.alvo
         self.m.proximo_build = lambda marcar=True: self.alvo
+        # A fila propria do TikTok (19/10/2026) tambem e dublada: aqui ela
+        # leva o mesmo build.
+        self.m._vez_do_tiktok_builds = lambda config=None: (self.alvo, "")
         # A divida dos builds (14/10/2026) le o ledger REAL: fora daqui.
         self.m._divida_do_youtube_dos_builds = lambda: (None, "", [])
         # E o clique sem confirmacao vira marca "a conferir" pelo funil
