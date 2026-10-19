@@ -649,8 +649,15 @@ def test_a_conversa_do_coordenador_se_le_no_claro_e_no_escuro(tela_isolada, tema
         page.locator("#tela-agora [data-aba-tela='coordenador']").click()
         page.locator("#coord-abas [data-aba='conversa']").click()
         page.locator("#coord-conversa:not(.oculto)").wait_for()
-        # uma bolha de cada lado, montada no DOM como o coordenador.js monta
-        page.locator("#coord-mensagens").evaluate("""c => { c.innerHTML =
+        # uma bolha de cada lado, montada no DOM como o coordenador.js monta.
+        # Numa caixa IRMÃ, com as mesmas classes: dentro do #coord-mensagens o
+        # pulso de 5 s da conversa as apagava no meio da medida (com a máquina
+        # carregada, "Cannot read properties of null" em 19/10)
+        page.locator("#coord-mensagens").evaluate("""c => {
+          const prova = document.createElement('div');
+          prova.className = c.className; prova.id = 'prova-bolhas';
+          c.after(prova);
+          prova.innerHTML =
           '<div class="coord-msg coordenador" id="b1">Oi, Adrian!<span class="fraco">🛰 coordenador · 10:00</span></div>' +
           '<div class="coord-msg adrian" id="b2">por que o vídeo não saiu?<span class="fraco">você · 10:01</span></div>'; }""")
         medidas = {nome: page.locator(seletor).evaluate(CONTRASTE) for nome, seletor in [
