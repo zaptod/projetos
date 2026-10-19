@@ -3298,3 +3298,40 @@ falham; com a v73 passam. O Pergaminho da prova usa um relatório de mentira
 
 **Fica para quem reinicia:** a casca v73 só chega ao celular depois de
 `python -m coordenador reiniciar app`, fora da janela das postagens.
+
+## v73, 2ª volta: o Pergaminho no erro 500 e o alarme da Mesa (19/10/2026)
+
+- **Pergaminho em branco no 500** (regressão da v73). Com
+  `/api/relatorio/<nome>` → 500 o diagnóstico é "erro" de uma rota só: a
+  `conexao` não chama as áreas, e o aviso fora do `<pre>` nunca aparecia (na
+  v72 dizia "sem dados — o PC respondeu com erro 500"). Agora a própria aba
+  escreve a linha no `#relatorio-sem-dados` em toda falha do PC, e a leitura
+  boa seguinte a esconde.
+- **Alarme da Mesa ilegível.** De 16/10 21:38 a 19/10 12:33 o
+  `pedidos.json` ficou zerado (queda de energia) e ninguém soube: o app dizia
+  "sem dados — erro 500" no PEDIR e o coordenador só escrevia `pedidos_erro`
+  no log a cada pulso.
+  - O coordenador abre um **incidente em disco**
+    (`coordenador/mesa_ilegivel.json`: `desde`, `copia`, `erro`) no primeiro
+    pulso que não lê a Mesa (`pedidos.marcar_ilegivel`) e o fecha no
+    primeiro que lê (`marcar_legivel`). Em disco porque a tarefa religa o
+    coordenador a cada 5 min: em memória, seria um aviso por subida.
+  - **Telegram** (o `avisar` do coordenador): UM aviso quando o incidente abre
+    ("⚠ A Mesa de pedidos está ilegível desde 21:38 (16/10): nada foi gravado
+    por cima — o arquivo foi guardado em pedidos.json.ilegivel-…") e um quando
+    fecha ("✅ A Mesa de pedidos voltou…"). O `pedidos_erro` do log segue.
+  - O retrato do coordenador leva `mesa_ilegivel`; o `/api/coordenador/conversa`
+    responde **500** com `codigo: mesa_ilegivel`, `desde` e `copia` (500 e não
+    503: o app lê 503 como "servidor do app parado" e apagaria as telas).
+  - **App**: cartão VERMELHO no topo da Agora (`#mesa-ilegivel`): "A Mesa de
+    pedidos está ilegível desde HH:MM (dd/mm) — o arquivo foi guardado em
+    <cópia>." Some quando as duas fontes dizem que ela voltou. O PEDIR diz
+    "sem dados — a Mesa de pedidos está ilegível no PC".
+
+**Provas:** `coordenador/test_pedidos_ilegivel.py` (caso zero: Mesa legível
+em 5 pulsos = nenhum aviso nem incidente; zerada = 1 aviso em 6 pulsos e
+nenhum outro depois de o coordenador subir de novo; voltou = 1 aviso de
+volta e o incidente fecha). Tela (`remoto/test_app_auditoria_tela.py`, 4
+combinações): `test_pergaminho_com_erro_500_diz_sem_dados_e_nao_fica_em_branco`,
+`test_mesa_ilegivel_mostra_cartao_vermelho_na_agora` e
+`test_caso_zero_mesa_legivel_sem_cartao`; capturas `v73b-*.png`.

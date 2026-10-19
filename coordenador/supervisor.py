@@ -51,6 +51,24 @@ def agora_iso(agora=None):
     return (agora or datetime.now()).isoformat(timespec="seconds")
 
 
+def _hora_e_dia(iso) -> str:
+    """"21:38 (16/10)" de um carimbo ISO; o texto cru se nao for um."""
+    try:
+        quando = datetime.fromisoformat(str(iso))
+    except ValueError:
+        return str(iso or "?")
+    return quando.strftime("%H:%M (%d/%m)")
+
+
+def texto_mesa_ilegivel(incidente: dict) -> str:
+    """O aviso do Telegram quando a Mesa fica ilegivel (o mesmo texto do app)."""
+    copia = incidente.get("copia")
+    return ("⚠ A Mesa de pedidos está ilegível desde "
+            f"{_hora_e_dia(incidente.get('desde'))}: nada foi gravado por cima"
+            + (f" — o arquivo foi guardado em {copia}" if copia else "")
+            + ". Os pedidos não andam até ela voltar; aviso de novo quando voltar.")
+
+
 def carregar_servicos(caminho=None):
     caminho = Path(caminho or Path(__file__).with_name("servicos.json"))
     return {s["nome"]: s for s in json.loads(caminho.read_text(encoding="utf-8"))["servicos"]}
@@ -836,7 +854,26 @@ class Supervisor:
     def processar_pedidos(self):
         """Pedidos livres sobrevivem a uma sessao fechada do VS Code."""
         if self.pedidos:
-            self.em_fundo("pedidos", self.pedidos)
+            self.em_fundo("pedidos", self._pedidos_vigiados)
+
+    def _pedidos_vigiados(self):
+        """O passo dos pedidos, com o alarme da Mesa ilegivel (19/10/2026: tres
+        dias ilegivel e ninguem avisado). UM aviso por incidente, nao por
+        pulso, e outro quando ela volta. O `pedidos_erro` do log continua (a
+        excecao sobe para o `em_fundo`)."""
+        from coordenador import pedidos as mesa
+        try:
+            self.pedidos()
+        except mesa.PedidosIlegiveis as exc:
+            novo = mesa.marcar_ilegivel(exc, self.relogio())
+            if novo:
+                self.avisar(texto_mesa_ilegivel(novo))
+            raise
+        voltou = mesa.marcar_legivel()
+        if voltou:
+            self.avisar("✅ A Mesa de pedidos voltou: o pedidos.json foi lido de novo "
+                        f"(estava ilegível desde {_hora_e_dia(voltou.get('desde'))}).")
+            self.evento("", "mesa_voltou", f"ilegível desde {voltou.get('desde')}")
 
     def processar_conversa(self):
         """A resposta de conversa (segundos), fora da fila de trabalho."""
@@ -1040,7 +1077,10 @@ class Supervisor:
         self.gravar(self.resumo())
 
     def resumo(self):
+        from coordenador import pedidos as mesa
         return {"pid": os.getpid(), "desde": self.desde, "pulso_em": agora_iso(self.relogio()),
+                # o incidente aberto da Mesa (o app mostra o cartão vermelho)
+                "mesa_ilegivel": mesa.incidente_mesa() if self.pedidos else None,
                 "versao": self._versao(), "servicos": self.estado,
                 "acoes_pc": acoes_pc.catalogo(), "eventos": self.eventos[-100:],
                 "cerebro": {"ligado": bool(self.cerebro)},

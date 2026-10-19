@@ -370,7 +370,60 @@ LER_ESPERA_S = 0.25         # ...com esta espera entre as tentativas
 
 class PedidosIlegiveis(OSError):
     """`pedidos.json` existe e nao pode ser lido. E OSError de proposito: o app
-    (`registrar` -> 503) e o bot ja tratam OSError sem cair."""
+    (`registrar` -> 503) e o bot ja tratam OSError sem cair. `copia` e o nome
+    da copia guardada do original (ou None)."""
+    copia = None
+
+
+# ---- o incidente da Mesa ilegivel (19/10/2026) ----
+# De 16/10 21:38 a 19/10 12:33 o pedidos.json ficou ilegivel (zerado numa queda
+# de energia) e NINGUEM soube: o app dizia "sem dados — erro 500" no PEDIR e o
+# coordenador escrevia `pedidos_erro` no log a cada pulso. O incidente mora em
+# disco (o coordenador sobe de novo a cada 5 min e mandaria um aviso por
+# subida): o primeiro pulso que nao le abre, o primeiro que le fecha.
+INCIDENTE = "mesa_ilegivel.json"
+
+
+def _arquivo_incidente():
+    return estado.pasta() / INCIDENTE
+
+
+def incidente_mesa() -> dict | None:
+    """O incidente aberto (`desde`, `copia`, `erro`), ou None com a Mesa boa."""
+    try:
+        dados = json.loads(_arquivo_incidente().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return dados if isinstance(dados, dict) and dados.get("desde") else None
+
+
+def marcar_ilegivel(exc, quando=None) -> dict | None:
+    """Abre o incidente; devolve-o so na PRIMEIRA vez (quem chama avisa uma
+    vez). Ja aberto: atualiza a copia e o erro e devolve None."""
+    aberto = incidente_mesa()
+    copia = getattr(exc, "copia", None)
+    dados = dict(aberto or {"desde": _iso(quando)}, copia=copia or (aberto or {}).get("copia"),
+                 erro=str(exc)[:300])
+    if aberto == dados:
+        return None
+    alvo = _arquivo_incidente()
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    temporario = alvo.with_name(f".{alvo.name}.{os.getpid()}.tmp")
+    _escrever_no_disco(temporario, json.dumps(dados, ensure_ascii=False))
+    os.replace(temporario, alvo)
+    return None if aberto else dados
+
+
+def marcar_legivel() -> dict | None:
+    """Fecha o incidente; devolve o que estava aberto (para o aviso de volta)."""
+    aberto = incidente_mesa()
+    if aberto is None:
+        return None
+    try:
+        _arquivo_incidente().unlink()
+    except FileNotFoundError:
+        pass
+    return aberto
 
 
 def _guardar_ilegivel(alvo):
@@ -414,10 +467,12 @@ def _ler():
         erro = ValueError(f"esperava um objeto JSON, veio {type(dados).__name__}")
     else:
         copia = _guardar_ilegivel(alvo)
-        raise PedidosIlegiveis(
+        falha = PedidosIlegiveis(
             f"pedidos.json ilegivel depois de {LER_TENTATIVAS} tentativas "
             f"({type(erro).__name__}: {erro}); nada foi gravado por cima"
             + (f"; copia em {copia.name}" if copia else ""))
+        falha.copia = copia.name if copia else None
+        raise falha
     if not isinstance(dados.get("pedidos"), list):
         dados["pedidos"] = []
     if not isinstance(dados.get("conversa"), list):

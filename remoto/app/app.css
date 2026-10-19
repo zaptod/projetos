@@ -506,6 +506,12 @@ nav.prateleira .vila-botoes button:active:not(:disabled) { background: rgba(255,
    FORA DO AR, que a tela não sabe (14/10, v72) */
 .coord-mesa.velho:not(.fora) { background: #ece3cf; border-color: #8a7a5c; color: #4a3a26; }
 .orq-sem-dados { font-style: italic; }
+/* a Mesa de pedidos ilegível (19/10): vermelho, no topo da Agora */
+.livro.mesa .cartao.mesa-ilegivel, .cartao.mesa-ilegivel {
+  background: #f8d9cf; border: 2px solid #a8321f; border-style: solid; color: #5c170c; }
+.livro.mesa .cartao.mesa-ilegivel h2, .cartao.mesa-ilegivel h2 { color: #8a1f0e; margin: 0 0 6px; }
+.mesa-ilegivel-texto { font-weight: 600; overflow-wrap: anywhere; }
+.mesa-ilegivel-fraco { margin-top: 4px; font-size: 13px; }
 /* o interruptor do Claude sem dados: nem o verde do LIBERADO nem o vermelho
    do PROIBIDO, que a tela não sabe com o PC fora (v72) */
 .claude-chave:has(> .orq-sem-dados) { padding: 8px 12px; border-radius: 12px;

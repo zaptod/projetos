@@ -90,3 +90,52 @@ def test_supervisor_registra_o_erro_e_o_laco_segue(mesa):
     erros = [e for e in s.eventos if e["tipo"] == "pedidos_erro"]
     assert len(erros) == 2 and "ilegivel" in erros[0]["texto"].lower()
     assert pedidos._arquivo().read_text(encoding="utf-8") == "{partido"
+
+
+# ------------------------------------------- o alarme da Mesa (19/10/2026)
+# De 16/10 21:38 a 19/10 12:33 o pedidos.json ficou ilegível (zerado na queda
+# de energia) e ninguém foi avisado: só `pedidos_erro` no log a cada pulso.
+def _pulsos(mesa_, n, avisos, **mais):
+    from coordenador.test_coordenador import supervisor
+    s, _ = supervisor(pedidos=pedidos._ler, avisar=avisos.append,
+                      em_fundo=lambda nome, funcao: _rodar(funcao), **mais)
+    for _ in range(n):
+        s.processar_pedidos()
+    return s
+
+
+def _rodar(funcao):
+    try:
+        funcao()
+    except OSError:
+        pass                     # o em_fundo de verdade vira `pedidos_erro`
+    return True
+
+
+def test_caso_zero_mesa_legivel_nao_avisa_nem_abre_incidente(mesa):
+    _com_um_pedido(mesa)
+    avisos = []
+    s = _pulsos(mesa, 5, avisos)
+    assert avisos == []
+    assert pedidos.incidente_mesa() is None
+    assert s.resumo()["mesa_ilegivel"] is None
+
+
+def test_mesa_ilegivel_avisa_uma_vez_em_varios_pulsos_e_de_novo_quando_volta(mesa):
+    _com_um_pedido(mesa)
+    bom = pedidos._arquivo().read_bytes()
+    pedidos._arquivo().write_bytes(b"\x00" * 64)            # a queda de 16/10: zeros
+    avisos = []
+    s = _pulsos(mesa, 6, avisos)
+    assert len(avisos) == 1, avisos
+    assert "ilegível desde" in avisos[0] and "pedidos.json.ilegivel-" in avisos[0]
+    incidente = s.resumo()["mesa_ilegivel"]
+    assert incidente and incidente["copia"].startswith("pedidos.json.ilegivel-")
+    # o coordenador sobe de novo (a tarefa religa a cada 5 min): não avisa outra vez
+    _pulsos(mesa, 3, avisos)
+    assert len(avisos) == 1, avisos
+    # voltou a ler: UM aviso de volta e o incidente fecha
+    pedidos._arquivo().write_bytes(bom)
+    s = _pulsos(mesa, 4, avisos)
+    assert len(avisos) == 2 and "voltou" in avisos[1], avisos
+    assert pedidos.incidente_mesa() is None and s.resumo()["mesa_ilegivel"] is None

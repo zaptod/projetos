@@ -154,6 +154,8 @@ async function coordenadorMesa() {
     linha.textContent = coordResumo(dados);
     linha.classList.remove("velho");
     linha.classList.toggle("fora", !dados.vivo);
+    // o incidente da Mesa que o coordenador abriu (só vale com ele vivo)
+    if (dados.vivo) { MesaAlarme.coord = dados.mesa_ilegivel || null; mesaIlegivelDesenhar(); }
   } catch (err) { coordMesaSemDados(err); }
   if (typeof pedidosCarregar === "function") pedidosCarregar();
 }
@@ -511,7 +513,41 @@ async function pedidosCarregar() {
   try {
     pedidosDesenhar(await api("/api/coordenador/conversa"));
     Coord.pedidosEm = new Date().toISOString();
-  } catch (err) { pedidosSemDados(err); }
+    MesaAlarme.api = null;
+  } catch (err) {
+    if (err && err.codigo === "mesa_ilegivel") MesaAlarme.api = err.dados || {};
+    pedidosSemDados(err);
+  }
+  mesaIlegivelDesenhar();
+}
+
+// A Mesa de pedidos ilegível (19/10/2026): de 16/10 21:38 a 19/10 12:33 o
+// pedidos.json ficou zerado e o app só dizia "sem dados — erro 500" no PEDIR.
+// Agora um cartão VERMELHO na Agora, enquanto o coordenador (`mesa_ilegivel`
+// no retrato dele) ou a própria leitura (`codigo: mesa_ilegivel`) disserem.
+const MesaAlarme = {coord: null, api: null};
+
+function mesaIlegivelTexto(info) {
+  const d = dataPC(info.desde);
+  const desde = isNaN(d) ? ""
+    : ` desde ${hora(info.desde)} (${d.toLocaleDateString("pt-BR", {day: "2-digit", month: "2-digit"})})`;
+  return `A Mesa de pedidos está ilegível${desde}`
+    + (info.copia ? ` — o arquivo foi guardado em ${info.copia}` : "") + ".";
+}
+
+function mesaIlegivelDesenhar() {
+  const alvo = $("mesa-ilegivel");
+  if (!alvo) return;
+  const info = MesaAlarme.api || MesaAlarme.coord;
+  if (!info) { alvo.classList.add("oculto"); alvo.replaceChildren(); return; }
+  // o coordenador diz desde quando; a leitura do app, a cópia mais nova
+  const junto = Object.assign({}, MesaAlarme.coord || {}, MesaAlarme.api || {});
+  if (!junto.desde && MesaAlarme.coord) junto.desde = MesaAlarme.coord.desde;
+  alvo.replaceChildren(el("h2", {}, "⚠ Mesa de pedidos ilegível"),
+    el("div", {class: "mesa-ilegivel-texto"}, mesaIlegivelTexto(junto)),
+    el("div", {class: "mesa-ilegivel-fraco"},
+      "Nada foi gravado por cima. Os pedidos não andam até ela voltar; o aviso vai ao Telegram uma vez."));
+  alvo.classList.remove("oculto");
 }
 
 // Sem resposta do PC, a lista de pedidos (PEDIR em Agora e a do Coordenador)

@@ -170,6 +170,10 @@ function quandoCurto(iso) {
 // PC respondeu com erro N. `motivo` é o pedaço que entra nos cartões.
 function diagnosticoPC(err) {
   const status = err && err.status;
+  // a Mesa de pedidos ilegível (19/10): o PC respondeu, e diz o porquê
+  if (err && err.codigo === "mesa_ilegivel")
+    return {tipo: "erro", selo: "erro do PC", faixa: "A Mesa de pedidos está ilegível no PC.",
+            motivo: "a Mesa de pedidos está ilegível no PC"};
   if (!status) {
     const semInternet = navigator.onLine === false;
     return {tipo: "inalcancavel", selo: "sem conexão",
@@ -814,10 +818,20 @@ function montarAbas() {
       try {
         const {texto} = await api(`/api/relatorio/${nome}`);
         $("relatorio").textContent = texto.replace(/[*_`]/g, "");
+        $("relatorio-sem-dados").classList.add("oculto");
+        $("relatorio").classList.remove("oculto");
         conexao(true);
       } catch (err) {
-        // falha do PC: o texto some e a área diz "sem dados" fora do <pre>
-        $("relatorio").textContent = falhaDoPC(err) ? "" : "falhou: " + err.message;
+        // falha do PC: o texto some e a linha "sem dados" fica fora do <pre>.
+        // A própria aba escreve a linha: com um erro 500 só desta rota a
+        // conexao não chama as áreas, e na v73 o Pergaminho ficava em branco
+        // (conferente, v73 → v73b)
+        if (falhaDoPC(err)) {
+          $("relatorio").textContent = "";
+          $("relatorio").classList.add("oculto");
+          $("relatorio-sem-dados").replaceChildren(linhaSemDados(err));
+          $("relatorio-sem-dados").classList.remove("oculto");
+        } else $("relatorio").textContent = "falhou: " + err.message;
         conexao(false, err);
       }
     });

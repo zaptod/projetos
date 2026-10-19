@@ -1442,7 +1442,19 @@ class Manipulador(BaseHTTPRequestHandler):
                 # linha do tempo, e o estado de cada pedido. So leitura.
                 from coordenador import cerebro as coord_cerebro, pedidos
                 dados = coord_cerebro.para_o_app()
-                mesa = pedidos.para_o_app()
+                try:
+                    mesa = pedidos.para_o_app()
+                except pedidos.PedidosIlegiveis as exc:
+                    # 19/10: a Mesa ilegível era só "erro 500" no PEDIR. Agora o
+                    # app recebe o porquê e mostra o cartão vermelho na Agora
+                    # (o incidente aberto pelo coordenador diz desde quando).
+                    # 500, não 503: o 503 o app lê como "servidor do app parado"
+                    # e apagaria todas as telas
+                    incidente = pedidos.incidente_mesa() or {}
+                    return self._json({
+                        "erro": "a Mesa de pedidos está ilegível", "codigo": "mesa_ilegivel",
+                        "desde": incidente.get("desde"),
+                        "copia": getattr(exc, "copia", None) or incidente.get("copia")}, 500)
                 dados["conversa"] = sorted(
                     list(dados.get("conversa") or []) + list(mesa["conversa"]),
                     key=lambda linha: str(linha.get("em") or ""))[-150:]

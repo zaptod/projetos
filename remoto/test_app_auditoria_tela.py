@@ -1107,3 +1107,98 @@ def test_na_volta_do_pc_nenhum_controle_fica_desligado_nas_abas_escondidas(  # n
         page.wait_for_timeout(500)
         restam = page.evaluate("() => [...document.querySelectorAll('[data-sem-pc]')].map((e) => e.id)")
         assert not restam, (antes, restam)
+
+
+# ===================== achados do conferente na v73 (19/10, casca v73 ainda)
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_pergaminho_com_erro_500_diz_sem_dados_e_nao_fica_em_branco(  # noqa: F811
+        tela_isolada, monkeypatch, tema, tamanho):
+    """Conferente, v73: com /api/relatorio/metas → 500 o Pergaminho ficava EM
+    BRANCO (o 500 é "erro" de uma rota só: a conexao não chama as áreas, e o
+    aviso fora do <pre> nunca aparecia). Na v72 dizia "sem dados — o PC
+    respondeu com erro 500"."""
+    quebrado = {"sim": True}
+
+    def relatorio(nome):
+        if quebrado["sim"]:
+            raise RuntimeError("relatório quebrado de propósito")
+        return f"RELATÓRIO {nome} DE PROVA"
+    monkeypatch.setattr(painel_dados, "relatorio", relatorio)
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "ver", "videos")
+        _abrir_aba(page, "videos", "relatorios")
+        page.wait_for_function("() => !document.querySelector('#relatorio').innerText.includes('carregando')",
+                               timeout=20000)
+        page.wait_for_timeout(300)
+        page.screenshot(path=str(CAPTURAS / f"v73b-pergaminho-500-{nome}.png"))
+        aviso = page.locator("#relatorio-sem-dados")
+        assert aviso.is_visible(), page.locator("#relatorio").inner_text()
+        assert aviso.inner_text().startswith("sem dados — o PC respondeu com erro 500"), aviso.inner_text()
+        assert not page.locator("#relatorio").is_visible()
+        # consertado no PC: tocar na aba relê, e o texto volta
+        quebrado["sim"] = False
+        page.locator("#abas-relatorio button[aria-pressed='true']").click()
+        page.wait_for_function("() => document.querySelector('#relatorio').innerText.includes('DE PROVA')",
+                               timeout=20000)
+        assert not aviso.is_visible() and page.locator("#relatorio").is_visible()
+
+
+def _mesa_ilegivel(servidor):
+    """O pedidos.json zerado (a queda de 16/10) e o retrato do coordenador com
+    o incidente aberto, como o pulso de verdade grava."""
+    import json
+    import os
+    from pathlib import Path
+
+    pasta = Path(os.environ["NF_COORDENADOR_PASTA"])
+    (pasta / "pedidos.json").write_bytes(b"\x00" * 64)
+    estado = json.loads((pasta / "estado.json").read_text(encoding="utf-8"))
+    estado["pulso_em"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    estado["mesa_ilegivel"] = {"desde": "2026-10-16T21:38:00",
+                               "copia": "pedidos.json.ilegivel-20261016-213800", "erro": "zeros"}
+    (pasta / "estado.json").write_text(json.dumps(estado), encoding="utf-8")
+    return pasta
+
+
+@pytest.mark.parametrize("tema,tamanho", TELAS4)
+def test_mesa_ilegivel_mostra_cartao_vermelho_na_agora(tela_isolada, monkeypatch, tema, tamanho):  # noqa: F811
+    """19/10: o pedidos.json ficou ilegível três dias e o app só dizia "sem
+    dados — erro 500" no PEDIR. Agora um cartão vermelho na Agora diz desde
+    quando e onde o arquivo foi guardado."""
+    pasta = _mesa_ilegivel(tela_isolada)
+    nome = _nome(tema, tamanho)
+    with _pagina(tela_isolada, tema=tema, tamanho=tamanho) as page:
+        _abrir_objeto(page, "agora", "agora")
+        cartao = page.locator("#mesa-ilegivel")
+        cartao.wait_for(state="visible", timeout=20000)
+        page.wait_for_function("() => document.querySelector('#mesa-ilegivel').innerText.includes('desde')",
+                               timeout=20000)
+        page.wait_for_timeout(300)
+        page.screenshot(path=str(CAPTURAS / f"v73b-mesa-ilegivel-{nome}.png"))
+        texto = cartao.inner_text()
+        assert "A Mesa de pedidos está ilegível desde 21:38 (16/10)" in texto, texto
+        assert "o arquivo foi guardado em pedidos.json.ilegivel-" in texto, texto
+        fundo = cartao.evaluate("e => getComputedStyle(e).backgroundColor")
+        assert fundo == "rgb(248, 217, 207)", fundo                  # vermelho, não o pergaminho
+        # o PEDIR diz o porquê (a leitura da conversa tenta 6 vezes antes de desistir)
+        page.wait_for_function("() => document.querySelector('#pedido-estado').innerText"
+                               ".includes('a Mesa de pedidos está ilegível')", timeout=20000)
+        # a Mesa voltou: o cartão some no ciclo seguinte (10 s)
+        (pasta / "pedidos.json").unlink()
+        estado = (pasta / "estado.json")
+        import json
+        dados = json.loads(estado.read_text(encoding="utf-8"))
+        dados.pop("mesa_ilegivel"); dados["pulso_em"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        estado.write_text(json.dumps(dados), encoding="utf-8")
+        cartao.wait_for(state="hidden", timeout=25000)
+
+
+def test_caso_zero_mesa_legivel_sem_cartao(tela_isolada):  # noqa: F811
+    with _pagina(tela_isolada) as page:
+        _abrir_objeto(page, "agora", "agora")
+        page.wait_for_function("() => document.querySelector('#coord-mesa').innerText.includes('no ar')",
+                               timeout=15000)
+        page.wait_for_timeout(1500)
+        assert not page.locator("#mesa-ilegivel").is_visible()
+        assert "ilegível" not in page.locator("#tela-agora").inner_text()
