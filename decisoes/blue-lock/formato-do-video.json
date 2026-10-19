@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-19T10:43:39",
+      "evento": "2026-10-19T10:43:35",
+      "linha": 194,
+      "nota": "agente faz o formato",
+      "opcao": "lance",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Gravação provada (19/10): 3x3 em 1080x1920, 30 s com 5-8 chutes, 3-4 defesas e 1-2 gols. Câmera de campo inteiro não serve no celular.",
   "criado": "2026-10-19T10:43:34.845189",
   "depende_de": [],
