@@ -24,7 +24,7 @@ requires-python = ">=3.10"
 dependencies = [
     "Pillow>=10,<13",
     "numpy>=1.26",
-    "edge-tts>=6.1",
+    "edge-tts>=7.3.1",  # 19/10/2026: 7.2.8 levava 403 (token novo da Microsoft)
     "patchright>=1.50",
     # O narrador, a trilha e o cliente do PicassoIA vem do projeto vizinho.
     "random-builds",
