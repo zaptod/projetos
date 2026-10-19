@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-19T16:13:03",
+      "evento": "2026-10-19T16:12:55",
+      "linha": 196,
+      "nota": "",
+      "opcao": "fifo",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Decisão tiktok-seis-por-dia (teste de 20 a 26/10). Fila própria do TikTok em ferramentas/postar.py (_vez_do_tiktok_historias/_builds).",
   "criado": "2026-10-19T14:25:13.477094",
   "depende_de": [
