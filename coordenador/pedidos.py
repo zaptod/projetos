@@ -425,12 +425,27 @@ def _ler():
     return dados
 
 
+def _escrever_no_disco(caminho: Path, texto: str) -> None:
+    """Escreve e FORCA os dados no disco antes do `os.replace`.
+
+    16/10/2026 21:38: o PC desligou logo depois de uma gravacao e o
+    pedidos.json voltou com 810.926 bytes, TODOS zero — o Windows ja tinha
+    gravado o tamanho novo, mas nao o conteudo. A Mesa ficou ilegivel por
+    tres dias. Com o `fsync` no temporario, o conteudo esta no disco antes
+    de o nome trocar: na queda fica o arquivo velho ou o novo, nunca zeros.
+    """
+    with open(caminho, "w", encoding="utf-8") as arq:
+        arq.write(texto)
+        arq.flush()
+        os.fsync(arq.fileno())
+
+
 def _gravar(dados):
     alvo = _arquivo()
     alvo.parent.mkdir(parents=True, exist_ok=True)
     temporario = alvo.with_name(f".{alvo.name}.{os.getpid()}.tmp")
-    temporario.write_text(json.dumps(dados, ensure_ascii=False, separators=(",", ":")),
-                          encoding="utf-8")
+    _escrever_no_disco(temporario,
+                       json.dumps(dados, ensure_ascii=False, separators=(",", ":")))
     # o app lendo o arquivo (para_o_app le sem trava) segura o destino por um
     # instante, e o os.replace do Windows da PermissionError: tenta de novo
     for tentativa in range(6):
@@ -902,7 +917,7 @@ def montar_acao(nome: str, argumentos=()) -> dict:
 def _gravar_json(caminho: Path, dados) -> None:
     caminho.parent.mkdir(parents=True, exist_ok=True)
     temporario = caminho.with_name("." + caminho.name + ".tmp")
-    temporario.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
+    _escrever_no_disco(temporario, json.dumps(dados, ensure_ascii=False))
     os.replace(temporario, caminho)
 
 
