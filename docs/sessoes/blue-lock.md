@@ -173,7 +173,8 @@ reconhecíveis** — 30 s de 3×3 deram 5 a 8 chutes, 3 a 4 defesas do robô e 1
 - **(a) "Lance da partida" — recomendado para começar.** 3×3 com o elenco escolhido por time (ex.: Isagi/Bachira/Nagi × Rin/Barou/Reo), vertical 1080×1920,
   câmera `bola`, **15–25 s** cortados do JSON: começa ~4 s antes de um `shot` que termina em `goal` ou `save` e acaba 2 s depois (antes do recomeço vazio).
   Placa no 1º segundo com os seis nomes ("ISAGI × RIN"), placar queimado no topo, som de chute/defesa/torcida pelos eventos. Sai de partidas inteiras gravadas
-  por faixa de sementes, sem escolher semente.
+  por faixa de sementes, sem escolher semente. Desde `face59d`, também vale priorizar na revisão visual os lances em que uma recepção aérea ou um drible do
+  Bachira abre assistência antes da finalização: são as novas ações legíveis no vídeo, mas ainda não há evento semântico no JSON para cortá-las automaticamente.
 - **(b) "Golpe do personagem".** Os cenários do laboratório (`src/scenarios.ts`: "Rin · curva ao alvo", "Barou · chute do Rei", "Nagi · bola alta", "Duelo
   de drible" do Bachira…) montam a situação e a IA decide sozinha; 8–12 s por golpe, câmera `character`. Mais fiel ao mangá, mas cada cenário precisa ser
   chamado de fora (`prepareScenario`) e conferido um a um.
@@ -211,9 +212,10 @@ python -m bluelock.vigia instalar       # cria a tarefa (30 min, oculta, endurec
 python -m bluelock.vigia remover
 ```
 
-**Estado da main conferido:** `c6f2c87` (19/10/2026, 10:16 — o próprio vigia, rodado a seco com aviso e pedido dublados, puxou `3e6e12d..c6f2c87`: 7
-commits, 152 arquivos, mexeu em `package.json`, `src/main.ts`, `src/replay.ts`, `src/simulation.ts`; `npm test` 1551/1551; o gravador regravou 30 s sem erro
-nesse commit). Quem atender um pedido "Blue Lock main mudou" atualiza esta linha.
+**Estado da main conferido:** `face59d` (19/10/2026, 17:18 — revisão de `c6f2c87..face59d`: 8 commits; mudou `package.json`, `src/main.ts`, `src/replay.ts`
+e `src/simulation.ts`; `npm test` 1684/1684 em 288,1 s, informado pelo vigia). A interface só mostra aprendizado de chute de primeira/vantagem de drible,
+o replay valida esses campos novos e a simulação corrigiu recepção/rebotes; não houve quebra de contrato com `Field`, `Simulation`, personagens ou
+`visual-state`, portanto `bluelock/gravar.py` não precisou mudar. Quem atender um pedido "Blue Lock main mudou" atualiza esta linha.
 
 ## 6. Contas e o caminho até publicar
 
