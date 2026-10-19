@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-19T01:08:40",
+      "evento": "2026-10-19T01:08:38",
+      "linha": 188,
+      "nota": "agente de builds na mesma worktree do HUD",
+      "opcao": "corrigir",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Torre 12->41 de 790 quadros, Vulcão 7->44 de 647; ESTATELOU/COMEU PAREDE a 19-27% da altura saem da tela no pop-in.",
   "criado": "2026-10-19T01:08:36.982436",
   "depende_de": [],
