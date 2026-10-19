@@ -274,10 +274,8 @@ class Estoque(unittest.TestCase):
     def test_teto_vem_da_cota_sobre_os_horarios(self):
         pub = {"grade": {"mistura": {"duelo": 4, "build": 3, "estreia": 1,
                                      "torneio": 0}}}
-        # Desde 19/10/2026 o YouTube poe duelo no lugar da estreia
-        # (`publicacao/duelo-no-lugar-da-estreia`): 10 x 5/8 = 6,25 (era 5).
-        self.assertEqual(6.25, noite.duelos_por_dia(pub, horarios=10))
-        self.assertEqual(13, noite.teto_de_duelos({"dias_de_gordura": 2},
+        self.assertEqual(5.0, noite.duelos_por_dia(pub, horarios=10))
+        self.assertEqual(10, noite.teto_de_duelos({"dias_de_gordura": 2},
                                                   pub, horarios=10))
         sem_duelo = {"grade": {"mistura": {"duelo": 0, "build": 3}}}
         self.assertEqual(0, noite.teto_de_duelos({"dias_de_gordura": 2},

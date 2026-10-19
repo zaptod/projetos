@@ -92,14 +92,8 @@ class PipelineController:
                  identity: bool = True, nome_pedido: str | None = None,
                  autor_pedido: str | None = None, estreia: bool = True,
                  print_pedido: str | Path | None = None,
-                 escolhas: dict | None = None,
-                 estreia_render: bool = True) -> Path:
+                 escolhas: dict | None = None) -> Path:
         """nome_pedido/autor_pedido: o nome escolhido num comentario.
-
-        `estreia_render=False` (a geracao, com estreias sobrando — 19/10/2026):
-        a estreia e GRAVADA igual (a luta do fim da build sai dela, e o
-        cartel conta os rounds), mas o video proprio dela nao e renderizado.
-        `main.py fight --rerender <generation>/estreia` o faz depois.
 
         Vem cru do CLI e nao e validado aqui de proposito - quem decide se o
         pedido e aceitavel e builds.character.nomes, que tambem grava o motivo da
@@ -142,8 +136,7 @@ class PipelineController:
                   f"+ {resultado['arma']}")
             if estreia:
                 gravada = self._gravar_estreia(out_dir, generation,
-                                               resultado["personagem"], preview,
-                                               renderizar=estreia_render)
+                                               resultado["personagem"], preview)
                 if gravada is not None:
                     self._build_edit_plan(out_dir, generation)
         if not generation_only:
@@ -212,7 +205,7 @@ class PipelineController:
 
     # ---------------------------------------------------------------- estreia
     def _gravar_estreia(self, out_dir: Path, generation: dict, nome: str,
-                        preview: bool, renderizar: bool = True) -> Path | None:
+                        preview: bool) -> Path | None:
         """A primeira luta do personagem recem-criado, como video PROPRIO.
 
         Sai em `outputs/<generation_id>/estreia/` no formato de luta unica.
@@ -252,11 +245,7 @@ class PipelineController:
                                  progresso=self._progresso_luta,
                                  melhor_de=self.estreia_melhor_de)
             fight["fight_id"] = f"{generation['generation_id']}/estreia"
-            self._entregar_luta(pasta, fight, preview, renderizar=renderizar)
-            if not renderizar:
-                print(f"[estreia] video proprio NAO renderizado (estreias "
-                      f"sobrando): main.py fight --rerender "
-                      f"{generation['generation_id']}/estreia")
+            self._entregar_luta(pasta, fight, preview)
             # Cada round e uma luta na carreira: o id do ledger separa por
             # `match_id`, entao os tres contam no cartel em vez de colapsar.
             for round_ in fight["lutas"]:
@@ -327,22 +316,10 @@ class PipelineController:
 
         sessao = FightSession(self.scoring,
                               gameplay=config_gameplay(self.editing_config, "duelo"))
-        try:
-            fight = sessao.gerar(p1=p1, p2=p2, seed=seed, cenario=cenario,
-                                 gravar_em=out_dir, perfis=self.perfis,
-                                 origem="duelo", ledger=ledger,
-                                 progresso=self._progresso_luta, melhor_de=1)
-        except Exception as exc:
-            # A FALHA FICA ESCRITA (19/10/2026): sem `fight.json` o rodizio
-            # nao via o duelo e escolhia o mesmo par de novo — Ardeth
-            # Morturth x Zael Ossarvarn estourou os 600 s da gravacao duas
-            # vezes seguidas. Ver `rodizio.suspensos`.
-            from datetime import datetime
-            _write_json(out_dir / rodizio.FALHA, {
-                "p1": p1, "p2": p2, "seed": seed,
-                "motivo": f"{type(exc).__name__}: {str(exc)[:300]}",
-                "em": datetime.now().isoformat(timespec="seconds")})
-            raise
+        fight = sessao.gerar(p1=p1, p2=p2, seed=seed, cenario=cenario,
+                             gravar_em=out_dir, perfis=self.perfis,
+                             origem="duelo", ledger=ledger,
+                             progresso=self._progresso_luta, melhor_de=1)
         fight["duelo_id"] = duelo_id
         _write_json(out_dir / "fight.json", fight)
         luta = fight["luta"]
@@ -487,11 +464,7 @@ class PipelineController:
         return out_dir
 
     def _entregar_luta(self, out_dir: Path, fight: dict, preview: bool,
-                       remontar: bool = True, renderizar: bool = True) -> None:
-        """Monta (e grava) a edicao da luta e renderiza os perfis.
-
-        `renderizar=False`: so a edicao, o `fight.json` e as legendas vao ao
-        disco — e o que `rerender_luta` precisa para fazer o video depois."""
+                       remontar: bool = True) -> None:
         from ..tournament.timeline import FightTimelineBuilder
 
         engine = RandomEngine(fight["seed"])
@@ -507,8 +480,6 @@ class PipelineController:
         else:
             with open(out_dir / "edit_plan.json", encoding="utf-8") as fh:
                 edit_plan = json.load(fh)
-        if not renderizar:
-            return
         music = self._musica(engine)
         for profile in self.perfis:
             renderer = VideoRenderer(self.render_config, profile, preview)

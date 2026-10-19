@@ -23,23 +23,12 @@ nunca sair — 4 minutos de maquina viram estoque morto, e o contador de
 estoque ainda o contaria. "B x A" conta como ocupado quando "A x B" existe:
 e revanche, e revanche com a mesma dupla e a mesma cara do video anterior.
 
-E QUEM DERRUBA A GRAVACAO FICA DE FORA UMA SEMANA (19/10/2026). O duelo
-que falha nao deixa `fight.json`, entao para o rodizio o nome continuava
-"o menos usado" e voltava no proximo duelo. Medido no 19/10: Ardeth
-Morturth x Zael Ossarvarn estourou os 600 s da gravacao as 16:23 e as 16:34
-(a estreia de Zael ja tinha estourado as 10:17), e a rodada fechou com 0
-duelos em 22 min — e a seguinte faria o mesmo. O controller grava
-`falhou.json` na pasta do duelo que falhou; quem aparece em
-`FALHAS_PARA_SUSPENDER` falhas em `DIAS_DE_SUSPENSAO` dias sai do rodizio
-(`suspensos`). `--p1`/`--p2` explicitos passam por cima.
-
 Leitura pura: nada aqui grava.
 """
 from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import datetime, timedelta
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -52,35 +41,6 @@ OUTPUTS = RAIZ / "outputs"
 JANELA_DE_USO = 20
 
 TITULO_PADRAO = "{p1} x {p2}"
-
-# O arquivo que o controller deixa na pasta do duelo que falhou, e a regra
-# da suspensao (ver o cabecalho).
-FALHA = "falhou.json"
-FALHAS_PARA_SUSPENDER = 2
-DIAS_DE_SUSPENSAO = 7
-
-
-def suspensos(outputs: Path | None = None, agora: datetime | None = None,
-              dias: float = DIAS_DE_SUSPENSAO,
-              limite: int = FALHAS_PARA_SUSPENDER) -> dict[str, int]:
-    """`{nome: falhas}` de quem falhou `limite` vezes ou mais nos ultimos
-    `dias` (como p1 ou p2). Arquivo ilegivel ou sem data nao conta."""
-    pasta = Path(outputs) if outputs is not None else OUTPUTS
-    corte = (agora or datetime.now()) - timedelta(days=float(dias))
-    contagem: Counter = Counter()
-    for arquivo in sorted(pasta.glob(f"duelo_*/{FALHA}")):
-        try:
-            dados = json.loads(arquivo.read_text(encoding="utf-8"))
-            quando = datetime.fromisoformat(str(dados.get("em")))
-        except (OSError, ValueError, TypeError, AttributeError):
-            continue
-        if quando < corte:
-            continue
-        for chave in ("p1", "p2"):
-            nome = dados.get(chave)
-            if nome:
-                contagem[str(nome)] += 1
-    return {n: c for n, c in contagem.items() if c >= int(limite)}
 
 
 def duelos_recentes(outputs: Path | None = None,
@@ -230,29 +190,12 @@ def escolher_p1(fichas, gerados, pares, rng, *, ocupados=None,
 
 def escolher_par(fichas, gerados, rng, *, pares=None, ledger=None,
                  ocupados=None, config: dict | None = None,
-                 p1: str | None = None, p2: str | None = None,
-                 fora=None):
+                 p1: str | None = None, p2: str | None = None):
     """(p1, p2) do proximo duelo; respeita quem ja veio escolhido.
 
     Quem chama com `--p1`/`--p2` manda: o rodizio so preenche o que faltou.
-    `fora`: nomes que o rodizio nao escolhe (`suspensos`). Sem ele, a
-    suspensao vem do disco SO quando os pares tambem vem (`pares=None`):
-    quem passa os pares (os testes) passa o mundo inteiro.
     """
     config = _config(config)
-    if fora is None and pares is None:
-        try:
-            fora = suspensos()
-        except OSError:
-            fora = {}
-        if fora:
-            print("[duelo] fora do rodizio por gravacao que falhou: "
-                  + ", ".join(f"{n} ({c}x)" for n, c in sorted(fora.items())))
-    if fora:
-        if isinstance(fichas, dict):
-            fichas = {n: f for n, f in fichas.items() if n not in fora}
-        else:
-            fichas = [n for n in (fichas or ()) if n not in fora]
     if pares is None:
         pares = duelos_recentes(n=None)
     if ocupados is None:
@@ -266,7 +209,6 @@ def escolher_par(fichas, gerados, rng, *, pares=None, ledger=None,
     return p1, p2
 
 
-__all__ = ["DIAS_DE_SUSPENSAO", "FALHA", "FALHAS_PARA_SUSPENDER",
-           "JANELA_DE_USO", "duelos_recentes", "escolher_p1", "escolher_p2",
-           "escolher_par", "par_ocupado", "suspensos", "titulo_do_par",
-           "titulos_ocupados", "uso"]
+__all__ = ["JANELA_DE_USO", "duelos_recentes", "escolher_p1", "escolher_p2",
+           "escolher_par", "par_ocupado", "titulo_do_par", "titulos_ocupados",
+           "uso"]
