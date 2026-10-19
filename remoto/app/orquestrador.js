@@ -24,7 +24,7 @@ const ORQ_SIMBOLO = {ok: "✓", rodando: "▶", fila: "…", falhou: "✕", ause
 // Agente sem relato ha mais que isto pode estar preso: a ficha avisa.
 const ORQ_SEM_NOTICIA_S = 30 * 60;
 const ORQ_PARTES = ["geral", "builds", "historias", "publicacao", "metricas", "app-e-bot",
-                    "painel-e-vila", "jogo-zombie"];
+                    "painel-e-vila", "jogo-zombie", "blue-lock"];
 const ORQ_FONTE = {app: "pelo app", chat: "pelo chat", orquestrador: "pelo orquestrador"};
 const ORQ_CHAVE = {max_paralelo: "agentes em paralelo", modo: "modo",
                    teto_sessao_pct: "teto de uso", forca_total_antes_min: "força total",
@@ -318,6 +318,7 @@ const ORQ_PARTE = {
   geral: ["🧭", "#6b4526"], builds: ["🎲", "#8a4b1f"], historias: ["📖", "#5b3a7a"],
   publicacao: ["📣", "#a8321f"], metricas: ["📊", "#2f6b7d"], "app-e-bot": ["📱", "#2f7d4f"],
   "painel-e-vila": ["🏘", "#b8661b"], "jogo-zombie": ["🧟", "#4f6b2f"],
+  "blue-lock": ["⚽", "#1f4fa8"],
 };
 const ORQ_TOQUE_LONGO_MS = 400;
 const ORQ_RECUSA_RECENTE_S = 10 * 60;
