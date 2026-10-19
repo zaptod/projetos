@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-19T17:14:05",
+      "evento": "2026-10-19T17:13:44",
+      "linha": 198,
+      "nota": "",
+      "opcao": "desligar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "",
   "criado": "2026-10-19T17:13:41.092795",
   "depende_de": [],
