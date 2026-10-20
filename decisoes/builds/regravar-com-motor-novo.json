@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Medido 20/10 06:15: 11 de 18 reproduzem idênticos e já foram regravados em inglês; 7 de 12/10 mudam só duração/HP. Cartel e ledger contam vencedor e K.O., que não mudam. Fila publica por id: sem decisão, os 7 em português saem antes.",
+  "criado": "2026-10-20T06:17:06.198925",
+  "depende_de": [],
+  "historico": [],
+  "id": "regravar-com-motor-novo",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "motor-atual",
+      "pede_comentario": false,
+      "rotulo": "Regravar com o motor atual, mesmo par/seed/arena/id/título; o que der < 15 s vira pendente (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "tirar-da-frente",
+      "pede_comentario": false,
+      "rotulo": "Tirar os 7 da frente da fila"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "pesado e arriscado",
+      "id": "motor-antigo",
+      "pede_comentario": false,
+      "rotulo": "Gravar com o motor de antes de 14/10"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Os duelos 00112–00119 (gravados 12/10) dão a mesma vitória e o mesmo K.O. no motor atual, mas outra duração/HP (o motor mudou em 14/10). Regravar assim?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "7 duelos de 12/10 não se reproduzem no motor atual",
+  "vigente": null
+}
