@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-20T04:15:25",
+      "evento": "2026-10-20T04:15:22",
+      "linha": 203,
+      "nota": "resposta sem pedido de origem: builds/estoque-duelos-em-ingles = Regravar os 18 publicáveis com o código novo, fora da janela das postagens (recomendado)",
+      "opcao": "regravar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Semana 1 do PLANO mede inglês + título novo; vídeo misturado suja a medida. A luta é determinística pela seed, então regravar dá a mesma luta. 10 dos 28 do estoque ficam fora por terem < 15 s.",
   "criado": "2026-10-20T04:15:20.540507",
   "depende_de": [],
