@@ -17,6 +17,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
+from . import cores as _cores
 from . import roleta_som, trilha
 from ..visualization.draw_common import (fit_font, fit_font_wrap, gradient,
                                          hex_rgb, load_font, stat_bar)
@@ -2265,60 +2266,33 @@ class VideoRenderer:
         return (ficha.get("cor_r", padrao[0]), ficha.get("cor_g", padrao[1]),
                 ficha.get("cor_b", padrao[2]))
 
-    # Distancia L1 minima entre as cores dos dois lados. Abaixo disto o
-    # espectador nao separa quem e quem — dois verdes viram um borrao.
-    DISTANCIA_MINIMA_DE_COR = 140
+    # Distancia L1 minima entre as cores dos dois lados (builds/video/cores.py).
+    DISTANCIA_MINIMA_DE_COR = _cores.DISTANCIA_MINIMA_DE_COR
 
     @staticmethod
     def _girar_matiz(cor: tuple, nome: str) -> tuple:
-        """Desloca o MATIZ de uma cor por um giro derivado do nome.
-
-        Determinístico e estavel: o mesmo lutador recebe sempre o mesmo
-        deslocamento, contra qualquer adversario. Ate 11/09/2026 o desempate
-        de cor trocava o lado 2 pelo laranja do ecossistema, entao a cor de
-        um personagem DEPENDIA de quem estava do outro lado — ele saia verde
-        num video e laranja no seguinte. Identidade que muda nao e
-        identidade, e e identidade que transforma fisica aleatoria em
-        torcida (a licao do marble racing).
-        """
-        import colorsys
-        import zlib
-        h, l, s = colorsys.rgb_to_hls(*[c / 255.0 for c in cor])
-        # crc32, nao `hash()`: o hash de str do Python e randomizado por
-        # processo (PYTHONHASHSEED), e a cor do lutador mudaria a cada
-        # render. Determinismo e doutrina aqui — o mesmo padrao de
-        # `identity/prompt.py`.
-        semente = zlib.crc32(nome.encode("utf-8"))
-        # 0,28 a 0,72 de volta: longe o bastante para separar, e sem chegar
-        # perto de uma volta inteira (que devolveria a cor original).
-        giro = 0.28 + (semente % 1000) / 1000.0 * 0.44
-        r, g, b = colorsys.hls_to_rgb((h + giro) % 1.0, max(0.45, l),
-                                      max(0.55, s))
-        return (int(r * 255), int(g * 255), int(b * 255))
+        """O giro de matiz do desempate (``cores.girar_matiz``)."""
+        return _cores.girar_matiz(cor, nome)
 
     def _cores_do_confronto(self, luta: dict) -> tuple[tuple, tuple]:
-        """Cores dos dois lados, com contraste garantido.
+        """A cor de cada lado no HUD, na faixa, na identidade e no veredito:
+        SEMPRE a cor do corpo dele no clipe.
 
-        As cores vem do banco e podem cair quase iguais (dois verdes) — ai
-        nao da para saber quem e quem, e algum desempate e inevitavel.
-
-        O que MUDOU na 15C e de onde sai a cor do desempate. Antes o lado 2
-        virava o laranja do ecossistema: uma cor sem nenhuma relacao com
-        aquele lutador, que aparecia num video e nao no outro. Agora ele
-        gira o PROPRIO matiz por um valor derivado do nome dele.
-
-        A garantia honesta, portanto, nao e "a cor nunca muda": e que toda
-        cor que um lutador exibe e funcao SO DELE. Ele tem no maximo duas
-        aparencias — a dele e a dele girada — e as duas sao dele, estaveis
-        em qualquer confronto. Identidade que muda ao acaso nao vira
-        torcida, e torcida e o que o formato precisa.
+        Ate 20/10/2026 o desempate de duas cores parecidas (o giro de matiz
+        do lado 2, Onda 15C) era feito AQUI, so no que o renderer desenha: o
+        `duelo_00122` saiu com o lado 2 VERDE na faixa e VIOLETA na arena.
+        Agora o desempate e decidido antes da gravacao
+        (``cores.cores_da_gravacao``), o corpo e pintado com ele e o gravador
+        devolve a cor que pintou (``luta["cores_na_tela"]``) — e e ela que
+        vale aqui. Clipe gravado antes disto: o corpo tem a cor do banco, e o
+        HUD tambem, sem giro (re-renderizar nao muda o clipe; so uma gravacao
+        nova desempata).
         """
-        cor1 = self._cor_lutador(luta["p1_ficha"])
-        cor2 = self._cor_lutador(luta["p2_ficha"], hex_rgb(self.colors["accent_weapon"]))
-        distancia = sum(abs(a - b) for a, b in zip(cor1, cor2))
-        if distancia < self.DISTANCIA_MINIMA_DE_COR:
-            cor2 = self._girar_matiz(cor2, str(luta.get("p2") or ""))
-        return cor1, cor2
+        do_clipe = _cores.cores_do_clipe(luta)
+        if do_clipe is not None:
+            return do_clipe
+        return (_cores.cor_da_ficha(luta.get("p1_ficha")),
+                _cores.cor_da_ficha(luta.get("p2_ficha")))
 
     def _participantes_frames(self, event: dict):
         total = self._n_frames(event["duration"])

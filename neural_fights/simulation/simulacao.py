@@ -74,6 +74,31 @@ def _is_generated_match_config(path: str | None) -> bool:
     )
 
 
+def _com_cor_da_tela(personagem, cores, slot):
+    """O personagem com a cor do CORPO trocada por ``cores[slot]`` (RGB).
+
+    ``match_config["cores_da_tela"]`` (20/10/2026): quem grava o vídeo
+    escolhe a cor de cada lado — o desempate de duas cores parecidas
+    (magenta × violeta) — e o corpo na arena tem de ser a cor que o HUD e a
+    faixa do vídeo mostram. Só exibição: nenhuma decisão da luta lê
+    ``cor_r/g/b``. Troca numa CÓPIA rasa: o objeto do banco (ou o do
+    ``roster_provider``) não muda. Sem a chave, ou com valor inválido, o
+    personagem de sempre.
+    """
+    cor = (cores or {}).get(slot) if isinstance(cores, Mapping) else None
+    if not cor:
+        return personagem
+    try:
+        r, g, b = (max(0, min(255, int(c))) for c in cor)
+    except (TypeError, ValueError):
+        return personagem
+    import copy
+
+    copia = copy.copy(personagem)
+    copia.cor_r, copia.cor_g, copia.cor_b = r, g, b
+    return copia
+
+
 class _SilentAudioManager:
     """Adaptador nulo usado para manter chamadas de áudio fora do combate."""
 
@@ -596,8 +621,9 @@ class Simulador:
                 p.arma_obj = next((a for a in armas if a.nome == p.nome_arma), None) if p.nome_arma else None
                 return p
 
-        l1 = Lutador(montar(config["p1_nome"]), 5.0, 8.0)
-        l2 = Lutador(montar(config["p2_nome"]), 19.0, 8.0)
+        cores = config.get("cores_da_tela")
+        l1 = Lutador(_com_cor_da_tela(montar(config["p1_nome"]), cores, "p1"), 5.0, 8.0)
+        l2 = Lutador(_com_cor_da_tela(montar(config["p2_nome"]), cores, "p2"), 19.0, 8.0)
         cenario = config.get("cenario", "Arena")
         portrait_mode = config.get("portrait_mode", False)
         return l1, l2, cenario, portrait_mode
@@ -5223,22 +5249,17 @@ class Simulador:
         centro = (sx, sy - off_y)
         
         # === COR DO CORPO COM FLASH DE DANO MELHORADO ===
-        if l.flash_timer > 0:
+        flash_na_tela = self._flash_na_tela(l)
+        if flash_na_tela > 0:
             # Usa cor de flash personalizada se disponível
             flash_cor = getattr(l, 'flash_cor', (255, 255, 255))
             # Intensidade do flash diminui com o tempo
-            flash_intensity = l.flash_timer / 0.25
+            flash_intensity = min(1.0, flash_na_tela / 0.25)
             # Mistura cor original com cor de flash
-            cor_r = getattr(l.dados, 'cor_r', 200) or 200
-            cor_g = getattr(l.dados, 'cor_g', 50) or 50
-            cor_b = getattr(l.dados, 'cor_b', 50) or 50
-            cor_original = (cor_r, cor_g, cor_b)
+            cor_original = Simulador.cor_base_do_corpo(l)
             cor = tuple(int(max(0, min(255, flash_cor[i] * flash_intensity + cor_original[i] * (1 - flash_intensity)))) for i in range(3))
         else:
-            cor_r = getattr(l.dados, 'cor_r', 200) or 200
-            cor_g = getattr(l.dados, 'cor_g', 50) or 50
-            cor_b = getattr(l.dados, 'cor_b', 50) or 50
-            cor = (int(cor_r), int(cor_g), int(cor_b))
+            cor = Simulador.cor_base_do_corpo(l)
         
         # === PASSE DE ARTE 1: AURA DE CLASSE + CORPO COM VOLUME ===
         # Aura: a identidade da classe respira atrás do corpo (cor_aura do
@@ -5342,7 +5363,7 @@ class Simulador:
         elif l.atacando:
             contorno = (255, 255, 255)
             largura = max(2, self.cam.converter_tam(4))
-        elif l.flash_timer > 0:
+        elif flash_na_tela > 0:
             # Contorno vermelho durante dano
             contorno = (255, 100, 100)
             largura = max(2, self.cam.converter_tam(4))
@@ -5468,6 +5489,32 @@ class Simulador:
         if not getattr(self, "round_finalizado", False):
             return None
         return max(0.0, float(getattr(self, "_ko_tempo_real", 0.0) or 0.0))
+
+    @staticmethod
+    def cor_base_do_corpo(l):
+        """A cor com que o corpo é pintado fora do flash. O ``or`` é antigo
+        e fica: canal 0 vira o padrão (234,0,226 sai 234,50,226). O gravador
+        devolve esta cor (``cores_na_tela``) e o HUD do vídeo pinta com ela."""
+        dados = getattr(l, "dados", None)
+        return (int(getattr(dados, 'cor_r', 200) or 200),
+                int(getattr(dados, 'cor_g', 50) or 50),
+                int(getattr(dados, 'cor_b', 50) or 50))
+
+    def _flash_na_tela(self, l):
+        """Quanto do flash de dano o DESENHO mostra (segundos que faltam).
+
+        Depois do K.O. os lutadores não são mais atualizados
+        (``_atualizar_visuais_round_finalizado``), então o ``flash_timer`` do
+        último golpe fica congelado: o vencedor da ``duelo_00122`` terminava
+        BRANCO a cauda inteira (0,233 s de flash, 93% da cor do flash,
+        conferente 20/10/2026). No pós-K.O. o flash se apaga no relógio de
+        parede, como se a luta continuasse. Só desenho: o estado não muda.
+        """
+        flash = float(getattr(l, "flash_timer", 0.0) or 0.0)
+        t = Simulador._tempo_pos_ko(self)
+        if t is not None:
+            flash -= t
+        return max(0.0, flash)
 
     def _desenhar_rotulo_do_plano(self, l, centro, raio, cor_lado):
         """Onda 10C: rótulo do plano da IA sob o corpo + barrinha. Devolve se

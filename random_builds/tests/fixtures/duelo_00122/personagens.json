@@ -1,0 +1,40 @@
+[
+  {
+    "nome": "Vesperia Vharquiel",
+    "tamanho": 1.69,
+    "forca": 5.4,
+    "mana": 8.9,
+    "nome_arma": "Glaslindar",
+    "cor_r": 169,
+    "cor_g": 35,
+    "cor_b": 237,
+    "classe": "Duelista (Precisão)",
+    "personalidade": "Contemplativo",
+    "kit_skills": [
+      "Idade Acelerada",
+      "Slow Motion",
+      "Velocidade Arcana",
+      "Golpe do Executor"
+    ],
+    "genero": "f"
+  },
+  {
+    "nome": "Sigrid Argavelth",
+    "tamanho": 1.72,
+    "forca": 6.8,
+    "mana": 5.4,
+    "nome_arma": "Thonorath",
+    "cor_r": 234,
+    "cor_g": 0,
+    "cor_b": 226,
+    "classe": "Guerreiro (Força Bruta)",
+    "personalidade": "Assassino",
+    "kit_skills": [
+      "Impacto Sônico",
+      "Terremoto",
+      "Avanço Brutal",
+      "Determinação"
+    ],
+    "genero": "f"
+  }
+]

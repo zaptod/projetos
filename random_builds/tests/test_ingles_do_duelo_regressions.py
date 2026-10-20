@@ -361,11 +361,52 @@ def _sem_letras(no) -> bool:
     return False
 
 
-def _pelo_mapa(no) -> bool:
+# Metodos de str que nao acrescentam palavra: `_texto_da_tela(x).upper()`
+# continua sendo o texto do mapa.
+_METODOS_NEUTROS = {"upper", "lower", "strip", "rstrip", "lstrip", "title", "capitalize"}
+
+
+def _pelo_mapa(no, nome_ok=None) -> bool:
+    """A expressao INTEIRA e texto do mapa (`_texto_da_tela`/`_nome_na_tela`).
+
+    Ate o conferente da 3a rodada (20/10/2026) bastava haver um gancho em
+    QUALQUER parte da expressao: `"REVERSÃO! " + _texto_da_tela(x)` e
+    `f"ESCAPOU {_texto_da_tela(x)}"` passavam com a palavra portuguesa
+    colada. Agora a soma e a f-string so passam se CADA pedaco for do mapa
+    ou literal sem letras. ``nome_ok(no)`` diz se uma variavel ja guarda
+    texto do mapa (a ultima atribuicao antes dela)."""
     import ast
-    return any(isinstance(n, ast.Call) and
-               (getattr(n.func, "attr", None) or getattr(n.func, "id", None)) in _GANCHOS
-               for n in ast.walk(no))
+
+    def ok(parte):
+        return _pelo_mapa(parte, nome_ok) or _sem_letras(parte)
+
+    if isinstance(no, ast.Name):
+        return bool(nome_ok and nome_ok(no))
+    if isinstance(no, ast.Call):
+        nome = getattr(no.func, "attr", None) or getattr(no.func, "id", None)
+        if nome in _GANCHOS:
+            return True
+        if getattr(no.func, "id", None) == "str" and len(no.args) == 1:
+            return _pelo_mapa(no.args[0], nome_ok)
+        if (isinstance(no.func, ast.Attribute) and no.func.attr in _METODOS_NEUTROS
+                and not no.args):
+            return _pelo_mapa(no.func.value, nome_ok)
+        return False
+    if isinstance(no, ast.Subscript):          # o corte: `nome[:24]`
+        return _pelo_mapa(no.value, nome_ok)
+    if isinstance(no, ast.IfExp):
+        return all(ok(lado) for lado in (no.body, no.orelse))
+    if isinstance(no, ast.BinOp) and isinstance(no.op, ast.Add):
+        lados = (no.left, no.right)
+        return all(ok(lado) for lado in lados) and any(
+            _pelo_mapa(lado, nome_ok) for lado in lados)
+    if isinstance(no, ast.JoinedStr):
+        # o "x" do multiplicador ("x2") e o mesmo aceito pelo `_sem_letras`
+        literais_ok = all(not any(c.isalpha() and c != "x" for c in str(p.value))
+                          for p in no.values if isinstance(p, ast.Constant))
+        valores = [p.value for p in no.values if isinstance(p, ast.FormattedValue)]
+        return literais_ok and any(_pelo_mapa(v, nome_ok) for v in valores)
+    return False
 
 
 def _renders_sem_mapa(fonte: str) -> list[str]:
@@ -383,6 +424,18 @@ def _renders_sem_mapa(fonte: str) -> list[str]:
                 for alvo in no.targets:
                     if isinstance(alvo, ast.Name):
                         atribuicoes.setdefault(alvo.id, []).append(no)
+        def nome_ok(nome, linha=None, _fundo=0):
+            """A variavel guarda texto do mapa na linha ``linha``? A ultima
+            atribuicao ANTES dela decide (``rotulo = X + rotulo`` olha a
+            anterior)."""
+            linha = nome.lineno if linha is None else linha
+            antes = [a for a in atribuicoes.get(nome.id, []) if a.lineno < linha]
+            if not antes or _fundo > 8:
+                return False
+            atribuicao = antes[-1]
+            return _pelo_mapa(atribuicao.value, lambda n: nome_ok(
+                n, atribuicao.lineno if n.id == nome.id else n.lineno, _fundo + 1))
+
         for no in ast.walk(funcao):
             if not (isinstance(no, ast.Call) and getattr(no.func, "attr", None) == "render"
                     and no.args):
@@ -392,10 +445,11 @@ def _renders_sem_mapa(fonte: str) -> list[str]:
                    and arg.args):
                 arg = arg.args[0]
             texto = ast.unparse(arg)
-            ok = _pelo_mapa(arg) or _sem_letras(arg) or texto in REVISADOS
+            ok = (_pelo_mapa(arg, lambda n, _linha=no.lineno: nome_ok(n, _linha))
+                  or _sem_letras(arg) or texto in REVISADOS)
             if not ok and isinstance(arg, ast.Name):
                 antes = [a for a in atribuicoes.get(arg.id, []) if a.lineno < no.lineno]
-                ok = bool(antes) and (_pelo_mapa(antes[-1].value) or _sem_letras(antes[-1].value))
+                ok = bool(antes) and _sem_letras(antes[-1].value)
             if not ok:
                 problemas.append(f"linha {no.lineno} ({funcao.name}): {texto}")
     return problemas
@@ -441,6 +495,27 @@ class SkillsForaDaTelaTests(unittest.TestCase):
                   "        nome = getattr(self, 'nome', '')\n"
                   "        outra = get_fonte(14).render(nome, True, (1, 1, 1))\n")
         self.assertEqual(2, len(_renders_sem_mapa(antigo)))
+        # caso zero da 3a rodada: a palavra portuguesa COLADA ao texto do mapa
+        colado = ("class Simulador:\n"
+                  "    def _desenhar_tell(self, modo):\n"
+                  "        a = get_fonte(20).render('REVERSÃO! ' + self._texto_da_tela(modo),"
+                  " True, (1, 1, 1))\n"
+                  "        b = get_fonte(20).render(f'ESCAPOU {self._texto_da_tela(modo)}',"
+                  " True, (1, 1, 1))\n"
+                  "        rotulo = 'JOELHADA ' + self._texto_da_tela(modo)\n"
+                  "        c = get_fonte(20).render(rotulo, True, (1, 1, 1))\n"
+                  "        d = get_fonte(20).render(self._texto_da_tela(modo) if modo else"
+                  " 'ARREMESSO', True, (1, 1, 1))\n"
+                  "        e = get_fonte(20).render(foo(self._texto_da_tela(modo)), True, (1, 1, 1))\n")
+        self.assertEqual(5, len(_renders_sem_mapa(colado)), _renders_sem_mapa(colado))
+        # e o que e do mapa inteiro continua passando
+        limpo = ("class Simulador:\n"
+                 "    def _desenhar_tell(self, modo):\n"
+                 "        a = get_fonte(20).render(self._texto_da_tela(modo) + '!', True, (1, 1, 1))\n"
+                 "        b = get_fonte(20).render(f'{self._texto_da_tela(modo)} x2', True, (1, 1, 1))\n"
+                 "        c = get_fonte(20).render(str(self._nome_na_tela(self))[:24], True, (1, 1, 1))\n"
+                 "        d = get_fonte(20).render(self._texto_da_tela(modo).upper(), True, (1, 1, 1))\n")
+        self.assertEqual([], _renders_sem_mapa(limpo))
 
     def test_agarrao_e_invocacoes_tem_traducao(self):
         import re

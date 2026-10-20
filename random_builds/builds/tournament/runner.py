@@ -331,6 +331,14 @@ def _textos_da_tela(origem: str, *nomes: str) -> dict | None:
     return ingles.tela_do_jogo(*nomes)
 
 
+def _cores_da_gravacao(fichas: dict, p1: str, p2: str) -> dict:
+    """A cor do CORPO de cada lado, ja desempatada (``video/cores.py``): a
+    mesma que o HUD e a faixa do video vao mostrar. Cores distantes saem
+    iguais as do banco."""
+    from ..video.cores import cores_da_gravacao
+    return cores_da_gravacao(fichas.get(p1), fichas.get(p2), p2)
+
+
 def reserva_do_letreiro(perfil: str) -> dict | None:
     """Onde o letreiro do K.O. do video ("K.O.", "NOCAUTE", "ACABOU") termina
     e quanto tempo ele fica, para a camera DIRETOR da cauda nao pôr o
@@ -384,8 +392,15 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
                      gameplay: dict | None = None,
                      resolucoes: dict | None = None,
                      origem: str = "luta",
-                     corrente_v2: bool | None = None) -> dict:
+                     corrente_v2: bool | None = None,
+                     cores_da_tela: dict | None = None) -> dict:
     """Grava a luta (um mp4 por formato), corta o tedio e devolve o bruto.
+
+    `cores_da_tela` ({"p1": [r, g, b], "p2": [r, g, b]}, de
+    `cores.cores_da_gravacao`) e a cor do CORPO de cada lado: o desempate de
+    duas cores parecidas vale no clipe, nao so no HUD (conferente,
+    20/10/2026). O bruto devolve `cores_na_tela`, a cor que o gravador
+    pintou — e com ela que o renderer pinta HUD e faixa.
 
     A gravacao e a fonte da verdade do resultado: a luta e simulada uma vez
     so, desenhando. Os formatos compartilham arena e seed — logo, sao a MESMA
@@ -424,6 +439,8 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             # O duelo e em ingles (decisao geral/canal-em-ingles, 20/10/2026):
             # o texto que o jogo desenha no clipe tambem. So exibicao.
             "textos_da_tela": _textos_da_tela(origem, p1, p2),
+            # a cor do corpo = a do HUD do video (so exibicao)
+            "cores_da_tela": cores_da_tela,
         } for perfil in perfis]
         gravacoes = capture.gravar_em_paralelo(tarefas, trabalhadores=len(tarefas))
 
@@ -509,6 +526,9 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
         "camera_por_perfil": {perfil: g.get("camera_modo")
                               for perfil, g in zip(perfis, gravacoes)},
         **({"desempate": desempate} if desempate else {}),
+        # a cor que o corpo de cada lado teve no clipe (gravador antigo nao diz)
+        **({"cores_na_tela": referencia["cores_na_tela"]}
+           if referencia.get("cores_na_tela") else {}),
     }
 
 
@@ -618,7 +638,7 @@ def _evento_base(p1: str, p2: str, bruto: dict, fichas: dict, gerados: set,
     }
     for chave in ("clipes", "serie_hp", "serie_plano", "eventos_narrativos",
                   "eventos_dano", "sons", "ko_em_clipe", "duracao_clipe", "camera",
-                  "metricas_video", "corrente_v2", "desempate"):
+                  "metricas_video", "corrente_v2", "desempate", "cores_na_tela"):
         if bruto.get(chave) is not None:
             evento[chave] = bruto[chave]
     return evento
@@ -718,7 +738,8 @@ class TournamentSession:
                                      self._gravar_em / "gameplay",
                                      f"{match.match_id:02d}", self._perfis,
                                      gameplay=self.gameplay, origem="torneio",
-                                     corrente_v2=chave)
+                                     corrente_v2=chave,
+                                     cores_da_tela=_cores_da_gravacao(fichas, p1, p2))
         else:
             bruto = simular_luta(p1, p2, cenario, base_seed, corrente_v2=chave)
 
@@ -822,7 +843,8 @@ class FightSession:
                                          Path(gravar_em) / "gameplay",
                                          f"{indice:02d}", tuple(perfis),
                                          gameplay=self.gameplay, origem=origem,
-                                         corrente_v2=chave)
+                                         corrente_v2=chave,
+                                         cores_da_tela=_cores_da_gravacao(fichas, p1, p2))
             else:
                 bruto = simular_luta(p1, p2, cenario, semente, corrente_v2=chave)
 

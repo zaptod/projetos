@@ -1435,7 +1435,8 @@ do banco vivo sai com epíteto português.
    controle do abaixamento). Os +10,7 dB de antes do master davam +4–6 no
    arquivo. Agora, só no duelo: voz comprimida (`acompressor` ratio 6, makeup 5),
    luta e música abaixadas mais forte sob ela (ratio 20). Medido no
-   `duelo_00002` remontado: **+15,9 dB** durante a fala e a luta no 1 s seguinte
+   `duelo_00002` remontado (pelo gêmeo, método que depois se mostrou inválido —
+   ver "Como medir a voz" abaixo): **+15,9 dB** durante a fala e a luta no 1 s seguinte
    +0,8 dB acima da voz (teto pedido: 5).
 5. **Duelo < 15 s não é publicável:** pendência "duelo curto" no catálogo
    (`catalogo.DUELO_MINIMO_S`, trocável por `publicacao.json → duelo_minimo_s`,
@@ -1467,15 +1468,69 @@ Poço, o par/seed do `duelo_00132` do estoque; "Throwing Axes VS Tactical
 Knives"): "THROW!" aos 9,0 s e "ESCAPED!" aos 16,9 s
 (`E:\tmp_pytest\semana1\agarrao_duelo_00129\`).
 
-**Como medir a voz no mp4 final (e o limite de cada régua):** o gêmeo com a voz
-muda deu +15,3 a +15,9 dB em três duelos e +4,6 no `duelo_00129`, porque o
-`loudnorm` dinâmico sobe o gêmeo quieto e infla a luta; a projeção do final
+**Como medir a voz no mp4 final (e o limite de cada régua):** o **método do
+gêmeo (a mesma mistura com a voz muda) é inválido**: o `loudnorm` dinâmico sobe
+o gêmeo quieto e infla a luta, então o número dele não mede a voz. Os "+4,6 dB
+no `duelo_00129`" que saíram dele estavam errados: o conferente (20/10, 3ª
+rodada) mediu no mp4 final, com a voz alinhada (o aac atrasa 5 ms), **voz −13,6
+dB contra luta −36,9 dB durante a fala = +23,3 dB**
+(`E:\tmp_pytest\conferente\semana1_r3\audio\voz_00129.json`). A projeção do final
 sobre a voz (alinhada: o aac atrasa ~5 ms; a voz passada pelo mesmo
 compressor) dá +9,7 a +10,4, mas tem um teto de ~+10 dB (correlação 0,95: o
 limitador do master entorta ~10% da voz, que cai no "resto"). Antes do master,
 a mesma janela: voz −16,8 / −16,4 dB contra a luta abaixada −28,6 / −32,2
 (00129 / 00128), sem contar os +6–9 dB do compressor da voz; música abaixada
 −40 dB. Sem o compressor, ou com o makeup 3, a projeção piora (+9,1 / +9,3).
+
+**Conferente do ar (20/10, `E:\tmp_pytest\conferente\ar_2010\`): a cor da faixa
+e o vencedor branco.**
+1. **A faixa/HUD tem de ser a cor do corpo.** O desempate de cores parecidas
+   (L1 < 140: o lado 2 gira o próprio matiz pelo nome, Onda 15C) era só do
+   renderer: no `duelo_00122` (Sigrid magenta 234,0,226 × Vesperia violeta
+   169,35,237, L1 91) a faixa e o HUD mostravam o lado 2 **verde** e o corpo na
+   arena era **violeta**. Agora o desempate é decidido antes de gravar
+   (`builds/video/cores.py:cores_da_gravacao`), vai ao jogo por
+   `runner.gravar_confronto(cores_da_tela=)` → `fight_recorder --cores-da-tela`
+   → `match_config["cores_da_tela"]` (o `Simulador` troca a cor numa cópia do
+   personagem; só exibição) e volta em `fight.json → luta.cores_na_tela` (a cor
+   que o corpo TEVE). O renderer pinta HUD, faixa, identidade e veredito com ela
+   (`_cores_do_confronto`). Vale para duelo, estreia e torneio (todos gravam pelo
+   mesmo `gravar_confronto`; cores distantes saem iguais às do banco). O canal 0
+   o jogo pinta como 50 (`cor_g or 50`, antigo): a Sigrid é 234,**50**,226 na
+   arena, e é esse o número do HUD agora (`Simulador.cor_base_do_corpo`).
+   **Clipe gravado antes disto** (sem `cores_na_tela`): o HUD sai na cor do
+   banco, sem giro — re-render NÃO desempata, só uma gravação nova.
+   **Fila de 20/10 07:47 (24 duelos, `main.py noite --listar`): 3 com par
+   parecido** — `duelo_00133` (L1 62), `duelo_00140` (90), `duelo_00146` (129) —
+   todos com a faixa de uma cor e o corpo de outra; no disco, 26 de 150.
+2. **O vencedor terminava BRANCO.** Depois do K.O. os lutadores não são mais
+   atualizados e o `flash_timer` do último golpe ficava congelado: no 00122,
+   0,233 s de flash branco = 93% branco a cauda inteira. Agora o desenho apaga o
+   flash no relógio de parede do pós-K.O. (`Simulador._flash_na_tela`; corpo e
+   contorno; o estado não muda). Re-simulando a fila (luta igual 25/25): **6 dos
+   24** terminavam com flash preso — `duelo_00127` (60%, azulado do reflexo
+   200,200,255), `00114` (53%), `00117` (60%), `00144` (48%, branco), `00150`
+   (53%), `00152` (80%, branco). Também só some com gravação nova.
+3. A varredura AST do inglês (`_pelo_mapa`) aprovava a expressão se houvesse o
+   gancho em QUALQUER parte: `"REVERSÃO! " + _texto_da_tela(x)` e
+   `f"ESCAPOU {_texto_da_tela(x)}"` passavam. Agora soma, f-string e `if/else`
+   só passam se cada pedaço for do mapa ou literal sem letras (variável: a última
+   atribuição antes dela); casos zero no teste.
+
+Prova (caminho real, `main.py duelo --p1 "Sigrid Argavelth" --p2 "Vesperia
+Vharquiel" --seed 1141090978 --arena Duto` na worktree, banco numa cópia):
+luta idêntica à do `duelo_00122` (vencedor, motivo, duração, K.O. 15,64 s, HP,
+`serie_hp`, `eventos_dano`, plano, narrativa, sons), 18,38 s, -1,5 dBTP, régua
+da publicação "" nas duas medidas. Quadro 0: faixa do lado 2 (48,232,32) =
+corpo (40,232,32), matiz 0,32 (antes: faixa 0,32 × corpo 0,77); fim (18,08 s):
+corpo do vencedor (224,40,216), matiz 0,84 = a faixa (antes: branco, só o
+contorno dourado saturado). `E:\tmp_pytest\conferente\cor_corpo_00122\`.
+Teste: `random_builds/tests/test_identidade_visual_regressions.py` (a luta do
+00122 pelo gravador com as fichas num fixture `fixtures/duelo_00122`, ~7 s:
+corpo = HUD, luta = base, vencedor na cor dele em todo quadro da cauda; caso
+zero do flash conferido com o desenho antigo, que falha).
+**Pendente:** o palco (Godot) não recebe `cores_da_tela` (como os textos);
+ligar o palco pede esse passo.
 
 Mais: com o mapa (duelo), o nome sobre a bola vai a 24 caracteres mesmo sem
 tradução ("Nyxaris Cinzamordaca" inteiro); o título do cartão abaixo de 70 px

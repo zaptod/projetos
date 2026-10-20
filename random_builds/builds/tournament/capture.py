@@ -37,7 +37,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
                camera_espera_zoom: float | None = None,
                corrente_v2: bool | None = None,
                reserva_pos_ko: dict | None = None,
-               textos_da_tela: dict | None = None) -> dict:
+               textos_da_tela: dict | None = None,
+               cores_da_tela: dict | None = None) -> dict:
     """Roda o gravador oficial num subprocesso e devolve o resultado da luta.
 
     `resolucao` grava em tamanho nativo (1080x1920 para o celular) — sem o
@@ -85,6 +86,11 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
         # o texto que o JOGO desenha no clipe (plano sob o lutador, textos
         # flutuantes), trocado: o duelo em ingles (geral/canal-em-ingles)
         comando += ["--textos-da-tela", json.dumps(textos_da_tela, ensure_ascii=False)]
+    if cores_da_tela:
+        # a cor do CORPO de cada lado: o desempate de cores parecidas que o
+        # HUD do video mostra (renderer.cores_do_confronto). So exibicao.
+        comando += ["--cores-da-tela", json.dumps(
+            {lado: [int(c) for c in cor] for lado, cor in cores_da_tela.items()})]
 
     ambiente = dict(os.environ)
     ambiente.setdefault("SDL_VIDEODRIVER", "dummy")

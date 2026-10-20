@@ -698,12 +698,19 @@ def gravar_luta(
     corrente_v2: bool | None = None,
     reserva_pos_ko: dict | None = None,
     textos_da_tela: dict | None = None,
+    cores_da_tela: dict | None = None,
 ) -> dict:
     """Roda a luta desenhando cada frame e devolve o resultado + timestamps.
 
     ``textos_da_tela`` troca o texto que o jogo DESENHA (rotulo do plano sob
     o lutador, textos flutuantes) por outro: o duelo em ingles do
     random_builds (20/10/2026). So exibicao — a luta e a mesma.
+
+    ``cores_da_tela`` (``{"p1": [r, g, b], "p2": [r, g, b]}``) troca a cor do
+    CORPO de cada lado: o desempate de duas cores parecidas que o HUD do
+    video mostra tem de ser a cor do lutador na arena (conferente,
+    20/10/2026). So exibicao. O resultado devolve ``cores_na_tela``: a cor
+    que o corpo de cada lado TEVE no clipe.
 
     A luta e deterministica pela seed: gravar a mesma seed duas vezes (uma por
     formato) produz exatamente a mesma luta enquadrada de dois jeitos.
@@ -768,6 +775,9 @@ def gravar_luta(
         match_config["nomes_exibicao"] = dict(nomes_exibicao)
     if textos_da_tela:
         match_config["textos_da_tela"] = {str(k): str(v) for k, v in textos_da_tela.items()}
+    if cores_da_tela:
+        match_config["cores_da_tela"] = {
+            str(lado): [int(c) for c in cor] for lado, cor in cores_da_tela.items()}
     # Corrente nova (core/corrente.py): so entra quando quem grava pede.
     # Ausente = a corrente antiga — e o que toda luta gravada antes usa, entao
     # a regeracao de uma luta antiga continua a mesma.
@@ -945,6 +955,9 @@ def gravar_luta(
             "serie_plano": serie_plano,
             "eventos_narrativos": narrativa.eventos,
             "metricas_video": camera.resumo(duracao_video),
+            # a cor do CORPO de cada lado no clipe (o banco, ou cores_da_tela):
+            # o HUD e a faixa do video pintam com ela
+            "cores_na_tela": {"p1": _cor_do_corpo(sim.p1), "p2": _cor_do_corpo(sim.p2)},
         }
         if anotador is not None:
             resultado["sons"] = list(anotador.sons)
@@ -1056,7 +1069,34 @@ def build_parser() -> argparse.ArgumentParser:
                         help='mapa {"PRESSÃO": "PRESSURE", ...}: o texto que o '
                              "jogo desenha (plano sob o lutador, textos "
                              "flutuantes) trocado por outro; so exibicao")
+    parser.add_argument("--cores-da-tela", type=tipo_cores_da_tela, default=None,
+                        metavar="JSON",
+                        help='{"p1": [r, g, b], "p2": [r, g, b]}: a cor do corpo '
+                             "de cada lado (o desempate de cores parecidas do "
+                             "video); so exibicao")
     return parser
+
+
+def tipo_cores_da_tela(texto: str) -> dict:
+    """``'{"p1": [234, 0, 226], "p2": [33, 245, 14]}'`` -> dict (argparse)."""
+    try:
+        mapa = json.loads(texto)
+    except ValueError:
+        mapa = None
+    valido = isinstance(mapa, dict) and set(mapa) <= {"p1", "p2"} and all(
+        isinstance(cor, list) and len(cor) == 3
+        and all(isinstance(c, int) and 0 <= c <= 255 for c in cor)
+        for cor in mapa.values())
+    if not valido:
+        raise argparse.ArgumentTypeError(
+            f'use {{"p1": [r, g, b], "p2": [r, g, b]}}: {texto[:80]}')
+    return mapa
+
+
+def _cor_do_corpo(lutador) -> list[int]:
+    """A cor com que o jogo pinta o corpo (``Simulador.cor_base_do_corpo``)."""
+    from neural_fights.simulation.simulacao import Simulador
+    return list(Simulador.cor_base_do_corpo(lutador))
 
 
 def tipo_textos_da_tela(texto: str) -> dict:
@@ -1115,6 +1155,7 @@ def main(argv: list[str] | None = None) -> int:
             corrente_v2=args.corrente_v2,
             reserva_pos_ko=args.reserva_pos_ko,
             textos_da_tela=args.textos_da_tela,
+            cores_da_tela=args.cores_da_tela,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback
         resultado = {"sucesso": False, "erro": f"{type(erro).__name__}: {erro}",
