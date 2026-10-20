@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Medido 20/10: TikTok com ~10 posts/dia deixou 28 de 36 posts em 0 views; só pegaram posts depois de pausa. YouTube: os 5 melhores de 14 dias são duelos, estreias entre os piores. Horários para público EUA (pesquisa som-ganchos-e-musica): 09:37, 17:57, 21:37 até 31/10; 12:07, 20:37, 22:37 a partir de 01/11. Histórias seguem com a grade inteira (10 YouTube + 6 TikTok).",
+  "criado": "2026-10-20T04:05:06.350322",
+  "depende_de": [],
+  "historico": [],
+  "id": "grade-semana-1-duelos",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "so-duelo",
+      "pede_comentario": false,
+      "rotulo": "YouTube 3/dia + TikTok 1/dia (21:37), só duelo nos dois, par de classes sem repetir em 7 dias, upload em inglês (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "mantém o banco crescendo, mas o TikTok volta a ter formato que não rende",
+      "id": "misto",
+      "pede_comentario": false,
+      "rotulo": "YouTube 3/dia de duelo e TikTok com build/estreia"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Como publicar o canal de duelos na semana 1 do PLANO?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Grade da semana 1: duelos 3/dia no YouTube, 1/dia no TikTok",
+  "vigente": null
+}

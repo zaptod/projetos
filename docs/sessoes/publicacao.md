@@ -79,6 +79,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Histórias: as 21h nunca vazias e a parte seguinte ligada** — Reservar o melhor vídeo pronto para as 21h, ligar cada parte à seguinte (vídeo relacionado) e terminar a fala com 'a parte seguinte já está no canal' (recomendado) (19/10/2026) · “REVISTO pelo orquestrador após o conferente (19/10): o padrão é 'um vídeo da noite (21h-23h) leva o dia', não só as 21h — reservar o melhor vídeo pronto para a faixa 21h-23h. Ligar as partes entra como TESTE (o 0,4/100 é em parte efeito do horário).” `historias-21h-e-parte-seguinte`
 - ✅ **TikTok: o atraso que cresce com 6 contra 10** — Manter: o TikTok posta o que falta, na ordem (cada vez mais velho) (19/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Durante o teste (20-26/10) a fila segue em ordem; rever junto com o resultado do teste em 29/10.” `tiktok-atraso-depois-do-teste`
 - ✅ **Histórias: autorizar a edição para ligar a parte anterior** — Ficar só com o texto na descrição durante o teste (19/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Mexer na autorização da conta é do Adrian; durante o teste, só o texto.” `historias-escopo-de-edicao`
+- ⏳ **Grade da semana 1: duelos 3/dia no YouTube, 1/dia no TikTok** — Como publicar o canal de duelos na semana 1 do PLANO? `grade-semana-1-duelos`
 
 <!-- decisoes:fim -->
 
