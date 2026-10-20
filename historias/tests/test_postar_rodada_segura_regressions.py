@@ -214,6 +214,10 @@ class VoltaComLedgerIlegivelTests(unittest.TestCase):
                               "partes": 6, "fonte_id": "historia_00044"})()
         m._video_por_id = lambda vid: alvo if vid == alvo.id else None
         m.proxima_historia = lambda: (alvo, [])
+        # A fila propria do TikTok (19/10/2026) le o catalogo REAL: aqui ela
+        # leva a parte da rodada.
+        m._vez_do_tiktok_historias = lambda novo=None: (
+            alvo if novo is not None else None, "")
         m.postar_build = lambda so_ver=False: {
             "canal": "builds", "feito": True, "alvo": "g95",
             "url": "publicado no YouTube", "tiktok": "publicado no TikTok"}

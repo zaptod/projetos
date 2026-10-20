@@ -78,6 +78,8 @@ class _Base(unittest.TestCase):
                   ("duelos_por_dia", lambda *a, **k: 5.0),
                   ("builds_por_dia", lambda *a, **k: 3.75),
                   ("builds_em_preparo", lambda *a, **k: []),
+                  # o League of Legends do PC nao entra no teste
+                  ("jogo_aberto", lambda *a, **k: None),
                   ("_livre_gb", lambda caminho: 100.0))
         for alvo, valor in trocas:
             patcher = mock.patch.object(noite, alvo, valor)
@@ -123,16 +125,37 @@ class _Base(unittest.TestCase):
 # ============================================================ os casos ZERO
 class CasosDoPlano(_Base):
 
+    def setUp(self):
+        # Os casos sao de 01 e 05/10 e contam com a mistura e a grade de
+        # 19/10 (YouTube 5/3/0 nos 10 horarios, TikTok 4/3/1 nos 6). Desde
+        # 20/10/2026 o canal e de duelos (3 + 1 por dia, so duelo) e o consumo
+        # e outro (`test_geracao_por_formato_regressions`); o MECANISMO do
+        # lote e o mesmo, e e ele que se prende aqui.
+        super().setUp()
+        from builds import grade
+        for alvo, valor in (
+                ("TROCAS_NA_COTA", {"youtube": {"estreia": "duelo"}}),
+                ("_horas_dos_builds",
+                 lambda g, plataforma, quando=None:
+                 grade.horas_da_plataforma(plataforma))):
+            patcher = mock.patch.object(noite, alvo, valor)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_quinta_10h02_com_zero_gera_duelos(self):
         relogio = _Relogio(_as(QUI, 10, 2))
         resultado = self._rodar(relogio, _contagem())
         self.assertEqual("reposicao", resultado["modo"])
+        # zero e zero: empate de dias, o duelo primeiro.
         self.assertEqual("duelo", self.ordem[0])
-        # meta do duelo na reposicao = ceil(20 x 4/8) = 10; a rodada dura
-        # ate 10:57 e a roleta (15 min) nao cabe depois deles.
-        self.assertEqual(10, len(resultado["duelos"]))
-        self.assertEqual({"duelo": 10, "build": 8, "estreia": 3},
+        # Desde 19/10/2026 a meta e POR FORMATO, o piso de cada um em dias do
+        # consumo dele: duelo 4 x 6,25 = 25, build 2 x 3,75 = 8, estreia
+        # 2 x 0,75 = 2. A ordem e refeita a cada passo: os dois formatos
+        # andam na mesma rodada (antes, 10 duelos e a roleta nao cabia).
+        self.assertEqual({"duelo": 25, "build": 8, "estreia": 2},
                          resultado["plano"]["metas"])
+        self.assertIn("build", self.ordem)
+        self.assertGreaterEqual(len(resultado["duelos"]), 4)
         self.assertTrue(all(i < _as(QUI, 10, 57) for i in self.instantes))
         self.assertTrue(any(r[0] == "ok" and "reposicao" in r[1]
                             for r in self.registros))
@@ -142,10 +165,11 @@ class CasosDoPlano(_Base):
         resultado = self._rodar(relogio, _contagem())
         self.assertEqual("zero", resultado["modo"])
         self.assertTrue(resultado["duelos"])
-        # O post das 00:37 fecha 00:22-00:52: todo duelo termina antes.
+        # O post das 00:37 fecha 00:19-00:55 (folga 18/18 desde 19/10/2026):
+        # todo duelo termina antes.
         for inicio in self.instantes:
             self.assertLessEqual(inicio + timedelta(minutes=5),
-                                 _as(QUI, 0, 22))
+                                 _as(QUI, 0, 19))
 
     def test_quinta_00h02_com_estoque_nao_faz_barulho(self):
         relogio = _Relogio(_as(QUI, 0, 2))
@@ -160,24 +184,34 @@ class CasosDoPlano(_Base):
                                                    estreia=8))
         plano = resultado["plano"]
         self.assertEqual("lote", resultado["modo"])
-        # 70 horarios ate a proxima segunda 07h + piso 20 = 90, pela cota.
-        self.assertEqual(90, plano["meta"])
-        self.assertEqual({"duelo": 45, "build": 34, "estreia": 12},
+        # Por formato (19/10/2026): 70 horarios do YouTube ate a proxima
+        # segunda 07h; duelo 70 x 5/8 + 25 = 69, build 70 x 3/8 + 8 = 35;
+        # estreia 42 horarios do TikTok x 1/8 + 2 = 8.
+        self.assertEqual({"duelo": 69, "build": 35, "estreia": 8},
                          plano["metas"])
-        # build 22/3,75 = 5,9 dias < duelo 30/5 = 6: a roleta primeiro,
-        # ate o maximo de dia (3), depois os duelos ate 07:57.
-        self.assertEqual(["build"] * 3, self.ordem[:3])
-        self.assertEqual(3, len(resultado["builds"]))
+        # build 22/3,75 = 5,9 dias < duelo 30/5 = 6: a roleta primeiro; ela
+        # da 2 videos (24/3,75 = 6,4 dias) e o duelo passa a frente.
+        self.assertEqual(["build", "duelo"], self.ordem[:2])
+        self.assertTrue(resultado["builds"])
         self.assertTrue(resultado["duelos"])
         self.assertTrue(all(i < _as(SEG, 7, 57) for i in self.instantes))
 
     def test_segunda_com_o_alvo_cheio_nao_gera(self):
         relogio = _Relogio(_as(SEG, 7, 2))
-        resultado = self._rodar(relogio, _contagem(duelo=50, build=35,
-                                                   estreia=12))
+        resultado = self._rodar(relogio, _contagem(duelo=69, build=35,
+                                                   estreia=8))
         self.assertEqual("lote", resultado["modo"])
         self.assertEqual([], self.ordem)
         self.assertEqual("estoque cheio", resultado["motivo"])
+
+    def test_estreias_paradas_nao_enchem_o_alvo(self):
+        # O 19/10 as 14:03: 88 videos "para um alvo de 88; so o worker" com
+        # 26 duelos e 10 builds — 52 eram estreias, que o YouTube nao posta.
+        relogio = _Relogio(_as(SEG, 7, 2))
+        resultado = self._rodar(relogio, _contagem(duelo=26, build=10,
+                                                   estreia=52))
+        self.assertTrue(resultado["plano"]["criar"])
+        self.assertTrue(resultado["duelos"])
 
     def test_antes_do_primeiro_lote_a_segunda_e_reposicao(self):
         relogio = _Relogio(_as(SEG_ANTES, 7, 2))
@@ -206,19 +240,31 @@ class CasosDoPlano(_Base):
 
     def test_quarta_nao_gera_se_a_terca_fechou(self):
         # Com o alvo da quarta cheio (a terca fechou), a quarta nao faz nada.
+        # Quarta 07:02: 50 horarios do YouTube ate segunda 07h -> duelo
+        # 50 x 5/8 + 25 = 57, build 50 x 3/8 + 8 = 27; estreia 30 do TikTok
+        # x 1/8 + 2 = 6.
         relogio = _Relogio(_as(QUA, 7, 2))
-        resultado = self._rodar(relogio, _contagem(duelo=35, build=27,
-                                                   estreia=9))
+        resultado = self._rodar(relogio, _contagem(duelo=57, build=27,
+                                                   estreia=6))
         self.assertEqual("lote", resultado["modo"])
         self.assertEqual([], self.ordem)
         self.assertEqual("estoque cheio", resultado["motivo"])
 
     def test_quinta_continua_reposicao(self):
+        # Reposicao: so o formato abaixo do PISO DELE (duelo 25, build 8).
+        relogio = _Relogio(_as(QUI + timedelta(days=7), 10, 2))
+        resultado = self._rodar(relogio, _contagem(duelo=25, build=8,
+                                                   estreia=3))
+        self.assertEqual("reposicao", resultado["modo"])
+        self.assertEqual([], self.ordem)
+        # Antes de 19/10 o piso era do TOTAL (20): 10 duelos + 8 builds + 3
+        # estreias = 21 nao repunha nada. Agora o duelo abaixo de 25 repoe.
         relogio = _Relogio(_as(QUI + timedelta(days=7), 10, 2))
         resultado = self._rodar(relogio, _contagem(duelo=10, build=8,
                                                    estreia=3))
         self.assertEqual("reposicao", resultado["modo"])
-        self.assertEqual([], self.ordem)
+        self.assertEqual("duelo", self.ordem[0])
+        self.assertNotIn("build", self.ordem)
 
     def test_segunda_09h30_nao_comeca_passo_novo(self):
         relogio = _Relogio(_as(SEG, 9, 30))
@@ -235,12 +281,17 @@ class CasosDoPlano(_Base):
         self.assertEqual([], self.ordem)
 
     def test_a_rodada_para_nas_22h(self):
-        # 21:53 (depois da folga do 21:37): um duelo termina 21:57; o
-        # seguinte terminaria 22:02 — fora da janela.
-        relogio = _Relogio(_as(QUA, 21, 53))
+        # Folga 18/18 (19/10/2026): o 21:37 libera depois das 21:55, e um
+        # duelo de 5 min as 21:56 terminaria 22:01 — fora da janela.
+        relogio = _Relogio(_as(QUA, 21, 56))
         resultado = self._rodar(relogio, _contagem())
-        self.assertEqual(["duelo"], self.ordem)
+        self.assertEqual([], self.ordem)
         self.assertEqual("janela", resultado["parou"])
+        # Com a janela ate 23h, o mesmo 21:56 cabe.
+        config = {**self.config, "janela_pesada": {"inicio": 7, "fim": 23}}
+        relogio = _Relogio(_as(QUA, 21, 56))
+        self._rodar(relogio, _contagem(), config=config)
+        self.assertEqual("duelo", self.ordem[0])
 
     def test_disco_c_abaixo_de_5gb_nao_comeca(self):
         relogio = _Relogio(_as(QUI, 10, 2))
@@ -303,18 +354,21 @@ class FolgaDaGrade(unittest.TestCase):
         self.config = noite.carregar()
 
     def test_meia_hora_em_volta_de_cada_horario(self):
+        # 18/18 desde 19/10/2026: de :19 a :55 nas horas de :37.
         livre = lambda h, m: noite.fora_da_grade(_as(QUI, h, m), self.config)
-        self.assertTrue(livre(9, 21))
-        self.assertFalse(livre(9, 22))
-        self.assertFalse(livre(9, 52))
-        self.assertTrue(livre(9, 53))
+        self.assertTrue(livre(9, 18))
+        self.assertFalse(livre(9, 19))
+        self.assertFalse(livre(9, 55))
+        self.assertTrue(livre(9, 56))
         # 12:07 e 17:57 nao sao :37: a regra velha (:25-:55) nao os via.
-        self.assertFalse(livre(12, 0))
+        self.assertFalse(livre(11, 49))
+        self.assertTrue(livre(11, 48))
         self.assertFalse(livre(17, 45))
-        self.assertFalse(livre(18, 10))
+        self.assertFalse(livre(18, 15))
+        self.assertTrue(livre(18, 16))
         # e a regra velha nao vale mais: 10:30 esta longe de tudo.
         self.assertTrue(livre(10, 30))
-        # 23:50 enxerga o 00:37 do dia seguinte? nao ha post a 15 min; o
+        # 23:50 enxerga o 00:37 do dia seguinte? nao ha post a 18 min; o
         # 23:37 sim.
         self.assertFalse(livre(23, 50))
         self.assertTrue(livre(0, 5))

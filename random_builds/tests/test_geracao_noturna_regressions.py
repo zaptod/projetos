@@ -274,18 +274,27 @@ class Estoque(unittest.TestCase):
     def test_teto_vem_da_cota_sobre_os_horarios(self):
         pub = {"grade": {"mistura": {"duelo": 4, "build": 3, "estreia": 1,
                                      "torneio": 0}}}
-        self.assertEqual(5.0, noite.duelos_por_dia(pub, horarios=10))
-        self.assertEqual(10, noite.teto_de_duelos({"dias_de_gordura": 2},
+        # Desde 20/10/2026 (docs/PLANO.md, canal de duelos) a publicacao
+        # troca build e estreia pelo duelo nos dois destinos: 10 x 8/8 = 10
+        # (era 6,25 com so a estreia trocada; 5 antes de 19/10).
+        self.assertEqual(10.0, noite.duelos_por_dia(pub, horarios=10))
+        self.assertEqual(20, noite.teto_de_duelos({"dias_de_gordura": 2},
                                                   pub, horarios=10))
+        # A troca e do codigo: o peso do build vira duelo mesmo com o duelo
+        # zerado no config.
         sem_duelo = {"grade": {"mistura": {"duelo": 0, "build": 3}}}
+        self.assertEqual(20, noite.teto_de_duelos({"dias_de_gordura": 2},
+                                                  sem_duelo, horarios=10))
+        nada = {"grade": {"mistura": {"duelo": 0, "build": 0, "estreia": 0}}}
         self.assertEqual(0, noite.teto_de_duelos({"dias_de_gordura": 2},
-                                                 sem_duelo, horarios=10))
+                                                 nada, horarios=10))
 
     def test_teto_de_builds_vem_da_mesma_cota(self):
         pub = {"grade": {"mistura": {"duelo": 4, "build": 3, "estreia": 1,
                                      "torneio": 0}}}
-        self.assertEqual(3.75, noite.builds_por_dia(pub, horarios=10))
-        self.assertEqual(8, noite.teto_de_builds({"dias_de_gordura": 2},
+        # Build de cota zero desde 20/10/2026: nao ha teto a encher.
+        self.assertEqual(0.0, noite.builds_por_dia(pub, horarios=10))
+        self.assertEqual(0, noite.teto_de_builds({"dias_de_gordura": 2},
                                                  pub, horarios=10))
 
     def test_estoque_de_builds_passa_pelo_mesmo_funil(self):

@@ -175,6 +175,11 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
             definir_capa(video_id, video.capa, canal=canal, log=fala)
         else:
             fala("  capa: nao ha id do video, entao nao da para enviar")
+    if publicado and caminho != "api":
+        # O IDIOMA DO VIDEO (20/10/2026, `geral/canal-em-ingles`): pela API
+        # ele ja foi no corpo do upload (`_corpo`); pelo navegador o Studio
+        # nao o recebe, e ele vai logo depois pela API — EXTRA, como a capa.
+        _definir_idioma(video_id, canal, config, laudo, fala)
     if publicado:
         from . import metricas
         metricas.registrar_publicado(
@@ -195,6 +200,33 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
                    "prova": [dict(laudo)] if laudo else [],
                    "prova_ok": metricas.prova_ok(laudo)})
     return estado
+
+
+def _definir_idioma(video_id: str, canal: str, config, laudo: dict,
+                    fala) -> None:
+    """Grava `idioma_do_canal` no video recem-publicado. Nunca levanta: o
+    video ja esta no ar, e o idioma e metadado. O resultado vai ao laudo
+    (`idioma`) e ao log; sem id, nem tenta."""
+    idioma = idioma_do_canal(canal, config)
+    if not idioma:
+        return
+    if not video_id:
+        fala(f"  idioma: nao ha id do video; {idioma} fica por gravar")
+        laudo["idioma"] = {"pedido": idioma, "mudou": False,
+                           "motivo": "sem id"}
+        return
+    try:
+        from . import recuperar
+        r = recuperar.definir_idioma(video_id, idioma, canal=canal)
+        laudo["idioma"] = {"pedido": idioma, "mudou": bool(r.get("mudou")),
+                           "motivo": str(r.get("motivo") or "")[:160]}
+        fala(f"  idioma: {idioma} " + ("gravado" if r.get("mudou") else
+                                       f"NAO gravado ({r.get('motivo')})"))
+    except Exception as erro:                                  # noqa: BLE001
+        laudo["idioma"] = {"pedido": idioma, "mudou": False,
+                           "motivo": f"{type(erro).__name__}: {erro}"[:160]}
+        fala(f"  idioma: nao consegui gravar {idioma} "
+             f"({type(erro).__name__}: {str(erro)[:120]})")
 
 
 def _visibilidade_efetiva(kw: dict, config: dict | None) -> str:
@@ -551,7 +583,7 @@ def _soltar_bloqueio_da_capa(canal: str, log=None) -> None:
 
 
 def _corpo(video, config: dict, visibilidade: str,
-           agendar_para: str | None = None) -> dict:
+           agendar_para: str | None = None, *, canal: str = "") -> dict:
     ajustes = config.get("youtube", {})
     if agendar_para:
         # O YouTube so agenda o que esta privado: com qualquer outra
@@ -572,7 +604,27 @@ def _corpo(video, config: dict, visibilidade: str,
     }
     if agendar_para:
         corpo["status"]["publishAt"] = agendar_para
+    idioma = idioma_do_canal(canal, config)
+    if idioma:
+        corpo["snippet"]["defaultLanguage"] = idioma
+        corpo["snippet"]["defaultAudioLanguage"] = idioma
     return corpo
+
+
+def idioma_do_canal(canal: str, config: dict | None = None) -> str:
+    """O idioma do upload daquele canal (`youtube.idioma_por_canal` do
+    config): "en" nos builds desde 20/10/2026 (decisao `geral/canal-em-
+    ingles`); "" quando o canal nao tem (historias: nada muda). Nunca
+    levanta."""
+    try:
+        if config is None:
+            from . import catalogo
+            config = catalogo.carregar_config()
+        tabela = ((config or {}).get("youtube") or {}).get(
+            "idioma_por_canal") or {}
+        return str(tabela.get(str(canal or "")) or "").strip()
+    except Exception:                                          # noqa: BLE001
+        return ""
 
 
 def publicar(video, *, visibilidade: str | None = None,
@@ -622,7 +674,7 @@ def publicar(video, *, visibilidade: str | None = None,
                  "X-Upload-Content-Length": str(total),
                  "X-Upload-Content-Type": "video/mp4"},
         data=json.dumps(_corpo(video, config, visibilidade,
-                               agendar_para)).encode("utf-8"))
+                               agendar_para, canal=canal)).encode("utf-8"))
     if not inicio.ok:
         bruto = inicio.text or ""
         if "exceeded the number of videos" in bruto or (

@@ -97,7 +97,8 @@ def metas(agora: datetime | None = None) -> dict:
             # O devido e o da grade DAQUELA plataforma: desde 13/09/2026 o
             # TikTok pula 7h e 8h, e cobrar dele os oito horarios acusaria
             # dois "faltando" todo dia por uma decisao, nao por uma falha.
-            devido = len(grade.vencidos(agora, plataforma))
+            # E do CANAL desde 20/10/2026 (builds: 3 no YouTube, 1 no TikTok).
+            devido = len(grade.vencidos(agora, plataforma, canal))
             # um por horario pago, e nunca mais que o devido (SCR-P1)
             saiu = min(len(por_plataforma.get(plataforma) or []), devido)
             ficha[plataforma] = {"saiu": saiu, "devido": devido,

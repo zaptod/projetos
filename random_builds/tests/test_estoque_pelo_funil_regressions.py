@@ -72,7 +72,7 @@ class EstoquePeloFunilTests(unittest.TestCase):
         self.m.repetir_titulo = lambda *_a, **_k: False
         self.m.cota_da_grade = lambda config=None: {"build": 3, "duelo": 4,
                                                     "estreia": 1}
-        self.m._servidos_recentes = lambda n=16: {}
+        self.m._servidos_recentes = lambda n=16, **k: {}
         self.m._audio_mudo = lambda v: ("calado em 95%" if "00066" in v.id
                                         else "")
         self.catalogo, self.metricas = catalogo, metricas
@@ -88,7 +88,9 @@ class EstoquePeloFunilTests(unittest.TestCase):
     def test_o_caso_de_27_09_da_zero_em_todo_formato(self):
         """Era {build: 7, duelo: 0, estreia: 0}. Nenhum dos 29 podia sair."""
         self._catalogo(_catalogo_de_27_09())
-        self.assertEqual({"build": 0, "duelo": 0, "estreia": 0},
+        # Desde 20/10/2026 (canal de duelos) so o duelo tem ritmo: build e
+        # estreia de cota zero nao sao medidos (nao alarmam "sem estoque").
+        self.assertEqual({"duelo": 0},
                          self.m.estoque_por_formato(por_dia=10))
         self.assertIsNone(self.m.proximo_build(),
                           "o contador e a escolha tem de concordar")
@@ -103,7 +105,8 @@ class EstoquePeloFunilTests(unittest.TestCase):
         """ZERO EVENTOS: formato sem nada aparece com 0 — e o aviso 'sem
         estoque' e quem dispara com ele. Sumir da lista seria calar."""
         self._catalogo([])
-        self.assertEqual({"build": 0, "duelo": 0, "estreia": 0},
+        # O formato EM USO (o duelo, desde 20/10/2026) aparece com 0.
+        self.assertEqual({"duelo": 0},
                          self.m.estoque_por_formato(por_dia=10))
 
     def test_o_que_a_escolha_leva_e_o_que_o_contador_conta(self):
@@ -115,8 +118,13 @@ class EstoquePeloFunilTests(unittest.TestCase):
         prontos = self.m._builds_prontos()
         self.assertEqual(sorted(v.id for v in duelos),
                          sorted(v.id for v in prontos))
-        # 4 duelos / (10 disparos * 4/8) = 0 dias; com 2 disparos, 4 dias.
-        self.assertEqual(4, self.m.estoque_por_formato(por_dia=2)["duelo"])
+        # O ritmo e o maior dos dois destinos (`consumo_por_formato`). Desde
+        # 20/10/2026 os dois so tem duelo (8/8): com 2 horarios no YouTube =
+        # 2/dia, o TikTok dos builds 1 x 8/8 = 1/dia -> manda o YouTube,
+        # 4 // 2 = 2 dias.
+        self.assertEqual(2, self.m.estoque_por_formato(por_dia=2)["duelo"])
+        self.assertAlmostEqual(2.0, self.m.consumo_por_formato(
+            self.m.cota_da_grade(), 2)["duelo"])
         self.assertIn(self.m.proximo_build().id, {v.id for v in duelos})
 
     def test_falha_de_leitura_nao_vira_estoque(self):

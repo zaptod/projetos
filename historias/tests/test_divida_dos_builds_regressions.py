@@ -90,6 +90,8 @@ class DividaDosBuildsTests(unittest.TestCase):
         m._mandar_no_telegram = lambda texto: None
         m.publicou_neste_horario = lambda *a, **k: None
         m._tiktok_neste_horario = lambda agora=None: True
+        # Horario da grade dos builds (20/10/2026), sem relogio de verdade.
+        m._fora_da_grade_do_canal = lambda *a, **k: ""
         m._registrar_valvula = lambda ficha: None
         m._audio_mudo = lambda v: ""
         m.titulo_repetido = lambda *a, **k: False

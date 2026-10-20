@@ -290,6 +290,8 @@ class QuandoSaiFicaMarcadoTests(unittest.TestCase):
         self.m.proxima_historia = lambda **k: (self.alvo, [])
         # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
         self.m._divida_do_youtube = lambda: (None, "", [])
+        # A fila propria do TikTok (19/10/2026) tambem: leva a parte da rodada.
+        self.m._vez_do_tiktok_historias = lambda novo=None: (self.alvo, "")
         self.marcas = []
         _trocar(self, desfecho, "marcar_para_conferir",
                 lambda canal, vid, estado, plataforma="tiktok", **k:

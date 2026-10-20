@@ -112,11 +112,29 @@ class TetoNaRodadaNORMALTests(unittest.TestCase):
             [_V(i) for i in ids], "historias", agora=AGORA)]
 
     def test_historia_que_ja_saiu_duas_vezes_hoje_sai_da_fila(self):
-        ledger = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
-                  _tiktok("h3:celular:p02", f"{HOJE}T12:00")]
+        ledger = [dict(_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
+                       plataforma="youtube"),
+                  dict(_tiktok("h3:celular:p02", f"{HOJE}T12:00"),
+                       plataforma="youtube")]
         self.assertEqual(["h4:celular:p01"],
                          self._fila(["h3:celular:p03", "h4:celular:p01"],
                                     ledger))
+
+    def test_o_teto_do_TIKTOK_nao_tira_a_serie_da_fila_do_YOUTUBE(self):
+        """Desde 19/10/2026 (fila propria do TikTok, decisao `tiktok-seis-por-
+        dia`) esta e a fila do YouTube. O TikTok alcancar a h3 hoje (duas
+        partes atrasadas la) nao fecha a h3 no YouTube, que esta a frente; o
+        teto do TikTok mora na fila dele (`_fila_do_tiktok`). Com os dois
+        destinos pedidos, a regra antiga continua disponivel."""
+        ledger = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
+                  _tiktok("h3:celular:p02", f"{HOJE}T12:00")]
+        self.assertEqual(["h3:celular:p03", "h4:celular:p01"],
+                         self._fila(["h3:celular:p03", "h4:celular:p01"],
+                                    ledger))
+        postar._publicados_do_canal = lambda _c: ledger
+        self.assertEqual(["h4:celular:p01"], [v.id for v in postar._sem_fonte_cheia(
+            [_V("h3:celular:p03"), _V("h4:celular:p01")], "historias",
+            agora=AGORA, plataformas=("youtube", "tiktok"))])
 
     def test_o_teto_conta_o_YOUTUBE_tambem(self):
         """Basta um destino cheio: publicar so no outro deixaria a serie meio
@@ -134,8 +152,10 @@ class TetoNaRodadaNORMALTests(unittest.TestCase):
 
     def test_TODAS_cheias_devolve_vazio(self):
         """Horario sem post e melhor que empilhar a mesma serie."""
-        ledger = [_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
-                  _tiktok("h3:celular:p02", f"{HOJE}T12:00")]
+        ledger = [dict(_tiktok("h3:celular:p01", f"{HOJE}T10:00"),
+                       plataforma="youtube"),
+                  dict(_tiktok("h3:celular:p02", f"{HOJE}T12:00"),
+                       plataforma="youtube")]
         self.assertEqual([], self._fila(["h3:celular:p03"], ledger))
 
     def test_ledger_ilegivel_NAO_barra_a_rodada(self):
@@ -230,13 +250,19 @@ class DiaDeGradeTests(unittest.TestCase):
 
     def test_a_madrugada_ainda_e_o_dia_de_grade_anterior(self):
         """Recuperacao atrasada as 03:00 paga o dia que ainda nao abriu o
-        seguinte (o proximo abre as 06:37)."""
+        seguinte (no YouTube o proximo abre as 06:37; no TikTok, desde a grade
+        de seis de 19/10/2026, as 09:37)."""
         linhas = [_parte(1, "2026-09-28T20:40:00"),
                   _parte(2, "2026-09-29T03:00:00")]
+        no_youtube = [dict(l, plataforma="youtube") for l in linhas]
         self.assertEqual({"historia_00037"}, postar._fontes_cheias_hoje(
-            linhas, agora=datetime(2026, 9, 29, 5, 0)))
+            no_youtube, "youtube", agora=datetime(2026, 9, 29, 5, 0)))
         self.assertEqual(set(), postar._fontes_cheias_hoje(
+            no_youtube, "youtube", agora=datetime(2026, 9, 29, 6, 37, 30)))
+        self.assertEqual({"historia_00037"}, postar._fontes_cheias_hoje(
             linhas, agora=datetime(2026, 9, 29, 6, 37, 30)))
+        self.assertEqual(set(), postar._fontes_cheias_hoje(
+            linhas, agora=datetime(2026, 9, 29, 9, 37, 30)))
 
     def test_ZERO_ledger_vazio_nao_fecha_nada(self):
         self.assertEqual(set(), postar._fontes_cheias_hoje([], agora=AGORA))
@@ -248,8 +274,12 @@ class DiaDeGradeTests(unittest.TestCase):
         linhas = [_parte(1, "2026-09-28T09:43:10"),
                   _parte(2, "2026-09-28T12:10:05"),
                   _parte(3, "2026-09-29T00:38:40")]
+        no_youtube = [dict(l, plataforma="youtube") for l in linhas]
         self.assertEqual(set(), postar._fontes_cheias_hoje(
-            linhas, agora=datetime(2026, 9, 29, 6, 40)))
+            no_youtube, "youtube", agora=datetime(2026, 9, 29, 6, 40)))
+        # O dia de grade do TikTok abre as 09:37 (grade de seis, 19/10/2026).
+        self.assertEqual(set(), postar._fontes_cheias_hoje(
+            linhas, agora=datetime(2026, 9, 29, 9, 40)))
 
     def test_linha_sem_data_legivel_nao_conta_nem_derruba(self):
         linhas = [_parte(1, ""), _parte(2, "ontem, acho"),

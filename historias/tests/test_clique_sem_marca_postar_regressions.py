@@ -101,10 +101,14 @@ class BuildsTests(_Base):
         super().setUp()
         m = self.m
         m._divida_do_youtube_dos_builds = lambda: (None, "", [])
+        # Horario da grade dos builds (20/10/2026), sem relogio de verdade.
+        m._fora_da_grade_do_canal = lambda *a, **k: ""
+        # O confronto le `fight.json`; aqui nao ha duelo de verdade.
+        m._sem_confronto_repetido = lambda fila, plataforma: fila
         # A fila de verdade (`proximo_build`), com o catalogo e a cota dublados.
         m._builds_prontos = lambda *a, **k: [_Video(B), _Video(A)]
-        m._sem_fonte_cheia = lambda fila, canal, agora=None: fila
-        m._servidos_recentes = lambda: {}
+        m._sem_fonte_cheia = lambda fila, canal, agora=None, **k: fila
+        m._servidos_recentes = lambda *a, **k: {}
         m.cota_da_grade = lambda config=None: {}
         m.escolher_por_cota = lambda pendentes, servidos, cota: pendentes[0]
         m._audio_mudo = lambda v: ""

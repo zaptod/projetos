@@ -8,39 +8,41 @@
     "torneio": "Torneio de {participantes} — campeão: {campeao}",
     "duelo": "{p1} x {p2}"
   },
+  "_comment_descricoes": "Em INGLES desde 20/10/2026 (decisao geral/canal-em-ingles). Os {campos} vem do catalogo (parte Builds) e podem chegar em portugues (classe, arma, arena, veredito) ate a parte Builds traduzir o que sai na tela.",
   "descricoes": {
-    "build": "Personagem {sorteio}: {classe}, {arma}.\nForça {forca} · Mana {mana} · {altura} m\nCompatibilidade {compatibilidade}/100 — nota final {nota}/100 ({veredito}).\n\n{escolhas}\nSorteado por roleta e simulado no motor do Neural Fights.",
-    "estreia": "A estreia de {personagem} ({classe}) na arena, contra {adversario}.\nMelhor de {melhor_de} — {desfecho}.\n\nLutas simuladas no motor do Neural Fights: sem roteiro, sem script.",
-    "torneio": "Torneio com {participantes} lutadores gerados por roleta.\nCampeão: {campeao}.\n\nTodas as lutas simuladas no motor do Neural Fights.",
-    "duelo": "{p1} contra {p2}. Arena: {arena}.\nA luta inteira, sem corte de conversa.\n\nSimulada no motor do Neural Fights: sem roteiro, sem script. Quem ganha e decidido pela fisica e pela IA dos dois lutadores."
+    "build": "Character {sorteio}: {classe}, {arma}.\nStrength {forca} · Mana {mana} · {altura} m\nCompatibility {compatibilidade}/100 — final score {nota}/100 ({veredito}).\n\n{escolhas}\nRolled on the wheel and simulated in the Neural Fights engine.",
+    "estreia": "{personagem} ({classe}) makes their arena debut against {adversario}.\nBest of {melhor_de} — {desfecho}.\n\nFights simulated in the Neural Fights engine: no script, no staging.",
+    "torneio": "Tournament with {participantes} fighters rolled on the wheel.\nChampion: {campeao}.\n\nEvery fight simulated in the Neural Fights engine.",
+    "duelo": "{p1} vs {p2}. Arena: {arena}.\nThe whole fight, no cuts.\n\nSimulated in the Neural Fights engine: no script, no staging. The winner is decided by physics and by the AI of both fighters."
   },
+  "_comment_hashtags": "Em INGLES desde 20/10/2026 (decisao geral/canal-em-ingles): o canal de builds/duelos fala com o publico de lingua inglesa.",
   "hashtags": {
     "build": [
       "#shorts",
       "#rpg",
       "#gamedev",
-      "#aleatorio",
+      "#random",
       "#build"
     ],
     "estreia": [
       "#shorts",
       "#rpg",
       "#gamedev",
-      "#luta",
-      "#ia"
+      "#fight",
+      "#ai"
     ],
     "torneio": [
       "#shorts",
       "#rpg",
       "#gamedev",
-      "#torneio",
-      "#ia"
+      "#tournament",
+      "#ai"
     ],
     "duelo": [
       "#shorts",
-      "#luta",
+      "#fight",
       "#gamedev",
-      "#ia",
+      "#ai",
       "#rpg"
     ]
   },
@@ -54,7 +56,9 @@
     "cortar_para_shorts": true,
     "shorts_max_s": 180,
     "_comment_modo": "COMO publicar: 'navegador' (padrao) sobe pelo YouTube Studio com o perfil de Chrome; 'api' usa o OAuth. Medido em 01/09/2026: a API recusou por cota (uploadLimitExceeded) num canal de um dia enquanto o Studio aceitava normalmente — sao baldes separados. A API continua sendo usada para LER (metricas, identidade do canal), so nao para publicar.",
-    "modo": "navegador"
+    "modo": "navegador",
+    "_comment_idioma": "Idioma do video (snippet.defaultLanguage e defaultAudioLanguage) POR CANAL. Desde 20/10/2026 o canal de builds/duelos e em INGLES (decisao geral/canal-em-ingles); historias seguem em portugues e nao entram aqui. Pela API o idioma vai no corpo do upload; pelo navegador ele e gravado logo depois do upload com a API (videos.update, a credencial de builds tem o escopo de edicao). Falhar nisso nunca derruba a publicacao: vai ao log e ao laudo.",
+    "idioma_por_canal": {"builds": "en"}
   },
   "tiktok": {
     "_comment_postar": "Sem chave de postar automatico desde 14/10/2026 (decisao publicacao/tiktok-postar-automatico): a grade posta sempre (postar=True explicito) e o botao do painel sobe o arquivo, escreve a legenda e PARA para voce clicar. O TikTok nao tem API aberta de post; isso e automacao de navegador na SUA conta e pode quebrar quando o site mudar.",
@@ -84,6 +88,14 @@
       "build": 3,
       "estreia": 1,
       "torneio": 0
-    }
+    },
+    "_porque_mistura_por_destino": "Desde 19/10/2026 (decisao publicacao/duelo-no-lugar-da-estreia) esta mistura vale INTEIRA so no TikTok. No YouTube de builds a estreia e trocada pelo duelo no codigo (ferramentas/postar.py, TROCAS_NA_COTA): duelo 5, build 3, estreia 0 - a estreia so sobe se nao houver nem duelo nem build. Medido na analise de 19/10 (28 dias, YouTube): duelo 111 views por video, build 81, estreia 29."
+  },
+  "_porque_testes": "Datas dos TESTES de 19/10/2026, inclusive nas duas pontas. Elas NAO ligam nem desligam nada: a grade de 6 por dia do TikTok (builds/grade.py) e o texto 'a parte seguinte ja esta no canal' valem desde que o codigo entra, e NAO voltam sozinhos quando o teste acaba. Servem para a Analise dos videos comparar o antes (os mesmos 7 dias logo antes do inicio) com o durante. Se o codigo entrar depois de 20/10, mude o inicio para o primeiro dia inteiro com ele (e o fim para 6 dias depois).",
+  "_porque_testes_21": "O codigo nao entrou em 20/10 (WIPs revertidos e refeitos num ramo de integracao): o primeiro dia inteiro possivel e 21/10, entao os testes vao de 21 a 27/10. Se entrar mais tarde, empurre as datas. `duelos_semana_1` e a semana 1 do docs/PLANO.md no canal de builds: YouTube 3 por dia (09:37, 17:57, 21:37; desde 01/11 12:07, 20:37, 22:37), TikTok 1 (21:37; desde 01/11 20:37), so duelo, em ingles.",
+  "testes": {
+    "tiktok_6_por_dia": {"inicio": "2026-10-21", "fim": "2026-10-27"},
+    "parte_seguinte": {"inicio": "2026-10-21", "fim": "2026-10-27"},
+    "duelos_semana_1": {"inicio": "2026-10-21", "fim": "2026-10-27"}
   }
 }

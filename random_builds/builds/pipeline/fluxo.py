@@ -226,6 +226,13 @@ def _geracao(out_dir: Path, jobs_por_gid: dict) -> dict:
                 detalhe += f" ({placar[0]} x {placar[1]})"
         else:
             detalhe = "gravada"
+    elif (estreia_dir / "fight.json").is_file():
+        # Desde 19/10/2026 a geracao grava a estreia (a luta do fim da build
+        # sai dela) mas so renderiza o video dela com estreias em falta
+        # (`noite.renderizar_estreia`). Gravada sem video nao e pendencia.
+        estreia_ok = True
+        detalhe = (f"gravada; vídeo próprio não renderizado (estreias "
+                   f"sobrando) — fight --rerender {gid}/estreia")
     else:
         detalhe = "não gravada"
     etapas["estreia"] = {"estado": OK if estreia_ok else AUSENTE,

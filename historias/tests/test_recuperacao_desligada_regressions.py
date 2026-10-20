@@ -42,6 +42,8 @@ class InterruptorTests(unittest.TestCase):
     def setUp(self):
         self.postar = _postar()
         self.postar._linha = lambda *_a, **_k: None
+        # Horario do TikTok vago, sem relogio nem ledger de producao.
+        self.postar._vaga_do_tiktok = lambda *a, **k: ""
 
     def _desligar(self):
         self.postar.RECUPERACAO_LIGADA = False

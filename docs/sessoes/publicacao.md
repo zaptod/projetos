@@ -116,7 +116,12 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    que põe "A parte seguinte já está no canal." no fim da descrição) →
    `serie.registrar` → **a vez do TikTok** (`_vez_do_tiktok_historias`, só em
    horário da grade dele) → `_tiktok_das_historias` → `serie.registrar`.
-3. **Builds**: `proximo_build()` (fila e mistura **do YouTube**, sem estreia) →
+3. **Builds** — **desde 20/10/2026 só nos horários do canal** (`grade.HORAS_POR_CANAL`:
+   YouTube 09:37, 17:57 e 21:37 e TikTok 21:37 até 31/10; 12:07, 20:37,
+   22:37 e TikTok 20:37 desde 01/11; ver §2). Fora deles
+   `postar_build` devolve `fora_da_grade` sem ler ledger nem catálogo, e a
+   rodada tira essa ficha do Telegram e do código de saída.
+   `proximo_build()` (fila e mistura **do YouTube**, só duelo, confrontos diferentes) →
    `youtube.publicar_como_configurado` → **a vez do TikTok**
    (`_vez_do_tiktok_builds`, mistura do config) → `_tiktok_dos_builds`
    (`tiktok.publicar`) — os dois **registram por dentro**.
@@ -277,6 +282,35 @@ sem postar deram certo 6/6 no builds e 3/3 nas histórias; depois de 5–10 h,
 `NeuralFights_postar_HH` no Agendador (não mudaram: as dez rodam pelo YouTube;
 nos quatro horários só dele o TikTok não é tentado).
 
+**Grade por canal (20/10/2026, `docs/PLANO.md` semana 1 + decisão
+`geral/canal-em-ingles`)**: o canal de **builds/duelos** tem grade própria,
+sempre dentro da da plataforma — `grade.HORAS_POR_CANAL`, lida por
+`grade.horas_do_canal(canal, plataforma, quando)` / `publica_no_canal` /
+`meta_diaria`, **por data** (`tabela_do_canal`, `HORAS_POR_CANAL_DESDE`):
+**até 31/10 YouTube 09:37, 17:57, 21:37 e TikTok 21:37; desde 01/11 YouTube
+12:07, 20:37, 22:37 e TikTok 20:37** (3 + 1 por dia). As histórias seguem
+10 + 6. `python -m builds.grade [AAAA-MM-DD]` imprime o dia inteiro (quem
+posta o quê em cada horário). Por quê: o canal passou a falar inglês com os
+EUA; `docs/pesquisa/som-ganchos-e-musica.md` (recomendação 7) pede ~10h,
+~19h e ~22h de Brasília até 31/10 e 1 h mais tarde desde 01/11 (fim do
+horário de verão nos EUA: Brasília passa de ET+1 a ET+2), nos minutos da
+grade — o mais perto de cada alvo entre os dez horários que já têm tarefa no
+Agendador (horário novo pediria `postar.py --instalar`, que não se roda sem o
+Adrian). Os de outubro coincidem com os três melhores do público brasileiro
+(views ÷ mediana do dia de grade, 23 dias de 15/09 a 17/10): 09:37 1,41,
+17:57 1,23, 21:37 1,19 (12:07 0,97). A Análise da semana 1 mede. Os
+duelos dividem a rodada com as histórias (histórias primeiro, como sempre).
+TikTok em **um** por dia: dado da parte métricas (20/10) — com ~10/dia, 28
+de 36 posts de 12 a 15/10 ficaram em 0 views; só pegaram os que vieram
+depois de uma pausa. **A única leitura de relógio** para "este horário é do
+canal?" é `postar._fora_da_grade_do_canal(canal, plataforma, agora)`: a
+rodada (`postar_build`), a porta do TikTok (`_vaga_do_tiktok`, por onde
+passam recuperação e reserva), a reserva e a recuperação do YouTube (na
+rodada) perguntam a ela; teste que não é sobre o horário a fixa. A
+conferência (`deficit`), o placar do bot (`relatorios`), a auditoria do
+painel e o vigia de eventos (`sinais.eventos_por_canal`) contam a meta do
+canal, não a da plataforma.
+
 Use `grade.minuto(h)`, nunca a constante `MINUTO`; e `grade.slot(agora)` para
 saber a que horário a rodada pertence — :57 mais ~4 min de upload cruzam a hora,
 e a hora do relógio dava dois veredictos na mesma rodada.
@@ -302,13 +336,39 @@ torneio 0}`, sobreponível em `config/publicacao.json` → `grade.mistura`.
 **Desde 19/10/2026 a mistura é por destino** (decisão
 `duelo-no-lugar-da-estreia`): o TikTok usa a do config inteira; o YouTube
 passa por `cota_da_plataforma` (`TROCAS_NA_COTA = {"youtube": {"estreia":
-"duelo"}}`) → duelo 5, build 3, estreia 0. Sem duelo sai o build; sem duelo nem
-build, a estreia (para o horário não ficar vazio). A estreia que sai no
-TikTok **não é dívida** do YouTube (`_trocado_no_youtube`, em
-`_procurar_divida_dos_builds` e `_alcance_do_youtube_dos_builds`). Estoque em
-19/10 13:55 (`_builds_prontos`, sem áudio): duelo 26, build 10, estreia 52;
-ritmo (`consumo_por_formato`): duelo 6,25/dia (era 5), build 3,75, estreia
-0,75 — duelos para ~4 dias.
+"duelo"}}`) → duelo 5, build 3, estreia 0. **Desde 20/10/2026 (PLANO, canal
+de duelos) os dois destinos trocam build e estreia pelo duelo**:
+`TROCAS_NA_COTA = {youtube|tiktok: {estreia: duelo, build: duelo}}` → duelo
+8, build 0, estreia 0. Build e estreia só saem sem duelo nenhum que possa
+sair — primeiro o build, depois a estreia (`ORDEM_SEM_COTA`, em
+`escolher_por_cota`). A estreia e o build que saem no
+TikTok **não são dívida** do YouTube (`_trocado_no_youtube`, em
+`_procurar_divida_dos_builds` e `_alcance_do_youtube_dos_builds`). O
+**TikTok dos builds leva o MAIS NOVO** do que o YouTube subiu e falta lá
+(`_vez_do_tiktok_builds`; em dia normal, o duelo das 21:37): um por dia
+contra três, na ordem antiga a fila dele cresceria dois por dia, cada vez
+mais velha; só sem atraso ele vai ao estoque novo. Ritmo
+(`consumo_por_formato`, e `noite.consumo_por_dia` da geração, comparados por
+teste): **duelo 3/dia, build 0, estreia 0** (era 6,25 / 3,75 / 0,75).
+Estoque em 19/10 13:55: duelo 26, build 10, estreia 52 — duelos para ~8 dias.
+
+**Confrontos diferentes** (PLANO, semana 1): `confronto_da_fonte` = o par de
+**classe** dos dois lutadores (com o tipo da arma quando a ficha tiver
+`tipo_arma`/`estilo_arma` — hoje não tem: `p1_ficha` traz só o nome próprio
+da arma), sem ordem, lido de `outputs/<duelo>/fight.json`.
+`com_confrontos_diferentes` (pura): primeiro os duelos cujo confronto não saiu
+**naquele destino** nos últimos 7 dias; senão, os que não saíram **hoje** (dia
+de grade); senão só os não-duelos; sem não-duelo, todos. Ficha ilegível =
+"não sei" = passa. Aplicada em `proximo_build` e `_vez_do_tiktok_builds`
+(`_sem_confronto_repetido`). Medido em 20/10: 139 duelos, 79 pares de classe.
+
+**Idioma do upload** (decisão `geral/canal-em-ingles`): `config/publicacao.json`
+→ `youtube.idioma_por_canal = {"builds": "en"}`; pela API vai no corpo
+(`youtube._corpo`), pelo navegador `youtube._definir_idioma` grava
+`defaultLanguage`/`defaultAudioLanguage` logo depois do upload
+(`recuperar.definir_idioma`, PUT do snippet inteiro, idempotente; laudo
+`idioma` no ledger). Nunca derruba a publicação. Hashtags e descrições do
+config em inglês; o **título** é da parte Builds. Histórias não mudam.
 
 **Reserva da noite** (histórias, YouTube; decisão
 `historias-21h-e-parte-seguinte`): "o melhor vídeo pronto" = a **parte 1 de
@@ -340,8 +400,10 @@ TikTok não muda de legenda (o teste dele é outro).
 | Vídeo no ar quando a dona morreu | `postar._em_voo`/`_voando` (os 4 funis) + `_SaidaComPulso` (etapa pela frase do publicador) → `_pousar_voo_perdido` na próxima rodada, antes da escolha: "a conferir" no destino, ou a rodada não publica |
 | Tentativa perto do horário seguinte | `postar._ainda_no_horario`: janela (25 reposição / 40 volta) + mesmo slot + `MARGEM_ANTES_DO_PROXIMO_MIN` (20) de `grade.proximo_em`, conferida depois de cada espera |
 | Upload avulso (`--so-youtube`) que atravessa uma rodada | `postar._horario_que_a_linha_tomaria`: recusa se uma rodada da grade **começa** dentro dos `DURACAO_DE_UM_UPLOAD_MIN = 20` min do upload (22:20 → "22:37"; 22:04 → livre) |
-| TikTok: seis por dia, um por horário, "a conferir", ordem da série **no TikTok** (19/10) | `postar._recusa_do_tiktok` + `_recusar_no_tiktok`, chamados **dentro** de `_tiktok_das_historias` e `_tiktok_dos_builds` (os funis de todo caminho: rodada, recuperação, reserva, escoar). Ledger ou lista ilegível recusa. A recusa leva `falha["recusa"]` e não conta tentativa na recuperação nem na reserva. Testes `historias/tests/test_tiktok_seis_por_dia_regressions.py` |
+| TikTok: seis por dia, um por horário, "a conferir", ordem da série **no TikTok** (19/10) | `postar._recusa_do_tiktok` + `_recusar_no_tiktok`, chamados **dentro** de `_tiktok_das_historias` e `_tiktok_dos_builds` (os funis de todo caminho: rodada, recuperação, reserva, escoar). Ledger ou lista ilegível recusa. A recusa leva `falha["recusa"]` e não conta tentativa na recuperação nem na reserva. As duas perguntas que dependem do RELÓGIO e do LEDGER de verdade (grade do TikTok e horário já pago) moram numa função só, `_vaga_do_tiktok`, usada pela porta e pela recuperação: teste que não é sobre o horário a fixa (`m._vaga_do_tiktok = lambda *a, **k: ""`). Aplicado às 16:0x de 19/10 com o 15:37 já pago no ledger real, o be9c70ae deixou 10 testes antigos vermelhos por isso (revertido em f2a64886) Testes `historias/tests/test_tiktok_seis_por_dia_regressions.py` |
 | Fila própria do TikTok (19/10) | `postar._vez_do_tiktok_historias` / `_vez_do_tiktok_builds` sobre `atrasados_no_tiktok(extra=)`; a semana simulada dos testes: 70 no YouTube, 42 no TikTok (6/dia), nenhuma fora de ordem, nenhuma repetida |
+| Grade do canal (builds 3 + 1, 20/10) | `grade.HORAS_POR_CANAL`/`horas_do_canal`; relógio lido só em `postar._fora_da_grade_do_canal` (rodada, porta do TikTok, reserva, recuperação do YouTube). Testes `historias/tests/test_grade_dos_duelos_regressions.py` |
+| Confrontos diferentes (20/10) | `postar._sem_confronto_repetido` → `com_confrontos_diferentes` (pura) em `proximo_build` e `_vez_do_tiktok_builds`; 7 dias por destino, nunca no mesmo dia se houver outro vídeo |
 | Teto por fonte | desde 19/10 cada fila confere o do SEU destino: `_sem_fonte_cheia(..., plataformas=("youtube",))` nas filas do YouTube, `_fila_do_tiktok` no TikTok. O valor (2) não mudou |
 | Título já publicado (fecha a fila) | `postar._sem_titulo_repetido`/`titulo_repetido`; regra em `titulos.chave/repetido` |
 | Variante A/B (`:B` tem o mesmo título) | `postar.VARIANTES`, `_e_variante`, e a própria chave de título |
@@ -392,8 +454,12 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
   TESTE de 20 a 26/10). Não volta a dez sozinho; o resultado sai na Análise
   dos vídeos ("Testes": antes × durante, por perfil). Sem efeito, o próximo
   teste recomendado (só recomendação) é um dia inteiro sem postar.
-- **YouTube de builds sem estreia** (19/10, `duelo-no-lugar-da-estreia`): o
-  TikTok mantém a mistura.
+- **YouTube de builds sem estreia** (19/10, `duelo-no-lugar-da-estreia`).
+  **Desde 20/10 (`docs/PLANO.md`, `geral/objetivo-unico-neural-fights`) o
+  canal é de duelos nos dois destinos**: YouTube 3/dia (09:37, 17:57,
+  21:37; desde 01/11 12:07, 20:37, 22:37), TikTok 1/dia (21:37; desde 01/11
+  20:37), só duelo, confrontos diferentes, em inglês
+  (`geral/canal-em-ingles`). Horários e TikTok 1/dia: orquestrador, 20/10.
 - **Histórias: a noite com o melhor pronto e a parte seguinte ligada** (19/10,
   `historias-21h-e-parte-seguinte`; a ligação é TESTE de 20 a 26/10).
 - **Teto de 2 partes da mesma história/geração por dia de grade** (06:37 →
@@ -1121,7 +1187,7 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
 | `historias/.../prioridade.json` | **o Adrian** (pedido manual) | publicação só lê |
 | `atividade.jsonl` (diário) | **todos escrevem**, ninguém é dono | bot avisa no celular, apurador investiga erro, página de confiabilidade soma |
 | travas `ledger__<canal>`, `<plataforma>_a_conferir` | **publicação** | `historias__render__<fonte>` é da parte Histórias (aqui só se lê) |
-| `config/publicacao.json` (`grade.mistura`, `youtube.visibilidade`, `youtube.postar_automatico`; o `tiktok.postar_automatico` saiu em 14/10; `testes.tiktok_6_por_dia` e `testes.parte_seguinte` desde 19/10 — só datas, não ligam nada) | **o Adrian** | publicação e painel leem; a análise (`grade.teste`) lê os `testes` |
+| `config/publicacao.json` (`grade.mistura`, `youtube.visibilidade`, `youtube.postar_automatico`; o `tiktok.postar_automatico` saiu em 14/10; `testes.tiktok_6_por_dia` e `testes.parte_seguinte` desde 19/10 e `testes.duelos_semana_1` desde 20/10 — só datas, não ligam nada, hoje 21 a 27/10; `youtube.idioma_por_canal` desde 20/10) | **o Adrian** | publicação e painel leem; a análise (`grade.teste`) lê os `testes` |
 | `contos.publicar.{catalogo,serie,qualidade,parecer,tipos}` | parte **Histórias** | publicação chama |
 | `builds.publicar.catalogo` (`pendencias`, `origem`, `capa`) | parte **Builds** | publicação chama |
 | `builds.contas` (conta ativa por serviço/canal) | parte **Contas** | publicação lê para dizer o destino |

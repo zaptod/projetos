@@ -230,9 +230,13 @@ class QuandoAReservaEntraTests(unittest.TestCase):
             self.addCleanup(setattr, postar, _chave, getattr(postar, _chave))
             setattr(postar, _chave, True)
         for nome in ("_tiktok_neste_horario", "publicou_neste_horario",
-                     "reserva_do_tiktok", "_tiktok_dos_builds"):
+                     "reserva_do_tiktok", "_tiktok_dos_builds",
+                     "_fora_da_grade_do_canal"):
             self.addCleanup(setattr, postar, nome, getattr(postar, nome))
         postar._tiktok_neste_horario = lambda *_a, **_k: True
+        # O horario e da grade dos builds (20/10/2026): o teste nao e sobre o
+        # horario e nao pode depender do relogio.
+        postar._fora_da_grade_do_canal = lambda *_a, **_k: ""
         postar.publicou_neste_horario = lambda *_a, **_k: None
         postar.reserva_do_tiktok = lambda *_a, **_k: [
             _Video("velho:build:celular", "Velho")]
@@ -307,9 +311,12 @@ class ACabecaDaFilaNaoTravaTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         arq = Path(self.tmp.name) / "_tiktok_desistencias.json"
         for nome in ("_arquivo_de_desistencias", "_fontes_de_atraso",
-                     "_tiktok_dos_builds", "_linha"):
+                     "_tiktok_dos_builds", "_linha", "_vaga_do_tiktok"):
             self.addCleanup(setattr, postar, nome, getattr(postar, nome))
         postar._arquivo_de_desistencias = lambda _c: arq
+        # O horario do TikTok esta vago: o teste nao pode depender do relogio
+        # nem do ledger de producao (19/10/2026, `_vaga_do_tiktok`).
+        postar._vaga_do_tiktok = lambda *a, **k: ""
         postar._linha = lambda *_a, **_k: None
         # O DIARIO TAMBEM E DE VERDADE. Sem esta linha, `_anotar_falha_no_tiktok`
         # escreve ERRO no `atividade.jsonl` de PRODUCAO com um id de duble —

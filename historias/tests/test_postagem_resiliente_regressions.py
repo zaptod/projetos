@@ -111,7 +111,7 @@ class ProximoBuildPulaMudoTests(unittest.TestCase):
         self.m = _postar()
         _trocar(self, metricas, "publicados", lambda canal="builds": [])
         self.catalogo = catalogo
-        _trocar(self, self.m, "_servidos_recentes", lambda n=16: {})
+        _trocar(self, self.m, "_servidos_recentes", lambda n=16, **k: {})
         _trocar(self, self.m, "cota_da_grade", lambda config=None: {})
 
     def _catalogo(self, videos):
@@ -146,8 +146,15 @@ class YouTubeCaidoNaoDerrubaTikTokTests(unittest.TestCase):
         self.m = _postar()
         self.m.publicou_neste_horario = lambda *a, **k: None
         self.m._tiktok_neste_horario = lambda agora=None: True
+        # Horario da grade dos builds (20/10/2026), sem relogio de verdade.
+        self.m._fora_da_grade_do_canal = lambda *a, **k: ""
         # A divida dos builds (14/10/2026) le o ledger REAL: fora daqui.
         self.m._divida_do_youtube_dos_builds = lambda: (None, "", [])
+        # A fila propria do TikTok (19/10/2026) tambem le o ledger REAL: aqui
+        # ela leva o mesmo video da rodada.
+        self.m._vez_do_tiktok_builds = lambda config=None: (_Video("g1"), "")
+        self.m._vez_do_tiktok_historias = lambda novo=None: (
+            novo() if callable(novo) else novo, "")
         self.avisos = []
         self.m.avisar_limite_diario = lambda texto: self.avisos.append(texto)
         _trocar(self, tiktok, "confirmado", lambda estado: estado == "publicado no TikTok")

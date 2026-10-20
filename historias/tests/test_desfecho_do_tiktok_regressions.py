@@ -139,9 +139,13 @@ class ReacaoAoDesfechoTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         base = Path(self.tmp.name)
         for nome in ("_arquivo_de_desistencias",
-                     "_fontes_de_atraso", "_tiktok_dos_builds", "_linha"):
+                     "_fontes_de_atraso", "_tiktok_dos_builds", "_linha",
+                     "_vaga_do_tiktok"):
             self.addCleanup(setattr, postar, nome, getattr(postar, nome))
         postar._arquivo_de_desistencias = lambda _c: base / "desist.json"
+        # O horario do TikTok esta vago: o teste nao pode depender do relogio
+        # nem do ledger de producao (19/10/2026, `_vaga_do_tiktok`).
+        postar._vaga_do_tiktok = lambda *a, **k: ""
         from builds.publicar import desfecho as _D
         self.addCleanup(setattr, _D, "arquivo_a_conferir",
                         _D.arquivo_a_conferir)

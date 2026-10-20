@@ -278,11 +278,13 @@ def ler_diario(caminho=None) -> list | None:
 
 
 def horarios_entre(de: datetime, ate: datetime,
-                   plataforma: str = "youtube") -> int:
-    """Quantos horarios da grade cairam em `(de, ate]`."""
+                   plataforma: str = "youtube",
+                   canal: str | None = None) -> int:
+    """Quantos horarios da grade cairam em `(de, ate]` (com `canal`, so os
+    daquele canal: `grade.horas_do_canal`)."""
     total, dia = 0, de.date()
     while dia <= ate.date():
-        for hora in grade.horas_da_plataforma(plataforma):
+        for hora in grade.horas_do_canal(canal, plataforma, dia):
             instante = datetime(dia.year, dia.month, dia.day, int(hora),
                                 grade.minuto(hora))
             if de < instante <= ate:
@@ -321,9 +323,11 @@ def eventos_por_canal(eventos, agora: datetime | None = None, *,
     else:
         coberto_desde = agora
     horas_cobertas = round((agora - coberto_desde).total_seconds() / 3600, 1)
-    minimo = horarios_entre(coberto_desde, agora)
     saida = {}
     for canal in canais:
+        # O minimo e o DO CANAL (20/10/2026: builds tem 3 horarios no
+        # YouTube; cobrar os 10 acusaria "poucos" todo dia).
+        minimo = horarios_entre(coberto_desde, agora, canal=canal)
         do_canal = [e for q, e in instantes
                     if q >= coberto_desde and e.get("canal") == canal
                     and e.get("status") in STATUS_DE_TRABALHO

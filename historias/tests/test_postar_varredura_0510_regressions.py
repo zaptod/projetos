@@ -288,6 +288,8 @@ class ConsertadaNaPostagemTests(unittest.TestCase):
         self.m.proxima_historia = lambda **k: (self.alvo, [])
         # Sem divida do YouTube: ela vem antes da fila e leria o ledger REAL.
         self.m._divida_do_youtube = lambda: (None, "", [])
+        # A fila propria do TikTok (19/10/2026) tambem: leva a parte da rodada.
+        self.m._vez_do_tiktok_historias = lambda novo=None: (self.alvo, "")
         self.marcas = []
         _trocar(self, desfecho, "marcar_para_conferir",
                 lambda canal, vid, estado, plataforma="tiktok", **k:
@@ -381,6 +383,8 @@ class RetidaQueChegaDepoisAoTikTokTests(unittest.TestCase):
         from builds.publicar import desfecho, tiktok
         self.m = _postar()
         self.m._linha = lambda *_a, **_k: None
+        # Horario do TikTok vago, sem relogio nem ledger de producao.
+        self.m._vaga_do_tiktok = lambda *a, **k: ""
         self.retencao = "historia_00042:celular:p06: a IA reprovou"
         self.m._retencao = lambda _a: self.retencao
         self.m._consertada = lambda _a: False
@@ -516,6 +520,8 @@ class RedeDeVerdadeTests(unittest.TestCase):
 class QueDestinoARedeDerrubouTests(unittest.TestCase):
     def setUp(self):
         self.m = _postar()
+        # Horario do TikTok vago, sem relogio nem ledger de producao.
+        self.m._vaga_do_tiktok = lambda *a, **k: ""
         from builds.publicar import tiktok
         _trocar(self, tiktok, "confirmado",
                 lambda estado: str(estado).startswith("publicado no TikTok"))

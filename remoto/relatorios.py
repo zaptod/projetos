@@ -123,10 +123,12 @@ def _horarios_servidos(itens: list[dict]) -> dict:
     return {chave: len(vistos) for chave, vistos in slots.items()}
 
 
-def _bateu_o_dia(servidos: dict) -> bool:
-    """O dia so esta completo quando TODO canal cumpriu TODA plataforma."""
+def _bateu_o_dia(servidos: dict, dia=None) -> bool:
+    """O dia so esta completo quando TODO canal cumpriu TODA plataforma —
+    pela meta DO CANAL naquele dia (`grade.meta_diaria`: builds 3 + 1 desde
+    20/10/2026, os dez e seis antes)."""
     return all(servidos.get((canal, plataforma), 0)
-               >= grade.META_DIARIA_POR_PLATAFORMA[plataforma]
+               >= grade.meta_diaria(canal, plataforma, dia)
                for canal in CANAIS for plataforma in grade.PLATAFORMAS)
 
 
@@ -258,7 +260,8 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
         completo = True
         for plataforma in grade.PLATAFORMAS:
             saiu = servidos_hoje.get((canal, plataforma), 0)
-            alvo = grade.META_DIARIA_POR_PLATAFORMA[plataforma]
+            # A meta do CANAL (20/10/2026: builds 3 no YouTube, 1 no TikTok).
+            alvo = grade.meta_diaria(canal, plataforma, hoje)
             completo = completo and saiu >= alvo
             placar.append(f"{plataforma} {saiu}/{alvo}")
         marca = "✓" if completo else "⏳"
@@ -280,17 +283,16 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
         dia = hoje - timedelta(days=recuo)
         itens = por_dia.get(dia.isoformat()) or []
         servidos = _horarios_servidos(itens)
-        bateu = _bateu_o_dia(servidos)
+        bateu = _bateu_o_dia(servidos, dia)
         completos += 1 if bateu else 0
         # Um numero por canal, mas com o DENOMINADOR CHEIO (os horarios das
         # duas plataformas somados) — senao "11" ao lado de uma meta de 10
         # continua parecendo dia completo.
-        alvo_do_canal = sum(grade.META_DIARIA_POR_PLATAFORMA[p]
-                            for p in grade.PLATAFORMAS)
         corpo = " ".join(
             f"{CANAIS[c]['emoji']}"
             f"{sum(servidos.get((c, p), 0) for p in grade.PLATAFORMAS)}"
-            f"/{alvo_do_canal}" for c in CANAIS)
+            f"/{sum(grade.meta_diaria(c, p, dia) for p in grade.PLATAFORMAS)}"
+            for c in CANAIS)
         marca = "✓" if bateu else ("⏳" if dia > fechado else "✗")
         linhas.append(f"  {dia:%d/%m}  {corpo}  {marca}")
     desde = (hoje - timedelta(days=dias - 1)).isoformat()

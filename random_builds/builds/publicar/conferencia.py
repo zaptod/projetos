@@ -391,6 +391,12 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     abertura, fechamento = abertura_e_fechamento(plataforma)
     horas = _horas_em_ordem(plataforma)
     ordem = horas[horas.index(abertura):] + horas[:horas.index(abertura)]
+    # SO OS HORARIOS DO CANAL (20/10/2026, `grade.HORAS_POR_CANAL`): builds
+    # promete 3 no YouTube e 1 no TikTok; cobrar os dez da plataforma daria
+    # deficit 7 (e 5) todo dia por decisao, nao por falha. O dia de grade
+    # (abertura e fechamento) continua o da plataforma.
+    do_canal = set(grade.horas_do_canal(canal, plataforma, dia_da_grade))
+    ordem = [h for h in ordem if h in do_canal]
     prometidos = len(ordem)
 
     # HORARIO, NAO LINHA: a grade promete um video por horario. Duas linhas no
@@ -455,7 +461,7 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
             f"{dia_da_grade.isoformat()}T{grade.horario(abertura)}",
             f"{ultimo_dia.isoformat()}T{grade.horario(fechamento)}"],
         "slots_da_grade": prometidos,
-        "horarios_cumpridos": len(cumpridos),
+        "horarios_cumpridos": len([h for h in ordem if h in cumpridos]),
         "horarios_em_falta": em_falta,
         "linhas_no_dia_de_grade": linhas_do_dia,
         "deficit": deficit,
