@@ -301,6 +301,18 @@ def test_reiniciar_sob_demanda_com_lista_vazia_nao_abre_nem_da_por_feito():
     assert iniciou == [] and s.ultima_recusa["vila"]["tipo"] == "momento"
 
 
+def test_assinatura_da_vila_nao_pega_os_filhos_dela():
+    # a `previsao` e o `guia` sao `-m painel.flutuante.<x>`: com a Vila
+    # fechada, o filho vivo a fazia parecer aberta
+    import re
+    from coordenador.supervisor import carregar_servicos
+    padrao = re.compile(carregar_servicos()["vila"]["assinatura"], re.I)
+    assert padrao.search(r"C:\Python314\pythonw.exe -X utf8 -m painel.flutuante --medio")
+    assert padrao.search(r"pythonw.exe -m painel.flutuante")
+    assert not padrao.search(r"pythonw.exe -X utf8 -m painel.flutuante.previsao --raiz E:\projetos")
+    assert not padrao.search(r"pythonw.exe -X utf8 -m painel.flutuante.guia")
+
+
 def test_trava_de_processo_morto_e_retomada(tmp_path):
     # 02/10: o coordenador morto deixava o .lock e nenhum outro subia mais.
     from coordenador.supervisor import TravaUnica

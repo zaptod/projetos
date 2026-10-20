@@ -39,7 +39,7 @@
       "cwd": "E:\\projetos",
       "log": "E:\\projetos\\outputs\\vila_flutuante.txt",
       "janela": "normal",
-      "assinatura": "-m\\s+painel\\.flutuante",
+      "assinatura": "-m\\s+painel\\.flutuante(?:\\s|$)",
       "saude": "processo vivo",
       "modulos": ["painel"],
       "reinicio_seguro": false,
