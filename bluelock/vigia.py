@@ -53,7 +53,10 @@ from . import comum
 
 TAREFA = "NeuralFights_bluelock_main"
 INTERVALO_MIN = 30
-LIMITE_DA_TAREFA = "PT45M"
+# 45 min bastavam para a main sozinha; com os ramos (ate 2 `npm test` de
+# ~2,5 min com a maquina livre, 19/10, e prazo de 25 min cada) vai a 90. A
+# tarefa nao abre outra instancia enquanto uma roda (IgnoreNew).
+LIMITE_DA_TAREFA = "PT90M"
 PRAZO_ADIADO_H = 3
 FALHAS_PARA_AVISAR = 6          # 6 olhadas sem rede = 3 h
 ALVO_DO_PEDIDO = "bluelock-main"
@@ -466,12 +469,16 @@ def escrever_lancador(python: str | None = None) -> Path:
     python = python or sys.executable
     saida = RAIZ / "outputs" / "bluelock_vigia.txt"
     saida.parent.mkdir(parents=True, exist_ok=True)
+    # 19/10/2026: a mesma tarefa olha tambem os RAMOS (bluelock.ramos), logo
+    # depois da main e no mesmo log. Os dois em sequencia: nunca dois `npm
+    # test` ao mesmo tempo na maquina.
     with open(destino, "w", encoding="utf-8", newline="") as fh:
         fh.write("@echo off\r\n"
-                 "rem Vigia da main do Blue Lock (a cada 30 min).\r\n"
+                 "rem Vigia da main e dos ramos do Blue Lock (a cada 30 min).\r\n"
                  "rem Gerado por: python -m bluelock.vigia instalar\r\n"
                  f'cd /d "{RAIZ}"\r\n'
-                 f'"{python}" -u -X utf8 -m bluelock.vigia olhar --saida "{saida}" > NUL 2>&1\r\n')
+                 f'"{python}" -u -X utf8 -m bluelock.vigia olhar --saida "{saida}" > NUL 2>&1\r\n'
+                 f'"{python}" -u -X utf8 -m bluelock.ramos olhar --saida "{saida}" > NUL 2>&1\r\n')
     return destino
 
 

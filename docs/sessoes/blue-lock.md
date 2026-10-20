@@ -73,7 +73,9 @@ projeto junto"). Tudo abaixo foi conferido lendo e rodando o espelho naquele dia
 **`E:\BLUE-Lock-project` é um espelho de LEITURA da main do Adrian.** Nunca commitar, empurrar, fazer checkout, reset, clean, stash nem editar nada lá. Só
 `git fetch` e o avanço fast-forward, e quem faz isso é o vigia (§5). O `npm ci` escreve `node_modules/` e `.npm-cache/` (o `.npmrc` dele aponta o cache para
 dentro do projeto), e o Vite escreve `node_modules/.vite/`: os três são ignorados pelo `.gitignore` dele. Se precisarmos de algo dentro do jogo, isso vira
-**proposta escrita para o Adrian** (§7), nunca edição. O nosso código mora em `E:\projetos\bluelock\`.
+**proposta escrita para o Adrian** (§7), nunca edição. O nosso código mora em `E:\projetos\bluelock\`. Para rodar OUTRA versão (um ramo, um commit),
+existe um clone **nosso** e separado, `E:\BLUE-Lock-versoes\repo` (§5c): é lá que se faz checkout, nunca no espelho. E no GitHub dele nada se escreve —
+nem push, nem merge, nem PR: o merge é ele quem faz (§5b).
 
 ## 1. O que é
 
@@ -208,7 +210,7 @@ pushes num aviso, espelho inexistente, sem rede, trava ocupada).
 ```
 python -m bluelock.vigia olhar          # uma olhada agora (imprime o resultado)
 python -m bluelock.vigia status         # o estado guardado
-python -m bluelock.vigia instalar       # cria a tarefa (30 min, oculta, endurecida, limite 45 min)
+python -m bluelock.vigia instalar       # cria a tarefa (30 min, oculta, endurecida, limite 90 min; roda a main E os ramos)
 python -m bluelock.vigia remover
 ```
 
@@ -216,6 +218,99 @@ python -m bluelock.vigia remover
 e `src/simulation.ts`; `npm test` 1684/1684 em 288,1 s, informado pelo vigia). A interface só mostra aprendizado de chute de primeira/vantagem de drible,
 o replay valida esses campos novos e a simulação corrigiu recepção/rebotes; não houve quebra de contrato com `Field`, `Simulation`, personagens ou
 `visual-state`, portanto `bluelock/gravar.py` não precisou mudar. Quem atender um pedido "Blue Lock main mudou" atualiza esta linha.
+
+## 5b. O vigia dos ramos (vale o merge?)
+
+Pedido do Adrian (19/10): "vigie todas as ramificações para ver se vale a pena dar merge". O repositório dele recebe vários ramos por dia, **empilhados**
+(o `fix/bachira-gesture-exit-20261019` continha os cinco anteriores), provavelmente do Codex na nuvem dele, e **sem PR**. `bluelock/ramos.py` roda na MESMA
+tarefa de 30 min, logo depois do vigia da main (o `bluelock_vigia.cmd` tem as duas linhas; nunca dois `npm test` juntos). Trabalha no **clone nosso**
+(§5c), nunca no espelho. Estado e tabela em `%LOCALAPPDATA%\neural-fights\bluelock\ramos.json` (o lançador lê).
+
+1. `git fetch --prune origin` no clone nosso.
+2. Para cada ramo: commits à frente/atrás da main, fast-forward ou não, **se outro ramo aberto o contém** (`merge-base --is-ancestor`) e qual é a **ponta**
+   da pilha; se não é ff, se conflitaria (`git merge-tree --write-tree`, que só escreve objetos soltos no clone nosso — nenhum ramo, nenhum arquivo).
+3. O CI dele: **um** `gh run list --limit 100` para todos, e `gh run view` para dizer QUAL job/passo caiu. O `gh` desta máquina está logado na conta
+   dele (`zaptod`, com escrita): por isso a guarda é nossa — `gh_real` só aceita `run list`/`run view` e recusa `--method`, `-X`, `api`, `rerun`…
+4. `npm test -- --testTimeout=60000` na pasta da versão, **só onde decide o veredito**: a ponta, ff, com CI não vermelho (o ramo contido espera a ponta; CI
+   vermelho já é "não vale"; não-ff já é "precisa de olho"). No máximo 2 por olhada, só com `pode_pesado()`. Resultado guardado por sha; o que só estourou
+   tempo não é guardado e roda de novo.
+5. Diff contra a main por **área** (IA, personagens, gráficos, testes, docs, auditorias, dependências, CI) e as mensagens dos commits.
+6. **Veredito** (`ramos.veredito`, nesta ordem): já na main → "nada a fazer" · contido → "espere: o ramo X já contém este e vai além" · CI vermelho →
+   "não vale: o CI dele quebra (job: passo)" · não-ff → "precisa de olho" (com os arquivos em conflito, se houver) · CI rodando → espere · sem teste
+   ainda → espere · teste vermelho → "não vale" · senão **"vale o merge: fast-forward, CI verde, N/N testes verdes aqui, é a ponta"**.
+7. **Um** aviso no Telegram por olhada, uma linha por ramo/cabeça ainda não avisada (o "espere" de CI rodando/teste adiado só entra depois de 3 h), com o
+   comando que ELE roda no clone dele: `git push origin origin/<ramo>:main` (ff; o GitHub recusa se não for), ou o link de PR
+   (`https://github.com/zaptod/BLUE-Lock-project/compare/main...<ramo>?expand=1`). Ramo já na main não vira aviso.
+
+**Nunca escreve no GitHub dele**: nem push, nem merge, nem PR. `bluelock/test_ramos.py` (16 testes contra repositórios git de verdade): caso zero sem ramo
+= nada; ramo já na main não avisa; pilha de três aponta a ponta e só ela é testada; cabeça nova avisa só aquele ramo; CI vermelho = não vale com o job, sem
+testar; não-ff = precisa de olho e conflito lista o arquivo; teste vermelho; LoL aberto adia e avisa depois de 3 h; CI rodando espera; timeout repete; teto
+de testes; e "nunca escreve": os refs do GitHub de mentira ficam onde o Adrian deixou, os subcomandos git/gh usados são só os de leitura, a guarda recusa
+`pr create`/`api -X PATCH`/`run rerun`, e uma varredura do fonte não acha `push`/`merge` como argumento de processo.
+
+**Primeira olhada real, a seco (19/10, 22:01–22:08, main `face59d`):** 18 ramos no GitHub; 14 já estavam na main (ele juntou os de 18–19/10 no
+`face59d`, às 17:18); a pilha nova de três ramos — `fix/bachira-air-contact-20261019` (+3) ⊂ `fix/isagi-reception-20261020` (+4, **CI vermelho**: job
+`browser`) ⊂ `fix/isagi-off-ball-20261020` (+5) — deu **"vale o merge" para o `fix/isagi-off-ball-20261020`** (ff, CI verde, `npm test` 1770/1770 aqui
+em ~2,5 min) e "espere: o off-ball já contém este" para os dois de baixo; o `docs/blue-lock-ia-400-estrategias-v07-20261014` (14/10, +6/−53, sem CI)
+ficou "precisa de olho: não é ff, não conflita". Foi ESSE caso que mostrou que a ponta vermelha não pode prender quem está embaixo (`_pilhas` agora só
+conta como ponta quem não tem o CI vermelho; há teste). Nada foi avisado (a seco): a primeira olhada da tarefa manda esse aviso, uma vez.
+
+```
+python -m bluelock.ramos olhar          # uma olhada (o que a tarefa roda)
+python -m bluelock.ramos olhar --seco   # analisa e grava ramos.json, sem Telegram
+python -m bluelock.ramos status         # a tabela do último ramos.json
+```
+
+## 5c. As versões e o lançador "Blue Lock — versões"
+
+Pedido do Adrian (19/10): "crie um executável no meu PC que puxa isso, onde posso escolher a versão do jogo que quero rodar e ele roda o html".
+`bluelock/versoes.py` + `bluelock/janela.py`. **Tudo nosso e apagável**, fora do espelho:
+
+```
+E:\BLUE-Lock-versoes\
+  repo\             clone PRÓPRIO do GitHub (--no-checkout; 106 MB de .git; clonar levou 48 s)
+  v\<sha12>\        git worktree de cada versão, SEM artifacts/ (sparse-checkout): ~7 MB em vez de ~500
+  modulos\<lock16>\ o node_modules de cada package-lock diferente; cada versão aponta o seu por JUNCTION
+  jogos\<sha12>.html o jogo num arquivo só (o dist/ do build com JS e CSS embutidos, o mesmo que o scripts/bundle.mjs dele faz)
+  navegador\        o perfil do Chrome do lançador (separado do Chrome do Adrian)
+  versoes.json      o registro: quando preparou, quando usou, fixada
+```
+
+- **Preparar** = `worktree add` + `sparse-checkout` sem `artifacts/` + `checkout` do commit; `npm ci` só se aquele `package-lock.json` ainda não tem
+  `modulos\` (senão é só a junction); `npm run build` (se só o `tsc` reclamar, constrói pelo `vite build` direto e avisa); o `dist/` vira um HTML único.
+  O build do Vite sai num JS e num CSS, sem imagem nem pedaço dinâmico, então **o jogo abre direto do arquivo, sem servidor**. Se um dia o build tiver
+  mais pedaços, a versão cai no modo servidor: `vite preview` numa porta livre, encerrado quando a janela fecha.
+- **Medido em 19/10** no `face59d`: `npm ci` 21 s; `npm run build` 9 s; `npm test -- --testTimeout=60000` **pela junction, na pasta esparsa**: 1684/1684
+  em 143 s (o mesmo total do espelho). Nenhum teste nem o jogo lê `artifacts/` (403 MB de JSON versionado). Pela janela, de verdade (21:55–22:00):
+  a main do zero (`npm ci` 18 s + build) até o Chrome aberto; o `fix/bachira-gesture-exit-20261019` do zero em **10,4 s** (lock igual: só a junction, sem
+  `npm ci`); versão já pronta abre em **1,2 s**. Nas duas, "Iniciar partida" rodou a 60/60 FPS, relógio 02:00 → 01:52 em 8 s, nenhum erro na página.
+  Disco depois de três versões: clone 114 MB, `modulos` 97 MB, `v` 24 MB, `jogos` 2 MB, perfil do Chrome 43 MB.
+- **Abrir** = uma janela **visível** do Chrome com `--user-data-dir=E:\BLUE-Lock-versoes\navegador` (o Adrian quer ver o jogo); por ter perfil próprio,
+  `fechar-navegador` só encerra os `chrome.exe` cuja linha de comando tem esse perfil — nunca o Chrome dele. Sem Chrome, o navegador padrão.
+- **Limpar** = mantém as 8 usadas por último + as fixadas; versão em uso (trava dela ocupada) nunca sai; o `node_modules` sem dono sai junto. A junction é
+  desfeita ANTES de apagar a pasta (teste: apagar a versão não apaga o `node_modules` dividido). O vigia de ramos limpa sozinho depois de testar.
+- **Git no clone nosso**: só `clone`, `fetch`, `worktree`, `sparse-checkout`, `checkout`, `rev-parse`, `log`, `for-each-ref`, `rev-list`, `merge-base`,
+  `merge-tree`, `diff`, `show`, `cat-file`; o guarda (`Versoes._git`) recusa o resto e há teste.
+
+**A janela** (Tk, cara das janelas de trabalho do painel — `painel.estilo.OFICINA`): lista a main, os ramos (veredito do vigia, data, CI, testes aqui,
+"pronta"/★ fixada) e os commits colados já preparados; cartão de detalhe com o veredito, a relação com a main, as áreas, os commits e o comando de merge.
+Botões: **Rodar** (ou duplo clique), **Atualizar lista** (fetch + análise sem testes, sem aviso), **Fixar / soltar**, **Copiar comando de merge**, **Abrir
+pasta**, **Apagar versões velhas**; campo "Colar um commit (ou nome de ramo)". O trabalho roda numa thread que fala com a tela por fila (o `after` de outra
+thread quebra o Tk). Sem console: `pythonw`, e todo subprocesso com `CREATE_NO_WINDOW`.
+
+**O executável é um atalho `.lnk`** (escolhido em vez de PyInstaller: o `.exe` congelaria uma cópia do código e envelheceria a cada mudança; o atalho roda
+sempre o código de `E:\projetos`): alvo `pythonw.exe -m bluelock.versoes janela`, pasta `E:\projetos`, ícone desenhado por código
+(`%LOCALAPPDATA%\neural-fights\bluelock\blue-lock.ico`, um cadeado azul com bola).
+
+```
+python -m bluelock.versoes atalho              # cria "Blue Lock — versões" na Área de Trabalho (só o orquestrador, depois do conferente)
+python -m bluelock.versoes janela              # a janela (o que o atalho abre)
+python -m bluelock.versoes rodar main          # sem janela: prepara e abre
+python -m bluelock.versoes rodar 6902842       # um commit colado
+python -m bluelock.versoes limpar --manter 8
+python -m bluelock.versoes fixar <ramo|sha> / soltar <ramo|sha>
+python -m bluelock.versoes fechar-navegador    # fecha só o Chrome do lançador
+```
 
 ## 6. Contas e o caminho até publicar
 
@@ -261,6 +356,7 @@ Nada disso é necessário para gravar hoje (o gravador funciona de fora); são o
 4. **Eventos com quem fez** (o `MatchEvent` tem `time`, `kind` e `message` em texto: "Vermelho 2 · Sliding Shot"); um `actor`/`character` estruturado
    deixaria a placa "BAROU — SLIDING SHOT" sair sem ler texto.
 5. **Auditorias que escrevam fora de `artifacts/`** (ou com `--saida`), para rodar no espelho sem sujá-lo.
+6. **Apagar os ramos que já estão na main** (14 em 19/10, todos "nada a fazer" no vigia de ramos): é ele quem apaga — nós não escrevemos no GitHub.
 
 ## 8. O que NÃO fazer
 
@@ -278,4 +374,6 @@ Nada disso é necessário para gravar hoje (o gravador funciona de fora); são o
 | O jogo (`src/`, a main) | o Adrian, no GitHub | nós, pelo espelho |
 | mp4 + JSON do `bluelock.gravar` | esta parte | Publicação (quando estrear) |
 | Aviso "a main andou" + pedido na Mesa | `bluelock.vigia` | o orquestrador / a parte `blue-lock` |
+| `ramos.json` (veredito por ramo) + aviso "ramos novos" | `bluelock.ramos` | o Adrian (Telegram), o lançador, o painel/app |
+| `E:\BLUE-Lock-versoes\` (clone nosso, versões, HTML) | `bluelock.versoes` | o lançador, o vigia de ramos |
 | Contas do canal `bluelock` | Publicação (`random_builds/builds/contas.py`) | — |
