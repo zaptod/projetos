@@ -253,6 +253,54 @@ def test_uma_ausencia_so_nao_religa_a_segunda_religa():
     assert iniciou
 
 
+def _vila_sob_demanda():
+    servicos = ficha("vila")
+    servicos["vila"]["sob_demanda"] = True
+    return servicos
+
+
+def test_sob_demanda_fechada_nao_religa_e_aberta_e_adotada():
+    # 19/10/2026: o Adrian fecha a Vila e ela tem de FICAR fechada; quando
+    # ele a abre pelo atalho, o coordenador adota como antes
+    mundo = Mundo({"pid": 12, "comando": "vila"})
+    s, relogio = supervisor(servicos=_vila_sob_demanda(), processos=mundo.processos,
+                            parar=mundo.parar, iniciar=mundo.iniciar)
+    s.pulso()
+    assert s.estado["vila"]["pid"] == 12
+    mundo.parar(12)                                       # o ✕
+    for _ in range(5):
+        relogio.andar(60); s.pulso()
+    assert mundo.iniciou == []
+    assert s.estado["vila"]["situacao"] == "parado" and s.estado["vila"]["pid"] is None
+    mundo.lista.append({"pid": 30, "comando": "vila"})   # o atalho
+    relogio.andar(60); s.pulso()
+    assert s.estado["vila"]["situacao"] == "rodando" and s.estado["vila"]["pid"] == 30
+    assert s.estado["vila"]["motivo_espera"] == ""
+
+
+def test_reiniciar_sob_demanda_fechada_nao_abre():
+    # o CLAUDE.md manda reiniciar o servico afetado depois de cada tarefa:
+    # isso nao pode reabrir a Vila que o Adrian fechou
+    mundo = Mundo()
+    s, _ = supervisor(servicos=_vila_sob_demanda(), processos=mundo.processos,
+                      parar=mundo.parar, iniciar=mundo.iniciar)
+    s.pedir_reinicio("vila")
+    assert s.reiniciar_servico("vila") is True
+    assert mundo.iniciou == [] and "vila" not in s.reinicio_pedido
+    mundo.lista.append({"pid": 30, "comando": "vila"})   # aberta: reinicia de verdade
+    assert s.reiniciar_servico("vila") is True
+    assert mundo.parou == [30] and mundo.iniciou == [100]
+
+
+def test_reiniciar_sob_demanda_com_lista_vazia_nao_abre_nem_da_por_feito():
+    # lista vazia e a consulta do Windows que falhou, nao prova de nada
+    iniciou = []
+    s, _ = supervisor(servicos=_vila_sob_demanda(), processos=lambda: [],
+                      iniciar=lambda _: iniciou.append(1) or 13)
+    assert s.reiniciar_servico("vila", processos=[]) is False
+    assert iniciou == [] and s.ultima_recusa["vila"]["tipo"] == "momento"
+
+
 def test_trava_de_processo_morto_e_retomada(tmp_path):
     # 02/10: o coordenador morto deixava o .lock e nenhum outro subia mais.
     from coordenador.supervisor import TravaUnica

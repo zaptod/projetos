@@ -1366,16 +1366,18 @@ class JanelaMonta(unittest.TestCase):
                                      (modo, n1, "centro cai em", n2))
 
     def test_o_clique_resolve_para_o_botao_certo(self):
+        """O ✕ FECHA de verdade (19/10/2026): a Vila nao volta sozinha."""
         for modo in ("medio", "mini"):
             self.app.trocar(modo)
             self.app.update()
             caixa = dict(self.app._botoes)["fechar"]
-            caixa.botao.event_generate("<ButtonRelease-1>")
-            self.app.update()
-            self.assertEqual(self.app.modo, "icone", modo)
-            self.app.restaurar()
+            with mock.patch.object(self.app, "sair") as sair:
+                caixa.botao.event_generate("<ButtonRelease-1>")
+                self.app.update()
+            sair.assert_called_once_with("botao")
+            self.assertEqual(self.app.modo, modo, "o ✕ nao vira mais o icone")
 
-    def test_menos_e_x_viram_o_icone_e_ele_volta(self):
+    def test_menos_vira_o_icone_e_ele_volta(self):
         self.app.trocar("grande")
         self.app.update()
         dict(self.app._botoes)["recolher"].botao.event_generate(
@@ -1398,7 +1400,7 @@ class JanelaMonta(unittest.TestCase):
         rotulos = [self.app._menu.entrycget(i, "label")
                    for i in range(self.app._menu.index("end") + 1)
                    if self.app._menu.type(i) != "separator"]
-        self.assertIn("Fechar de verdade", rotulos)
+        self.assertIn("Fechar", rotulos)
 
     def test_pedido_de_mostrar_traz_a_janela(self):
         self.app.trocar("medio")
@@ -1412,35 +1414,35 @@ class JanelaMonta(unittest.TestCase):
 
     def test_prova_nao_grava_preferencias(self):
         self.app.trocar("grande")
-        self.app.pedido_de_fechar()
-        self.assertFalse(self.app.caminhos.preferencias.exists())
         self.app.prever_agora()
         self.assertEqual(self.coletor.pedidos, 1)
+        self.app.pedido_de_fechar()
+        self.assertFalse(self.app.caminhos.preferencias.exists())
 
     @unittest.skipUnless(sys.platform == "win32", "WM_CLOSE e do Windows")
-    def test_pedido_de_fechar_do_sistema_vira_o_icone(self):
+    def test_pedido_de_fechar_do_sistema_fecha_pelo_sair(self):
         """Medido em 28/09/2026: sem o protocolo, o WM_CLOSE destruia a
-        janela sem borda pelo padrao do Tk, e a Vila acabava calada."""
+        janela sem borda pelo padrao do Tk, e a Vila acabava calada. Desde
+        19/10/2026 ele FECHA, mas pelo `sair()` (que anota a saida)."""
         import ctypes
 
         from painel.flutuante.captura import hwnd_da_janela
-        for mensagem, parametro in ((0x0010, 0),          # WM_CLOSE
-                                    (0x0112, 0xF060)):    # SC_CLOSE
-            self.app.trocar("medio")
-            self.app.update()
-            ctypes.windll.user32.PostMessageW(
-                ctypes.c_void_p(hwnd_da_janela(self.app)), mensagem,
-                parametro, 0)
-            prazo = time.monotonic() + 3
-            while self.app.modo != "icone" and time.monotonic() < prazo:
+        self.app.trocar("medio")
+        self.app.update()
+        ctypes.windll.user32.PostMessageW(
+            ctypes.c_void_p(hwnd_da_janela(self.app)), 0x0010, 0, 0)  # WM_CLOSE
+        prazo = time.monotonic() + 3
+        while self.app._vivo and time.monotonic() < prazo:
+            try:
                 self.app.update()
-                time.sleep(0.02)
-            self.assertTrue(self.app.winfo_exists(), hex(mensagem))
-            self.assertEqual(self.app.modo, "icone", hex(mensagem))
+            except tk.TclError:
+                break
+            time.sleep(0.02)
+        self.assertFalse(self.app._vivo, "o WM_CLOSE passa pelo sair()")
 
     def test_caixa_preta_da_janela_de_verdade(self):
         """Com `persistir`, a janela anota a vida, o pedido de fechar e a
-        saida pelo menu — e a proxima NAO conta essa saida como queda."""
+        saida — e a proxima NAO conta essa saida como queda."""
         arquivo = self.app.caminhos.preferencias
         self.app.persistir = True
         self.app._comecar_vida()
@@ -1448,10 +1450,7 @@ class JanelaMonta(unittest.TestCase):
         salvo = json.loads(arquivo.read_text(encoding="utf-8"))
         self.assertEqual(salvo["vida"]["pid"], os.getpid())
         self.assertEqual(salvo["fechar_pedido"]["vezes"], 1)
-        self.assertEqual(salvo["modo"], "icone")
-        self.app.sair()
-        salvo = json.loads(arquivo.read_text(encoding="utf-8"))
-        self.assertEqual(salvo["vida"]["saiu"], "menu")
+        self.assertEqual(salvo["vida"]["saiu"], "sistema")
         self.assertIsNone(preferencias.abrir_vida(salvo, os.getpid() + 4))
 
 

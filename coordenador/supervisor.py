@@ -657,6 +657,17 @@ class Supervisor:
     def verificar_servico(self, nome, processos):
         ficha, estado = self.servicos[nome], self.estado[nome]
         achado = self._adotar(ficha, processos)
+        if achado is None and ficha.get("sob_demanda"):
+            # 19/10/2026, pedido do Adrian: a Vila fechada FICA fechada (poupa
+            # RAM e CPU); quem a abre e ele, pelo atalho. Aberta, e adotada
+            # como qualquer servico. "parado" e o que o app ja sabe mostrar
+            # (com o "Ligar").
+            self.ausencias[nome] = 0
+            if estado["situacao"] != "parado":
+                self.evento(nome, "fechado", "sob demanda: não religo sozinho")
+            estado.update(situacao="parado", pid=None, saude="desconhecida",
+                          proximo_reinicio=None, motivo_espera="fechada; abre pelo atalho")
+            return
         if achado is None:
             # Uma ausencia so nao basta: o processo pode estar trocando de pid ou
             # a listagem pode ter vindo pela metade. Religa na segunda seguida.
@@ -679,7 +690,7 @@ class Supervisor:
                 # processo novo (religado por fora, ex.: `coordenador reiniciar`
                 # na linha de comando): a marca de codigo velho era do anterior;
                 # o `git` abaixo reavalia com o `desde` do novo (14/10/2026)
-                estado.update(pid=state_pid, situacao="rodando", codigo_velho=False,
+                estado.update(pid=state_pid, situacao="rodando", codigo_velho=False, motivo_espera="",
                               desde=achado.get("inicio") or estado["desde"] or agora_iso(self.relogio()))
                 self.velho_desde.pop(nome, None)
         estado["saude"] = self._saude(nome, True)
@@ -1007,6 +1018,16 @@ class Supervisor:
         # TODOS os que casam: um duplicado de antes tambem sai, senao o
         # religar soma mais um ao lado dele
         pids = [p["pid"] for p in processos if padrao.search(p["comando"])]
+        if not pids and self.servicos[nome].get("sob_demanda"):
+            # fechado de proposito: reiniciar nao e abrir (o codigo novo entra
+            # quando o Adrian abrir). Lista vazia e consulta que falhou: nao
+            # sei se esta aberto, entao nao abro nem dou por feito
+            if not processos:
+                return self._recusar(nome, "momento", "não li a lista de processos")
+            self.reinicio_pedido.discard(nome)
+            estado.update(reinicio_pedido=False, codigo_velho=False)
+            self.evento(nome, "reiniciou", "fechado (sob demanda): nada a reiniciar")
+            return True
         if pids:
             try:
                 for pid in pids:

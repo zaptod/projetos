@@ -75,3 +75,5 @@ outputs/_ias/
 .pytest_tmp/
 .pytest_saida.txt
 .pytest_erro.txt
+# O Vila.exe e o icone sao gerados por python -m ferramentas.vila_exe.
+ferramentas/vila/

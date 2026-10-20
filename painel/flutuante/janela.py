@@ -623,9 +623,8 @@ class Janela(tk.Tk):
         menu.add_command(label="Abrir o guia das IAs (colar HTML)",
                          command=self.abrir_guia)
         menu.add_separator()
-        # O unico jeito de FECHAR de verdade: o ✕ e o − viram o icone, que
-        # continua visivel e traz a janela de volta com um clique.
-        menu.add_command(label="Fechar de verdade", command=self.sair)
+        # No icone nao ha ✕: fechar e por aqui (o − recolhe para o icone).
+        menu.add_command(label="Fechar", command=self.sair)
         return menu
 
     def _abrir_menu(self, evento) -> None:
@@ -846,10 +845,12 @@ class Janela(tk.Tk):
         # OS BOTOES ENTRAM PRIMEIRO: no `pack`, quem chega antes reserva o
         # espaco. O texto com `expand` fica com o que sobrar, nunca o
         # contrario (era isso que sobrepunha o ✕ ao vizinho).
+        # 19/10/2026, pedido do Adrian: o ✕ FECHA de verdade e a Vila nao
+        # volta sozinha (o coordenador a trata como `sob_demanda`); reabrir
+        # e pelo atalho "Vila" da area de trabalho. Recolher e o −.
         botoes = [
-            ("✕", "fechar", lambda: self.trocar("icone"),
-             "fechar: vira o ícone flutuante (sair de vez: botão direito "
-             "no ícone → Fechar de verdade)"),
+            ("✕", "fechar", lambda: self.sair("botao"),
+             "fechar a Vila (abrir de novo: atalho Vila na área de trabalho)"),
             ("−", "recolher", lambda: self.trocar("icone"),
              "recolher para o ícone flutuante (clique nele para voltar)"),
             ("▬", "faixa", lambda: self.trocar("mini"),
@@ -920,8 +921,8 @@ class Janela(tk.Tk):
                                                    outline="")
         self._ponto.pack(side="left")
         # Botoes primeiro (ver `_barra_titulo`), depois o texto com width=1.
-        self._botao(linha1, "✕", lambda: self.trocar("icone"),
-                    "fechar: vira o ícone flutuante", nome="fechar").pack(
+        self._botao(linha1, "✕", lambda: self.sair("botao"),
+                    "fechar a Vila", nome="fechar").pack(
             side="right", padx=(2, 2))
         self._botao(linha1, "−", lambda: self.trocar("icone"),
                     "recolher para o ícone", nome="recolher").pack(
@@ -1373,23 +1374,20 @@ class Janela(tk.Tk):
         self._visto_em = time.monotonic()
 
     def pedido_de_fechar(self) -> None:
-        """O SISTEMA pediu para fechar (WM_CLOSE): vira o icone, como o ✕.
+        """O SISTEMA pediu para fechar (WM_CLOSE): fecha, como o ✕.
 
         Medido em 28/09/2026 com uma janela Tk sem borda: WM_CLOSE e o
         SC_CLOSE do menu de sistema DESTROEM a raiz pelo padrao do Tk, e o
         processo acaba sem passar pelo `sair()`. Quem manda isso: "Finalizar
-        tarefa", `taskkill` sem /F e, em janela comum, o Alt+F4. Fechar de
-        verdade continua existindo, mas so pelo menu (botao direito ->
-        Fechar de verdade) — a regra do icone.
+        tarefa", `taskkill` sem /F e, em janela comum, o Alt+F4. Ate
+        19/10/2026 isso virava o icone; agora fecha pelo `sair()`, que anota
+        a saida (a proxima janela nao conta como queda).
         """
         if not self._vivo:
             return
         if self.persistir:
             preferencias.anotar_pedido_de_fechar(self.prefs)
-        if self.modo != "icone":
-            self.trocar("icone")                   # o trocar() ja guarda
-        else:
-            self.guardar()
+        self.sair("sistema")
 
     def sair(self, como: str = "menu") -> None:
         self._vivo = False

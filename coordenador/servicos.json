@@ -42,7 +42,8 @@
       "assinatura": "-m\\s+painel\\.flutuante",
       "saude": "processo vivo",
       "modulos": ["painel"],
-      "reinicio_seguro": false
+      "reinicio_seguro": false,
+      "sob_demanda": true
     }
   ]
 }
