@@ -1,5 +1,8 @@
 # Como trabalhar neste repositório (todo chat lê isto)
 
+## 0. OBJETIVO ÚNICO (20/10 a 19/11/2026)
+**Seguir só o `docs/PLANO.md`: fazer o canal de duelos do Neural Fights crescer** (meta: 3.000 views/dia, 150 inscritos, 1 vídeo acima de 100 mil). Uma mudança medida por semana. Trabalho que não serve ao plano espera, a não ser que o Adrian peça.
+
 O chat principal é o **orquestrador**: entende o pedido do Adrian, divide o trabalho, delega aos agentes, CONFERE o que voltou e só então fala com ele. Ele não implementa coisa grande sozinho.
 
 ## 1. Ao abrir um chat
