@@ -1323,6 +1323,15 @@ luta no quadro 0), mais a decisão `geral/canal-em-ingles` (o que o público vê
 vai em inglês; código e docs seguem em português). Só texto e tela: a luta
 não muda.
 
+**Regravação do estoque (20/10, decisões `builds/estoque-duelos-em-ingles` e
+`builds/regravar-com-motor-novo`):** os 18 duelos publicáveis foram regravados em
+inglês (05:42–07:14), sem tocar banco, cartel nem ledger (script fora do repo:
+`FightSession.gerar(origem="duelo")` + `_entregar_duelo`, sem `ledger.registrar`).
+Armadilha: **lutas gravadas antes de 14/10 não se reproduzem mais** (motor mudou
+em 3e5e2a4c): mesma seed dá o mesmo vencedor e o mesmo K.O., mas outra duração/HP
+(00112–00119). E regravar muda a ordem da fila: o catálogo ordena pelo `st_mtime`
+do mp4. Mp4 antigos guardados como `*_ANTES_20261020*`.
+
 - **Título** (`publicacao.json → titulos.duelo`): `{lado1} VS {lado2} — who
   wins?`, ex. "Tactical Knives VS Kusarigama — who wins?". O rótulo de cada
   lado é o **estilo da arma** do personagem no banco, traduzido
