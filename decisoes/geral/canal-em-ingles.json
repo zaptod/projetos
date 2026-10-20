@@ -3,7 +3,14 @@
   "contexto": "Adrian 20/10: 'quero passar o projeto para ingles, sinto que tem um alcance maior'. Vale para o que o PÚBLICO vê (título, legenda, hashtags, texto na tela, narração, idioma do vídeo na API); código, docs e app seguem em português para ele. Entra junto da semana 1 do PLANO.",
   "criado": "2026-10-20T02:14:55.220872",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador (adrian-nao-quer-decidir)",
+      "em": "2026-10-20T02:15:01",
+      "opcao": "conteudo",
+      "origem": "cli"
+    }
+  ],
   "id": "canal-em-ingles",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Passar o Neural Fights para inglês?",
   "projeto": "geral",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Canal de duelos em inglês",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador (adrian-nao-quer-decidir)",
+    "em": "2026-10-20T02:15:01",
+    "opcao": "conteudo"
+  }
 }
