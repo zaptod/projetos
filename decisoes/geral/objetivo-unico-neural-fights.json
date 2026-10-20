@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-20T01:55:26",
+      "evento": "2026-10-20T01:55:24",
+      "linha": 200,
+      "nota": "resposta sem pedido de origem: geral/objetivo-unico-neural-fights = Seguir só o docs/PLANO.md: duelos do Neural Fights, 3.000 views/dia, 150 inscritos, 1 vídeo >100 mil, uma mudança medida por semana",
+      "opcao": "plano",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Pesquisa em docs/pesquisa/ (Shorts que deram certo, ferramentas de vídeo). Plano em docs/PLANO.md.",
   "criado": "2026-10-20T01:55:23.143101",
   "depende_de": [],
