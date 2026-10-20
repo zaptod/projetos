@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Semana 1 do PLANO mede inglês + título novo; vídeo misturado suja a medida. A luta é determinística pela seed, então regravar dá a mesma luta. 10 dos 28 do estoque ficam fora por terem < 15 s.",
+  "criado": "2026-10-20T04:15:20.540507",
+  "depende_de": [],
+  "historico": [],
+  "id": "estoque-duelos-em-ingles",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "regravar",
+      "pede_comentario": false,
+      "rotulo": "Regravar os 18 publicáveis com o código novo, fora da janela das postagens (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "português no clipe, medida da semana misturada",
+      "id": "misturado",
+      "pede_comentario": false,
+      "rotulo": "Publicar como está"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Os 18 duelos publicáveis do estoque têm texto em português gravado no clipe (PRESSÃO, CRÍTICO!, nome sobre o lutador). Regravar ou publicar misturado?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Estoque de duelos: regravar em inglês",
+  "vigente": null
+}
