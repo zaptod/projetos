@@ -68,6 +68,7 @@ outputs/_ias/
 .claude/*
 !.claude/agents/
 !.claude/commands/
+!.claude/skills/
 !.claude/settings.json
 
 # runtime e temporarios dos testes do Codex (11/10/2026)
