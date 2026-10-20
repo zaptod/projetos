@@ -229,7 +229,10 @@ tarefa de 30 min, logo depois do vigia da main (o `bluelock_vigia.cmd` tem as du
 1. `git fetch --prune origin` no clone nosso.
 2. Para cada ramo: commits à frente/atrás da main, fast-forward ou não, **se outro ramo aberto o contém** (`merge-base --is-ancestor`) e qual é a **ponta**
    da pilha; se não é ff, se conflitaria (`git merge-tree --write-tree`, que só escreve objetos soltos no clone nosso — nenhum ramo, nenhum arquivo).
-3. O CI dele: **um** `gh run list --limit 100` para todos, e `gh run view` para dizer QUAL job/passo caiu. O `gh` desta máquina está logado na conta
+3. O CI dele: **um** `gh run list --limit 100` para todos, e `gh run view` para dizer QUAL job/passo caiu. **Sem rede NÃO é "sem CI"**. Em 19/10, às
+   22:48, o `gh` deu "TLS handshake timeout", todos viraram "sem CI" e o off-ball continuou "vale o merge" sem ninguém ter lido o CI. Agora o último CI
+   terminado de cada commit fica em `memoria.ci` do `ramos.json` e é usado quando o `gh` falha; sem nem isso, o veredito é "espere: não consegui ler o CI"
+   (não final: não vira aviso), e a janela mostra "?". O `gh` desta máquina está logado na conta
    dele (`zaptod`, com escrita): por isso a guarda é nossa — `gh_real` só aceita `run list`/`run view` e recusa `--method`, `-X`, `api`, `rerun`…
 4. `npm test -- --testTimeout=60000` na pasta da versão, **só onde decide o veredito**: a ponta, ff, com CI não vermelho (o ramo contido espera a ponta; CI
    vermelho já é "não vale"; não-ff já é "precisa de olho"). No máximo 2 por olhada, só com `pode_pesado()`. Resultado guardado por sha; o que só estourou
@@ -242,7 +245,7 @@ tarefa de 30 min, logo depois do vigia da main (o `bluelock_vigia.cmd` tem as du
    comando que ELE roda no clone dele: `git push origin origin/<ramo>:main` (ff; o GitHub recusa se não for), ou o link de PR
    (`https://github.com/zaptod/BLUE-Lock-project/compare/main...<ramo>?expand=1`). Ramo já na main não vira aviso.
 
-**Nunca escreve no GitHub dele**: nem push, nem merge, nem PR. `bluelock/test_ramos.py` (16 testes contra repositórios git de verdade): caso zero sem ramo
+**Nunca escreve no GitHub dele**: nem push, nem merge, nem PR. `bluelock/test_ramos.py` (19 testes contra repositórios git de verdade; mais sem rede no gh e ponta vermelha): caso zero sem ramo
 = nada; ramo já na main não avisa; pilha de três aponta a ponta e só ela é testada; cabeça nova avisa só aquele ramo; CI vermelho = não vale com o job, sem
 testar; não-ff = precisa de olho e conflito lista o arquivo; teste vermelho; LoL aberto adia e avisa depois de 3 h; CI rodando espera; timeout repete; teto
 de testes; e "nunca escreve": os refs do GitHub de mentira ficam onde o Adrian deixou, os subcomandos git/gh usados são só os de leitura, a guarda recusa
@@ -292,10 +295,21 @@ E:\BLUE-Lock-versoes\
 - **Git no clone nosso**: só `clone`, `fetch`, `worktree`, `sparse-checkout`, `checkout`, `rev-parse`, `log`, `for-each-ref`, `rev-list`, `merge-base`,
   `merge-tree`, `diff`, `show`, `cat-file`; o guarda (`Versoes._git`) recusa o resto e há teste.
 
-**A janela** (Tk, cara das janelas de trabalho do painel — `painel.estilo.OFICINA`): lista a main, os ramos (veredito do vigia, data, CI, testes aqui,
-"pronta"/★ fixada) e os commits colados já preparados; cartão de detalhe com o veredito, a relação com a main, as áreas, os commits e o comando de merge.
-Botões: **Rodar** (ou duplo clique), **Atualizar lista** (fetch + análise sem testes, sem aviso), **Fixar / soltar**, **Copiar comando de merge**, **Abrir
-pasta**, **Apagar versões velhas**; campo "Colar um commit (ou nome de ramo)". O trabalho roda numa thread que fala com a tela por fila (o `after` de outra
+**A janela** (Tk, cara das janelas de trabalho do painel — `painel.estilo.OFICINA`), feita para a tela dele: **1920x1080 a 150% = 1280x720 lógicos,
+~680 úteis** (medido pelo conferente em 19/10; não é 1366x768). Abre em 1180x630. Lista, na ordem, a main, os commits colados já preparados, os ramos
+com algo a decidir e os já na main. Colunas: veredito **curto** (≤ 36 caracteres: "✅ vale o merge", "⏳ espere (contido no isagi-off-ball)", "⚠ precisa
+de olho (não é ff)", "❌ não vale (CI vermelho)", "✔ já na main"), data, CI, testes aqui, "pronta"/★ fixada. A **barra de rolagem é empacotada antes da
+tabela** e só a coluna "Versão" estica. Na 1ª versão as colunas pediam 1115 px num quadro de 1106, a barra ficava com 0 px e 11 de 19 linhas sumiam.
+Embaixo fica o cartão de detalhe:
+- a frase inteira do veredito;
+- logo abaixo, a linha **Merge:** com o comando (ou o link do PR no "precisa de olho") e o botão de copiar. No "espere (contido)" o botão fica
+  desligado e a linha diz "dê o merge do <ponta>";
+- um texto com barra para a relação com a main, as áreas e os commits.
+
+Botões: **Rodar** (ou duplo clique), **Atualizar lista** (fetch + análise sem testes, sem aviso), **Fixar / soltar**, **Abrir pasta**, **Apagar versões
+velhas** (a versão aberta nesta janela é protegida explicitamente: entra nos `protegidos` e a janela segura a trava dela), e o campo "Colar um commit ou
+ramo" + **Rodar este**. O Chrome do lançador abre com `--start-maximized` e, antes, apaga o `window_placement` guardado no perfil: o perfil tinha
+guardado 1920x1106 numa área útil de 1020, e a janela abria maior que a tela. O trabalho roda numa thread que fala com a tela por fila (o `after` de outra
 thread quebra o Tk). Sem console: `pythonw`, e todo subprocesso com `CREATE_NO_WINDOW`.
 
 **O executável é um atalho `.lnk`** (escolhido em vez de PyInstaller: o `.exe` congelaria uma cópia do código e envelheceria a cada mudança; o atalho roda

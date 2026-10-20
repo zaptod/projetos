@@ -10,6 +10,12 @@ jogo numa janela VISIVEL do Chrome (perfil proprio do lancador).
 A cara e a das janelas de trabalho do painel (`painel.estilo.OFICINA`):
 sobria e densa, borda em vez de bloco de cor, acento so no que e clicavel.
 
+A TELA DELE (medida pelo conferente, 19/10): 1920x1080 a 150% = 1280x720
+logicos, ~680 uteis com a barra de tarefas. Tudo aqui cabe nisso: a lista
+ROLA (barra empacotada antes da tabela), o veredito da lista e CURTO (a frase
+inteira fica no detalhe) e o comando de merge tem linha propria logo abaixo
+do veredito — antes ele era a ultima linha de um texto de 4 linhas e sumia.
+
 O trabalho pesado roda numa thread e fala com a tela por uma FILA lida pelo
 `after` da thread da interface — `after()` chamado de outra thread quebra o
 Tk (memoria random-builds-reacoes-e-fluxo).
@@ -18,19 +24,26 @@ from __future__ import annotations
 
 import os
 import queue
+import re
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
+from contextlib import ExitStack
 from datetime import datetime
 from tkinter import messagebox, ttk
 
 from .ramos import VigiaDeRamos, link_de_pr
 from .versoes import MANTER, ErroDeVersao, Versoes, matar_arvore
 
-ICONE_DO_TIPO = {"vale": "✅", "espere": "⏸", "nao_vale": "❌", "olho": "👀", "na_main": "✔"}
-COLUNAS = [("versao", "Versão", 330, "w"), ("commit", "Commit", 70, "w"), ("data", "Data", 92, "w"),
-           ("veredito", "Veredito do vigia", 380, "w"), ("ci", "CI", 78, "w"),
-           ("testes", "Testes aqui", 92, "w"), ("pronta", "Pronta", 70, "w")]
+ICONE_DO_TIPO = {"vale": "✅", "espere": "⏳", "nao_vale": "❌", "olho": "⚠", "na_main": "✔"}
+# (id, titulo, exemplo que tem de caber). A "versao" e a unica que estica:
+# ela absorve a sobra e encolhe quando falta, sem empurrar a barra de rolagem
+# para fora (19/10: 1115 px de colunas num quadro de 1106 deixavam a barra com 0).
+COLUNAS = [("versao", "Versão", "fix/bachira-air-contact"), ("commit", "Commit", "face59dc"),
+           ("data", "Data", "19/10 21:57"), ("veredito", "Veredito", "⏳ espere (contido no isagi-off-ba…)"),
+           ("ci", "CI", "vermelho"), ("testes", "Testes aqui", "falhou 1770/1770"), ("pronta", "Pronta", "★ servidor")]
+VEREDITO_MAX = 36           # caracteres do veredito da lista
+ALTURA_UTIL = 680           # a tela dele, em pixels logicos uteis
 
 
 def _hora(iso: str | None) -> str:
@@ -46,6 +59,8 @@ def _ci(r: dict) -> str:
     ci = r.get("ci") or {}
     if not r.get("a_frente"):
         return "—"
+    if ci.get("indisponivel"):
+        return "?"                          # sem rede: NAO e "sem CI"
     return {"success": "verde", "failure": "vermelho"}.get(ci.get("conclusao") or "", "") or \
         ({"in_progress": "rodando", "queued": "na fila"}.get(ci.get("estado") or "", "") or "sem CI")
 
@@ -60,10 +75,70 @@ def _testes(r: dict) -> str:
     return "ok" if t.get("ok") else "falhou"
 
 
+def apelido(ramo: str) -> str:
+    """`fix/isagi-off-ball-20261020` -> `isagi-off-ball` (para caber na lista)."""
+    curto = re.sub(r"^(feat|fix|chore|docs|refactor|test)/", "", ramo)
+    curto = re.sub(r"-\d{8}$", "", curto)
+    return curto if len(curto) <= 16 else curto[:15] + "…"
+
+
+def veredito_curto(a: dict | None) -> str:
+    """O veredito da LISTA: no maximo `VEREDITO_MAX` caracteres. A frase
+    inteira (com o porque) fica no detalhe."""
+    if not a:
+        return "⏳ o vigia ainda não olhou"
+    v = a.get("veredito") or {}
+    codigo, tipo = v.get("codigo"), v.get("tipo") or "espere"
+    icone = ICONE_DO_TIPO.get(tipo, "•")
+    pontas = a.get("pontas") or []
+    texto = {
+        "vale": "vale o merge",
+        "na_main": "já na main",
+        "contido": f"espere (contido no {apelido(pontas[0])})" if pontas else "espere (contido)",
+        "ci_rodando": "espere (CI rodando)",
+        "ci_ilegivel": "espere (CI ilegível agora)",
+        "sem_teste": "espere (teste na fila)",
+        "ci_vermelho": "não vale (CI vermelho)",
+        "teste_vermelho": "não vale (testes quebram)",
+        "npm_ci": "não vale (npm ci falha)",
+        "nao_ff": "precisa de olho (não é ff)",
+        "conflito": "precisa de olho (conflito)",
+        "ci_estranho": "precisa de olho (CI)",
+    }.get(codigo, (v.get("texto") or "").replace("`", ""))
+    frase = f"{icone} {texto}"
+    return frase if len(frase) <= VEREDITO_MAX else frase[:VEREDITO_MAX - 1] + "…"
+
+
+def acao_de_merge(linha: dict | None) -> dict:
+    """O que a linha do merge mostra e se o botao copia: {texto, copiar, rotulo}.
+
+    So o "vale" copia o comando e so o "precisa de olho" copia o link do PR;
+    no "espere (contido)" o botao fica desligado e a linha diz de quem e o
+    merge (antes copiava o link do PR do ramo de baixo)."""
+    a = (linha or {}).get("analise") or {}
+    if not linha or linha.get("tipo") == "main":
+        return {"texto": "a main é a versão oficial: nada a juntar", "copiar": None, "rotulo": "Copiar"}
+    if not a:
+        return {"texto": "sem análise do vigia para esta versão", "copiar": None, "rotulo": "Copiar"}
+    v = a.get("veredito") or {}
+    if a.get("comando"):
+        return {"texto": a["comando"], "copiar": a["comando"], "rotulo": "Copiar comando"}
+    if v.get("codigo") == "contido" and a.get("pontas"):
+        return {"texto": f"dê o merge do {a['pontas'][0]} (ele contém este)", "copiar": None,
+                "rotulo": "Copiar comando"}
+    if v.get("tipo") == "olho" and a.get("a_frente"):
+        pr = link_de_pr(linha["ref"])
+        return {"texto": f"abrir PR: {pr}", "copiar": pr, "rotulo": "Copiar link do PR"}
+    if v.get("tipo") == "na_main":
+        return {"texto": "já está na main: nada a fazer", "copiar": None, "rotulo": "Copiar"}
+    return {"texto": "sem merge agora: " + (v.get("texto") or "").replace("`", ""), "copiar": None,
+            "rotulo": "Copiar"}
+
+
 def linhas(ramos_clone: list[dict], tabela: dict | None, registro: dict) -> list[dict]:
-    """As linhas da tabela, na ordem: main, ramos com coisa a decidir, ramos
-    ja na main, e por fim os commits colados que estao preparados. Pura (o
-    teste chama sem Tk)."""
+    """As linhas da tabela, na ordem: main, commits colados que estao
+    preparados, ramos com coisa a decidir e ramos ja na main. Pura (o teste
+    chama sem Tk)."""
     tabela = tabela or {}
     analise = {r["ramo"]: r for r in tabela.get("ramos") or []}
     versoes = registro.get("versoes") or {}
@@ -74,7 +149,7 @@ def linhas(ramos_clone: list[dict], tabela: dict | None, registro: dict) -> list
         if ficha.get("modo") == "html":
             return marca + "sim"
         if ficha.get("modo") == "servidor":
-            return marca + "sim (servidor)"
+            return marca + "servidor"
         return marca + ("pasta" if ficha else "")
 
     saida, vistos = [], set()
@@ -84,54 +159,57 @@ def linhas(ramos_clone: list[dict], tabela: dict | None, registro: dict) -> list
         a = analise.get(nome) if (analise.get(nome) or {}).get("sha") == sha else None
         if nome == "main":
             saida.append({"id": "ramo:main", "ref": "main", "sha": sha, "tipo": "main", "ordem": 0,
-                          "valores": ("main — a versão oficial", sha[:7], _hora(r.get("data")),
-                                      r.get("assunto", "")[:70], "", "", pronta(sha)), "analise": None,
-                          "assunto": r.get("assunto", "")})
+                          "valores": ("main", sha[:7], _hora(r.get("data")), "★ a versão oficial", "", "",
+                                      pronta(sha)), "analise": None, "assunto": r.get("assunto", "")})
             continue
-        if a:
-            v = a.get("veredito") or {}
-            tipo = v.get("tipo") or "espere"
-            texto = f"{ICONE_DO_TIPO.get(tipo, '•')} {v.get('texto', '')}".replace("`", "")
-            ci, testes = _ci(a), _testes(a)
-        else:
-            tipo, texto, ci, testes = "espere", "⏸ o vigia ainda não olhou esta cabeça", "", ""
-        ordem = 2 if tipo == "na_main" else 1
-        saida.append({"id": f"ramo:{nome}", "ref": nome, "sha": sha, "tipo": tipo, "ordem": ordem,
-                      "valores": (nome, sha[:7], _hora(r.get("data")), texto, ci, testes, pronta(sha)),
+        tipo = ((a or {}).get("veredito") or {}).get("tipo") or "espere"
+        ci, testes = (_ci(a), _testes(a)) if a else ("", "")
+        saida.append({"id": f"ramo:{nome}", "ref": nome, "sha": sha, "tipo": tipo,
+                      "ordem": 3 if tipo == "na_main" else 2,
+                      "valores": (nome, sha[:7], _hora(r.get("data")), veredito_curto(a), ci, testes, pronta(sha)),
                       "analise": a, "assunto": r.get("assunto", "")})
     for sha, ficha in sorted(versoes.items(), key=lambda par: par[1].get("usada_em") or "", reverse=True):
         if sha in vistos:
             continue
-        rotulo = f"commit {sha[:7]} — {ficha.get('assunto', '')}"[:80]
-        saida.append({"id": f"commit:{sha}", "ref": sha, "sha": sha, "tipo": "commit", "ordem": 3,
-                      "valores": (rotulo, sha[:7], _hora(ficha.get("data")), f"(colado; era {ficha.get('ref', '?')})",
-                                  "", "", pronta(sha)), "analise": None, "assunto": ficha.get("assunto", "")})
+        saida.append({"id": f"commit:{sha}", "ref": sha, "sha": sha, "tipo": "commit", "ordem": 1,
+                      "valores": (f"commit {sha[:7]}", sha[:7], _hora(ficha.get("data")), "colado",
+                                  "", "", pronta(sha)), "analise": None,
+                      "assunto": f"{ficha.get('assunto', '')} (era {ficha.get('ref', '?')})"})
     saida.sort(key=lambda linha: linha["ordem"])
     return saida
 
 
-def detalhe(linha: dict | None) -> str:
-    """O texto do cartao de baixo para a linha escolhida."""
+def titulo_do_detalhe(linha: dict | None) -> tuple[str, str]:
+    """(primeira linha, veredito por extenso) do cartao de baixo."""
     if not linha:
-        return "Escolha uma versão na lista (ou cole um commit) e clique em Rodar."
+        return "Escolha uma versão na lista (ou cole um commit) e clique em Rodar.", ""
+    topo = f"{linha['valores'][0]}  ·  {linha['sha'][:10]}  ·  {linha.get('assunto', '')}"
     a = linha.get("analise")
-    partes = [f"{linha['valores'][0]}  ·  {linha['sha'][:10]}  ·  {linha.get('assunto', '')}"]
-    if a:
-        v = a.get("veredito") or {}
-        partes.append(f"Veredito: {v.get('texto', '').replace('`', '')}")
-        partes.append(f"Relação com a main: +{a.get('a_frente', 0)} à frente, -{a.get('atras', 0)} atrás"
-                      + (", fast-forward" if a.get("ff") and a.get("a_frente") else ""))
-        if a.get("contem"):
-            partes.append("Contém os ramos: " + ", ".join(a["contem"]))
-        if a.get("areas"):
-            partes.append(f"Mexe em {a.get('arquivos', 0)} arquivo(s): "
-                          + ", ".join(f"{k} {n}" for k, n in a["areas"].items()))
-        for commit in (a.get("commits") or [])[:6]:
-            partes.append(f"  • {commit.get('hash')} {commit.get('assunto', '')[:90]}")
-        if a.get("comando"):
-            partes.append(f"Para dar merge (no seu clone, depois de git fetch):  {a['comando']}")
-        elif a.get("a_frente"):
-            partes.append(f"PR: {link_de_pr(linha['ref'])}")
+    if linha.get("tipo") == "main":
+        return topo, "A versão oficial dele (origin/main)."
+    if not a:
+        return topo, "Sem análise do vigia de ramos para esta cabeça (clique em Atualizar lista)."
+    v = a.get("veredito") or {}
+    return topo, f"{ICONE_DO_TIPO.get(v.get('tipo'), '•')} {(v.get('texto') or '').replace('`', '')}"
+
+
+def detalhe(linha: dict | None) -> str:
+    """O resto do cartao (rola): relacao com a main, areas e commits."""
+    if not linha:
+        return ""
+    a = linha.get("analise")
+    if not a:
+        return ""
+    partes = [f"Relação com a main: +{a.get('a_frente', 0)} à frente, -{a.get('atras', 0)} atrás"
+              + (", fast-forward" if a.get("ff") and a.get("a_frente") else "")]
+    if a.get("contem"):
+        partes.append("Contém os ramos: " + ", ".join(a["contem"]))
+    if a.get("areas"):
+        partes.append(f"Mexe em {a.get('arquivos', 0)} arquivo(s): "
+                      + ", ".join(f"{k} {n}" for k, n in a["areas"].items()))
+    if a.get("commits"):
+        partes.append("Commits:")
+        partes += [f"  • {c.get('hash')} {c.get('assunto', '')[:100]}" for c in a["commits"][:30]]
     return "\n".join(partes)
 
 
@@ -150,6 +228,8 @@ class Janela:
             versoes.log = lambda texto: self.fila.put(("log", texto))
         self.vigia = vigia or VigiaDeRamos(self.versoes, log=lambda texto: self.fila.put(("log", texto)))
         self.servidores = []
+        self.abertas: set[str] = set()          # shas abertos nesta janela: a limpeza nao toca
+        self._seguras = ExitStack()             # e a trava de cada um, contra o vigia de outro processo
         self._ultima: dict | None = None        # a ultima analise dos ramos (Atualizar)
         self.linhas: list[dict] = []
         self.ocupado = False
@@ -164,12 +244,11 @@ class Janela:
         r, t, o, E = self.raiz, self.tema, self.o, self.E
         r.title("Blue Lock — versões")
         r.configure(bg=t.fundo)
-        # A tela dele e 1366x768 (memoria painel-ui-reativo): cabe com a barra
-        # de tarefas.
         largura = min(1180, r.winfo_screenwidth() - 40)
-        altura = min(680, r.winfo_screenheight() - 90)
-        r.geometry(f"{largura}x{altura}+20+10")
-        r.minsize(900, 520)
+        # ALTURA_UTIL menos a barra de titulo do Windows (~32) e uma folga.
+        altura = min(ALTURA_UTIL - 50, r.winfo_screenheight() - 90)
+        r.geometry(f"{largura}x{altura}+20+4")
+        r.minsize(900, 480)
         o.aplicar_ttk(r)
         r.protocol("WM_DELETE_WINDOW", self.fechar)
         try:
@@ -178,18 +257,19 @@ class Janela:
                 r.iconbitmap(default=str(caminho_do_icone()))
         except (tk.TclError, OSError):
             pass
+        self.letra = tkfont.Font(root=r, font=t.letra("corpo"))
 
         topo = tk.Frame(r, bg=t.fundo)
         topo.pack(fill="x")
-        o.titulo(topo, "Blue Lock — versões")
+        titulo = o.rotulo(topo, "Blue Lock — versões", papel="titulo", peso="bold")
+        titulo.pack(anchor="w", padx=E["secao"], pady=(E["normal"], 0))
         self.resumo = o.legenda(topo, "")
         self.resumo.pack(anchor="w", padx=E["secao"], pady=(0, E["meio"]))
 
-        # O RODAPE SE EMPACOTA ANTES DA TABELA, por baixo. Empacotado depois,
-        # o cartao com `expand` comia a altura e os botoes, o commit colado e
-        # o progresso sumiam para fora da janela (captura de 19/10, 21:23).
+        # O RODAPE SE EMPACOTA ANTES DA TABELA, por baixo: empacotado depois,
+        # o cartao com `expand` comia a altura e os botoes sumiam.
         rodape = tk.Frame(r, bg=t.fundo)
-        rodape.pack(side="bottom", fill="x", padx=E["secao"], pady=(0, E["muito"]))
+        rodape.pack(side="bottom", fill="x", padx=E["secao"], pady=(0, E["normal"]))
         self.estado = o.rotulo(rodape, "pronto", cor="texto_fraco")
         self.estado.pack(anchor="w")
         self.barra = ttk.Progressbar(rodape, mode="determinate", maximum=5)
@@ -206,37 +286,59 @@ class Janela:
         self.b_atualizar.pack(side="left", padx=(E["meio"], 0))
         self.b_fixar = o.botao(botoes, "Fixar / soltar", self.fixar)
         self.b_fixar.pack(side="left", padx=(E["meio"], 0))
-        self.b_comando = o.botao(botoes, "Copiar comando de merge", self.copiar_comando)
-        self.b_comando.pack(side="left", padx=(E["meio"], 0))
+        moldura, self.commit = o.campo(botoes, "Colar um commit ou ramo:", largura=24)
+        moldura.pack(side="left", padx=(E["muito"], 0))
+        o.botao(botoes, "Rodar este", self.rodar_colado).pack(side="left", padx=(E["meio"], 0))
         self.b_limpar = o.botao(botoes, "Apagar versões velhas", self.limpar, tipo="perigo")
         self.b_limpar.pack(side="right")
         o.botao(botoes, "Abrir pasta", self.abrir_pasta).pack(side="right", padx=(0, E["meio"]))
 
-        linha_commit = tk.Frame(r, bg=t.fundo)
-        linha_commit.pack(side="bottom", fill="x", padx=E["secao"], pady=(0, E["meio"]))
-        moldura, self.commit = o.campo(linha_commit, "Colar um commit (ou nome de ramo):", largura=44)
-        moldura.pack(side="left")
-        o.botao(linha_commit, "Rodar este commit", self.rodar_colado).pack(side="left", padx=E["meio"])
+        # O detalhe (tambem por baixo, antes da lista).
+        cartao_det = o.cartao(r)
+        cartao_det.pack(side="bottom", fill="x", padx=E["secao"], pady=(0, E["meio"]))
+        corpo = cartao_det.corpo
+        fundo = t.superficie
+        self.det_topo = o.rotulo(corpo, "", cor="texto", bg=fundo, peso="bold")
+        self.det_topo.pack(fill="x")
+        self.det_veredito = o.rotulo(corpo, "", cor="texto", bg=fundo, justify="left", wraplength=1080)
+        self.det_veredito.pack(fill="x", pady=(E["pouco"], 0))
+        linha_merge = tk.Frame(corpo, bg=fundo)
+        linha_merge.pack(fill="x", pady=(E["meio"], E["meio"]))
+        o.rotulo(linha_merge, "Merge:", cor="texto_fraco", bg=fundo).pack(side="left", padx=(0, E["meio"]))
+        self.b_comando = o.botao(linha_merge, "Copiar comando", self.copiar_comando, compacto=True)
+        self.b_comando.pack(side="right")
+        self.merge = tk.StringVar()
+        self.campo_merge = tk.Entry(linha_merge, textvariable=self.merge, state="readonly",
+                                    readonlybackground=t.console_fundo, fg=t.acento_forte,
+                                    font=t.letra("mono", "bold"), relief="flat", highlightthickness=1,
+                                    highlightbackground=t.borda)
+        self.campo_merge.pack(side="left", fill="x", expand=True, ipady=3, padx=(0, E["meio"]))
+        quadro_texto = tk.Frame(corpo, bg=fundo)
+        quadro_texto.pack(fill="x")
+        barra_texto = ttk.Scrollbar(quadro_texto, orient="vertical")
+        barra_texto.pack(side="right", fill="y")
+        self.texto = tk.Text(quadro_texto, height=3, bg=fundo, fg=t.texto_fraco, relief="flat",
+                             font=t.letra("legenda"), wrap="word", highlightthickness=0, bd=0,
+                             yscrollcommand=barra_texto.set)
+        barra_texto.configure(command=self.texto.yview)
+        self.texto.pack(side="left", fill="x", expand=True)
 
-        cartao = o.cartao(r, "Versões do jogo")
+        cartao = o.cartao(r)
         cartao.pack(fill="both", expand=True, padx=E["secao"], pady=(0, E["meio"]))
         quadro = tk.Frame(cartao.corpo, bg=t.superficie)
         quadro.pack(fill="both", expand=True)
-        # Altura da linha e largura das colunas pela FONTE medida: com a
-        # escala de DPI o `rowheight` fixo de 22 px sobrepunha as linhas e o
-        # sha de 7 letras nao cabia em 70 px.
-        letra = tkfont.Font(root=r, font=t.letra("corpo"))
-        ttk.Style(r).configure("Treeview", rowheight=letra.metrics("linespace") + 6)
-        exemplo = {"versao": "feat/pressured-reception-continuation", "commit": "face59dc",
-                   "data": "19/10 17:18", "ci": "vermelho", "testes": "ok 1684/1684", "pronta": "★ sim"}
-        colunas = [(c, titulo, max(largura, letra.measure(exemplo.get(c, titulo)) + 16,
-                                   letra.measure(titulo) + 16) if c != "veredito" else largura, alinha)
-                   for c, titulo, largura, alinha in COLUNAS]
-        self.tabela = o.tabela(quadro, colunas, altura=10, estica="veredito")
-        barra = ttk.Scrollbar(quadro, orient="vertical", command=self.tabela.yview)
-        self.tabela.configure(yscrollcommand=barra.set)
+        ttk.Style(r).configure("Treeview", rowheight=self.letra.metrics("linespace") + 6)
+        # A BARRA PRIMEIRO, a direita: empacotada depois da tabela, ela ficava
+        # com 0 px quando as colunas pediam mais que o quadro.
+        self.rolagem = ttk.Scrollbar(quadro, orient="vertical")
+        self.rolagem.pack(side="right", fill="y")
+        colunas = [(c, titulo_, self.letra.measure(exemplo) + 18 if c != "versao" else 160, "w")
+                   for c, titulo_, exemplo in COLUNAS]
+        self.tabela = o.tabela(quadro, colunas, altura=8, estica="versao")
+        self.tabela.column("versao", minwidth=120)
+        self.tabela.configure(yscrollcommand=self.rolagem.set)
+        self.rolagem.configure(command=self.tabela.yview)
         self.tabela.pack(side="left", fill="both", expand=True)
-        barra.pack(side="right", fill="y")
         self.tabela.tag_configure("na_main", foreground=t.texto_apagado)
         self.tabela.tag_configure("vale", foreground=t.ok)
         self.tabela.tag_configure("nao_vale", foreground=t.erro)
@@ -244,10 +346,6 @@ class Janela:
         self.tabela.tag_configure("main", foreground=t.acento_forte)
         self.tabela.bind("<<TreeviewSelect>>", lambda _e: self._escolheu())
         self.tabela.bind("<Double-1>", lambda _e: self.rodar())
-
-        self.texto = tk.Text(cartao.corpo, height=4, bg=t.superficie, fg=t.texto_fraco, relief="flat",
-                             font=t.letra("corpo"), wrap="word", highlightthickness=0, bd=0)
-        self.texto.pack(side="bottom", fill="x", pady=(E["meio"], 0), before=quadro)
         self._escrever_detalhe(None)
 
     # --- tabela -----------------------------------------------------
@@ -261,14 +359,13 @@ class Janela:
             self.tabela.selection_set(escolhido["id"])
         elif self.linhas:
             self.tabela.selection_set(self.linhas[0]["id"])
+        self._escrever_detalhe(self._linha_escolhida())
         main = (tabela or {}).get("main") or {}
         abertos = [r for r in (tabela or {}).get("ramos") or [] if r.get("a_frente")]
         texto = (f"{len(self.linhas)} versões · {len(abertos)} ramo(s) fora da main · "
                  f"vigia olhou {_hora((tabela or {}).get('olhado_em')) or 'nunca'}")
         if main.get("sha"):
             texto = f"main {main['sha'][:7]} · " + texto
-        if (tabela or {}).get("pesado"):
-            texto += f" · testes adiados: {tabela['pesado']}"
         self.resumo.configure(text=texto)
 
     def _linha_escolhida(self):
@@ -281,6 +378,16 @@ class Janela:
         self._escrever_detalhe(self._linha_escolhida())
 
     def _escrever_detalhe(self, linha):
+        topo, veredito = titulo_do_detalhe(linha)
+        self.det_topo.configure(text=topo)
+        self.det_veredito.configure(text=veredito)
+        merge = acao_de_merge(linha)
+        self.merge.set(merge["texto"])
+        self.b_comando.configure(text=merge["rotulo"], state="normal" if merge["copiar"] else "disabled")
+        # So o que se COLA tem cara de comando; a dica ("de o merge do X") e apagada.
+        t = self.tema
+        self.campo_merge.configure(fg=t.acento_forte if merge["copiar"] else t.texto_fraco,
+                                   font=t.letra("mono", "bold") if merge["copiar"] else t.letra("corpo"))
         self.texto.configure(state="normal")
         self.texto.delete("1.0", "end")
         self.texto.insert("1.0", detalhe(linha))
@@ -341,12 +448,25 @@ class Janela:
             self.barra.configure(value=self.barra.cget("maximum"))
             if dados.get("servidor"):
                 self.servidores.append(dados["servidor"])
+            self._proteger(dados.get("sha"))
             self.estado.configure(text=f"aberto: {dados['url']}", fg=self.tema.ok)
             self._mostrar(self.versoes.ramos(), self._ultima or self.vigia.ler())
         elif acao == "limpou":
             self.estado.configure(text=f"apaguei {len(dados['apagadas'])} versão(ões) velha(s)",
                                   fg=self.tema.texto_fraco)
             self._mostrar(self.versoes.ramos(), self._ultima or self.vigia.ler())
+
+    def _proteger(self, sha: str | None) -> None:
+        """A versao aberta nao sai do disco enquanto a janela vive: entra nos
+        `protegidos` da limpeza daqui e segura a trava dela (a limpeza do
+        vigia, em outro processo, pula versao com trava ocupada)."""
+        if not sha or sha in self.abertas:
+            return
+        self.abertas.add(sha)
+        try:
+            self._seguras.enter_context(self.versoes.trava(f"bluelock_versao_{sha[:12]}"))
+        except Exception:                                       # noqa: BLE001
+            pass
 
     def _log(self, texto):
         self.console.configure(state="normal")
@@ -379,7 +499,7 @@ class Janela:
             ficha = self.versoes.preparar(ref, progresso=passo, rotulo=rotulo)
             self.fila.put(("log", f"abrindo {ficha['sha'][:7]} ({ficha.get('modo')})…"))
             aberto = self.versoes.abrir(ficha["sha"])
-            return "rodou", aberto
+            return "rodou", dict(aberto, sha=ficha["sha"])
         self._em_thread(f"preparando {rotulo}…", trabalho)
 
     def rodar(self):
@@ -405,24 +525,24 @@ class Janela:
         self._mostrar(self.versoes.ramos(), self._ultima or self.vigia.ler())
 
     def copiar_comando(self):
-        linha = self._linha_escolhida()
-        a = (linha or {}).get("analise") or {}
-        texto = a.get("comando") or (link_de_pr(linha["ref"]) if a.get("a_frente") else "")
-        if not texto:
-            messagebox.showinfo("Sem comando", "Esta versão não tem merge a fazer.")
+        merge = acao_de_merge(self._linha_escolhida())
+        if not merge["copiar"]:
+            self.estado.configure(text=merge["texto"], fg=self.tema.texto_fraco)
             return
         self.raiz.clipboard_clear()
-        self.raiz.clipboard_append(texto)
-        self.estado.configure(text=f"copiado: {texto}", fg=self.tema.texto_fraco)
+        self.raiz.clipboard_append(merge["copiar"])
+        self.estado.configure(text=f"copiado: {merge['copiar']}", fg=self.tema.texto_fraco)
 
     def limpar(self):
         fixadas = sum(1 for f in self.versoes.ler()["versoes"].values() if f.get("fixada"))
         if not messagebox.askyesno("Apagar versões velhas",
-                                   f"Mantenho as {MANTER} usadas por último e as {fixadas} fixada(s); "
-                                   "o resto (pasta, node_modules sem dono e HTML) sai do disco. "
-                                   "Nada no GitHub muda. Continuar?"):
+                                   f"Mantenho as {MANTER} usadas por último, as {fixadas} fixada(s) e as "
+                                   f"{len(self.abertas)} aberta(s) agora; o resto (pasta, node_modules sem "
+                                   "dono e HTML) sai do disco. Nada no GitHub muda. Continuar?"):
             return
-        self._em_thread("apagando versões velhas…", lambda: ("limpou", self.versoes.limpar(MANTER)))
+        protegidos = set(self.abertas)
+        self._em_thread("apagando versões velhas…",
+                        lambda: ("limpou", self.versoes.limpar(MANTER, protegidos=protegidos)))
 
     def abrir_pasta(self):
         self.versoes.raiz.mkdir(parents=True, exist_ok=True)
@@ -432,6 +552,7 @@ class Janela:
         for servidor in self.servidores:
             if servidor.poll() is None:
                 matar_arvore(servidor.pid)
+        self._seguras.close()
         self.raiz.destroy()
 
 

@@ -26,9 +26,13 @@ class Cena:
         self.agora = datetime(2026, 10, 19, 10, 0)
         self.resultado_do_teste = dict(VERDE)
 
+    gh_falha = False
+
     def gh(self, *args, prazo=60):
         self.gh_chamadas.append(args)
         assert tuple(args[:2]) in mod.GH_PERMITIDOS, args
+        if self.gh_falha:
+            return 1, "failed to get runs: net/http: TLS handshake timeout"
         if args[:2] == ("run", "list"):
             runs = [{"headSha": sha, "headBranch": "?", "status": c.get("status", "completed"),
                      "conclusion": c.get("conclusion", ""), "url": f"https://ci/{sha[:7]}",
@@ -127,6 +131,26 @@ def test_ponta_vermelha_nao_prende_o_ramo_de_baixo(cena):
     assert tabela["feat/meio"]["pontas"] == [] and cena.testados == ["feat/meio"]
     meio = tabela["feat/meio"]["veredito"]
     assert meio["codigo"] == "vale" and "fix/isagi" in meio["texto"] and "vermelho" in meio["texto"]
+
+
+def test_sem_rede_no_gh_nao_vira_sem_ci_nem_vale(cena):
+    """19/10 22:48, real: TLS handshake timeout no gh e todos viraram "sem
+    CI", com o off-ball ainda "vale o merge"."""
+    cena.ramo("feat/novo")
+    cena.gh_falha = True
+    r = _por_nome(cena.vigia().olhar())["feat/novo"]
+    assert r["ci"]["indisponivel"] and r["veredito"]["codigo"] == "ci_ilegivel"
+    assert r["veredito"]["final"] is False and cena.avisos == []
+
+
+def test_sem_rede_usa_o_ultimo_ci_terminado_do_mesmo_commit(cena):
+    cena.ramo("feat/visto")
+    assert _por_nome(cena.vigia().olhar())["feat/visto"]["veredito"]["codigo"] == "vale"
+    cena.gh_falha = True
+    cena.agora += timedelta(minutes=30)
+    r = _por_nome(cena.vigia().olhar())["feat/visto"]
+    assert r["ci"]["conclusao"] == "success" and r["ci"]["do_cache"]
+    assert r["veredito"]["codigo"] == "vale"
 
 
 def test_cabeca_nova_vira_aviso_so_daquele_ramo(cena, github):

@@ -72,7 +72,8 @@ def gh_real(*args, prazo=GH_PRAZO_S):
                               env=dict(os.environ, GH_PROMPT_DISABLED="1", NO_COLOR="1"))
     except (OSError, subprocess.SubprocessError) as exc:
         return 99, f"{type(exc).__name__}: {exc}"
-    return proc.returncode, (proc.stdout or b"").decode("utf-8", "replace")
+    saida = proc.stdout if proc.returncode == 0 else (proc.stderr or proc.stdout)
+    return proc.returncode, (saida or b"").decode("utf-8", "replace")
 
 
 def avisar_real(texto: str) -> bool:
@@ -155,6 +156,9 @@ def veredito(r: dict) -> dict:
                 "texto": (f"precisa de olho: não é fast-forward (a main andou {r.get('atras', '?')} "
                           "commit(s) depois que o ramo saiu); não conflita, mas o merge vira um commit "
                           "novo — melhor abrir PR")}
+    if ci.get("indisponivel"):
+        return {"codigo": "ci_ilegivel", "tipo": "espere", "final": False,
+                "texto": "espere: não consegui ler o CI dele agora (sem rede?); olho de novo na próxima"}
     if ci.get("estado") in ("queued", "in_progress", "waiting", "pending", "requested"):
         return {"codigo": "ci_rodando", "tipo": "espere", "final": False,
                 "texto": "espere: o CI dele ainda está rodando"}
@@ -258,7 +262,8 @@ class VigiaDeRamos:
             self._relacao(main["sha"], r)
             chave = f"{r['ramo']}@{r['sha']}"
             memoria["visto_em"].setdefault(chave, agora.isoformat(timespec="seconds"))
-        self._ci(outros)
+        memoria.setdefault("ci", {})
+        self._ci(outros, memoria["ci"])
         self._pilhas(outros)
         for r in outros:
             if r["a_frente"]:
@@ -373,9 +378,31 @@ class VigiaDeRamos:
             r["pontas"] = sorted(pontas, key=lambda n: por_nome[n].get("data") or "", reverse=True)
             r["contido_por_vermelho"] = [n for n in r["contido_por"] if n not in bons]
 
-    def _ci(self, ramos: list[dict]) -> None:
+    def _ci(self, ramos: list[dict], guardado: dict | None = None) -> None:
         """Um `gh run list` so para todos (100 ultimas rodadas); por ramo so
-        quem nao apareceu. Sem `gh`/sem rede: o CI fica desconhecido."""
+        quem nao apareceu.
+
+        SEM REDE NAO E "SEM CI". 19/10, 22:48, real: o `gh` levou "TLS
+        handshake timeout" e todos os ramos viraram "sem CI" — e o off-ball
+        continuou "vale o merge" sem ninguem ter lido o CI dele. Agora: o
+        ultimo CI TERMINADO de cada commit fica guardado (`guardado`, por sha)
+        e e usado quando o `gh` falha; sem nem isso, o CI fica `indisponivel`
+        e o veredito espera."""
+        guardado = guardado if guardado is not None else {}
+        self._ci_do_gh(ramos)
+        for r in ramos:
+            ci = r.get("ci")
+            if not ci:
+                continue
+            if ci.get("indisponivel") and r["sha"] in guardado:
+                r["ci"] = dict(guardado[r["sha"]], do_cache=True)
+            elif ci.get("estado") == "completed" and ci.get("conclusao"):
+                guardado[r["sha"]] = {k: v for k, v in ci.items() if k != "do_cache"}
+        vivos = {r["sha"] for r in ramos}
+        for sha in [s for s in guardado if s not in vivos]:
+            guardado.pop(sha, None)
+
+    def _ci_do_gh(self, ramos: list[dict]) -> None:
         por_sha: dict[str, dict] = {}
         codigo, saida = self.gh("run", "list", "--repo", REPO_GH, "--limit", "100", "--json",
                                 "headBranch,headSha,status,conclusion,url,databaseId,createdAt,name")
@@ -395,8 +422,12 @@ class VigiaDeRamos:
                 if c2 == 0:
                     run = next((x for x in _json_lista(s2) if x.get("headSha") == r["sha"]), None)
             if run is None:
-                r["ci"] = {"estado": None, "conclusao": None, "url": None,
-                           "motivo": "sem rodada do CI para este commit" if codigo == 0 else "gh indisponível"}
+                if codigo != 0:
+                    r["ci"] = {"estado": None, "conclusao": None, "url": None, "indisponivel": True,
+                               "motivo": f"não consegui ler o CI ({saida.strip()[:120]})"}
+                else:
+                    r["ci"] = {"estado": None, "conclusao": None, "url": None,
+                               "motivo": "sem rodada do CI para este commit"}
                 continue
             r["ci"] = {"estado": run.get("status"), "conclusao": run.get("conclusion") or None,
                        "url": run.get("url"), "id": run.get("databaseId"), "em": run.get("createdAt")}

@@ -538,12 +538,35 @@ class Versoes:
             return {"como": "navegador padrão"}
         perfil = self.perfil_do_navegador()
         perfil.mkdir(parents=True, exist_ok=True)
+        self.esquecer_posicao()
         proc = subprocess.Popen([chrome, f"--user-data-dir={perfil}", "--no-first-run",
                                  "--no-default-browser-check", "--hide-crash-restore-bubble",
-                                 *extras, "--new-window", url],
+                                 "--start-maximized", *extras, "--new-window", url],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                 stdin=subprocess.DEVNULL, creationflags=NO_WINDOW)
         return {"como": "chrome", "pid": proc.pid, "perfil": str(perfil)}
+
+    def esquecer_posicao(self) -> bool:
+        """Apaga a posicao/tamanho que o Chrome guardou no NOSSO perfil.
+        19/10: o perfil guardou 1920x1106 numa tela de 1020 uteis e a janela
+        abria maior que a tela; com isto + `--start-maximized` ela abre
+        maximizada (do tamanho da tela, qualquer que seja)."""
+        preferencias = self.perfil_do_navegador() / "Default" / "Preferences"
+        try:
+            dados = json.loads(preferencias.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        navegador = dados.get("browser") if isinstance(dados, dict) else None
+        if not isinstance(navegador, dict) or "window_placement" not in navegador:
+            return False
+        navegador.pop("window_placement", None)
+        try:
+            temporario = preferencias.with_suffix(".tmp")
+            temporario.write_text(json.dumps(dados, ensure_ascii=False), encoding="utf-8")
+            os.replace(temporario, preferencias)
+        except OSError:
+            return False
+        return True
 
     def pids_do_nosso_navegador(self) -> list[int]:
         """Os chrome.exe cuja linha de comando tem o NOSSO perfil — nunca os do Adrian."""
