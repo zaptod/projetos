@@ -2651,6 +2651,32 @@ class Simulador:
             del lista[0]
         return True
 
+    def _texto_da_tela(self, texto):
+        """O texto que vai ser DESENHADO, trocado pelo mapa
+        ``match_config["textos_da_tela"]`` quando quem grava passa um (o
+        duelo em ingles do random_builds, decisao geral/canal-em-ingles,
+        20/10/2026: "PRESSÃO" -> "PRESSURE", "CRÍTICO!" -> "CRIT!"). So
+        exibicao: nenhuma decisao da luta le o texto desenhado. Sem o mapa, o
+        texto de sempre."""
+        mapa = (getattr(self, "match_config", None) or {}).get("textos_da_tela")
+        if not mapa or not isinstance(texto, str):
+            return texto
+        return mapa.get(texto, texto)
+
+    def _nome_na_tela(self, l):
+        """O nome escrito sobre o lutador (vivo ou caido): ``nomes_exibicao``,
+        depois o mapa ``textos_da_tela`` (o duelo em ingles traduz o epiteto:
+        "Helga o Protetor" -> "Helga the Protector"). Corta em 18 caracteres
+        como sempre; o nome que o mapa traduziu pode ir a 24 (o ingles e mais
+        longo, e "Helga the Protecto" seria o defeito)."""
+        nomes_hud = self.match_config.get("nomes_exibicao") or {}
+        bruto = str(nomes_hud.get(l.dados.nome, l.dados.nome))
+        # Com o mapa (o duelo), 24 para todo nome, traduzido ou nao
+        # ("Nyxaris Cinzamorda" era o corte em 18; conferente, 20/10).
+        if (getattr(self, "match_config", None) or {}).get("textos_da_tela"):
+            return str(Simulador._texto_da_tela(self, bruto))[:24]
+        return bruto[:18]
+
     def _push_texto(self, x, y, conteudo, cor, tamanho=None, *,
                     alvo=None, prioridade=PRIORIDADE_IMPACTO):
         """Texto flutuante com política: teto de 3 e ACUMULADOR por alvo
@@ -2659,6 +2685,10 @@ class Simulador:
         a 10/s)."""
         agora = getattr(self, "tempo_visual", 0.0)
         numerico = isinstance(conteudo, (int, float))
+        if isinstance(conteudo, str):
+            # pela classe: os testes da doutrina de VFX chamam este funil com
+            # um duble que nao tem o metodo (so os atributos que ele le)
+            conteudo = Simulador._texto_da_tela(self, conteudo)
         if numerico and alvo is not None:
             marca = self._texto_por_alvo.get(id(alvo))
             if marca is not None:
@@ -4847,7 +4877,9 @@ class Simulador:
                     pygame.draw.rect(self.tela, (30, 30, 30), (sx - sr, sy - sr - 8, sr * 2, 4))
                     pygame.draw.rect(self.tela, (100, 255, 100), (sx - sr, sy - sr - 8, int(sr * 2 * pct), 4))
                 # nome (fonte do cache — Passe 2)
-                nome_s = getattr(summon, 'nome', '')
+                # o nome da invocacao e o da skill ("Fênix"): pelo mapa de
+                # exibicao, como o resto do texto do duelo em ingles
+                nome_s = Simulador._texto_da_tela(self, getattr(summon, 'nome', ''))
                 if nome_s:
                     surf_nome = get_fonte(14).render(nome_s, True, (220, 220, 220))
                     self.tela.blit(surf_nome, (sx - surf_nome.get_width() // 2, sy - sr - 22))
@@ -5281,11 +5313,10 @@ class Simulador:
         # Nome sobre a cabeça, na COR DO LADO (Passe 3): summons tinham
         # nome e os protagonistas não — quem chega no meio da luta não
         # sabia por quem torcer.
-        nomes_hud = self.match_config.get("nomes_exibicao") or {}
-        rotulo = nomes_hud.get(l.dados.nome, l.dados.nome)
+        rotulo = self._nome_na_tela(l)
         cor_lado = COR_P1 if l is self.p1 else COR_P2
-        surf_rotulo = get_fonte(13, negrito=True).render(str(rotulo)[:18], True, cor_lado)
-        sombra_rot = get_fonte(13, negrito=True).render(str(rotulo)[:18], True, (0, 0, 0))
+        surf_rotulo = get_fonte(13, negrito=True).render(rotulo, True, cor_lado)
+        sombra_rot = get_fonte(13, negrito=True).render(rotulo, True, (0, 0, 0))
         rx = centro[0] - surf_rotulo.get_width() // 2
         ry = centro[1] - raio - 22
         self.tela.blit(sombra_rot, (rx + 1, ry + 1))
@@ -5449,6 +5480,7 @@ class Simulador:
         rotulo_plano = getattr(plano, "rotulo", None) if plano is not None else None
         if not rotulo_plano or not self.match_config.get("rotulo_plano", True):
             return False
+        rotulo_plano = self._texto_da_tela(rotulo_plano)
         t_troca = getattr(brain_pl, "_plano_trocado_em", -9.0)
         flash = (getattr(brain_pl, "tempo_combate", 0.0) - t_troca) < 0.6
         surf_pl = get_fonte(14 if flash else 11, negrito=True).render(
@@ -5590,11 +5622,10 @@ class Simulador:
 
         # O nome continua sobre o caído (apagado): quem chega no fim sabe
         # quem perdeu.
-        nomes_hud = self.match_config.get("nomes_exibicao") or {}
-        rotulo = nomes_hud.get(l.dados.nome, l.dados.nome)
+        rotulo = self._nome_na_tela(l)
         fonte = get_fonte(13, negrito=True)
-        surf = fonte.render(str(rotulo)[:18], True, (150, 150, 160))
-        sombra_rot = fonte.render(str(rotulo)[:18], True, (0, 0, 0))
+        surf = fonte.render(rotulo, True, (150, 150, 160))
+        sombra_rot = fonte.render(rotulo, True, (0, 0, 0))
         nx = sx - surf.get_width() // 2
         ny = sy - ry - tam * 3 - 18
         self.tela.blit(sombra_rot, (nx + 1, ny + 1))
@@ -6409,10 +6440,13 @@ class Simulador:
                     pygame.draw.line(self.tela, cor_ag, (int(x1), int(y1)),
                                      (int(x2), int(y2)), 3)
                 if modo and tell.get("papel") == "iniciador":
-                    rotulo = {"ARREMESSO": "ARREMESSO!", "JOELHADA": "JOELHADA",
-                              "EMPURRAO": "EMPURRÃO", "ESCAPE": "ESCAPOU"}.get(str(modo), str(modo))
+                    # Pelo mapa de exibicao (o duelo em ingles: "THROW!",
+                    # "REVERSAL!"); sem o mapa, o texto de sempre.
+                    rotulo = Simulador._texto_da_tela(self, {
+                        "ARREMESSO": "ARREMESSO!", "JOELHADA": "JOELHADA",
+                        "EMPURRAO": "EMPURRÃO", "ESCAPE": "ESCAPOU"}.get(str(modo), str(modo)))
                     if tell.get("revertido"):
-                        rotulo = "REVERSÃO! " + rotulo
+                        rotulo = Simulador._texto_da_tela(self, "REVERSÃO!") + " " + rotulo
                     surf_a = get_fonte(20, negrito=True).render(rotulo, True, (255, 230, 160))
                     self.tela.blit(surf_a, (cx - surf_a.get_width() // 2, cy - raio - 58))
             elif tell.get("tipo") == "wall_splat":

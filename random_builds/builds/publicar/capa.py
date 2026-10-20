@@ -109,6 +109,11 @@ def gerar(fight: dict, out_dir: Path, render_config: dict,
 
     cor1 = cor_de("p1", hex_rgb(cores["accent_character"]))
     cor2 = cor_de("p2", hex_rgb(cores["accent_weapon"]))
+    # Semana 1 + geral/canal-em-ingles (20/10/2026): sob cada retrato, o
+    # CONFRONTO em ingles ("LONGSWORD" VS "KUSARIGAMA"), o mesmo do titulo e
+    # da faixa do video — nao o nome inventado.
+    from . import confronto
+    rotulos = dict(zip(("p1", "p2"), confronto.da_luta(luta)))
     for slot, cor, x in (("p1", cor1, int(LARGURA * 0.04)),
                          ("p2", cor2, LARGURA - int(LARGURA * 0.04) - lado)):
         ficha = luta.get(f"{slot}_ficha") or {}
@@ -123,7 +128,7 @@ def gerar(fight: dict, out_dir: Path, render_config: dict,
         # O NOME embaixo do retrato. Sem ele a capa e dois desenhos sem
         # ninguem dentro — e e o nome que o espectador reconhece quando o
         # mesmo lutador volta (o ledger existe para isso).
-        nome = str(luta.get(slot) or "").strip()
+        nome = str(rotulos.get(slot) or luta.get(slot) or "").strip()
         if nome:
             desenho_lado.text(
                 (x + lado // 2, topo + lado + int(ALTURA * 0.035)), nome.upper(),
@@ -142,9 +147,9 @@ def gerar(fight: dict, out_dir: Path, render_config: dict,
     # ESTE confronto importa. Sem selo, a capa fica so com o VS.
     selo = ""
     if luta.get("titulo"):
-        selo = "TITULO EM JOGO"
+        selo = "TITLE ON THE LINE"
     elif luta.get("revanche"):
-        selo = "REVANCHE"
+        selo = "REMATCH"
     if selo:
         desenho.text((meio, int(ALTURA * 0.62)), selo,
                      font=fit_font(selo, fontes["black"], int(LARGURA * 0.28),

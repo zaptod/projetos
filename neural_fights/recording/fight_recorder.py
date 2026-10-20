@@ -697,8 +697,13 @@ def gravar_luta(
     timeline: str | Path | None = None,
     corrente_v2: bool | None = None,
     reserva_pos_ko: dict | None = None,
+    textos_da_tela: dict | None = None,
 ) -> dict:
     """Roda a luta desenhando cada frame e devolve o resultado + timestamps.
+
+    ``textos_da_tela`` troca o texto que o jogo DESENHA (rotulo do plano sob
+    o lutador, textos flutuantes) por outro: o duelo em ingles do
+    random_builds (20/10/2026). So exibicao — a luta e a mesma.
 
     A luta e deterministica pela seed: gravar a mesma seed duas vezes (uma por
     formato) produz exatamente a mesma luta enquadrada de dois jeitos.
@@ -761,6 +766,8 @@ def gravar_luta(
         match_config["camera_espera_zoom_in"] = float(camera_espera_zoom_in)
     if nomes_exibicao:
         match_config["nomes_exibicao"] = dict(nomes_exibicao)
+    if textos_da_tela:
+        match_config["textos_da_tela"] = {str(k): str(v) for k, v in textos_da_tela.items()}
     # Corrente nova (core/corrente.py): so entra quando quem grava pede.
     # Ausente = a corrente antiga — e o que toda luta gravada antes usa, entao
     # a regeracao de uma luta antiga continua a mesma.
@@ -1044,7 +1051,24 @@ def build_parser() -> argparse.ArgumentParser:
                              "camera DIRETOR da cauda poe o vencedor abaixo dele. "
                              "HUD (opcional): borda de baixo do HUD do video, que "
                              "fica a cauda inteira; o vencedor fica abaixo dele")
+    parser.add_argument("--textos-da-tela", type=tipo_textos_da_tela, default=None,
+                        metavar="JSON",
+                        help='mapa {"PRESSÃO": "PRESSURE", ...}: o texto que o '
+                             "jogo desenha (plano sob o lutador, textos "
+                             "flutuantes) trocado por outro; so exibicao")
     return parser
+
+
+def tipo_textos_da_tela(texto: str) -> dict:
+    """``'{"PRESSÃO": "PRESSURE"}'`` -> dict de str para str (argparse)."""
+    try:
+        mapa = json.loads(texto)
+    except ValueError:
+        mapa = None
+    if not isinstance(mapa, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in mapa.items()):
+        raise argparse.ArgumentTypeError(f"use um objeto JSON de textos: {texto[:80]}")
+    return mapa
 
 
 def tipo_reserva_pos_ko(texto: str) -> dict:
@@ -1090,6 +1114,7 @@ def main(argv: list[str] | None = None) -> int:
             timeline=args.timeline,
             corrente_v2=args.corrente_v2,
             reserva_pos_ko=args.reserva_pos_ko,
+            textos_da_tela=args.textos_da_tela,
         )
     except Exception as erro:  # o chamador precisa do motivo, nao de um traceback
         resultado = {"sucesso": False, "erro": f"{type(erro).__name__}: {erro}",

@@ -321,6 +321,16 @@ def desempatar(p1: str, p2: str, hp1: float, hp2: float, dano_p1: float, dano_p2
     return (p1 if int(seed) % 2 == 0 else p2), "seed"
 
 
+def _textos_da_tela(origem: str, *nomes: str) -> dict | None:
+    """O mapa pt -> en do que o jogo desenha, so no duelo (o canal de duelos e
+    em ingles; build, estreia e torneio seguem como sao): o fixo mais o nome
+    dos lutadores com o epiteto traduzido ("Helga the Protector")."""
+    if origem != "duelo":
+        return None
+    from ..publicar import ingles
+    return ingles.tela_do_jogo(*nomes)
+
+
 def reserva_do_letreiro(perfil: str) -> dict | None:
     """Onde o letreiro do K.O. do video ("K.O.", "NOCAUTE", "ACABOU") termina
     e quanto tempo ele fica, para a camera DIRETOR da cauda nao pôr o
@@ -346,6 +356,9 @@ def reserva_do_letreiro(perfil: str) -> dict | None:
 
         callouts = (load_config("editing.json") or {}).get("fight_callouts") or {}
         textos = list((callouts.get("textos") or {}).get("ko") or ["K.O."])
+        # e os do duelo em ingles ("KNOCKOUT", "IT'S OVER"): a maior caixa vale
+        from ..publicar import ingles
+        textos += [t for t in ingles.CALLOUTS.get("ko", []) if t not in textos]
         render = load_config("render.json")
         topo = letreiro_do_ko(render, perfil, textos)
         if topo is None:
@@ -408,6 +421,9 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
             "reserva_pos_ko": (reserva_do_letreiro(perfil)
                                if camera_do_perfil(gameplay, origem, perfil) == "DIRETOR"
                                else None),
+            # O duelo e em ingles (decisao geral/canal-em-ingles, 20/10/2026):
+            # o texto que o jogo desenha no clipe tambem. So exibicao.
+            "textos_da_tela": _textos_da_tela(origem, p1, p2),
         } for perfil in perfis]
         gravacoes = capture.gravar_em_paralelo(tarefas, trabalhadores=len(tarefas))
 

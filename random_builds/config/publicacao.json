@@ -6,15 +6,16 @@
     "build": "{personagem}, {classe} — build {nota}/100 {veredito}",
     "estreia": "{personagem} estreia contra {adversario} — {desfecho}",
     "torneio": "Torneio de {participantes} — campeão: {campeao}",
-    "duelo": "{p1} x {p2}"
+    "duelo": "{lado1} VS {lado2} — who wins?"
   },
   "_comment_descricoes": "Em INGLES desde 20/10/2026 (decisao geral/canal-em-ingles). Os {campos} vem do catalogo (parte Builds) e podem chegar em portugues (classe, arma, arena, veredito) ate a parte Builds traduzir o que sai na tela.",
   "descricoes": {
     "build": "Character {sorteio}: {classe}, {arma}.\nStrength {forca} · Mana {mana} · {altura} m\nCompatibility {compatibilidade}/100 — final score {nota}/100 ({veredito}).\n\n{escolhas}\nRolled on the wheel and simulated in the Neural Fights engine.",
     "estreia": "{personagem} ({classe}) makes their arena debut against {adversario}.\nBest of {melhor_de} — {desfecho}.\n\nFights simulated in the Neural Fights engine: no script, no staging.",
     "torneio": "Tournament with {participantes} fighters rolled on the wheel.\nChampion: {campeao}.\n\nEvery fight simulated in the Neural Fights engine.",
-    "duelo": "{p1} vs {p2}. Arena: {arena}.\nThe whole fight, no cuts.\n\nSimulated in the Neural Fights engine: no script, no staging. The winner is decided by physics and by the AI of both fighters."
+    "duelo": "{lado1} VS {lado2}: who wins? Pick your side in the comments.\n{p1} vs {p2}.\n\nComputer-simulated duel. No script: the winner is decided by physics and by each fighter's AI."
   },
+  "_comment_titulo_duelo": "Semana 1 do docs/PLANO.md (20/10/2026): o confronto pela ARMA de cada lutador (estilo no banco; mesma arma desempata pela classe, depois pelo elemento), não pelo nome inventado — e EM INGLÊS (decisão geral/canal-em-ingles: o que o público vê no duelo vai em inglês; tradução por mapa em builds/publicar/ingles.py). {lado1}/{lado2} saem de builds/publicar/confronto.py, que o rodízio também usa para não escolher par com título ocupado. {p1}/{p2} continuam valendo (o nome do personagem). A descrição é a legenda do TikTok: ela abre com o confronto e a pergunta. A arena saiu da descrição do duelo (os nomes das arenas são portugueses).",
   "_comment_hashtags": "Em INGLES desde 20/10/2026 (decisao geral/canal-em-ingles): o canal de builds/duelos fala com o publico de lingua inglesa.",
   "hashtags": {
     "build": [
@@ -40,10 +41,10 @@
     ],
     "duelo": [
       "#shorts",
-      "#fight",
-      "#gamedev",
-      "#ai",
-      "#rpg"
+      "#simulation",
+      "#battle",
+      "#whowins",
+      "#gamedev"
     ]
   },
   "youtube": {

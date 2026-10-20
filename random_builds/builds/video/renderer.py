@@ -31,6 +31,12 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # nunca chega nela). Decisao da coordenacao de 14/10/2026.
 VEREDITO_ZONA = (0.62, 0.76)
 VEREDITO_LARGURA_MAX = 0.74
+# Celular: nada do cartao final passa daqui (fracao da largura; 900 px de
+# 1080, 50 px antes da coluna de botoes dos 12% da direita).
+VEREDITO_X_MAX = 900 / 1080
+# Abaixo deste corpo (fracao do lado menor; 70 px no celular) o titulo do
+# cartao quebra em duas linhas em vez de encolher mais.
+VEREDITO_CORPO_MIN = 0.065
 # O que o TikTok e o YouTube Shorts cobrem no 9:16 (fracoes da tela): no topo
 # as abas "Seguindo | Para voce", o LIVE e a linha de icones do Shorts; embaixo
 # legenda e nome do canal; a direita a coluna de botoes. O HUD, a identidade e
@@ -39,6 +45,55 @@ VEREDITO_LARGURA_MAX = 0.74
 ZONA_DAS_PLATAFORMAS = {"topo": 0.10, "baixo": 0.20, "direita": 0.12}
 # Escala do callout no 1o quadro (pop-in que encolhe para 1,0 em 0,12 s).
 POP_IN_CALLOUT = 1.35
+# Semana 1 do plano (20/10/2026). A faixa do confronto ("Katana VS Sai") mora
+# na linha dos nomes do HUD, no MESMO corpo maximo deles (so encolhe), entao o
+# HUD nao cresce; a pergunta escrita ("Quem vence?") e uma linha da
+# identidade, neste corpo (fracao do lado menor).
+FAIXA_CORPO = 0.036
+PERGUNTA_CORPO = 0.05
+COR_DO_VS = (245, 240, 255)
+COR_DA_PERGUNTA = (255, 255, 255)
+# Contraste (conferente, 20/10/2026: o azul (36,81,243) dava 2,6-3,0:1 sobre a
+# arena). A faixa e a linha de identidade ganham uma pilula escura e a cor do
+# time e clareada ate CONTRASTE_MINIMO (WCAG AA) sobre ela.
+PILULA = (12, 10, 24, 210)
+CONTRASTE_MINIMO = 4.5
+# Entre a pilula da faixa e a moldura das barras (px): eram 1-2 px.
+FAIXA_FOLGA_HUD = 8
+
+
+def _luminancia(cor) -> float:
+    def canal(v):
+        v = v / 255.0
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = (canal(float(c)) for c in tuple(cor)[:3])
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contraste(a, b) -> float:
+    """Razao de contraste WCAG entre duas cores RGB."""
+    la, lb = sorted((_luminancia(a), _luminancia(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def fundo_da_pilula(arena=(70, 70, 82)) -> tuple:
+    """A cor que a pilula semitransparente DA sobre uma arena clara (o pior
+    caso dos chaos do jogo): e contra ela que o contraste e medido."""
+    a = PILULA[3] / 255.0
+    return tuple(int(round(PILULA[i] * a + arena[i] * (1 - a))) for i in range(3))
+
+
+def cor_legivel(cor, fundo=None, minimo: float = CONTRASTE_MINIMO) -> tuple:
+    """A cor do time, clareada (misturada com branco) o MINIMO para dar
+    ``minimo``:1 sobre ``fundo``. Cor que ja passa fica igual."""
+    fundo = fundo_da_pilula() if fundo is None else fundo
+    base = tuple(int(c) for c in tuple(cor)[:3])
+    for passo in range(0, 21):
+        t = passo / 20.0
+        nova = tuple(int(round(c + (255 - c) * t)) for c in base)
+        if contraste(nova, fundo) >= minimo:
+            return nova
+    return (255, 255, 255)
 # Amostras para medir o pior caso de altura de uma linha: capitular acentuada
 # (sobe mais que a letra comum) e descendentes (desce mais).
 _AMOSTRA_TOPO = "ÁÂÃÉÊÍÓÔÕÚÇH#"
@@ -104,10 +159,16 @@ class VideoRenderer:
     def render(self, edit_plan: dict, generation: dict, out_dir: Path,
                music_asset: dict | None = None,
                out_name: str | None = None, voz: Path | None = None,
-               gancho_b: dict | None = None, palavras: Path | None = None) -> Path:
+               gancho_b: dict | None = None, palavras: Path | None = None,
+               voz_sobre_o_jogo: bool = False) -> Path:
         """Executa o plano. `voz` e a trilha falada (voz.wav) e `gancho_b` o
         evento alternativo de abertura: quando existe, sai tambem um
-        `final_<perfil>_ganchoB.mp4` que so difere no primeiro segmento."""
+        `final_<perfil>_ganchoB.mp4` que so difere no primeiro segmento.
+
+        `voz_sobre_o_jogo` (duelo, voz do quadro 0, 20/10/2026): o som da
+        luta tambem abaixa enquanto a voz fala, como a musica. Sem isso a
+        frase sumia sob os golpes (medido no duelo_00001: +0 a +2 dB)."""
+        self._voz_sobre_o_jogo = bool(voz_sobre_o_jogo)
         seg_dir = out_dir / f"_segments_{self.profile}"
         seg_dir.mkdir(parents=True, exist_ok=True)
         segments: list[Path] = []
@@ -560,7 +621,17 @@ class VideoRenderer:
         ident_y = hud_baixo + folga - min(0, sobe_ident)
         baixo_ident = ident_y + medir((0, 0), _AMOSTRA_BAIXO, font=fonte_ident,
                                       anchor="la", stroke_width=contorno_ident)[3]
-        selo_y = ident_y + int(ref * 0.045)
+        # a pergunta do duelo ("Quem vence?", semana 1 do plano), centrada,
+        # entre a identidade e o selo
+        fonte_pergunta = load_font(self.fonts["black"], int(ref * PERGUNTA_CORPO))
+        contorno_pergunta = max(3, int(ref * 0.006))
+        sobe_pergunta = medir((0, 0), _AMOSTRA_TOPO, font=fonte_pergunta, anchor="ma",
+                              stroke_width=contorno_pergunta)[1]
+        pergunta_y = baixo_ident + folga - min(0, sobe_pergunta)
+        baixo_pergunta = pergunta_y + medir((0, 0), _AMOSTRA_BAIXO + "?",
+                                            font=fonte_pergunta, anchor="ma",
+                                            stroke_width=contorno_pergunta)[3]
+        selo_y = max(ident_y + int(ref * 0.045), baixo_pergunta + folga)
         fonte_selo = load_font(self.fonts["black"], int(ref * 0.034))
         baixo_selo = selo_y + medir((0, 0), _AMOSTRA_BAIXO, font=fonte_selo, anchor="ma",
                                     stroke_width=max(3, int(ref * 0.005)))[3]
@@ -579,7 +650,8 @@ class VideoRenderer:
             "x1": x1, "x2": x2, "y": y, "largura": largura, "altura": altura,
             "direita": direita, "margem": margem, "hud_topo": topo,
             "hud_baixo": hud_baixo, "ident_y": ident_y, "selo_y": selo_y,
-            "ident_baixo": ident_baixo,
+            "pergunta_y": pergunta_y, "ident_baixo": ident_baixo,
+            "nome_y": y - sobe,
             "callout_cy": hud_baixo + folga + sobe_callout,
             "callout_cy_identidade": ident_baixo + folga + sobe_callout,
         }
@@ -611,18 +683,37 @@ class VideoRenderer:
 
         camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(camada)
+        # Semana 1 (20/10/2026): no duelo, a linha dos nomes vira a FAIXA do
+        # confronto ("Katana VS Sai", cada lado na cor do lutador). O nome
+        # proprio fica na identidade e sobre o lutador, no jogo.
+        confronto = event.get("confronto") or {}
+        faixa = bool(confronto.get("p1") and confronto.get("p2"))
         for x, nome, cor, ancora in ((x1, hud.get("p1", ""), cor1, "ls"),
                                      (x2 + largura, hud.get("p2", ""), cor2, "rs")):
             draw.rounded_rectangle([x - 4 if ancora == "ls" else x - largura - 4, y - 4,
                                     x + largura + 4 if ancora == "ls" else x + 4,
                                     y + altura + 4],
                                    radius=raio + 4, fill=(12, 10, 24, 210))
-            if hud.get("nomes", True) and nome:
+            if hud.get("nomes", True) and nome and not faixa:
                 fonte = fit_font(str(nome), self.fonts["black"], largura,
                                  int(self.ref * 0.036))
                 draw.text((x, y - int(self.ref * 0.012)), str(nome), font=fonte,
                           fill=cor, anchor=ancora, stroke_width=3,
                           stroke_fill=(15, 12, 30))
+        if faixa and hud.get("nomes", True):
+            # a pilula vai de logo abaixo das abas das plataformas ate
+            # FAIXA_FOLGA_HUD px antes da moldura das barras (que comeca em y-4)
+            # (o retangulo pinta a linha de baixo tambem: -1)
+            baixo = y - 4 - FAIXA_FOLGA_HUD - 1
+            if topo is None:                  # 16:9: centrada na tela
+                centro, cabe = self.width // 2, int(self.width * 0.9)
+                cima = max(2, baixo - int(self.ref * 0.05))
+            else:                             # celular: centrada na faixa segura
+                centro = topo["direita"] // 2
+                cabe = topo["direita"] - 2 * topo["margem"]
+                cima = math.ceil(self.height * ZONA_DAS_PLATAFORMAS["topo"]) + 2
+            self._desenhar_faixa(draw, str(confronto["p1"]), str(confronto["p2"]),
+                                 cor1, cor2, centro, (cima, baixo), cabe)
         # Onda 10C: serie do plano (t, rotulo_p1, prog_p1, rotulo_p2, prog_p2).
         serie_plano = sorted(
             (float(a[0]), str(a[1] or ""), float(a[2] or 0.0), str(a[3] or ""), float(a[4] or 0.0))
@@ -639,6 +730,49 @@ class VideoRenderer:
             "fonte_plano": fit_font("QUEBRAR GUARDA", self.fonts["black"], largura,
                                     int(self.ref * 0.024)),
         }
+
+    def _pecas_da_faixa(self, lado1: str, lado2: str, cabe: int, contorno: int = 3,
+                        altura: int | None = None):
+        """(fonte, larguras de [lado1, " VS ", lado2], (topo, baixo) do texto
+        relativos a linha de base) no MAIOR corpo, ate ``FAIXA_CORPO``, em que
+        a faixa inteira (contorno incluso) cabe em ``cabe`` px de largura e,
+        com ``altura``, nessa altura (o pior caso: capitular acentuada e
+        descendente). Um corpo so para os dois lados: um nome grande e o outro
+        miudo diriam que um importa mais."""
+        tamanho = int(self.ref * FAIXA_CORPO)
+        pecas = (lado1, " VS ", lado2)
+        while True:
+            fonte = load_font(self.fonts["black"], tamanho)
+            larguras = [fonte.getlength(p) for p in pecas]
+            caixa = fonte.getbbox(_AMOSTRA_TOPO + _AMOSTRA_BAIXO, anchor="ls",
+                                  stroke_width=contorno)
+            cabe_alto = altura is None or caixa[3] - caixa[1] <= altura
+            if tamanho <= 12 or (sum(larguras) + 2 * contorno <= cabe and cabe_alto):
+                return fonte, larguras, (caixa[1], caixa[3])
+            tamanho -= 1
+
+    def _desenhar_faixa(self, draw, lado1: str, lado2: str, cor1, cor2,
+                        centro: int, faixa_y: tuple[int, int], cabe: int) -> None:
+        """"Katana VS Sai" centrado em ``centro`` numa pilula escura entre
+        ``faixa_y`` (cima, baixo), cada lado na cor do seu lutador clareada
+        ate ``CONTRASTE_MINIMO`` sobre a pilula."""
+        contorno, pad_x, pad_y = 3, int(self.ref * 0.016), 3
+        cima, baixo = faixa_y
+        fonte, (l1, lvs, l2), (sobe, desce) = self._pecas_da_faixa(
+            lado1, lado2, cabe - 2 * pad_x, contorno, max(8, baixo - cima - 2 * pad_y))
+        total = l1 + lvs + l2
+        draw.rounded_rectangle([int(centro - total / 2 - pad_x), cima,
+                                int(centro + total / 2 + pad_x), baixo],
+                               radius=max(4, (baixo - cima) // 2), fill=PILULA)
+        # linha de base que centra o pior caso (acento + descendente) na pilula
+        base = int(round((cima + baixo) / 2.0 - (sobe + desce) / 2.0))
+        x = centro - total / 2.0
+        for texto, cor, largura in ((lado1, cor_legivel(cor1), l1),
+                                    (" VS ", COR_DO_VS, lvs),
+                                    (lado2, cor_legivel(cor2), l2)):
+            draw.text((x, base), texto, font=fonte, fill=cor, anchor="ls",
+                      stroke_width=contorno, stroke_fill=(15, 12, 30))
+            x += largura
 
     @staticmethod
     def _plano_em(hud: dict, t: float) -> tuple[str, float, str, float]:
@@ -714,10 +848,11 @@ class VideoRenderer:
         luta = event.get("luta") or {}
         cor1, cor2 = self._cores_do_confronto(luta) if luta.get("p1_ficha") \
             else ((230, 90, 90), (90, 150, 230))
-        # O NOME nao entra aqui: o HUD ja o desenha, na cor do lutador, no
-        # video inteiro. Repetir logo abaixo (como saiu no primeiro duelo,
-        # 11/09/2026) gasta a unica faixa livre do topo dizendo o que ja
-        # esta dito. Esta camada acrescenta o que falta — arma e classe.
+        # Sem a faixa do confronto, o NOME nao entra aqui: o HUD ja o
+        # desenha, na cor do lutador, no video inteiro. Repetir logo abaixo
+        # (como saiu no primeiro duelo, 11/09/2026) gasta a unica faixa livre
+        # do topo dizendo o que ja esta dito. Com a faixa (semana 1), e o
+        # contrario: a arma esta no topo e o nome entra aqui.
         topo = self._layout_do_topo()
         margem = int(self.width * 0.04)
         if topo is None:                      # 16:9: como sempre foi
@@ -727,7 +862,9 @@ class VideoRenderer:
             # Sem esse teto os dois textos se encontram no centro e viram uma
             # linha ilegivel (foi o que saiu no primeiro duelo, 11/09/2026).
             cabe = max(1, self.width // 2 - margem - int(self.width * 0.02))
-            selo_x, selo_y = self.width // 2, y + int(self.ref * 0.045)
+            pergunta_y = y + int(self.ref * 0.045)
+            selo_x = self.width // 2
+            selo_y = pergunta_y + (int(self.ref * 0.065) if ident.get("pergunta") else 0)
             selo_cabe = int(self.width * 0.8)
         else:
             # celular: logo abaixo do HUD, cada lado na coluna da sua barra
@@ -736,14 +873,19 @@ class VideoRenderer:
             esq, dir_ = topo["x1"], topo["x2"] + topo["largura"]
             cabe = topo["largura"]
             selo_x, selo_y = topo["direita"] // 2, topo["selo_y"]
+            pergunta_y = topo["pergunta_y"]
             selo_cabe = topo["direita"] - 2 * topo["margem"]
+        # Semana 1 (20/10/2026): com a arma na faixa do topo, a identidade
+        # do duelo diz QUEM e — o nome ("primeiro": "nome"). Sem a chave (plano
+        # de edicao antigo), a arma, como antes.
+        primeiro = "nome" if ident.get("primeiro") == "nome" else "arma"
         lados = []
         for slot, cor, lado in (("p1", cor1, "esq"), ("p2", cor2, "dir")):
             dados = ident.get(slot) or {}
             # "Berserker (Furia)" vira "Berserker": o parenteses e taxonomia
             # do motor, e em 1,5 s de leitura so a primeira palavra chega.
             classe = str(dados.get("classe") or "").split("(")[0].strip()
-            texto = " · ".join(p for p in (str(dados.get("arma") or "").strip(),
+            texto = " · ".join(p for p in (str(dados.get(primeiro) or "").strip(),
                                            classe) if p)
             if not texto:
                 continue
@@ -755,14 +897,23 @@ class VideoRenderer:
                 texto = f"{texto} · {cartel}" if texto else cartel
             lados.append({
                 "x": esq if lado == "esq" else dir_,
-                "y": y, "cor": cor, "texto": texto,
+                # sobre a pilula, clareada ate CONTRASTE_MINIMO (conferente, 20/10)
+                "y": y, "cor": cor_legivel(cor), "texto": texto,
                 "fonte": fit_font(texto, self.fonts["bold"], cabe,
                                   int(self.ref * 0.026)),
                 "anchor": "la" if lado == "esq" else "ra",
             })
-        if not lados:
+        pergunta = str(ident.get("pergunta") or "").strip()
+        if not lados and not pergunta:
             return None
         saida = {"ate": float(ident.get("ate", 1.5)), "lados": lados}
+        if pergunta:
+            # Legivel no quadro 0, como o resto da identidade (sem pop-in).
+            saida["pergunta"] = {
+                "texto": pergunta, "x": selo_x, "y": pergunta_y,
+                "fonte": fit_font(pergunta, self.fonts["black"], selo_cabe,
+                                  int(self.ref * PERGUNTA_CORPO)),
+            }
         selo = str(ident.get("selo") or "").strip()
         if selo:
             # O selo e o motivo de ESTE confronto existir — revanche,
@@ -786,10 +937,21 @@ class VideoRenderer:
         alfa = 1.0 if t < ate - 0.35 else max(0.0, (ate - t) / 0.35)
         camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(camada)
+        contorno = max(2, int(self.ref * 0.004))
         for lado in ident["lados"]:
+            caixa = draw.textbbox((lado["x"], lado["y"]), lado["texto"], font=lado["fonte"],
+                                  anchor=lado["anchor"], stroke_width=contorno)
+            pad = int(self.ref * 0.008)
+            draw.rounded_rectangle([caixa[0] - pad, caixa[1] - 3, caixa[2] + pad, caixa[3] + 3],
+                                   radius=max(4, (caixa[3] - caixa[1]) // 2 + 3), fill=PILULA)
             draw.text((lado["x"], lado["y"]), lado["texto"], font=lado["fonte"],
                       fill=lado["cor"], anchor=lado["anchor"],
-                      stroke_width=max(2, int(self.ref * 0.004)),
+                      stroke_width=contorno, stroke_fill=(12, 10, 24))
+        pergunta = ident.get("pergunta")
+        if pergunta:
+            draw.text((pergunta["x"], pergunta["y"]), pergunta["texto"],
+                      font=pergunta["fonte"], fill=COR_DA_PERGUNTA, anchor="ma",
+                      stroke_width=max(3, int(self.ref * 0.006)),
                       stroke_fill=(12, 10, 24))
         selo = ident.get("selo")
         if selo:
@@ -806,17 +968,82 @@ class VideoRenderer:
         if not ver or not str(ver.get("vencedor") or "").strip():
             return None
         vencedor = str(ver["vencedor"]).strip()
-        fonte = fit_font(vencedor, self.fonts["black"],
-                         int(self.width * VEREDITO_LARGURA_MAX), int(self.ref * 0.085))
-        fonte_ko = load_font(self.fonts["bold"], int(self.ref * 0.034))
+        cx, cabe = self._geometria_do_veredito()
+        contorno = max(4, int(self.ref * 0.008))
+        # Semana 1 (20/10/2026): o cartao responde a pergunta do quadro 0 —
+        # "SHURIKEN WINS!" grande; o nome do personagem pequeno embaixo.
+        titulo = str(ver.get("titulo") or "").strip()
+        grande = titulo or vencedor
+        largura = max(1, cabe - 2 * contorno)
+        fonte = fit_font(grande, self.fonts["black"], largura, int(self.ref * 0.085))
+        # Rotulo longo ("THREE-SECTION STAFF NECROMANCER WINS!") encolhia a
+        # 31-47 px numa linha so (conferente, 20/10): abaixo do corpo minimo,
+        # quebra em DUAS linhas equilibradas e volta a crescer.
+        # (o pior caso real, o desempate pelo elemento na arma mais longa —
+        # "EXECUTIONER'S THREE-SECTION STAFF WINS!" — pede tres)
+        original = grande
+        for linhas in (2, 3):
+            if fonte.size >= int(self.ref * VEREDITO_CORPO_MIN) or " " not in original:
+                break
+            grande = self._em_linhas(original, linhas)
+            maior = max(grande.split("\n"), key=lambda s: fonte.getlength(s))
+            # de 1 em 1 px (o `fit_font` desce de 4 em 4 e pulava o que cabia)
+            tamanho = int(self.ref * 0.085)
+            fonte = load_font(self.fonts["black"], tamanho)
+            # e pela ALTURA: o bloco inteiro (titulo + linha pequena) acima dos
+            # 20% de baixo que as plataformas cobrem
+            medir = ImageDraw.Draw(Image.new("L", (1, 1)))
+            cabe_alto = (self.height * (1 - ZONA_DAS_PLATAFORMAS["baixo"] - VEREDITO_ZONA[0])
+                         - int(self.ref * 0.06))
+
+            def alto(f):
+                caixa = medir.multiline_textbbox((0, 0), grande, font=f, anchor="ma",
+                                                 align="center", stroke_width=contorno)
+                return caixa[3] - caixa[1]
+
+            while tamanho > 14 and (fonte.getlength(maior) > largura or alto(fonte) > cabe_alto):
+                tamanho -= 1
+                fonte = load_font(self.fonts["black"], tamanho)
         # Onda 15D: o cartel JA CONTANDO esta luta. "5V-0D" no fim diz que
         # ha uma sequencia em risco — e o unico gancho honesto para o
         # proximo video, porque nasce do que acabou de acontecer.
         cartel = str(ver.get("cartel_apos") or "").strip()
-        return {"de": float(ver.get("de", 0.0)), "nome": vencedor,
-                "ko": " · ".join(p for p in
-                                 (str(ver.get("ko_type") or "").strip(), cartel) if p),
-                "fonte": fonte, "fonte_ko": fonte_ko}
+        ko = " · ".join(p for p in ((vencedor if titulo else ""),
+                                    str(ver.get("ko_type") or "").strip(), cartel) if p)
+        fonte_ko = fit_font(ko or "KO", self.fonts["bold"], max(1, cabe - 6),
+                            int(self.ref * 0.034))
+        return {"de": float(ver.get("de", 0.0)), "nome": grande, "ko": ko,
+                "fonte": fonte, "fonte_ko": fonte_ko, "cx": cx}
+
+    def _em_linhas(self, texto: str, linhas: int) -> str:
+        """O texto em ``linhas`` linhas (2 ou 3), quebrado nas palavras que
+        deixam a linha mais larga a MENOR possivel (no corpo maximo)."""
+        import itertools
+        palavras = texto.split()
+        if len(palavras) < 2:
+            return texto
+        linhas = min(linhas, len(palavras))
+        fonte = load_font(self.fonts["black"], int(self.ref * 0.085))
+        melhor, pior = texto, float("inf")
+        for cortes in itertools.combinations(range(1, len(palavras)), linhas - 1):
+            limites = (0, *cortes, len(palavras))
+            partes = [" ".join(palavras[a:b]) for a, b in zip(limites, limites[1:])]
+            larga = max(fonte.getlength(p) for p in partes)
+            if larga < pior:
+                melhor, pior = "\n".join(partes), larga
+        return melhor
+
+    def _geometria_do_veredito(self) -> tuple[int, int]:
+        """(centro x, largura maxima) do cartao final. Celular: no MESMO
+        centro da faixa do topo (a faixa segura, a esquerda da coluna de
+        botoes) e inteiro antes de ``VEREDITO_X_MAX`` (conferente, 20/10:
+        centrado na tela ele ia a x 940, sobre a coluna). 16:9: como sempre."""
+        topo = self._layout_do_topo()
+        if topo is None:
+            return self.width // 2, int(self.width * VEREDITO_LARGURA_MAX)
+        cx = topo["direita"] // 2
+        limite = int(self.width * VEREDITO_X_MAX)
+        return cx, 2 * min(cx - topo["margem"], limite - cx)
 
     def _posicoes_do_veredito(self, draw, ver: dict):
         """((y do nome, contorno), y da linha do K.O. ou None) com o bloco
@@ -824,8 +1051,9 @@ class VideoRenderer:
         entre as linhas e a de antes (0,075 ref entre centros) e encolhe se o
         bloco nao couber na faixa."""
         contorno = max(4, int(self.ref * 0.008))
-        cn = draw.textbbox((0, 0), ver["nome"], font=ver["fonte"], anchor="mm",
-                           stroke_width=contorno)
+        # multiline: o titulo do cartao pode vir em duas linhas
+        cn = draw.multiline_textbbox((0, 0), ver["nome"], font=ver["fonte"], anchor="ma",
+                                     align="center", stroke_width=contorno)
         altura_nome = cn[3] - cn[1]
         topo_zona = self.height * VEREDITO_ZONA[0]
         baixo_zona = self.height * VEREDITO_ZONA[1]
@@ -833,7 +1061,9 @@ class VideoRenderer:
             ck = draw.textbbox((0, 0), ver["ko"], font=ver["fonte_ko"], anchor="mm",
                                stroke_width=3)
             altura_ko = ck[3] - ck[1]
-            vao = int(self.ref * 0.075) - (cn[3] + (-ck[1]))
+            # (com o anchor "ma" a caixa do nome comeca no topo: o centro e a
+            # metade da altura, como era com o "mm")
+            vao = int(self.ref * 0.075) - int((cn[3] - cn[1]) / 2 + (-ck[1]))
             vao = max(int(self.ref * 0.006), min(vao, int(baixo_zona - topo_zona
                                                           - altura_nome - altura_ko)))
             total = altura_nome + vao + altura_ko
@@ -853,11 +1083,11 @@ class VideoRenderer:
         alfa = min(1.0, (t - ver["de"]) / 0.25)
         camada = Image.new("RGBA", (self.width, self.height), (0, 0, 0, 0))
         draw = ImageDraw.Draw(camada)
-        cx = self.width // 2
+        cx = int(ver.get("cx", self.width // 2))
         (y_nome, contorno_nome), ko = self._posicoes_do_veredito(draw, ver)
-        draw.text((cx, y_nome), ver["nome"], font=ver["fonte"],
-                  fill=(255, 255, 255), anchor="mm",
-                  stroke_width=contorno_nome, stroke_fill=(12, 10, 24))
+        draw.multiline_text((cx, y_nome), ver["nome"], font=ver["fonte"],
+                            fill=(255, 255, 255), anchor="ma", align="center",
+                            stroke_width=contorno_nome, stroke_fill=(12, 10, 24))
         if ko is not None:
             draw.text((cx, ko), ver["ko"],
                       font=ver["fonte_ko"], fill=(255, 214, 92), anchor="mm",
@@ -1005,30 +1235,62 @@ class VideoRenderer:
         ducking = tem_voz and tem_musica and bool(self.audio_cfg.get("ducking", True))
 
         entradas = ["-i", str(video)]
-        cadeia = [f"[0:a]aresample={sr},aformat=channel_layouts=stereo[base]"]
+        sobre_o_jogo = tem_voz and bool(getattr(self, "_voz_sobre_o_jogo", False))
+        rotulo_base = "[base0]" if sobre_o_jogo else "[base]"
+        cadeia = [f"[0:a]aresample={sr},aformat=channel_layouts=stereo{rotulo_base}"]
         mix = ["[base]"]
         indice = 1
         if tem_voz:
             vv = float((self.audio_cfg.get("voz") or {}).get("volume", 1.0))
             entradas += ["-i", str(voz)]
-            if ducking:
-                cadeia.append(f"[{indice}:a]aresample={sr},volume={vv},asplit=2[v1][v2]")
+            saidas = ["[v1]"] + (["[v2]"] if ducking else []) + (["[v3]"] if sobre_o_jogo else [])
+            # So a medicao da prova muda isto: a voz muda NA MISTURA, com o
+            # mesmo abaixamento (as copias de controle seguem iguais).
+            na_mistura = float(getattr(self, "_volume_da_voz_na_mistura", 1.0))
+            # Voz do duelo: comprimida antes de entrar. O limitador e o
+            # loudnorm do master comiam os picos dela (medido no mp4 final
+            # pelo conferente, 20/10: +4 a +6 dB sobre a luta, contra os +10,7
+            # de antes do master).
+            voz_dura = ("acompressor=threshold=0.06:ratio=6:attack=3:release=80:makeup=5,"
+                        if sobre_o_jogo else "")
+            if len(saidas) > 1:
+                cadeia.append(f"[{indice}:a]aresample={sr},{voz_dura}volume={vv},"
+                              f"asplit={len(saidas)}{''.join(saidas)}")
             else:
-                cadeia.append(f"[{indice}:a]aresample={sr},volume={vv}[v1]")
+                cadeia.append(f"[{indice}:a]aresample={sr},{voz_dura}volume={vv}[v1]")
+            if na_mistura != 1.0:
+                cadeia.append(f"[v1]volume={na_mistura}[v1m]")
+            if sobre_o_jogo:
+                # O som da luta abaixa so enquanto a voz fala (~2 s do duelo).
+                # As copias da voz que so CONTROLAM o compressor ganham
+                # silencio no fim (apad): o sidechaincompress acaba quando a
+                # entrada de controle acaba, e a voz do duelo e curta — sem
+                # isso o audio do video parava aos ~2,4 s (medido no
+                # duelo_00001) e a musica sob a voz pararia junto.
+                cadeia.append("[v3]apad[v3p]")
+                cadeia.append("[base0][v3p]sidechaincompress=threshold=0.01:ratio=20:"
+                              "attack=5:release=250:makeup=1[base]")
+                if ducking:
+                    cadeia.append("[v2]apad[v2p]")
             indice += 1
         if tem_musica:
             mv = float(self.audio_cfg.get("music_volume", 0.22))
             entradas += ["-stream_loop", "-1", "-i", str(music)]
             cadeia.append(f"[{indice}:a]aresample={sr},volume={mv}[m]")
             if ducking:
-                cadeia.append("[m][v2]sidechaincompress=threshold=0.03:ratio=6:"
-                              "attack=40:release=400:makeup=1[md]")
+                # no duelo a musica abaixa mais sob a voz curta do quadro 0 (o
+                # nivel da trilha nao muda; e so o abaixamento sob a fala)
+                abaixa = ("threshold=0.01:ratio=20:attack=5:release=250" if sobre_o_jogo
+                          else "threshold=0.03:ratio=6:attack=40:release=400")
+                chave = "[v2p]" if sobre_o_jogo else "[v2]"
+                cadeia.append(f"[m]{chave}sidechaincompress={abaixa}:makeup=1[md]")
                 mix.append("[md]")
             else:
                 mix.append("[m]")
             indice += 1
         if tem_voz:
-            mix.append("[v1]")
+            mix.append("[v1m]" if float(getattr(self, "_volume_da_voz_na_mistura", 1.0)) != 1.0
+                       else "[v1]")
 
         if len(mix) > 1:
             cadeia.append("".join(mix) + f"amix=inputs={len(mix)}:duration=first:"
@@ -2621,15 +2883,27 @@ def caixa_do_hud(render_config: dict, perfil: str) -> tuple[int, int, int, int] 
     vida critica. O mesmo ``_hud_preparado`` + ``_desenhar_hud`` do video,
     medido pelo que foi pintado."""
     renderer = VideoRenderer(render_config, perfil)
-    hud = renderer._hud_preparado({"hud": {
+    evento = {"hud": {
         "p1": "Genevieve o Destruidor #2", "p2": "Aurelia Argalacern Ç",
         "serie_hp": [[0.0, 20.0, 20.0]],
-        "serie_plano": [[0.0, "QUEBRAR GUARDA", 1.0, "TROCAÇÃO", 1.0]]}})
-    if hud is None:
+        "serie_plano": [[0.0, "QUEBRAR GUARDA", 1.0, "TROCAÇÃO", 1.0]]}}
+    caixas = []
+    # com os nomes (build, estreia) e com a faixa do confronto (duelo, semana
+    # 1): a caixa e a uniao das duas, as duas no pior caso
+    for extra in ({}, {"confronto": {"p1": "Ninja com Machados de Arremesso",
+                                     "p2": "Ágil com Chicote-Espada Ç"}}):
+        hud = renderer._hud_preparado(dict(evento, **extra))
+        if hud is None:
+            return None
+        img = Image.new("RGBA", (renderer.width, renderer.height), (0, 0, 0, 0))
+        renderer._desenhar_hud(img, hud, 0.0)
+        caixa = img.getchannel("A").getbbox()
+        if caixa:
+            caixas.append(caixa)
+    if not caixas:
         return None
-    img = Image.new("RGBA", (renderer.width, renderer.height), (0, 0, 0, 0))
-    renderer._desenhar_hud(img, hud, 0.0)
-    return img.getchannel("A").getbbox()
+    return (min(c[0] for c in caixas), min(c[1] for c in caixas),
+            max(c[2] for c in caixas), max(c[3] for c in caixas))
 
 
 def hud_do_topo(render_config: dict, perfil: str) -> float | None:

@@ -235,9 +235,10 @@ class CarreiraNaTelaTests(unittest.TestCase):
         return fight
 
     def test_o_cartel_do_ledger_chega_ao_quadro(self):
+        # o duelo fala ingles com o publico (geral/canal-em-ingles): V/D -> W/L
         ident = _plano(self._com_carreira())["events"][0]["identidade"]
-        self.assertEqual("1V-5D", ident["p1"]["cartel"])
-        self.assertEqual("4V-0D", ident["p2"]["cartel"])
+        self.assertEqual("1W-5L", ident["p1"]["cartel"])
+        self.assertEqual("4W-0L", ident["p2"]["cartel"])
 
     def test_estreante_nao_mostra_cartel_zerado(self):
         """"0V-0D" ocuparia a linha para dizer que nao ha historia nenhuma."""
@@ -250,16 +251,16 @@ class CarreiraNaTelaTests(unittest.TestCase):
         """Um selo so, e o mais forte: dois avisos no mesmo segundo nao sao
         lidos, e cinturao em jogo vale mais que historico."""
         plano = _plano(self._com_carreira(titulo=True, revanche=True))
-        self.assertEqual("TITULO EM JOGO",
+        self.assertEqual("TITLE ON THE LINE",
                          plano["events"][0]["identidade"]["selo"])
 
     def test_revanche_vira_selo_quando_nao_ha_titulo(self):
         plano = _plano(self._com_carreira(revanche=True))
-        self.assertEqual("REVANCHE", plano["events"][0]["identidade"]["selo"])
+        self.assertEqual("REMATCH", plano["events"][0]["identidade"]["selo"])
 
     def test_sequencia_longa_vira_selo_quando_nao_ha_mais_nada(self):
         ident = _plano(self._com_carreira())["events"][0]["identidade"]
-        self.assertIn("SEGUIDAS", ident["selo"])
+        self.assertIn("WIN STREAK", ident["selo"])
         self.assertIn("Lyra", ident["selo"])
 
     def test_confronto_sem_historia_nao_inventa_selo(self):
@@ -274,7 +275,7 @@ class CarreiraNaTelaTests(unittest.TestCase):
         """
         ver = _plano(self._com_carreira())["events"][0]["veredito"]
         self.assertEqual("Kael", ver["vencedor"])
-        self.assertEqual("2V-5D", ver["cartel_apos"])
+        self.assertEqual("2W-5L", ver["cartel_apos"])
 
     def test_sem_ledger_o_duelo_continua_de_pe(self):
         """Carreira e enfeite, nao requisito: a primeira luta de todas."""
@@ -316,13 +317,31 @@ class PublicacaoDoDueloTests(unittest.TestCase):
             with self.subTest(campo=proibido):
                 self.assertNotIn(proibido, modelo)
 
-    def test_o_titulo_nomeia_os_dois_lutadores(self):
+    def test_o_titulo_e_o_confronto_pela_arma_e_pergunta(self):
+        """Semana 1 do plano (20/10/2026): "Arma VS Arma — who wins?" (o canal
+        e em ingles, geral/canal-em-ingles). O nome inventado ("Drusila
+        Vyrhordan x Sigrid Brasbalmirn") nao diz nada a quem nunca viu o
+        canal; 12 de 12 canais que cresceram poem o confronto no titulo."""
         modelo = self.config["titulos"][self.catalogo.DUELO]
-        self.assertIn("{p1}", modelo)
-        self.assertIn("{p2}", modelo)
+        self.assertIn("{lado1}", modelo)
+        self.assertIn("{lado2}", modelo)
+        self.assertIn(" VS ", modelo)
+        self.assertIn("who wins?", modelo)
+        self.assertNotIn("{p1}", modelo)
+        self.assertNotIn("{p2}", modelo)
+
+    def test_a_descricao_e_a_legenda_do_tiktok_abre_com_o_confronto(self):
+        """O TikTok so recebe a descricao (`tiktok.py`: descricao_completa):
+        sem o confronto nela, o TikTok continuaria com nome inventado."""
+        modelo = self.config["descricoes"][self.catalogo.DUELO]
+        primeira = modelo.splitlines()[0]
+        self.assertIn("{lado1}", primeira)
+        self.assertIn("{lado2}", primeira)
+        self.assertIn("who wins?", primeira)
 
     def test_nenhum_placeholder_sobra_no_texto_montado(self):
-        campos = {"p1": "Kael", "p2": "Lyra", "arena": "Duto", "duracao": 21}
+        campos = {"p1": "Kael", "p2": "Lyra", "lado1": "Katana", "lado2": "Sai",
+                  "arena": "Duto", "duracao": 21}
         for bloco in ("titulos", "descricoes"):
             texto = self.catalogo._formatar(
                 self.config[bloco][self.catalogo.DUELO], campos)

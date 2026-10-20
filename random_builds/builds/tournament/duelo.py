@@ -70,11 +70,20 @@ class DueloTimelineBuilder:
         duracao = max(float(c["duracao"]) for c in (luta.get("clipes") or {}).values())
         evento["start"] = 0.0
         evento["duration"] = round(duracao, 3)
+        # Semana 1 do plano (20/10/2026): a faixa do topo diz o CONFRONTO pela
+        # arma, a luta inteira, cada lado na cor do seu lutador — o mesmo
+        # rotulo do titulo. Carimbado no fight (o controller regrava o
+        # fight.json depois da edicao), entao titulo e faixa nunca divergem.
+        from ..publicar import confronto
+        confronto.carimbar(fight)
+        lado1, lado2 = confronto.da_luta(luta)
+        evento["confronto"] = {"p1": lado1, "p2": lado2}
         evento["identidade"] = self._identidade(luta, duracao)
         evento["veredito"] = self._veredito(luta, duracao)
         # Sem `caption`: legenda de cena e coisa de cena, e aqui nao ha cena.
         # O que o espectador le esta desenhado sobre o jogo.
         evento["caption"] = ""
+        self._em_ingles(evento, luta)
 
         return {
             "generation_id": fight.get("duelo_id", fight.get("fight_id", "duelo")),
@@ -83,6 +92,64 @@ class DueloTimelineBuilder:
             "total_duration": round(duracao, 3),
             "events": [evento],
         }
+
+    # ------------------------------------------------------------- ingles
+    def _em_ingles(self, evento: dict, luta: dict) -> None:
+        """Tudo o que o duelo ESCREVE na tela, em ingles (decisao
+        `geral/canal-em-ingles`, 20/10/2026), pelo mapa de `ingles.py`:
+        classe e cartel da identidade, selo, callouts, plano do HUD e o tipo
+        de K.O. do veredito. Os nomes proprios ficam. O `luta` (que vai para
+        o fight.json) nao e tocado: a serie do plano e copiada antes."""
+        from ..publicar import ingles
+        evento["idioma"] = "en"
+        ident = evento.get("identidade") or {}
+        for slot in ("p1", "p2"):
+            lado = ident.get(slot)
+            if isinstance(lado, dict):
+                # o epiteto do nome so na exibicao ("Helga the Protector")
+                lado["nome"] = ingles.nome(lado.get("nome"))
+                lado["classe"] = ingles.classe(lado.get("classe"))
+                lado["cartel"] = ingles.cartel(lado.get("cartel"))
+        if ident.get("selo"):
+            nome, seq = "", 0
+            for slot in ("p1", "p2"):
+                s = ((luta.get(f"{slot}_recorde") or {}).get("sequencia") or 0)
+                if s >= 3:
+                    nome, seq = ingles.nome(luta.get(slot) or ""), int(s)
+                    break
+            ident["selo"] = ingles.selo(ident["selo"], nome, seq)
+        ver = evento.get("veredito") or {}
+        if ver:
+            # O cartao final RESPONDE a pergunta do quadro 0 ("WHO WINS?"):
+            # "SHURIKEN WINS!", pelo rotulo do confronto do vencedor; o nome
+            # do personagem vai pequeno embaixo (conferente, 20/10/2026).
+            rotulo = evento.get("confronto") or {}
+            vencedor_pt = ver.get("vencedor") or ""
+            slot = ("p1" if vencedor_pt and vencedor_pt == luta.get("p1")
+                    else "p2" if vencedor_pt and vencedor_pt == luta.get("p2") else "")
+            if slot and rotulo.get(slot):
+                ver["titulo"] = ingles.vence(rotulo[slot])
+            ver["vencedor"] = ingles.nome(vencedor_pt)
+            ver["ko_type"] = ingles.ko(ver.get("ko_type"))
+            ver["cartel_apos"] = ingles.cartel(ver.get("cartel_apos"))
+        hud = evento.get("hud")
+        if isinstance(hud, dict):
+            for slot in ("p1", "p2"):
+                if hud.get(slot):
+                    hud[slot] = ingles.nome(hud[slot])
+        modelos = ((self.config.get("fight_callouts") or {}).get("textos") or {})
+        for callout in evento.get("callouts") or []:
+            tipo = str(callout.get("tipo") or "")
+            callout["texto"] = ingles.callout(
+                str(callout.get("texto") or ""), tipo, modelos.get(tipo),
+                n=callout.get("n"), rotulo_pt=callout.get("rotulo"))
+            if callout.get("rotulo"):
+                callout["rotulo"] = ingles.plano(callout["rotulo"])
+        if isinstance(hud, dict) and hud.get("serie_plano"):
+            hud["serie_plano"] = [
+                [a[0], ingles.plano(a[1]), a[2], ingles.plano(a[3]), *a[4:]]
+                if len(a) >= 5 else list(a)
+                for a in hud["serie_plano"]]
 
     # ------------------------------------------------------------ overlays
     def _identidade(self, luta: dict, duracao: float) -> dict:
@@ -93,11 +160,20 @@ class DueloTimelineBuilder:
         barato e cor + nome + arma sobre o proprio jogo. O ledger (cartel,
         revanche, titulo) entra nesta mesma caixa na 15D.
         """
+        from ..publicar import confronto
         ate = float(self._cfg.get("identidade_s", 1.5))
         saida = {
             "ate": round(min(ate, duracao * 0.25), 3),
             "p1": self._lado(luta, "p1"),
             "p2": self._lado(luta, "p2"),
+            # Semana 1 (20/10/2026): a arma subiu para a faixa do topo, entao
+            # a linha de identidade volta a dizer QUEM e (nome · classe ·
+            # cartel), e a pergunta ("WHO WINS?", o canal e em ingles) fica
+            # escrita desde o quadro 0 (6 de 12 canais que cresceram
+            # perguntam; os 6 abertos quadro a quadro mostram o confronto ja
+            # no quadro 0).
+            "primeiro": "nome",
+            "pergunta": str(self._cfg.get("pergunta", confronto.PERGUNTA) or ""),
         }
         # Onda 15D: a CARREIRA na tela. O ledger tem 61 lutas registradas e
         # `FightSession._carreira` ja injetava cartel, revanche e titulo no

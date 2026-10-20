@@ -16,7 +16,8 @@ build no canal, e o duelo continua a historia dele) e, entre esses, o mais
 recente. O resto do empate e sorteado pela seed, para o banco nao ser
 percorrido em ordem alfabetica.
 
-E O PAR NAO PODE TER TITULO JA OCUPADO. O titulo do duelo e "{p1} x {p2}", e
+E O PAR NAO PODE TER TITULO JA OCUPADO. O titulo do duelo era "{p1} x {p2}"
+(desde 20/10/2026 e o confronto pela arma, "Katana VS Sai — quem vence?"), e
 a guarda de titulo repetido da publicacao (fechada em 17/09/2026) barra um
 video cujo titulo ja foi ao ar. Um duelo com par repetido seria gerado para
 nunca sair — 4 minutos de maquina viram estoque morto, e o contador de
@@ -122,51 +123,94 @@ def _config(config: dict | None) -> dict:
     return catalogo.carregar_config()
 
 
-def titulo_do_par(p1: str, p2: str, config: dict | None = None) -> str:
+def titulo_do_par(p1: str, p2: str, config: dict | None = None,
+                  fichas=None) -> str:
     """O titulo que o catalogo dara a este duelo — pelo MESMO modelo dele.
 
     Ler o modelo do config (e nao escrever "A x B" aqui) e o que impede a
     divergencia: se o titulo do duelo mudar no `publicacao.json`, a checagem
     de par ocupado muda junto.
+
+    Desde 20/10/2026 o titulo e o confronto pela ARMA ("Katana VS Sai — quem
+    vence?", semana 1 do plano), e a arma vem da ficha: sem `fichas` (dict
+    nome -> ficha do banco) o rotulo de cada lado cai no proprio nome, e a
+    checagem deixaria passar um par cujo titulo de verdade ja esta tomado.
+    Os campos sao montados pelo mesmo `catalogo.campos_do_confronto`.
     """
     from ..publicar import catalogo
     config = _config(config)
     modelo = ((config or {}).get("titulos") or {}).get("duelo") or TITULO_PADRAO
-    return catalogo._formatar(modelo, {"p1": p1, "p2": p2})
+    banco = fichas if isinstance(fichas, dict) else {}
+    luta = {"p1": p1, "p2": p2, "p1_ficha": banco.get(p1) or {},
+            "p2_ficha": banco.get(p2) or {}}
+    campos = catalogo.campos_do_confronto(luta)
+    # FALHA ALTO: um campo sumido do modelo daria o MESMO titulo a todo par e
+    # a checagem de par ocupado fecharia o banco inteiro em silencio.
+    falta = catalogo.campos_faltando(modelo, campos)
+    if falta:
+        raise catalogo.TituloIncompleto(
+            f"titulo do duelo sem {', '.join(falta)}: {modelo!r} ({p1} x {p2})")
+    return catalogo._formatar(modelo, campos)
+
+
+def titulos_do_disco(outputs: Path | None = None,
+                     config: dict | None = None) -> list[str]:
+    """O titulo de cada duelo no disco, como o catalogo o da (carimbo ou
+    fichas do proprio `fight.json`)."""
+    from ..publicar import catalogo
+    config = _config(config)
+    pasta = Path(outputs) if outputs is not None else OUTPUTS
+    saida = []
+    for arquivo in sorted(pasta.glob("duelo_*/fight.json")):
+        try:
+            dados = json.loads(arquivo.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        luta = (dados or {}).get("luta") or {}
+        if luta.get("p1") and luta.get("p2"):
+            saida.append(catalogo.titulo_do_duelo(luta, config))
+    return saida
 
 
 def titulos_ocupados(pares=None, publicados=None,
-                     config: dict | None = None) -> set:
+                     config: dict | None = None, fichas=None) -> set:
     """Chaves de titulo que um duelo NOVO nao pode repetir.
 
     Duas fontes: tudo o que o canal ja pos no ar (o ledger, pelo mesmo
     `titulos.ja_publicados` que a guarda da publicacao usa) e todo duelo que
     ja existe no disco, publicado ou nao — um duelo ainda na fila tambem
     ocupa o titulo, e dois iguais na fila so deixariam um sair.
+
+    Sem `pares`, os duelos do disco entram pelo titulo EXATO do catalogo
+    (`titulos_do_disco`). Com `pares` (nomes), pelo `titulo_do_par` com as
+    `fichas` do banco.
     """
     from ..publicar import metricas, titulos
     config = _config(config)
     if pares is None:
-        pares = duelos_recentes(n=None)
+        do_disco = titulos_do_disco(config=config)
+    else:
+        do_disco = [titulo_do_par(p1, p2, config, fichas) for p1, p2 in pares]
     if publicados is None:
         try:
             publicados = metricas.publicados()
         except Exception:                                      # noqa: BLE001
             publicados = []
     ocupados = set(titulos.ja_publicados(publicados))
-    for p1, p2 in pares:
-        chave = titulos.chave(titulo_do_par(p1, p2, config))
+    for titulo in do_disco:
+        chave = titulos.chave(titulo)
         if chave:
             ocupados.add(chave)
     return ocupados
 
 
-def par_ocupado(p1: str, p2: str, ocupados, config: dict | None = None) -> bool:
+def par_ocupado(p1: str, p2: str, ocupados, config: dict | None = None,
+                fichas=None) -> bool:
     """O titulo deste par (em qualquer ordem) ja esta tomado?"""
     from ..publicar import titulos
     if not ocupados:
         return False
-    return any(titulos.chave(titulo_do_par(a, b, config)) in ocupados
+    return any(titulos.chave(titulo_do_par(a, b, config, fichas)) in ocupados
                for a, b in ((p1, p2), (p2, p1)))
 
 
@@ -197,7 +241,7 @@ def escolher_p2(p1: str, fichas, gerados, pares, rng, *, ledger=None,
     config = _config(config)
     contagem = uso(list(pares or ())[-JANELA_DE_USO:])
     livres = [n for n in sorted(fichas or ())
-              if n != p1 and not par_ocupado(p1, n, ocupados, config)]
+              if n != p1 and not par_ocupado(p1, n, ocupados, config, fichas)]
     if not livres:
         return None
     menor = min(contagem.get(n, 0) for n in livres)
@@ -222,7 +266,7 @@ def escolher_p1(fichas, gerados, pares, rng, *, ocupados=None,
     fila = _fila(nomes, gerados, contagem, rng)
     for candidato in fila:
         if any(outro != candidato
-               and not par_ocupado(candidato, outro, ocupados, config)
+               and not par_ocupado(candidato, outro, ocupados, config, fichas)
                for outro in nomes):
             return candidato
     return None
@@ -240,6 +284,7 @@ def escolher_par(fichas, gerados, rng, *, pares=None, ledger=None,
     quem passa os pares (os testes) passa o mundo inteiro.
     """
     config = _config(config)
+    todas = fichas
     if fora is None and pares is None:
         try:
             fora = suspensos()
@@ -253,10 +298,13 @@ def escolher_par(fichas, gerados, rng, *, pares=None, ledger=None,
             fichas = {n: f for n, f in fichas.items() if n not in fora}
         else:
             fichas = [n for n in (fichas or ()) if n not in fora]
+    if ocupados is None:
+        # sem `pares`: os duelos do disco pelo titulo exato do catalogo
+        # (com TODAS as fichas: um suspenso ainda ocupa o titulo do disco)
+        ocupados = titulos_ocupados(None if pares is None else pares,
+                                    config=config, fichas=todas)
     if pares is None:
         pares = duelos_recentes(n=None)
-    if ocupados is None:
-        ocupados = titulos_ocupados(pares, config=config)
     if not p1:
         p1 = escolher_p1(fichas, gerados, pares, rng, ocupados=ocupados,
                          config=config)
@@ -269,4 +317,5 @@ def escolher_par(fichas, gerados, rng, *, pares=None, ledger=None,
 __all__ = ["DIAS_DE_SUSPENSAO", "FALHA", "FALHAS_PARA_SUSPENDER",
            "JANELA_DE_USO", "duelos_recentes", "escolher_p1", "escolher_p2",
            "escolher_par", "par_ocupado", "suspensos", "titulo_do_par",
+           "titulos_do_disco",
            "titulos_ocupados", "uso"]

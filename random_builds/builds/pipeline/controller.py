@@ -344,6 +344,10 @@ class PipelineController:
                 "em": datetime.now().isoformat(timespec="seconds")})
             raise
         fight["duelo_id"] = duelo_id
+        # Semana 1 (20/10/2026): o confronto pela arma ("Katana VS Sai") fica
+        # gravado na luta — o titulo nao muda depois, mesmo que o banco mude.
+        from ..publicar import confronto
+        confronto.carimbar(fight)
         _write_json(out_dir / "fight.json", fight)
         luta = fight["luta"]
         print(f"[duelo] {duelo_id} seed={fight['seed']} {p1} vs {p2} -> "
@@ -379,12 +383,16 @@ class PipelineController:
             with open(out_dir / "edit_plan.json", encoding="utf-8") as fh:
                 edit_plan = json.load(fh)
         music = self._musica(engine)
+        voz_gancho = self._voz_do_duelo(out_dir, edit_plan)
         for profile in self.perfis:
             if (profile == "celular" and not preview
                     and self._celular_pelo_palco(out_dir, fight, edit_plan, music)):
                 continue
             renderer = VideoRenderer(self.render_config, profile, preview)
-            final = renderer.render(edit_plan, fight, out_dir, music)
+            # sem a voz, a chamada de sempre (os dubles do renderer contam com ela)
+            extra = ({"voz": voz_gancho, "voz_sobre_o_jogo": True}
+                     if voz_gancho is not None else {})
+            final = renderer.render(edit_plan, fight, out_dir, music, **extra)
             print(f"[render:{profile}] {final} ({edit_plan['total_duration']}s)")
         # A capa e enfeite: falhar nela nao pode custar o video, que ja
         # esta renderizado. Mesma doutrina de `_enfileirar_identidade`.
@@ -394,6 +402,25 @@ class PipelineController:
         except Exception as erro:
             print(f"[capa] falhou ({type(erro).__name__}: {erro}) — o video "
                   f"continua publicavel sem miniatura")
+
+    def _voz_do_duelo(self, out_dir: Path, edit_plan: dict) -> Path | None:
+        """A voz do quadro 0 ("Sword versus Dagger, who will win?", semana 1,
+        20/10/2026), pelo rotulo que a edicao poe na faixa do topo. Plano de
+        edicao sem `confronto` (antigo, re-render sem --refazer-edicao) sai
+        sem a voz. Qualquer falha tambem: a voz e gancho, nunca dependencia."""
+        evento = next(iter(edit_plan.get("events") or []), {}) or {}
+        rotulo = evento.get("confronto") or {}
+        if not (rotulo.get("p1") and rotulo.get("p2")):
+            return None
+        try:
+            from ..content import voz_do_duelo
+            bloco = (self.editing_config.get("duelo") or {}).get("voz_gancho")
+            return voz_do_duelo.gerar(
+                out_dir, rotulo["p1"], rotulo["p2"], bloco,
+                taxa=int((self.render_config.get("audio") or {}).get("sample_rate", 44100)))
+        except Exception as erro:                              # noqa: BLE001
+            print(f"[voz do duelo] falhou ({type(erro).__name__}: {erro}); sem a voz")
+            return None
 
     def _celular_pelo_palco(self, out_dir: Path, fight: dict, edit_plan: dict,
                             music: dict | None) -> bool:

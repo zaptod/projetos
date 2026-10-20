@@ -227,8 +227,9 @@ python main.py noite --instalar      # (re)cria as tarefas; --remover apaga
 p1 ou p2); no empate, quem saiu da roleta (tem vídeo de build) e, entre esses,
 o mais recente. O p2 sai dos menos usados pela regra antiga (continuidade,
 senão poder próximo). **Par com título já ocupado nunca é escolhido**, em
-nenhuma ordem: o título do duelo é `{p1} x {p2}` e a guarda de título
-repetido barraria o vídeo para sempre. Antes era "o último criado na roleta",
+nenhuma ordem: o título do duelo era `{p1} x {p2}` e, desde 20/10/2026, é
+o confronto pela arma em inglês (`{lado1} VS {lado2} — who wins?`, §13); a
+guarda de título repetido barraria o vídeo para sempre. Antes era "o último criado na roleta",
 e sem roleta nova isso deu 5 de 8 duelos com o mesmo p1 (Wren Telgyll, 27/09).
 **Quem derruba a gravação sai do rodízio por 7 dias** (19/10): o duelo que
 falha grava `falhou.json` na pasta dele, e quem aparece em 2 falhas na semana
@@ -1313,6 +1314,186 @@ quadro a quadro), `area_desenho_*.json`, `cauda_x_hud_*.json` e
 `folha_zona.png`. Teste com o caso zero na luta de verdade:
 `ArremessoDoVulcao4242Tests` (os dois lutadores num fixture,
 `random_builds/tests/fixtures/duelo_4242/`; o gravador até 20,5 s, ~45 s).
+
+## 13. Semana 1 do plano: o confronto, em inglês (20/10/2026)
+
+`docs/PLANO.md`, semana 1 (o espelho é o Orbitality: título com o confronto,
+luta no quadro 0), mais a decisão `geral/canal-em-ingles` (o que o público vê
+vai em inglês; código e docs seguem em português). Só texto e tela: a luta
+não muda.
+
+- **Título** (`publicacao.json → titulos.duelo`): `{lado1} VS {lado2} — who
+  wins?`, ex. "Tactical Knives VS Kusarigama — who wins?". O rótulo de cada
+  lado é o **estilo da arma** do personagem no banco, traduzido
+  (`builds/publicar/confronto.py`); mesmo rótulo dos dois lados desempata pela
+  classe ("Longsword Ninja VS Longsword Monk"), depois pelo elemento da arma
+  ("Flame Longsword"), depois pelo primeiro nome ("Aldric's Longsword"). Arma
+  sem tradução cai na classe; sem classe, no nome. O duelo novo grava o
+  rótulo em `fight.json → luta.confronto` (o título não muda se o banco
+  mudar); duelo antigo é rotulado pelas fichas do próprio `fight.json` + banco.
+- **Descrição = legenda do TikTok** (`tiktok.py` só manda a descrição): abre com
+  "{lado1} VS {lado2}: who wins? Pick your side in the comments.", depois os
+  nomes. A arena saiu (os nomes das arenas são portugueses). Hashtags:
+  `#shorts #simulation #battle #whowins #gamedev`.
+- **Rodízio** (`arena/rodizio.py`): o par ocupado é medido pelo título NOVO
+  (`titulo_do_par(..., fichas)`, `titulos_do_disco`, os do disco pelo título
+  exato do catálogo). Sem as fichas a checagem não veria o confronto (teste,
+  caso zero).
+- **Faixa do topo** (`renderer._desenhar_faixa`): na linha dos nomes do HUD,
+  "Sword-Spear VS Longsword" centrado na faixa segura, cada lado na cor do
+  lutador, a luta inteira, no mesmo corpo máximo dos nomes (só encolhe): o HUD
+  não cresce e a reserva da câmera (`hud_do_topo`) não muda. O nome próprio
+  sai do HUD e vai para a identidade (nome · classe · cartel) e continua
+  sobre o lutador, desenhado pelo jogo.
+- **"WHO WINS?"** escrito desde o quadro 0, na identidade (1,5 s), entre a
+  linha de nome e o selo (`_layout_do_topo → pergunta_y`); o callout que nasce
+  com a identidade desce junto (`callout_cy_identidade`).
+- **Tudo da tela em inglês** (`builds/publicar/ingles.py`, mapa explícito,
+  nada de LLM; `DueloTimelineBuilder._em_ingles`): classe e cartel (4W-2L),
+  selo (REMATCH, TITLE ON THE LINE, "X IS ON A 4-WIN STREAK"), callouts (o
+  modelo português que gerou o texto vira o inglês de mesmo índice), plano do
+  HUD (PRESSURE, GUARD BREAK…), tipo de K.O. do veredito e a capa (rótulo
+  sob cada retrato). O texto que o **jogo** desenha no clipe (plano sob o
+  lutador, "CRÍTICO!") vai trocado pelo gravador só no duelo:
+  `match_config["textos_da_tela"]` (`fight_recorder --textos-da-tela`,
+  `capture.gravar_uma(textos_da_tela=)`, `runner._textos_da_tela("duelo")`),
+  lido em `Simulador._texto_da_tela` (só exibição). Build, estreia e torneio
+  não mudam.
+- **Voz no quadro 0** (acréscimo, `docs/pesquisa/som-ganchos-e-musica.md`
+  item 2): "Shuriken versus Sentinels, who will win?", o mesmo rótulo da
+  faixa, pela **en-US-GuyNeural** do edge-tts (+12%), em
+  `builds/content/voz_do_duelo.py` → `<duelo>/voz_gancho.wav` +
+  `voz_gancho.json`. Só o edge: sem ele o duelo sai sem a voz (a pergunta
+  escrita fica), nunca pelo SAPI pt-BR. O silêncio que o edge põe no começo
+  sai (a voz começava aos 0,195 s; agora 0,023 s). Na mixagem
+  (`render(..., voz_sobre_o_jogo=True)`, só o duelo) o **som da luta** abaixa
+  sob a voz, como a música já abaixava: sem isso a voz ficava 5,1–5,6 dB
+  ABAIXO dos golpes; com isso, 8,9–10,7 dB acima. As cópias da voz que só
+  controlam o compressor ganham `apad`: o `sidechaincompress` acaba com a
+  entrada de controle e o 1º render saiu com o áudio parando aos ~2,4 s
+  (teste de integração com ffmpeg). A trilha não mudou (semana 2).
+- **Quadro 0**: o duelo já não tinha intro nem contagem (o clipe começa no
+  1º passo da luta; em `duelo_00141` os dois se chocam aos 0,5 s e o
+  freezedetect não acha congelado nos 4 s iniciais). Nada a cortar.
+
+**Medido.** Estoque real (`outputs/`, só leitura): 139 duelos, 28 não
+publicados, **0 títulos repetidos** entre os não publicados com o formato
+novo, 128 chaves distintas no disco inteiro, maior título 52 caracteres.
+Banco vivo (184 armas, 171 personagens): tudo traduz. Luta igual com e sem o
+mapa de textos: **6/6** pelo gravador (vencedor, motivo, durações, HP, dano,
+séries de HP e plano, narrativa, K.O.). Testes:
+`random_builds/tests/test_confronto_semana1_regressions.py` e
+`test_ingles_do_duelo_regressions.py` (falham se aparecer arma, classe,
+elemento, plano ou callout sem tradução, no catálogo do motor, no config ou no
+banco vivo).
+
+**Prova** (`E:\tmp_pytest\semana1\`, caminho real `main.py duelo` na
+worktree, runtime numa cópia do banco, fora do catálogo de produção):
+`duelo_00002` (seed 4242, Helga o Protetor × Nyxaris Cinzamordaca, "Shuriken
+VS Sentinels — who wins?", 28,1 s, áudio 28,1 s) e `duelo_00001` (seed
+20102026, "Rope Dart VS Tactical Knives", K.O. aos 3,1 s, 5,9 s). Quadros 0,
+1 s, meio e fim, capa, `*_medidas.json` e `catalogo_prova.txt` (título e
+legenda que a publicação leria). Quadro 0 → quadro 1 no `duelo_00002`: 77 mil
+pixels da arena mudam (média 7,2/255); 0 → 0,5 s, 25,9.
+
+**Epíteto do nome, só na exibição** (decisão do orquestrador, 20/10): o banco
+guarda "Helga o Protetor"; o duelo mostra "Helga the Protector"
+(`ingles.EPITETOS`, os `TITULOS` do `neural_fights/tools/gerador_database.py`
+nos dois gêneros, mais "das Sombras" → "of the Shadows" e afins;
+`ingles.nome`, que preserva o "#2" do desempate). Vale na identidade, no selo,
+no veredito, na descrição (`catalogo.campos_do_confronto`, `{p1}`/`{p2}`) e no
+nome que o JOGO escreve sobre o lutador e sobre o caído
+(`Simulador._nome_na_tela`, pelo mesmo `textos_da_tela`; o nome traduzido
+pode ir a 24 caracteres em vez de 18, senão "Helga the Protecto"). O nome
+próprio fica. Teste: todo título do gerador tem tradução e nenhum dos 171 nomes
+do banco vivo sai com epíteto português.
+
+**Reprovação do conferente (20/10, capturas em `E:\tmp_pytest\conferente\semana1\`) e o que mudou:**
+1. **O cartão final responde à pergunta:** "SHURIKEN WINS!" (o rótulo do
+   vencedor, `veredito.titulo`, por `ingles.vence`: rótulo no plural leva
+   "WIN!", "SENTINELS WIN!", 18 dos 54 estilos), e embaixo, pequeno,
+   "Nyxaris Cinzamordaca · KO · 1W-0L".
+2. **Cartão no centro da faixa** (x = `direita // 2`, 475 px) e inteiro antes de
+   `VEREDITO_X_MAX` (900 px); centrado na tela ele ia a x 940, sobre a coluna.
+3. **Contraste:** pílula `PILULA` (12,10,24, alfa 210) atrás da faixa e de cada
+   lado da identidade; a cor do time é clareada (`cor_legivel`) até 4,5:1 sobre
+   `fundo_da_pilula()` (o azul (36,81,243) dava 2,6–3,0:1). A pílula da faixa vai
+   de 10% + 2 px até `FAIXA_FOLGA_HUD` = 8 px antes da moldura das barras (eram
+   1–2 px); o texto encolhe para caber nela.
+4. **Voz medida no mp4 FINAL** (depois do limitador e do `loudnorm`): o gêmeo é a
+   mesma mistura com a voz muda (`_volume_da_voz_na_mistura` = 0, a mesma voz como
+   controle do abaixamento). Os +10,7 dB de antes do master davam +4–6 no
+   arquivo. Agora, só no duelo: voz comprimida (`acompressor` ratio 6, makeup 5),
+   luta e música abaixadas mais forte sob ela (ratio 20). Medido no
+   `duelo_00002` remontado: **+15,9 dB** durante a fala e a luta no 1 s seguinte
+   +0,8 dB acima da voz (teto pedido: 5).
+5. **Duelo < 15 s não é publicável:** pendência "duelo curto" no catálogo
+   (`catalogo.DUELO_MINIMO_S`, trocável por `publicacao.json → duelo_minimo_s`,
+   pela `total_duration` do `edit_plan.json`). No estoque de 20/10: **10 dos 28**
+   ficam presos (8,8 a 14,5 s).
+6. Descrição: "Computer-simulated duel. No script: …" (havia edição; "no edits"
+   mentia).
+7. Callouts revistos como fala de narrador ("SLAMMED INTO THE WALL", "SAW IT
+   COMING", "WHIFF PUNISHED"…); "PIN TO WALL"; elemento "Keen", "Executioner's".
+8. Nome de skill não aparece no duelo: teste que varre o fonte do Simulador
+   (todo texto literal do `_push_texto` é inglês ou está no `TELA_DO_JOGO`) e
+   teste de que nenhum nome do kit entra na tela, no título ou na descrição.
+
+**2ª rodada do conferente (20/10, `E:\tmp_pytest\conferente\semana1_r2\`):**
+o `duelo_00128` aprovado; dois bloqueios do formato, consertados:
+- o **agarrão** que o jogo escreve ("ARREMESSO!", "JOELHADA", "EMPURRÃO",
+  "ESCAPOU", "REVERSÃO!"; 66 de 139 duelos do disco têm um) e o **nome da
+  invocação** (o da skill SUMMON: "Fênix", "Ira da Floresta", "Invocação:
+  Espírito", "Cópia Sombria") iam direto ao `.render(` e agora passam pelo
+  `_texto_da_tela` (`ingles.AGARRAO`, `ingles.INVOCACOES`: "THROW!", "KNEE!",
+  "SHOVE!", "ESCAPED!", "REVERSAL!", "Phoenix"…);
+- a varredura antiga só olhava o `_push_texto`. A nova (AST) exige que TODO
+  `.render(` das funções do Simulador que vão ao vídeo receba texto pelo mapa,
+  sem letras, ou um item revisado (`REVISADOS`: o glifo de status); as funções
+  que não vão ao vídeo (HUD do jogo, debug, vitória, pausa) estão nomeadas.
+  Rodada sobre o código de antes, ela acusa as duas linhas (4879 e 6442).
+Prova: `duelo_00129` (novo, Aurora Telvalum × Corvo Radyumi, seed 1585334362,
+Poço, o par/seed do `duelo_00132` do estoque; "Throwing Axes VS Tactical
+Knives"): "THROW!" aos 9,0 s e "ESCAPED!" aos 16,9 s
+(`E:\tmp_pytest\semana1\agarrao_duelo_00129\`).
+
+**Como medir a voz no mp4 final (e o limite de cada régua):** o gêmeo com a voz
+muda deu +15,3 a +15,9 dB em três duelos e +4,6 no `duelo_00129`, porque o
+`loudnorm` dinâmico sobe o gêmeo quieto e infla a luta; a projeção do final
+sobre a voz (alinhada: o aac atrasa ~5 ms; a voz passada pelo mesmo
+compressor) dá +9,7 a +10,4, mas tem um teto de ~+10 dB (correlação 0,95: o
+limitador do master entorta ~10% da voz, que cai no "resto"). Antes do master,
+a mesma janela: voz −16,8 / −16,4 dB contra a luta abaixada −28,6 / −32,2
+(00129 / 00128), sem contar os +6–9 dB do compressor da voz; música abaixada
+−40 dB. Sem o compressor, ou com o makeup 3, a projeção piora (+9,1 / +9,3).
+
+Mais: com o mapa (duelo), o nome sobre a bola vai a 24 caracteres mesmo sem
+tradução ("Nyxaris Cinzamordaca" inteiro); o título do cartão abaixo de 70 px
+(`VEREDITO_CORPO_MIN`) quebra em 2 ou 3 linhas equilibradas e volta a crescer,
+limitado pela largura (x ≤ 900) e pela altura (acima dos 80%): "TACTICAL /
+KNIVES WIN!" a 91 px; o pior caso real ("THREE-SECTION STAFF NECROMANCER
+WINS!") fica em 67 px em 3 linhas.
+
+Achados de outro agente, medidos: o rótulo é o **estilo** da arma, não o tipo
+(8 tipos → 36 pares esgotariam em ~12 dias). Banco vivo: 171 personagens, **51
+rótulos** distintos por lado, 14.535 pares de personagens → **1.516 títulos
+distintos**; 128 já ocupados pelo disco; **1.393 livres = 464 dias a 3/dia**. A
+guarda segue só pelo título. Campo do modelo sem valor **falha alto**:
+`rodizio.titulo_do_par` e `catalogo.titulo_do_duelo` levantam
+`TituloIncompleto`, e o catálogo segura o duelo com pendência (não derruba a
+listagem). A frase da voz não passa pelo `voz.falavel` (pt-BR: "KO" → "nocaute").
+
+**Estoque antigo (os 28 não publicados):** `--rerender --refazer-edicao` põe
+em inglês tudo o que o RENDERER desenha (faixa, WHO WINS?, voz, identidade,
+callouts, plano do HUD, veredito, capa), mas reaproveita o clipe gravado: o
+que o JOGO desenhou dentro dele (plano sob o lutador "PRESSÃO", "CRÍTICO!",
+nome sobre a bola) continua em português. Só uma gravação nova da luta tira
+isso; o duelo gerado depois deste commit já nasce todo em inglês.
+
+**Fora daqui, para a publicação:** o idioma do vídeo na API do YouTube
+(`defaultLanguage`/`defaultAudioLanguage`) é da publicação. O palco (Godot,
+`producao.duelo_celular` desligado) não recebeu o mapa dos textos que o jogo
+desenha: ligar o palco pede esse passo antes.
 
 
 - **Catálogo que a publicação lê** — `builds/publicar/catalogo.py` varre

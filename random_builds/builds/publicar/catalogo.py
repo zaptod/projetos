@@ -303,15 +303,97 @@ def _campos_duelo(pasta: Path) -> dict:
     O da estreia dizia "venceu por 2 x 0" e o do build "BUILD MEDIANA":
     um entregava o final antes do video, o outro anunciava que o video era
     mediano. Aqui o titulo e o confronto, e o desfecho fica no video.
+
+    Semana 1 do plano (20/10/2026): o confronto e dito pela ARMA de cada um
+    ({lado1}/{lado2}, `confronto.py`), nao pelo nome inventado — e o que 12
+    de 12 canais que cresceram fazem —, e em ingles (`geral/canal-em-ingles`).
+    O nome continua em {p1}/{p2}, para a descricao.
     """
     dados = _json(pasta / "fight.json")
     luta = dados.get("luta") or {}
-    return {
-        "p1": luta.get("p1"),
-        "p2": luta.get("p2"),
+    campos = campos_do_confronto(luta)
+    campos.update({
         "arena": luta.get("cenario"),
         "duracao": (round(luta["duracao"]) if luta.get("duracao") else None),
+    })
+    return campos
+
+
+def campos_do_confronto(luta: dict, armas: dict | None = None) -> dict:
+    """{p1, p2, lado1, lado2, classe1, classe2} de uma luta (ou de um par do
+    rodizio montado como luta): os campos que o titulo e a descricao do
+    duelo usam. Um lugar so, para o catalogo e o rodizio nunca divergirem."""
+    from . import confronto, ingles
+    lado1, lado2 = confronto.da_luta(luta, armas)
+    return {
+        # o nome com o epiteto em ingles ("Helga the Protector"): so o texto
+        # que o publico le; o banco segue "Helga o Protetor"
+        "p1": ingles.nome(luta.get("p1")) if luta.get("p1") else None,
+        "p2": ingles.nome(luta.get("p2")) if luta.get("p2") else None,
+        "lado1": lado1 or None,
+        "lado2": lado2 or None,
+        # em ingles (decisao geral/canal-em-ingles): o que o publico le
+        "classe1": confronto.classe_en(luta.get("p1_ficha")) or None,
+        "classe2": confronto.classe_en(luta.get("p2_ficha")) or None,
     }
+
+
+# Abaixo disto o duelo nao vai ao ar (conferente, 20/10/2026: o duelo_00001
+# de 5,8 s sairia como um Short de 6 s com a voz cobrindo metade). Trocavel
+# por `publicacao.json -> duelo_minimo_s`.
+DUELO_MINIMO_S = 15.0
+
+
+def duracao_do_duelo(pasta: Path) -> float | None:
+    """A duracao do video do duelo pela edicao (o mesmo numero que o render
+    usa), sem abrir o mp4; senao a do clipe gravado. None se nao ha nenhuma."""
+    plano = _json(Path(pasta) / "edit_plan.json")
+    if plano.get("total_duration"):
+        return float(plano["total_duration"])
+    luta = _json(Path(pasta) / "fight.json").get("luta") or {}
+    bruto = luta.get("duracao_clipe")
+    return float(bruto) if bruto else None
+
+
+def pendencia_de_duelo_curto(pasta: Path, config: dict | None = None) -> str:
+    """'' ou o motivo de o duelo ser curto demais para publicar."""
+    config = carregar_config() if config is None else config
+    minimo = float(config.get("duelo_minimo_s", DUELO_MINIMO_S) or 0)
+    duracao = duracao_do_duelo(pasta)
+    if duracao is None or duracao >= minimo:
+        return ""
+    return (f"duelo curto: {duracao:.1f} s (minimo {minimo:.0f} s); nao publicavel")
+
+
+class TituloIncompleto(ValueError):
+    """O modelo do titulo pede um campo que esta luta nao tem."""
+
+
+def campos_faltando(modelo: str, campos: dict) -> list[str]:
+    """Os {campos} do modelo sem valor. O `_formatar` os apaga EM SILENCIO
+    (bom para a descricao, onde um dado ausente some da frase); no titulo do
+    duelo um campo sumido daria "VS — who wins?" para todo mundo, e a guarda
+    de titulo repetido fecharia a fila inteira. Quem monta titulo pergunta
+    aqui antes."""
+    return [c for c in re.findall(r"\{(\w+)\}", str(modelo or ""))
+            if campos.get(c) in (None, "")]
+
+
+def modelo_do_titulo_do_duelo(config: dict | None = None) -> str:
+    config = carregar_config() if config is None else config
+    return (config.get("titulos") or {}).get(DUELO) or "{p1} x {p2}"
+
+
+def titulo_do_duelo(luta: dict, config: dict | None = None,
+                    armas: dict | None = None) -> str:
+    """O titulo que o catalogo da a esta luta (sem o texto editado).
+    Levanta `TituloIncompleto` se o modelo pedir campo que a luta nao tem."""
+    modelo = modelo_do_titulo_do_duelo(config)
+    campos = campos_do_confronto(luta, armas)
+    falta = campos_faltando(modelo, campos)
+    if falta:
+        raise TituloIncompleto(f"titulo do duelo sem {', '.join(falta)}: {modelo!r}")
+    return _formatar(modelo, campos)
 
 
 def _videos_de(pasta: Path, origem: str, fonte_id: str, campos: dict,
@@ -324,8 +406,18 @@ def _videos_de(pasta: Path, origem: str, fonte_id: str, campos: dict,
     capa = next((pasta / n for n in ("capa.png", "capa.jpg")
                  if (pasta / n).is_file()), None)
     saida = []
+    # Duelo com titulo incompleto (modelo pede campo que a luta nao tem) nao
+    # vai ao ar: vira pendencia, que a publicacao respeita (`Video.pronto`).
+    falta_no_titulo = (campos_faltando(config.get("titulos", {}).get(origem, ""), campos)
+                       if origem == DUELO else [])
+    curto = pendencia_de_duelo_curto(pasta, config) if origem == DUELO else ""
     for perfil in PERFIS:
         pendencias = pendencias_da_build(pasta, perfil) if origem == BUILD else []
+        if falta_no_titulo:
+            pendencias = [f"titulo do duelo sem {', '.join(falta_no_titulo)} "
+                          f"(modelo de config/publicacao.json)"]
+        if curto:
+            pendencias = [*pendencias, curto]
         for variante, nome in (("A", f"final_{perfil}.mp4"),
                                ("B", f"final_{perfil}_ganchoB.mp4")):
             caminho = pasta / nome
@@ -483,7 +575,9 @@ def exportar(video: Video, destino: Path | None = None,
     return alvo
 
 
-__all__ = ["BUILD", "DUELO", "ESTREIA", "TORNEIO", "Video", "carregar_config",
-           "chave_de_descarte", "descartados", "exportar", "listar",
-           "pasta_export", "pendencias_da_build", "por_id", "salvar_texto",
-           "slug"]
+__all__ = ["BUILD", "DUELO", "DUELO_MINIMO_S", "ESTREIA", "TORNEIO", "TituloIncompleto",
+           "Video", "campos_do_confronto", "campos_faltando", "carregar_config",
+           "duracao_do_duelo", "pendencia_de_duelo_curto",
+           "modelo_do_titulo_do_duelo", "chave_de_descarte", "descartados", "exportar",
+           "listar", "pasta_export", "pendencias_da_build", "por_id",
+           "salvar_texto", "slug", "titulo_do_duelo"]

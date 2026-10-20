@@ -1671,7 +1671,8 @@ def _duelo_ensaiado():
     gerados = personagens_gerados()
     config = catalogo.carregar_config()
     pares = rodizio.duelos_recentes(n=None)
-    ocupados = rodizio.titulos_ocupados(pares, config=config)
+    # os do disco pelo titulo EXATO do catalogo (carimbo ou fichas do fight)
+    ocupados = rodizio.titulos_ocupados(config=config)
     fora = rodizio.suspensos()
     if fora:
         print("[ensaio] fora do rodizio por gravacao que falhou: "
@@ -1688,7 +1689,7 @@ def _duelo_ensaiado():
         if not (p1 and p2):
             raise ValueError("nao ha par com titulo livre no banco")
         pares.append((p1, p2))
-        ocupados.add(titulos.chave(rodizio.titulo_do_par(p1, p2, config)))
+        ocupados.add(titulos.chave(rodizio.titulo_do_par(p1, p2, config, fichas)))
         print(f"[ensaio] duelo {contador['n']}: {p1} x {p2} (nada gravado)")
         return Path(f"ensaio_{contador['n']:02d}")
     return gerar
