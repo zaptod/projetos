@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-20T02:15:05",
+      "evento": "2026-10-20T02:15:01",
+      "linha": 201,
+      "nota": "resposta sem pedido de origem: geral/canal-em-ingles = Só o que o público vê em inglês",
+      "opcao": "conteudo",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Adrian 20/10: 'quero passar o projeto para ingles, sinto que tem um alcance maior'. Vale para o que o PÚBLICO vê (título, legenda, hashtags, texto na tela, narração, idioma do vídeo na API); código, docs e app seguem em português para ele. Entra junto da semana 1 do PLANO.",
   "criado": "2026-10-20T02:14:55.220872",
   "depende_de": [],
