@@ -35,9 +35,11 @@
 - Publicação (TikTok 6/dia com fila própria e duelo no lugar da estreia) e geração por formato (mais duelos): WIPs prontos, aplicar JUNTOS na semana 1, ajustando a grade para "YouTube 3/dia" do plano.
 - Refazer a voz das 51 roletas que saíram com a voz do Windows (decisão builds/voz-do-windows-12-a-19-10) só se elas forem publicadas.
 
-## Com o Adrian
+## Medido pelo sistema (agente `metricas`, nunca perguntar ao Adrian)
 - TikTok Studio: os vídeos estão "elegíveis para recomendação"? (8–15 views/dia sugere bloqueio).
 - YouTube Studio: views reais por dia (ponto de partida).
+
+## Com o Adrian
 - Semana 3: gravar a narração (~20 min/semana).
 
 ## Regra do Claude
