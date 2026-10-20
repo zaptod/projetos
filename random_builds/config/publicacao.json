@@ -71,6 +71,18 @@
       "motivo": "faixa/HUD do lado 2 em verde (33,245,14) com o lutador violeta (166,32,235); vencedor termina branco. Conferente 20/10 (E:/tmp_pytest/conferente/ar_2010/duelo_00122). Devolver depois de regravar com a cor corrigida.",
       "desde": "2026-10-20"
     },
+    "duelo_00133:duelo": {
+      "motivo": "par de cores parecido: faixa de uma cor e corpo de outra (medido 20/10, E:/tmp_pytest/cor_corpo_pares.json). Devolver depois de regravar com o conserto e8db75d8.",
+      "desde": "2026-10-20"
+    },
+    "duelo_00140:duelo": {
+      "motivo": "par de cores parecido: faixa de uma cor e corpo de outra (medido 20/10, E:/tmp_pytest/cor_corpo_pares.json). Devolver depois de regravar com o conserto e8db75d8.",
+      "desde": "2026-10-20"
+    },
+    "duelo_00146:duelo": {
+      "motivo": "par de cores parecido: faixa de uma cor e corpo de outra (medido 20/10, E:/tmp_pytest/cor_corpo_pares.json). Devolver depois de regravar com o conserto e8db75d8.",
+      "desde": "2026-10-20"
+    },
     "generation_00066:estreia": {
       "motivo": "audio mudo: 114,7 s de silencio em 120,8 s (95%), media -30,4 dB, medido com ffmpeg em 27/09/2026; render antigo de 29/08. Descartada pela decisao 5 do Adrian (rota de 27/09/2026).",
       "desde": "2026-09-28"
