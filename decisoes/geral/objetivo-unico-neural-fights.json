@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Pesquisa em docs/pesquisa/ (Shorts que deram certo, ferramentas de vídeo). Plano em docs/PLANO.md.",
+  "criado": "2026-10-20T01:55:23.143101",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "Decisão do Adrian no chat, 20/10/2026: 'quero que comece hoje ... quero seguir apenas esse plano.'",
+      "em": "2026-10-20T01:55:24",
+      "opcao": "plano",
+      "origem": "cli"
+    }
+  ],
+  "id": "objetivo-unico-neural-fights",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "plano",
+      "pede_comentario": false,
+      "rotulo": "Seguir só o docs/PLANO.md: duelos do Neural Fights, 3.000 views/dia, 150 inscritos, 1 vídeo >100 mil, uma mudança medida por semana"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "outro",
+      "pede_comentario": false,
+      "rotulo": "Outro objetivo"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Qual é o objetivo do projeto de 20/10 a 19/11/2026?",
+  "projeto": "geral",
+  "situacao": "decidida",
+  "titulo": "Objetivo único por 30 dias: Neural Fights crescer",
+  "vigente": {
+    "comentario": "Decisão do Adrian no chat, 20/10/2026: 'quero que comece hoje ... quero seguir apenas esse plano.'",
+    "em": "2026-10-20T01:55:24",
+    "opcao": "plano"
+  }
+}

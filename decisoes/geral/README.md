@@ -54,3 +54,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **O ramo main está 945 commits atrás** — main recebe o ramo refactor/arquitetura (recomendado) (13/10/2026) `main-recebe-o-ramo`
 - ✅ **Enviar o ramo ao GitHub (push)?** — Enviar main e refactor/arquitetura (recomendado) (13/10/2026) `enviar-ao-github`
 - ✅ **Quando o PC religa** — Só um aviso 'o PC religou' quando você entrar (recomendado) (14/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou ('não quero decidir nada, tome as melhores decisões'), 14/10 08:2x.” `pc-religado`
+- ✅ **Objetivo único por 30 dias: Neural Fights crescer** — Seguir só o docs/PLANO.md: duelos do Neural Fights, 3.000 views/dia, 150 inscritos, 1 vídeo >100 mil, uma mudança medida por semana (20/10/2026) · “Decisão do Adrian no chat, 20/10/2026: 'quero que comece hoje ... quero seguir apenas esse plano.'” `objetivo-unico-neural-fights`
