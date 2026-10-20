@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-20T06:17:11",
+      "evento": "2026-10-20T06:17:08",
+      "linha": 204,
+      "nota": "resposta sem pedido de origem: builds/regravar-com-motor-novo = Regravar com o motor atual, mesmo par/seed/arena/id/título; o que der < 15 s vira pendente (recomendado)",
+      "opcao": "motor-atual",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Medido 20/10 06:15: 11 de 18 reproduzem idênticos e já foram regravados em inglês; 7 de 12/10 mudam só duração/HP. Cartel e ledger contam vencedor e K.O., que não mudam. Fila publica por id: sem decisão, os 7 em português saem antes.",
   "criado": "2026-10-20T06:17:06.198925",
   "depende_de": [],
