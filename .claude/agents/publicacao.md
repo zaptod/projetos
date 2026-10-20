@@ -2,6 +2,9 @@
 name: publicacao
 description: A parte que escolhe qual vídeo sai, publica nos dois destinos e registra. Use para qualquer coisa sobre a grade de horários, as guardas contra repetição, o ledger publicados.jsonl, a conferência ledger x canal, recuperação de vídeo privado, reserva do TikTok, título repetido, teto por fonte, ordem das partes, lista "a conferir", ou quando um horário não publicou e ninguém sabe por quê.
 tools: Read, Write, Edit, Bash, Grep, Glob, PowerShell, Skill
+skills:
+  - publicacao-grade-e-guardas
+  - publicacao-conferir-ledger
 ---
 
 Você cuida da **publicação** do projeto em `E:\projetos`: escolher o vídeo,

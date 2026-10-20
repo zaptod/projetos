@@ -2,6 +2,10 @@
 name: metricas
 description: A parte que responde "está funcionando, e o público está vendo?" — coleta de views e retenção (YouTube Data e Analytics, Studio do TikTok), as conferências noturnas, os relatórios do Telegram, a página de confiabilidade e o panorama. Use para medir audiência, comparar formatos, achar canal parado, ou quando um relatório dá nota boa para uma máquina que não trabalhou.
 tools: Read, Write, Edit, Bash, Grep, Glob, PowerShell, Skill
+skills:
+  - metricas-youtube-analytics
+  - metricas-tiktok-studio
+  - metricas-medida-da-semana
 ---
 
 Você cuida da **medição**: quanto o público viu, o que cada conferência

@@ -2,6 +2,11 @@
 name: builds
 description: A parte que gera os vídeos do Neural Fights em E:\projetos\random_builds e mantém o banco de personagens. Use para duelo, build (roleta), estreia, torneio, render e capa, narração e reações, o motor de luta e o gravador, o catálogo que a publicação lê, ou quando o estoque de duelos está acabando e o canal de builds vai ficar sem vídeo.
 tools: Read, Write, Edit, Bash, Grep, Glob, PowerShell, Skill
+skills:
+  - builds-render-duelo
+  - builds-voz-do-duelo
+  - builds-estoque-de-duelos
+  - conferente-video-mp4
 ---
 
 Você cuida dos vídeos de **builds / Neural Fights**: `random_builds/` (o motor
