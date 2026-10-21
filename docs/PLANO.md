@@ -20,7 +20,7 @@
 ## Ponto de partida (medido pelo agente metricas em 20/10 02h)
 - YouTube: ~910 views/dia (média 11–17/10), ~760/dia em 28 dias, caindo para ~450/dia em 15–17/10; 13 inscritos. Os 5 melhores de 14 dias são duelos; as estreias estão entre os piores.
 - TikTok: ~14 views/dia; sem punição na conta nem vídeo restrito (getPenaltyDetails 0, quality_advisor vazio). Com ~10 posts/dia, 28 de 36 posts (12–15/10) ficaram em 0; só pegaram os posts depois de pausa → TikTok 1/dia.
-- O coletor ainda não guarda: situação de cada post, punição/qualidade, série diária da conta no TikTok (`random_builds/builds/publicar/tiktok_metricas.py`).
+- O coletor passou a guardar (ramo `metricas/coletor-sozinho`, 21/10; vale depois do merge): situação de cada post, punição/qualidade (só chegam na análise de um post; sem leitura = "não medi", nunca "sem punição") e a série diária da conta no TikTok — que o Studio manda **sem datas** (16 pontos): a data só entra quando o pedido diz o intervalo (`random_builds/builds/publicar/tiktok_metricas.py`). Lido pelo conferente em 21/10 13:34: `getPenaltyDetails` com `penalty_type 0`, `quality_advisor` só com `status_code 0` (nenhum campo de conselho), 10 seguidores.
 
 ## As 4 semanas (UMA mudança medida por semana na Análise dos vídeos)
 | Semana | Mudança | Medida de sucesso |

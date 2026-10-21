@@ -23,8 +23,13 @@ description: Medir os duelos no TikTok (perfil do canal "builds") — views, % a
    cada post (`status`/`visibility`/`in_review`/`permissions`, crus) e uma ficha por dia da
    conta em `*/outputs/_metricas_tiktok_conta/<dia>.json` (`vv_history`, `seguidores`,
    `punicao`/`qualidade` com `lida` e o corpo cru) — ler com
-   `tiktok_metricas.carregar_contas('builds')`. O FORMATO dessas respostas não foi medido pelo
-   código: confira o bruto da 1ª ficha real antes de confiar no `vv_history` decifrado.
+   `tiktok_metricas.carregar_contas('builds')`. Formato MEDIDO (conferente, 21/10 13:34–13:38):
+   `vv_history` = `[{"status":0,"value":11}, …, {"status":2}]`, 16 pontos **sem data**, e de 5
+   respostas de `data/insight` só uma traz a série e outra os seguidores. A ficha guarda o
+   corpo cru e o PEDIDO (URL/`type_requests`) de cada resposta útil; `vv_history_datas` diz
+   `sem`/`deduzidas`/`do_pedido`/`dos_pontos` — com `sem`, são N PONTOS, nunca "N dias".
+   Punição e qualidade só chegam na **análise de um post** (sem post a analisar, o coletor
+   abre o mais novo; senão `punicao.por_que` diz por quê).
    `lida: false` = não medi, NUNCA "sem punição"; nunca diga "elegível" sem ter lido.
 5. **Coletar de novo** é o serviço do dia (`tiktok_metricas.coletar`, abre o Chrome): não rode
    para "só olhar"; se precisar, fora da janela das postagens e com a publicação parada.
@@ -35,8 +40,10 @@ description: Medir os duelos no TikTok (perfil do canal "builds") — views, % a
   própria e cada rolagem repede a 1ª página. Até 28/09 a coleta parava em 50–60 posts (60 de
   119 envios casados). Hoje `Lista` guarda o MAIOR cursor e diz por que parou.
 - **Perfil do TikTok mora DENTRO do repo** (`random_builds/.browser_profile/tiktok`, via
-  `tiktok.perfil_da_conta`): da worktree o Chrome abre um perfil VAZIO e parece logout. Prova
-  no navegador sempre com a raiz `E:\projetos`.
+  `tiktok.perfil_da_conta`): da worktree o Chrome abre um perfil VAZIO e parece logout
+  (de novo em 21/10 13:31: 33 MB sem login em `E:\projetos-wt\metricas-coletor\random_builds\
+  .browser_profile\tiktok`, apagado). Prova no navegador sempre com a raiz `E:\projetos`, ou
+  trocando `tiktok.perfil_da_conta` pelo caminho de `E:\projetos` (mesma pasta = mesma trava).
 - **Trava do perfil**: a coleta e a publicação usam a mesma pasta; a coleta espera e desiste
   (`PerfilOcupado`) em vez de abrir uma 2ª janela.
 - **A curva só é relida para 40 posts por rodada** (`MAXIMO_DE_ANALISES`, `DIAS_DE_ANALISE`=7):

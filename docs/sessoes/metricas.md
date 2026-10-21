@@ -67,7 +67,8 @@ Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
 de novo em 28/09 (madrugada e noite), em 05/10 (a conferência no serviço do
 dia, §3), em 14/10 (a coleta que nem rodou em 13/10, §3), em 19/10 (a
 análise dos vídeos e a cobertura da coleta, §3) e em 21/10 (a medida da
-semana na mesma idade, §3) está com a data e a hora. Onde um número da fotografia
+semana na mesma idade e o conserto do conferente à tarde, §3) está com a
+data e a hora. Onde um número da fotografia
 não reproduziu, está dito. O que eu não medi está marcado como **não medi**,
 nunca preenchido por suposição.
 
@@ -85,7 +86,7 @@ nunca preenchido por suposição.
 | views dos vídeos do YouTube com menos de 48 h, de hora em hora | `random_builds/outputs/_metricas_hora/<dia>.jsonl` (`hora_a_hora`, no disparo `NeuralFights_gerar_HH`) | MEDIDO (desde 21/10) |
 | views engajadas por vídeo | Analytics `engagedViews` → `engaged_views` no arquivo do vídeo | MEDIDO quando vem; sem o campo = **não medido** (desde 21/10) |
 | situação do post no TikTok (`status`, `visibility`, `in_review`, `permissions`) | `situacao` no arquivo do post | MEDIDO cru (formato **não medido**; desde 21/10) |
-| conta do TikTok: série diária de views, seguidores, punição, qualidade | `*/outputs/_metricas_tiktok_conta/<dia>.json` | MEDIDO quando chega; `lida: false` = **não medi**, nunca "sem punição" |
+| conta do TikTok: série diária de views, seguidores, punição, qualidade | `*/outputs/_metricas_tiktok_conta/<dia>.json` | MEDIDO quando chega; `lida: false` = **não medi**, nunca "sem punição"; a série vem **sem datas** (`vv_history_datas: "sem"` = N pontos, não N dias) |
 | inscritos do canal por dia | `canal` na fotografia diária (total na hora + ganhos/perdidos da Analytics) | MEDIDO (desde 21/10) |
 | a medida da semana na mesma idade | `analise.json` → `mesma_idade`; `python -m builds.publicar.analise --semana`; `/semana` no Telegram | derivado, com o rótulo de certeza |
 | achados (o que mudar) | `random_builds/outputs/_analise/analise.json` + `index.html`, Biblioteca do app | derivado, com teste de significância |
@@ -750,12 +751,12 @@ número à mão. O que faltava e o que entrou:
   `getPenaltyDetails` e `quality_advisor` a sessão inteira (quando o Studio os
   pede), abre a visão geral (`URL_VISAO_GERAL`) e guarda `vv_history` e
   seguidores do `data/insight`. `punicao.lida: false` é **não medi**, nunca
-  "sem punição"; o corpo cru vai junto (até 20 mil caracteres). **O formato
-  dessas respostas não foi medido** (não havia captura em disco): o
-  decifrador aceita `{status,value}`/`list` e ponto com `date`/`timestamp`;
-  ponto sem data fica com dia `None` — a data não é inventada. Visão geral que
-  cai não leva os posts: vira `erro` na ficha, `conta.erro` na marca e uma
-  linha de erro no diário.
+  "sem punição"; o corpo cru vai junto (até 20 mil caracteres). O decifrador
+  aceita `{status,value}`/`list` e ponto com `date`/`timestamp`; ponto sem
+  data fica com dia `None` — a data não é inventada. Visão geral que cai não
+  leva os posts: vira `erro` na ficha, `conta.erro` na marca e uma linha de
+  erro no diário. (O formato foi medido à tarde pelo conferente — ver
+  "O conserto do conferente" abaixo.)
 - **Inscritos na fotografia:** `canal.<canal>` com o total na hora (Data
   API), views e vídeos do canal e `[dia, ganhos, perdidos]` da Analytics.
 - **A comparação** (`builds/publicar/mesma_idade.py`, dentro da análise):
@@ -779,11 +780,12 @@ número à mão. O que faltava e o que entrou:
 Onde aparece: a página (seções "Medida da semana (mesma idade)" e "Conta do
 TikTok"), `analise.json` (`mesma_idade`, `conta_tiktok`),
 `python -m builds.publicar.analise --semana` (feita agora, só disco; sai 1
-sem comparação) e o relatório `semana` do Telegram (`/semana`; **sem horário
-padrão** — sai sozinho só com `"semana": "HH:MM"` em `relatorios`).
+sem comparação) e o relatório `semana` do Telegram (`/semana` e **todo dia às
+21:05**, Grimório `metricas/semana-no-telegram`; padrão em `remoto/config.py`).
 
-Testes: `random_builds/tests/test_medida_da_semana_regressions.py` (43) e
-`remoto/test_relatorio_semana.py` (4).
+Testes: `random_builds/tests/test_medida_da_semana_regressions.py` (43),
+`random_builds/tests/test_coletor_conserto_regressions.py` (28) e
+`remoto/test_relatorio_semana.py` (8).
 
 **Medido em 21/10 (código da worktree, dados de `E:\projetos`, só leitura;
 a linha de hora em hora foi gravada no scratchpad, não em `outputs/`):**
@@ -807,9 +809,77 @@ a linha de hora em hora foi gravada no scratchpad, não em `outputs/`):**
   perto de cada idade porque só existem as fotografias das ~07:20 de 19, 20 e
   21/10 (a leitura de hora em hora nasce hoje): o lado antigo da semana 1 vai
   continuar ralo; a semana 2 terá os dois lados lidos de hora em hora.
-- Conta e situação do TikTok: **não medi** — o código novo nunca rodou no
-  Studio de verdade (a 1ª coleta com ele é a do serviço do dia seguinte ao
-  merge). Conferir o bruto da 1ª ficha antes de confiar no `vv_history`.
+- Conta e situação do TikTok: **não medi** de manhã — o código novo nunca
+  tinha rodado no Studio de verdade. Medido à tarde pelo conferente (abaixo).
+
+### O conserto do conferente (21/10/2026, tarde, mesmo ramo)
+
+O conferente rodou a entrega no caminho real e achou oito defeitos — três
+deles do tipo da lei desta parte (medidor que cala ou que dá número bonito).
+O que era, o conserto e o teste (`test_coletor_conserto_regressions.py`, 28
+casos; 29 falham no código de antes, contando os 4 novos do `remoto`):
+
+1. **`/semana` cortado.** `remoto/api.py` cortava toda mensagem em 4.000
+   caracteres. A semana cheia (21 duelos no YouTube + 7 no TikTok de cada
+   lado, `semana_cheia.py`) dava **8.398** e o corte comia o bloco do TikTok,
+   a linha "Leituras de hora em hora" e **todos** os avisos `!` — inclusive
+   "leitura de hora em hora PARADA". Agora: (a) os avisos e as leituras vêm
+   logo depois do título (`mesma_idade.linhas`, a mesma fonte para o texto e
+   a página); (b) o Telegram recebe o texto **curto** (`texto_da_semana`
+   padrão = sem a linha de cada vídeo, que fica na página e no `--semana`):
+   a semana cheia dá **2.712**; (c) se ainda passar, `api.partes_da_mensagem`
+   manda em partes quebradas em fim de linha (vale para todo texto do bot;
+   uma parte que falha devolve a falha e o relatório não é marcado como
+   enviado — repete inteiro na volta seguinte). O `/semana` real às 15:43
+   de 21/10: **2.330 caracteres, 24 linhas**, com "PARADA" na 4ª linha.
+2. **Horário.** Grimório `metricas/semana-no-telegram` = todo dia às 21:05:
+   `"semana": "21:05"` no `PADRAO` de `remoto/config.py` (o `remoto.json`
+   real não tem `relatorios`, então o padrão vale; precisa reiniciar o bot).
+3. **Série do TikTok sem datas.** O Studio manda `vv_history` como
+   `[{"status":0,"value":11}, …, {"status":2}]` — **16 pontos, nenhuma
+   data**; de 5 respostas de `data/insight` só a 3ª trazia a série e só a 5ª
+   os seguidores, e a ficha guardava as 3 últimas (nenhuma com a série) sem
+   o pedido. Agora guarda o corpo de **toda** resposta com número da conta,
+   com o pedido (`url`, `metodo`, `corpo` — onde mora o `type_requests`). A
+   data só entra se o pedido diz o intervalo: início e fim (`do_pedido`) ou
+   `days` **e** `end_days` (`deduzidas`); `days` sozinho não basta (errar o
+   fim em um dia põe todo número no dia errado). Senão `vv_history_datas:
+   "sem"`, e a página e o aviso dizem "série sem datas (16 pontos)" — nunca
+   "16 dia(s)". A marca troca `serie_dias` por `serie_pontos` + `serie_datas`.
+   **O formato do pedido não medi**: a URL que o conferente guardou parava em
+   400 caracteres; a 1ª coleta depois do merge grava o pedido inteiro.
+4. **Visão geral e punição.** O laço saía com `"vv_history" in c` (a chave
+   existe com `null` em 4 de 5 respostas) e a 2ª coleta do dia saiu sem
+   seguidores. Agora espera série **e** seguidores com valor
+   (`conta_completa`). Punição e qualidade só chegam na análise de um post: a
+   2ª rodada do dia, sem post a analisar, gravava "não lida". Agora, sem
+   nenhum escolhido, o mais novo é aberto (`garantir_uma_analise`); com a
+   análise desligada, `punicao.por_que` diz por quê, e a página e o aviso
+   repetem. Lido na 1ª rodada do conferente (13:34): `penalty_type 0`,
+   `penalty_source 0`, `appeal_status 2`; `quality_advisor` só com
+   `status_code 0`; 10 seguidores.
+5. **Aviso de hora em hora calado.** O tipo do aviso (um por dia e tipo) era
+   o texto antes do 1º ":" — toda recusa da Data API virava `RuntimeError` e
+   só a 1ª do dia avisava (403 `quotaExceeded` às 15:00 calado depois de um
+   erro de credencial de manhã; prova `zero_f.py`). Agora a recusa é
+   `metricas.RecusaDaAPI`, com `tipo` = código + motivo (`"403
+   quotaExceeded"`, `"401 authError"`, `"500"`), gravado em `tipo_do_erro`.
+   E `motivo_da_recusa(resposta, api=...)` diz a API de verdade (Data ×
+   Analytics; sem dizer, o endereço da resposta decide; sem endereço, "não
+   sei qual") — antes era "Analytics API" fixo, até para o `videos.list`.
+6. **Views ilegíveis.** Um `"muitas"` numa leitura derrubava a medida inteira
+   (`ValueError` em `observacoes.junta`). Agora a leitura ruim (texto,
+   booleano, negativo, NaN, fração) fica de fora, é contada em
+   `leituras_ruins` e vira aviso; o resto segue.
+7. **"Ainda juntando".** Usava `idade_agora < x − tol`; a janela de X vai até
+   `x + tol`. O `HyZJCselaKY` (19,1 h no ar) aparecia como "sem leitura" aos
+   24 h; no `/semana` real das 15:43 a linha de 24 h diz "2 novo(s) ainda
+   juntando".
+8. **Página e título.** O título cortado em 40 deixava "— —"; agora
+   `titulo_curto` corta na palavra, tira o travessão e o separador é "·". A
+   página tirava o recuo e o YouTube e o TikTok viravam uma lista só no
+   celular; agora cada plataforma tem o seu cartão com título, e a linha de
+   vídeo tem recuo próprio.
 
 ## 4. As conferências que faltam, e o número que deveria acender
 
@@ -887,8 +957,19 @@ a versão nova repete na rodada seguinte.
   (`random_builds/.browser_profile/tiktok`). Rodando o código de uma
   worktree, `perfil_da_conta("builds")` aponta para a pasta da worktree, o
   Chrome cria um perfil vazio e a tela é de login — parece logout e não é
-  (28/09, 07:58). Para provar coisa no navegador a partir de worktree, troque
-  a raiz do caminho pela de `E:\projetos`.
+  (28/09, 07:58). **De novo em 21/10 13:31**: a prova do conferente rodada da
+  worktree criou `E:\projetos-wt\metricas-coletor\random_builds\
+  .browser_profile\tiktok` (33 MB, sem login; apagado às 15:4x). Para provar
+  coisa no navegador a partir de worktree, troque `tiktok.perfil_da_conta`
+  por um que devolva o caminho de `E:\projetos` (mesma pasta = mesma trava
+  da publicação) — e só com a publicação parada.
+- **Mensagem do bot cortada no fim.** `Telegram.mensagem` cortava em 4.000 e o
+  que morava no fim sumia calado: a medida da semana cheia perdia o TikTok e
+  todos os avisos (21/10). Aviso mora no **topo**, e texto longo vai em partes
+  (`api.partes_da_mensagem`).
+- **Agrupar aviso pelo nome da exceção.** Toda recusa da API vira
+  `RuntimeError`; "um aviso por dia e tipo" com esse tipo cala a 2ª recusa,
+  de outro motivo. O tipo é o código + motivo do Google (`RecusaDaAPI.tipo`).
 - **Id do YouTube que começa com `_`.** `_bHp95XZpgc.json` é vídeo. Filtro por
   "começa com sublinhado" para pular a marca jogava um vídeo fora — medido
   antes de ir ao ar (93 em vez de 94).

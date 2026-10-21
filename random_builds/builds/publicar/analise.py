@@ -1600,8 +1600,15 @@ def conta_tiktok(contas: dict | None, regs: list, agora: datetime) -> dict:
                     and r["idade_dias"] <= JANELA_DIAS]
         com = [r for r in recentes if isinstance(r.get("situacao"), dict)]
         vv = ficha.get("vv_history")
+        sem_datas = isinstance(vv, list) and bool(vv) and any(
+            not (isinstance(p, list) and p and p[0]) for p in vv)
         perfil = {"dia": dia, "seguidores": ficha.get("seguidores"),
                   "vv_history": vv if isinstance(vv, list) else None,
+                  # "sem" = a serie veio sem data: N PONTOS, nunca "N dias".
+                  "serie_datas": (None if not isinstance(vv, list) else "sem" if sem_datas
+                                  else ficha.get("vv_history_datas") or "dos_pontos"),
+                  "regra_das_datas": ficha.get("vv_history_regra_das_datas") or "",
+                  "punicao_por_que": (ficha.get("punicao") or {}).get("por_que") or "",
                   "punicao_lida": bool((ficha.get("punicao") or {}).get("lida")),
                   "qualidade_lida": bool((ficha.get("qualidade") or {}).get("lida")),
                   "erro": ficha.get("erro") or "",
@@ -1619,7 +1626,16 @@ def conta_tiktok(contas: dict | None, regs: list, agora: datetime) -> dict:
                                        ("seguidores", perfil["seguidores"] is not None)) if not ok]
         if falta:
             saida["avisos"].append(f"{rotulo}: não li {', '.join(falta)} em {_data_br(dia)} "
-                                   "(não medi — não quer dizer que está tudo bem).")
+                                   "(não medi — não quer dizer que está tudo bem)"
+                                   + (f": {perfil['punicao_por_que']}"
+                                      if perfil["punicao_por_que"] and not (
+                                          perfil["punicao_lida"] and perfil["qualidade_lida"])
+                                      else "") + ".")
+        if perfil["serie_datas"] == "sem":
+            saida["avisos"].append(f"{rotulo}: a série de views da conta veio SEM datas "
+                                   f"({len(vv)} pontos) — não dá para dizer de que dias são"
+                                   + (f" ({perfil['regra_das_datas']})"
+                                      if perfil["regra_das_datas"] else "") + ".")
         if recentes and not com:
             saida["avisos"].append(f"{rotulo}: nenhum dos {len(recentes)} posts recentes trouxe a "
                                    "situação (revisão/visibilidade) — não medi.")
@@ -1642,7 +1658,7 @@ def buscar_serie_do_canal(canal: str, dias: int = 56, hoje: date | None = None) 
     }, timeout=30)
     if resposta.status_code != 200:
         raise RuntimeError(f"a Analytics recusou a série do canal ({resposta.status_code}): "
-                           f"{metricas.motivo_da_recusa(resposta)}")
+                           f"{metricas.motivo_da_recusa(resposta, api='analytics')}")
     linhas = (resposta.json() or {}).get("rows") or []
     canal_resp = metricas._get("data", metricas.API_CANAIS, headers=cabeca, params={
         "part": "statistics", "mine": "true"}, timeout=30)
@@ -1874,6 +1890,8 @@ details{margin:8px 0}summary{cursor:pointer;color:var(--tinta2)}
 svg .b{fill:var(--barra)}svg .b:hover{opacity:.75}svg text{fill:var(--tinta2);font-size:10px}
 svg .eixo{stroke:var(--linha)}
 ul{padding-left:18px}li{margin:4px 0}
+.semana-plataforma h3{margin:2px 0 8px}
+.cartao p.video{margin:6px 0 6px 6px;padding-left:8px;border-left:2px solid var(--linha)}
 """
 
 TIPO = {"erro": ("✖", "Está errando"), "acerto": ("✔", "Está acertando"),
@@ -2148,15 +2166,41 @@ def _semana_html(c: dict) -> str:
     (cabe em 390 px; numero com rotulo, nunca so a seta)."""
     if not c.get("texto"):
         return ""
+    from . import mesma_idade
+
     classe = {"ok": "", "sem_semana": "alerta", "sem_novos": "ruim",
               "sem_antigos": "ruim", "erro": "ruim"}.get(c.get("estado"), "alerta")
-    linhas = c["texto"].splitlines()
-    corpo = "".join(
-        f"<p class='{'sub' if l.startswith('    ') else ''}'>{_e(l.strip())}</p>" for l in linhas[1:])
+    try:
+        partes = mesma_idade.linhas(c)
+    except (KeyError, TypeError, ValueError):
+        # json de outra versao: o texto pronto, linha por linha (sem perder o
+        # recuo, que e o que separa o video da idade).
+        partes = [("sub" if l.startswith("    ") else "idade" if l.startswith("  ") else "item",
+                   l.strip()) for l in c["texto"].splitlines()]
+    # Cabeca (titulo, avisos, leituras) num cartao; cada PLATAFORMA no seu,
+    # com titulo proprio — no celular, sem recuo, YouTube e TikTok viravam
+    # uma lista so (conferente, 21/10).
+    cabeca, plataformas = [], []
+    for tipo, t in partes:
+        if tipo == "plataforma":
+            plataformas.append((t, []))
+        elif plataformas and tipo in ("idade", "item", "video"):
+            plataformas[-1][1].append((tipo, t))
+        else:
+            cabeca.append((tipo, t))
+    estilo = {"titulo": "<p><b>{}</b></p>", "aviso": "<p class='erro'><b>{}</b></p>",
+              "video": "<p class='sub video'>{}</p>", "sub": "<p class='sub'>{}</p>",
+              "detalhe": "<p class='sub'>{}</p>"}
+    html_ = "".join(estilo.get(tipo, "<p>{}</p>").format(_e(t)) for tipo, t in cabeca)
+    if c.get("criterio"):
+        html_ += f"<p class='sub'>{_e(c['criterio'])}</p>"
+    blocos = ""
+    for titulo, itens in plataformas:
+        blocos += (f"<div class='cartao semana-plataforma'><h3>{_e(titulo)}</h3>"
+                   + "".join(estilo.get(tipo, "<p>{}</p>").format(_e(t)) for tipo, t in itens)
+                   + "</div>")
     return (f"<h2>Medida da semana (mesma idade)</h2>"
-            f"<div class='cartao {classe}'><p><b>{_e(linhas[0])}</b></p>{corpo}"
-            + (f"<p class='sub'>{_e(c.get('criterio'))}</p>" if c.get("criterio") else "")
-            + "</div>")
+            f"<div class='cartao {classe}'>{html_}</div>{blocos}")
 
 
 def _conta_html(conta: dict) -> str:
@@ -2166,12 +2210,24 @@ def _conta_html(conta: dict) -> str:
     blocos = []
     for canal, p in perfis.items():
         vv = p.get("vv_history")
-        serie = (f"{len(vv)} dia(s) na série" if isinstance(vv, list) else "série não lida")
+        if not isinstance(vv, list):
+            serie = "série não lida"
+        elif p.get("serie_datas") == "sem" or (p.get("serie_datas") is None and any(
+                not (isinstance(x, list) and x and x[0]) for x in vv)):
+            serie = f"série sem datas ({len(vv)} pontos; não sei de que dias)"
+        else:
+            datas = [x[0] for x in vv if isinstance(x, list) and x and x[0]]
+            serie = (f"série de {len(vv)} dia(s)"
+                     + (f", {_data_br(min(datas))} a {_data_br(max(datas))}" if datas else "")
+                     + (" (datas deduzidas do pedido)" if p.get("serie_datas") == "deduzidas"
+                        else ""))
         blocos.append(
             f"<p><b>{_e(NOME_DO_CANAL.get(canal, canal))}</b> — "
             + (f"ficha de {_e(_data_br(p['dia']))}: " if p.get("dia") else "nunca lida: ")
             + _e(f"seguidores {p['seguidores'] if p.get('seguidores') is not None else 'não medidos'}; "
-                 f"{serie}; punição {'lida' if p.get('punicao_lida') else 'NÃO lida'}; "
+                 f"{serie}; punição {'lida' if p.get('punicao_lida') else 'NÃO lida'}"
+                 + (f" ({p['punicao_por_que']})" if p.get("punicao_por_que")
+                    and not p.get("punicao_lida") else "") + "; "
                  f"qualidade {'lida' if p.get('qualidade_lida') else 'NÃO lida'}; "
                  f"situação em {p.get('com_situacao', 0)} de {p.get('posts_recentes', 0)} posts "
                  f"recentes ({p.get('em_revisao', 0)} em revisão)")
@@ -2269,15 +2325,29 @@ def medida_da_semana(agora: datetime | None = None) -> dict:
                              series=entrada.get("series"),
                              erro_do_config=entrada.get("erro_da_semana") or "")
     if entrada["falhas"]:
+        # A falha de leitura do disco vai para os AVISOS, que o texto poe no
+        # topo (no fim, era a primeira coisa que o corte do Telegram comia).
         c["falhas"] = list(entrada["falhas"])
-        c["texto"] += "\n" + "\n".join(f"! {f}" for f in entrada["falhas"])
+        if c.get("estado") != "sem_semana":
+            c["avisos"] = list(c["falhas"]) + list(c.get("avisos") or [])
+            c["texto"] = mesma_idade.texto(c)
+        else:
+            c["texto"] += "\n" + "\n".join(f"! {f}" for f in entrada["falhas"])
+    c["texto_curto"] = (mesma_idade.texto(c, por_video=False)
+                        if c.get("estado") != "sem_semana" else c["texto"])
     return c
 
 
-def texto_da_semana(agora: datetime | None = None) -> str:
-    """O texto da medida da semana, feito agora. Nunca levanta."""
+def texto_da_semana(agora: datetime | None = None, *, por_video: bool = False) -> str:
+    """O texto da medida da semana, feito agora. Nunca levanta.
+
+    Padrao = o do TELEGRAM (`por_video=False`): avisos no topo e sem a linha
+    de cada video — a semana cheia (21 duelos no YouTube + 7 no TikTok) dava
+    8.398 caracteres e o envio corta em 4.000. O detalhe esta na pagina e no
+    `--semana`."""
     try:
-        return medida_da_semana(agora)["texto"]
+        c = medida_da_semana(agora)
+        return c["texto"] if por_video else c["texto_curto"]
     except Exception as exc:                                  # noqa: BLE001
         return (f"Medida da semana FALHOU: {type(exc).__name__}: {exc}. "
                 "Sem ela não há comparação — não quer dizer que está tudo bem.")

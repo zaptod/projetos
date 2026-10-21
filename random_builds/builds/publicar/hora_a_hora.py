@@ -129,7 +129,7 @@ def ler(canal: str = "builds", agora: datetime | None = None, *,
         headers={"Authorization": f"Bearer {token}"})
     leitura["chamadas"] = 1
     if not resposta.ok:
-        raise RuntimeError(metricas.motivo_da_recusa(resposta))
+        raise metricas.RecusaDaAPI(resposta, api="data")
     lida_em = agora
     itens ={item.get("id"): item for item in (resposta.json() or {}).get("items") or []
              if isinstance(item, dict)}
@@ -240,11 +240,16 @@ def disparo(canal: str = "builds", agora: datetime | None = None, *,
     try:
         leitura = ler(canal, agora, **dubles)
     except Exception as exc:                                   # noqa: BLE001
+        # O TIPO agrupa o aviso (um por dia e tipo). Recusa da API leva o
+        # codigo e o motivo ("403 quotaExceeded"), nao o nome da excecao: com
+        # o nome, toda recusa era "RuntimeError" e so a 1a do dia avisava.
         leitura = {"quando": agora.isoformat(timespec="seconds"),
                    "canal": canal, "estado": "erro", "videos": {},
-                   "erro": f"{type(exc).__name__}: {exc}"[:300]}
+                   "erro": f"{type(exc).__name__}: {exc}"[:300],
+                   "tipo_do_erro": str(getattr(exc, "tipo", "") or type(exc).__name__)}
     if leitura.get("estado") == "erro":
-        tipo = str(leitura.get("erro") or "").split(":")[0]
+        tipo = str(leitura.get("tipo_do_erro")
+                   or str(leitura.get("erro") or "").split(":")[0])
         try:
             avisado = _ja_avisado(agora, tipo)
         except Exception:                                      # noqa: BLE001

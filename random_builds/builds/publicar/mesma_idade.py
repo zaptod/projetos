@@ -157,19 +157,41 @@ def horas_pelo_log(dias: list, limites: dict | None = None,
 
 
 # ------------------------------------------------------------ observacoes
+def _views_validas(views) -> int | None:
+    """Views que se pode usar, ou `None`. Texto, booleano, negativo, NaN e
+    fracao sao leitura RUIM — nao zero."""
+    if isinstance(views, bool):
+        return None
+    if isinstance(views, int):
+        return views if views >= 0 else None
+    if isinstance(views, float):
+        return int(views) if views == views and views >= 0 and views.is_integer() else None
+    if isinstance(views, str) and views.strip().isdigit():
+        return int(views.strip())
+    return None
+
+
 def observacoes(regs: list, fotos: dict | None = None, leituras: list | None = None,
-                horas_das_fotos: dict | None = None) -> tuple:
+                horas_das_fotos: dict | None = None, ruins: list | None = None) -> tuple:
     """`({(parte, id): [(instante, views, fonte)]}, sem_hora)`.
 
     `sem_hora` conta os videos de fotografia que ficaram de fora por nao
-    se saber a hora do numero."""
+    se saber a hora do numero. `ruins`, se vier, recebe `(fonte, id, valor)`
+    de cada leitura com views ilegiveis: ela fica de fora e o RESTO da
+    medida segue (21/10: um "muitas" na leitura derrubava a medida inteira
+    com ValueError)."""
     obs: dict = {}
     sem_hora = 0
+    ruins = ruins if ruins is not None else []
 
     def junta(parte, vid, instante, views, fonte):
         if instante is None or views is None or not vid:
             return
-        obs.setdefault((parte, str(vid)), []).append((instante, int(views), fonte))
+        valor = _views_validas(views)
+        if valor is None:
+            ruins.append((fonte, str(vid), repr(views)[:40]))
+            return
+        obs.setdefault((parte, str(vid)), []).append((instante, valor, fonte))
 
     for r in regs or []:
         parte = metricas.nome_da_parte(r["canal"], r["plataforma"])
@@ -189,8 +211,7 @@ def observacoes(regs: list, fotos: dict | None = None, leituras: list | None = N
                 hora_da_parte = _instante(do_log[parte])
                 fonte = "fotografia diária (hora do log)"
             for vid, valor in videos.items():
-                if not (isinstance(valor, list) and valor
-                        and isinstance(valor[0], (int, float))):
+                if not (isinstance(valor, list) and valor) or valor[0] is None:
                     continue
                 instante = (_instante(valor[3]) if len(valor) > 3 and valor[3]
                             else hora_da_parte)
@@ -285,7 +306,10 @@ def _bloco_da_plataforma(regs, plataforma, semana, agora, obs, series) -> dict:
         pares_a = [(r, na_idade(r, x)) for r in antigos]
         vn = [p[1][0] for p in pares_n if p[1]]
         va = [p[1][0] for p in pares_a if p[1]]
-        juntando = sum(1 for r, p in pares_n if not p and idade_agora(r) < x - tol)
+        # "Ainda juntando" = a janela de X ainda nao fechou: uma leitura ate
+        # X + tol ainda serve. Com `x - tol` (ate 21/10), o HyZJCselaKY aos
+        # 19,1 h aparecia como "sem leitura" aos 24 h — a janela ia ate 29 h.
+        juntando = sum(1 for r, p in pares_n if not p and idade_agora(r) < x + tol)
         conf = _confianca(vn, va)
         idades.append({
             "idade_h": x,
@@ -380,7 +404,8 @@ def comparar(regs: list, agora: datetime, semana: dict | None, *, fotos=None,
                                              "config/medida_da_semana.json"}
         saida["texto"] = texto(saida)
         return saida
-    obs, sem_hora = observacoes(regs, fotos, leituras, horas_das_fotos)
+    ruins: list = []
+    obs, sem_hora = observacoes(regs, fotos, leituras, horas_das_fotos, ruins=ruins)
     blocos = {p: _bloco_da_plataforma(regs, p, semana, agora, obs, series)
               for p in semana["plataformas"]}
     total_novos = sum(b["novos"] for b in blocos.values())
@@ -400,6 +425,8 @@ def comparar(regs: list, agora: datetime, semana: dict | None, *, fotos=None,
                           f"YouTube só público."),
              "plataformas": blocos,
              "fotos_sem_hora": sem_hora,
+             "leituras_ruins": {"n": len(ruins),
+                                "exemplos": [list(x) for x in ruins[:5]]},
              "leituras_hora_24h": {"ok": sum(1 for l in leituras_24h if l.get("estado") == "ok"),
                                    "vazio": sum(1 for l in leituras_24h if l.get("estado") == "vazio"),
                                    "erro": sum(1 for l in leituras_24h if l.get("estado") == "erro")},
@@ -423,6 +450,11 @@ def avisos(c: dict, regs: list, semana: dict, agora: datetime) -> list:
     if c.get("fotos_sem_hora"):
         saida.append(f"{c['fotos_sem_hora']} número(s) de fotografias sem hora ficaram fora da "
                      "comparação na mesma idade")
+    ruins = (c.get("leituras_ruins") or {}).get("n") or 0
+    if ruins:
+        exemplo = (c["leituras_ruins"].get("exemplos") or [[""] * 3])[0]
+        saida.append(f"{ruins} leitura(s) com views ilegíveis ficaram de fora (ex.: {exemplo[1]} "
+                     f"= {exemplo[2]}, {exemplo[0]}); o resto da medida segue")
     return saida
 
 
@@ -449,36 +481,71 @@ def _idade(h: float) -> str:
     return f"{int(h // 24)} dias" if h >= 72 and h % 24 == 0 else f"{int(h)} h"
 
 
-def texto(c: dict) -> str:
-    """O texto que o `--ver`, a pagina e o Telegram mostram. Simples."""
+TITULO_CURTO = 38
+DETALHE_NA_PAGINA = ("Vídeo a vídeo: app → Biblioteca → Análise dos vídeos (feita de manhã), "
+                     "ou `python -m builds.publicar.analise --semana` (agora).")
+
+
+def titulo_curto(titulo, teto: int = TITULO_CURTO) -> str:
+    """O titulo cabendo na linha, sem deixar travessao solto no fim.
+
+    Cortar em 40 deixava "Throwing Axes VS Tactical Knives —" e, com o
+    separador da linha, "— —" (conferente, 21/10). Corta na palavra, tira a
+    pontuacao que sobrou e marca o corte com "…"."""
+    t = " ".join(str(titulo or "").split())
+    if len(t) <= teto:
+        return t.rstrip(" —–-·:,;")
+    corte = t[:teto]
+    if " " in corte:
+        corte = corte[:corte.rfind(" ")]
+    return corte.rstrip(" —–-·:,;") + "…"
+
+
+def linhas(c: dict, *, por_video: bool = True) -> list:
+    """`[(tipo, texto)]` da medida da semana — a mesma fonte para o texto
+    (Telegram, `--semana`) e para a pagina.
+
+    Tipos: `titulo`, `sub`, `aviso`, `estado`, `leituras`, `plataforma`,
+    `idade`, `item`, `video`, `detalhe`. Os AVISOS vem logo depois do
+    titulo: no Telegram (corte de 4000) eles moravam no fim e eram os
+    primeiros a sumir — inclusive "leitura de hora em hora PARADA"."""
     if c.get("estado") == "sem_semana":
-        return ("Medida da semana: " + (c.get("motivo") or "sem semana marcada") +
-                ". Sem a data da mudança não há comparação.")
+        return [("titulo", "Medida da semana: " + (c.get("motivo") or "sem semana marcada") +
+                 ". Sem a data da mudança não há comparação.")]
     s = c["semana"]
     inicio = _instante(s["inicio"])
-    linhas = [f"Medida da semana {s.get('semana', '?')} — {s.get('mudanca', '')}".rstrip(" —"),
-              f"desde {inicio:%d/%m %H:%M}, {s['formato']}s do canal {s['canal']}, na MESMA idade "
-              f"(±{s['tolerancia_h']:g} h, sem interpolar)"]
+    saida = [("titulo", f"Medida da semana {s.get('semana', '?')} — "
+                        f"{s.get('mudanca', '')}".rstrip(" —")),
+             ("sub", f"desde {inicio:%d/%m %H:%M}, {s['formato']}s do canal {s['canal']}, na MESMA "
+                     f"idade (±{s['tolerancia_h']:g} h, sem interpolar)")]
+    saida += [("aviso", f"! {a}") for a in c.get("avisos") or []]
+    lidas = c.get("leituras_hora_24h") or {}
+    saida.append(("leituras", f"Leituras de hora em hora nas últimas 24 h: {lidas.get('ok', 0)} "
+                              f"boas, {lidas.get('vazio', 0)} sem vídeo novo, "
+                              f"{lidas.get('erro', 0)} com erro."))
     if c["estado"] == "sem_novos":
-        linhas.append("Nenhum vídeo novo desde o início: NÃO há comparação (não é 'sem efeito').")
+        saida.append(("estado", "Nenhum vídeo novo desde o início: NÃO há comparação "
+                                "(não é 'sem efeito')."))
     elif c["estado"] == "sem_antigos":
-        linhas.append("Nenhum vídeo antigo para comparar: NÃO há comparação.")
+        saida.append(("estado", "Nenhum vídeo antigo para comparar: NÃO há comparação."))
+    algum_video = False
     for plataforma, b in (c.get("plataformas") or {}).items():
         nome = "YouTube" if plataforma == "youtube" else "TikTok"
         fora = b["fora"]["novos"]
         extra = (f"; fora: {fora['privados']} privado(s), {fora['sem_status']} sem status"
                  if fora["privados"] or fora["sem_status"] else "")
-        linhas.append(f"{nome}: {b['novos']} novo(s) × {b['antigos']} antigo(s){extra}")
+        saida.append(("plataforma", f"{nome}: {b['novos']} novo(s) × {b['antigos']} "
+                                    f"antigo(s){extra}"))
         for i in b["idades"]:
             n, a = i["novos"], i["antigos"]
+            rotulo = _idade(i["idade_h"])
             if not n["n"] and n["juntando"] == b["novos"] and b["novos"]:
-                linhas.append(f"  {_idade(i['idade_h'])}: ainda juntando "
-                              f"(nenhum novo chegou nessa idade)")
+                saida.append(("idade", f"{rotulo}: ainda juntando (nenhum novo chegou nessa idade)"))
                 continue
             if not n["n"] and not a["n"]:
-                linhas.append(f"  {_idade(i['idade_h'])}: sem leitura nessa idade nos dois lados")
+                saida.append(("idade", f"{rotulo}: sem leitura nessa idade nos dois lados"))
                 continue
-            texto_i = (f"  {_idade(i['idade_h'])}: novos {_n(n['mediana'])} (n={n['n']}) × "
+            texto_i = (f"{rotulo}: novos {_n(n['mediana'])} (n={n['n']}) × "
                        f"antigos {_n(a['mediana'])} (n={a['n']})")
             if i["razao"] is not None:
                 texto_i += f" = {_n(i['razao'])}x"
@@ -494,35 +561,52 @@ def texto(c: dict) -> str:
                 pend.append(f"{a['sem_leitura']} antigo(s) sem leitura nessa idade")
             if pend:
                 texto_i += " (" + "; ".join(pend) + ")"
-            linhas.append(texto_i)
+            saida.append(("idade", texto_i))
         r = b["retencao"]
-        linhas.append(f"  % assistido (vídeos com 3+ dias): novos {_pct(r['novos']['mediana'])} "
-                      f"(n={r['novos']['n']} de {r['novos']['maduros']} maduros) × antigos "
-                      f"{_pct(r['antigos']['mediana'])} (n={r['antigos']['n']}) → "
-                      f"{SENTIDO[r['sentido']]}")
+        saida.append(("item", f"% assistido (vídeos com 3+ dias): novos "
+                              f"{_pct(r['novos']['mediana'])} (n={r['novos']['n']} de "
+                              f"{r['novos']['maduros']} maduros) × antigos "
+                              f"{_pct(r['antigos']['mediana'])} (n={r['antigos']['n']}) → "
+                              f"{SENTIDO[r['sentido']]}"))
         if "engajadas" in b:
             e = b["engajadas"]
-            linhas.append(f"  views engajadas (3+ dias): novos {_n(e['novos']['mediana'])} "
-                          f"(n={e['novos']['n']}) × antigos {_n(e['antigos']['mediana'])} "
-                          f"(n={e['antigos']['n']}); vídeo sem o número = não medido")
+            saida.append(("item", f"views engajadas (3+ dias): novos {_n(e['novos']['mediana'])} "
+                                  f"(n={e['novos']['n']}) × antigos {_n(e['antigos']['mediana'])} "
+                                  f"(n={e['antigos']['n']}); vídeo sem o número = não medido"))
         ipm = b.get("inscritos_por_mil") or {}
         if ipm.get("estado") == "ok":
             se, an = ipm["semana"], ipm["anterior"]
-            linhas.append(f"  inscritos por mil views (canal): semana {_n(se['por_mil'])} "
-                          f"({se['dias_com_dado']} dia(s) com dado, {se['dias_sem_dado']} ainda "
-                          f"sem) × anterior {_n(an['por_mil'])} ({an['dias_com_dado']} dia(s))")
+            saida.append(("item", f"inscritos por mil views (canal): semana {_n(se['por_mil'])} "
+                                  f"({se['dias_com_dado']} dia(s) com dado, "
+                                  f"{se['dias_sem_dado']} ainda sem) × anterior "
+                                  f"{_n(an['por_mil'])} ({an['dias_com_dado']} dia(s))"))
         elif "inscritos_por_mil" in b:
-            linhas.append("  inscritos por mil views: série do canal não lida (não medi)")
+            saida.append(("item", "inscritos por mil views: série do canal não lida (não medi)"))
+        algum_video = algum_video or bool(b["por_video"])
+        if not por_video:
+            continue
         for v in b["por_video"]:
             # A idade REAL da leitura vai junto: com uma leitura so, a mesma
             # pode servir a 6 h e a 12 h (+-5 h), e isso tem de estar a vista.
             pontos = "; ".join(f"{_idade(float(x))}: {p['views']} aos {_n(p['idade_real_h'])} h "
                                f"(antigos {_n(p['mediana_dos_antigos'])}, n={p['n_antigos']})"
                                for x, p in v["pontos"].items())
-            linhas.append(f"    {v['id']} {v['titulo'][:40]} — {_n(v['idade_h_agora'])} h no ar"
-                          + (f" — {pontos}" if pontos else " — sem leitura em nenhuma idade ainda"))
-    lidas = c.get("leituras_hora_24h") or {}
-    linhas.append(f"Leituras de hora em hora nas últimas 24 h: {lidas.get('ok', 0)} boas, "
-                  f"{lidas.get('vazio', 0)} sem vídeo novo, {lidas.get('erro', 0)} com erro.")
-    linhas += [f"! {a}" for a in c.get("avisos") or []]
-    return "\n".join(linhas)
+            titulo = titulo_curto(v.get("titulo"))
+            saida.append(("video", f"{v['id']}" + (f" {titulo}" if titulo else "")
+                          + f" · {_n(v['idade_h_agora'])} h no ar · "
+                          + (pontos or "sem leitura em nenhuma idade ainda")))
+    if not por_video and algum_video:
+        saida.append(("detalhe", DETALHE_NA_PAGINA))
+    return saida
+
+
+RECUO = {"idade": "  ", "item": "  ", "video": "    "}
+
+
+def texto(c: dict, *, por_video: bool = True) -> str:
+    """O texto que o `--ver`, a pagina e o Telegram mostram. Simples.
+
+    `por_video=False` e o do Telegram: sem a linha de cada video (a pagina
+    tem o detalhe) — a semana cheia passava de 8 mil caracteres e o envio
+    corta em 4 mil."""
+    return "\n".join(RECUO.get(tipo, "") + t for tipo, t in linhas(c, por_video=por_video))

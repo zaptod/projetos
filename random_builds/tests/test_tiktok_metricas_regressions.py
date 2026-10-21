@@ -455,7 +455,7 @@ class ColetaQueNaoMedeTests(unittest.TestCase):
         conta = resumo.pop("conta")
         self.assertEqual({"envios": 1, "posts": 30, "lista": "completa",
                           "casados": 1}, resumo)
-        self.assertEqual({"serie_dias": None, "seguidores": None,
+        self.assertEqual({"serie_pontos": None, "serie_datas": None, "seguidores": None,
                           "punicao": "nao_lida", "qualidade": "nao_lida"}, conta)
 
 

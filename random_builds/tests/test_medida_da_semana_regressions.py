@@ -414,8 +414,8 @@ class ColetaDaContaTests(unittest.TestCase):
         self.assertEqual(7, ficha["seguidores"])
         self.assertTrue(ficha["punicao"]["lida"])
         self.assertFalse(ficha["qualidade"]["lida"])
-        self.assertEqual({"serie_dias": 1, "seguidores": 7, "punicao": "lida",
-                          "qualidade": "nao_lida"}, resumo["conta"])
+        self.assertEqual({"serie_pontos": 1, "serie_datas": "dos_pontos", "seguidores": 7,
+                          "punicao": "lida", "qualidade": "nao_lida"}, resumo["conta"])
         self.assertIn(T.URL_VISAO_GERAL, self.pagina.visitas)
         self.assertEqual([], self.diario.linhas)
 
@@ -425,7 +425,7 @@ class ColetaDaContaTests(unittest.TestCase):
         salvos = T.coletar("builds", log=lambda *_a: None, analisar=False, resumo=resumo)
         self.assertEqual(1, len(salvos), "os posts continuam gravados")
         self.assertIn("visao geral", resumo["conta"]["erro"])
-        self.assertIsNone(resumo["conta"]["serie_dias"])
+        self.assertIsNone(resumo["conta"]["serie_pontos"])
         self.assertEqual(1, len(self.diario.linhas))
 
 

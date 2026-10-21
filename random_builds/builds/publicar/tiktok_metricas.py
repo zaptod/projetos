@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 URL_CONTEUDO = "https://www.tiktok.com/tiktokstudio/content"
@@ -265,34 +265,185 @@ def serie_da_conta(corpos: list) -> dict:
             "seguidores": seguidores}
 
 
+# O que a 1a coleta de verdade mostrou (conferente, 21/10 13:34–13:38):
+# `vv_history` chega como `[{"status": 0, "value": 11}, ..., {"status": 2}]`
+# — 16 pontos SEM data — e de 5 respostas de `data/insight` so UMA trazia a
+# serie; a ficha guardava as 3 ultimas (nenhuma com ela) e nada do PEDIDO.
+# Agora guarda o corpo de toda resposta que trouxe numero da conta, com a URL
+# e o corpo do pedido (o `type_requests` diz o intervalo); a data so e
+# deduzida quando o pedido diz o intervalo inteiro.
+def pedido_da_resposta(resp) -> dict:
+    """URL, metodo e corpo do pedido que trouxe a resposta. Nunca levanta."""
+    pedido = {"url": str(getattr(resp, "url", "") or "")[:TETO_DO_BRUTO],
+              "ouvido_em": datetime.now().isoformat(timespec="seconds")}
+    try:
+        req = resp.request
+        pedido["metodo"] = str(getattr(req, "method", "") or "")
+        corpo = req.post_data
+        if corpo:
+            pedido["corpo"] = str(corpo)[:TETO_DO_BRUTO]
+    except Exception:                                          # noqa: BLE001
+        pass
+    return pedido
+
+
+def _tipos_pedidos(pedido: dict | None) -> list:
+    """Os `type_requests` do pedido (da URL ou do corpo), decifrados."""
+    from urllib.parse import parse_qs, urlsplit
+
+    brutos = []
+    pedido = pedido or {}
+    try:
+        brutos += parse_qs(urlsplit(pedido.get("url") or "").query).get("type_requests") or []
+    except ValueError:
+        pass
+    corpo = pedido.get("corpo")
+    if corpo:
+        try:
+            dado = json.loads(corpo)
+            if isinstance(dado, dict) and dado.get("type_requests") is not None:
+                brutos.append(dado["type_requests"])
+        except ValueError:
+            brutos += parse_qs(corpo).get("type_requests") or []
+    saida = []
+    for bruto in brutos:
+        if isinstance(bruto, str):
+            try:
+                bruto = json.loads(bruto)
+            except ValueError:
+                continue
+        if isinstance(bruto, dict):
+            bruto = [bruto]
+        if isinstance(bruto, list):
+            saida += [t for t in bruto if isinstance(t, dict)]
+    return saida
+
+
+def _data_do_pedido(valor):
+    """A data (`date`) de um campo do pedido, ou `None`."""
+    from datetime import date
+    if isinstance(valor, str) and len(valor) >= 10 and valor[4] == "-":
+        try:
+            return date.fromisoformat(valor[:10])
+        except ValueError:
+            return None
+    numero = _numero(valor)
+    if numero and numero > 10**9:
+        try:
+            return datetime.fromtimestamp(numero / 1000 if numero > 10**11 else numero).date()
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
+
+
+def datas_da_serie(pontos: int, pedido: dict | None, quando: datetime) -> dict:
+    """De que dias sao os `pontos` da serie, pelo PEDIDO. Nunca chuta.
+
+    `do_pedido`: o pedido diz inicio e fim e o intervalo tem `pontos` dias;
+    `deduzidas`: o pedido diz `days` E `end_days` (dias antes do dia do
+    pedido), e `days` == `pontos`;
+    `sem`: o resto — inclusive `days` sem `end_days` (o fim nao esta dito, e
+    errar o fim em um dia poe todo numero no dia errado)."""
+    for t in _tipos_pedidos(pedido):
+        tipo = t.get("insigh_type", t.get("insight_type"))
+        if tipo != "vv_history":
+            continue
+        for de, ate in (("start_date", "end_date"), ("start_time", "end_time"),
+                        ("begin_date", "end_date")):
+            ini, fim = _data_do_pedido(t.get(de)), _data_do_pedido(t.get(ate))
+            if ini and fim and (fim - ini).days + 1 == pontos:
+                return {"origem": "do_pedido", "datas": [
+                    (ini + timedelta(days=i)).isoformat() for i in range(pontos)],
+                    "regra": f"pedido: {de}={t.get(de)}, {ate}={t.get(ate)}"}
+        dias, fim_dias = _numero(t.get("days")), _numero(t.get("end_days"))
+        if dias == pontos and fim_dias is not None and "end_days" in t:
+            fim = quando.date() - timedelta(days=int(fim_dias))
+            return {"origem": "deduzidas", "datas": [
+                (fim - timedelta(days=pontos - 1 - i)).isoformat() for i in range(pontos)],
+                "regra": f"pedido: days={dias}, end_days={fim_dias}, feito em "
+                         f"{quando:%Y-%m-%d}"}
+        if dias is not None:
+            return {"origem": "sem", "datas": None,
+                    "regra": f"o pedido diz days={dias} mas não diz onde a série termina; "
+                             "não deduzi"}
+    return {"origem": "sem", "datas": None,
+            "regra": "o pedido não diz o intervalo da série" if pedido else
+                     "o pedido que trouxe a série não foi guardado"}
+
+
+def _tem_numero_da_conta(corpo) -> bool:
+    return isinstance(corpo, dict) and (
+        corpo.get("vv_history") is not None
+        or any(corpo.get(k) is not None for k in CHAVES_DE_SEGUIDORES))
+
+
+def conta_completa(corpos: list) -> bool:
+    """A visao geral ja mandou a serie E os seguidores? (A chave existir nao
+    basta: das 5 respostas da 1a coleta, 4 tinham `vv_history: null`.)"""
+    corpos = [c for c in corpos or [] if isinstance(c, dict)]
+    return (any(c.get("vv_history") is not None for c in corpos)
+            and any(c.get(k) is not None for c in corpos for k in CHAVES_DE_SEGUIDORES))
+
+
 def ficha_da_conta(canal: str, *, punicoes: list, qualidades: list,
-                   insights: list, agora: datetime | None = None,
-                   erro: str = "") -> dict:
-    """A ficha do dia da conta. `lida: False` e "nao medi" — nunca "limpo"."""
+                   insights: list, pedidos: list | None = None,
+                   agora: datetime | None = None, erro: str = "",
+                   por_que_sem_punicao: str = "") -> dict:
+    """A ficha do dia da conta. `lida: False` e "nao medi" — nunca "limpo".
+
+    `pedidos[i]` e o pedido que trouxe `insights[i]` (`pedido_da_resposta`).
+    `por_que_sem_punicao` vai na punicao e na qualidade nao lidas."""
     agora = agora or datetime.now()
-    da_conta = [c for c in insights or [] if isinstance(c, dict) and (
+    pedidos = list(pedidos or [])
+    indices = [i for i, c in enumerate(insights or []) if isinstance(c, dict) and (
         "vv_history" in c or any(k in c for k in CHAVES_DE_SEGUIDORES))]
+    da_conta = [insights[i] for i in indices]
     serie = serie_da_conta(da_conta)
+    uteis = [i for i in indices if _tem_numero_da_conta(insights[i])]
+
+    def pedido(i):
+        return pedidos[i] if i < len(pedidos) else None
+
+    vv = serie["vv_history"]
+    datas = {"origem": "dos_pontos" if vv and not serie["vv_history_sem_datas"] else None}
+    if vv and serie["vv_history_sem_datas"]:
+        de_onde = next((i for i in indices if insights[i].get("vv_history") is not None), None)
+        datas = datas_da_serie(len(vv), pedido(de_onde) if de_onde is not None else None, agora)
+        if datas.get("datas"):
+            vv = [[d, p[1]] for d, p in zip(datas["datas"], vv)]
+    nao_lida = {"lida": False, **({"por_que": por_que_sem_punicao[:300]}
+                                  if por_que_sem_punicao else {})}
     ficha = {"canal": canal, "quando": agora.isoformat(timespec="seconds"),
-             "vv_history": serie["vv_history"],
-             "vv_history_sem_datas": serie["vv_history_sem_datas"],
+             "vv_history": vv,
+             "vv_history_sem_datas": bool(vv) and any(p[0] is None for p in vv),
+             "vv_history_datas": datas.get("origem"),
              "seguidores": serie["seguidores"],
              "punicao": ({"lida": True, "respostas": len(punicoes),
                           "bruto": _cru(punicoes[-1])}
-                         if punicoes else {"lida": False}),
+                         if punicoes else dict(nao_lida)),
              "qualidade": ({"lida": True, "respostas": len(qualidades),
                             "bruto": _cru(qualidades[-1])}
-                           if qualidades else {"lida": False}),
-             "insights_da_conta": [_cru(c) for c in da_conta[-3:]]}
+                           if qualidades else dict(nao_lida)),
+             "respostas_da_conta": len(indices),
+             # O corpo CRU de toda resposta que trouxe numero da conta, com o
+             # pedido; sem nenhuma, as 3 ultimas (para ver o que veio).
+             "insights_da_conta": [{"pedido": pedido(i), "corpo": _cru(insights[i])}
+                                   for i in (uteis or indices[-3:])]}
+    if datas.get("regra"):
+        ficha["vv_history_regra_das_datas"] = datas["regra"]
     if erro:
         ficha["erro"] = erro[:300]
     return ficha
 
 
 def resumo_da_conta(ficha: dict) -> dict:
-    """O que a marca do dia guarda da conta (pequeno)."""
+    """O que a marca do dia guarda da conta (pequeno). `serie_pontos` e
+    quantos pontos a serie tem — dia so quando `serie_datas` nao e `sem`."""
     vv = ficha.get("vv_history")
-    saida = {"serie_dias": len(vv) if isinstance(vv, list) else None,
+    saida = {"serie_pontos": len(vv) if isinstance(vv, list) else None,
+             "serie_datas": (ficha.get("vv_history_datas")
+                             or ("sem" if ficha.get("vv_history_sem_datas") else None)
+                             if isinstance(vv, list) else None),
              "seguidores": ficha.get("seguidores"),
              "punicao": "lida" if (ficha.get("punicao") or {}).get("lida") else "nao_lida",
              "qualidade": "lida" if (ficha.get("qualidade") or {}).get("lida") else "nao_lida"}
@@ -628,6 +779,7 @@ def coletar(canal: str = "builds", *, log=print,
     # conselheiro de qualidade vem quando o Studio os pede, em qualquer
     # pagina; os insights da conta, na visao geral).
     punicoes, qualidades, insights_da_conta = [], [], []
+    pedidos_da_conta = []           # pedidos_da_conta[i] trouxe insights_da_conta[i]
 
     def ouvir(resp):
         url = resp.url
@@ -651,6 +803,7 @@ def coletar(canal: str = "builds", *, log=print,
             if isinstance(corpo, dict) and ("vv_history" in corpo or any(
                     k in corpo for k in CHAVES_DE_SEGUIDORES)):
                 insights_da_conta.append(corpo)
+                pedidos_da_conta.append(pedido_da_resposta(resp))
 
     # So interessa o post que pode casar com o ledger: o mais velho dele,
     # com a folga do casamento.
@@ -701,9 +854,12 @@ def coletar(canal: str = "builds", *, log=print,
                                             dias=dias_de_analise,
                                             maximo=maximo_de_analises)
                       if analisar else set())
+        escolhidos, por_que_sem_punicao = garantir_uma_analise(
+            escolhidos, pares, analisar=analisar, ja_lida=bool(punicoes and qualidades))
         log(f"[tiktok-metricas] {canal}: {len(pares)} de {len(publicacoes)} "
             f"envio(s) do ledger casados; {len(escolhidos)} analisado(s) "
-            "nesta rodada.")
+            "nesta rodada"
+            + (f" ({por_que_sem_punicao})" if por_que_sem_punicao else "") + ".")
         erro_da_conta = visitar_a_visao_geral(page, insights_da_conta)
         pasta.mkdir(parents=True, exist_ok=True)
         for publicacao, item in pares:
@@ -739,18 +895,47 @@ def coletar(canal: str = "builds", *, log=print,
             salvos.append(dado)
         # Por ultimo, com tudo o que a sessao ouviu (a punicao pode chegar
         # numa pagina de analise).
+        if not por_que_sem_punicao and not (punicoes and qualidades):
+            por_que_sem_punicao = (
+                f"o Studio não mandou {PUNICAO if not punicoes else QUALIDADE} em "
+                f"nenhuma das páginas abertas ({len(escolhidos)} análise(s) de post)")
         guardar_a_conta(canal, resumo, log=log, punicoes=punicoes,
                         qualidades=qualidades,
                         insights_da_conta=insights_da_conta,
-                        erro=erro_da_conta)
+                        pedidos_da_conta=pedidos_da_conta,
+                        erro=erro_da_conta,
+                        por_que_sem_punicao=por_que_sem_punicao)
     log(f"[tiktok-metricas] {canal}: {len(salvos)} video(s) gravados em "
         f"{pasta}")
     return salvos
 
 
+def garantir_uma_analise(escolhidos: set, pares: list, *, analisar: bool,
+                         ja_lida: bool = False) -> tuple:
+    """`(escolhidos, por_que)`. A punicao (`getPenaltyDetails`) e o conselho
+    de qualidade so chegam na pagina de ANALISE de um post (1a coleta de
+    verdade, 21/10: a 2a rodada do dia, sem post a analisar, gravou "nao
+    lida"). Sem nenhum escolhido, o mais novo e aberto so para ler a conta.
+    `por_que` diz, em texto, por que a punicao nao vai ser lida ("" = vai)."""
+    escolhidos = set(escolhidos or ())
+    if escolhidos or ja_lida:
+        return escolhidos, ""
+    if not analisar:
+        return escolhidos, ("análise de post desligada nesta rodada: punição e qualidade só "
+                            "chegam na página de análise de um post")
+    if not pares:
+        return escolhidos, "nenhum post casado para abrir a análise"
+    mais_novo = max(pares, key=lambda p: p[1].get("post_time") or 0)[1].get("tiktok_id")
+    if not mais_novo:
+        return escolhidos, "o post mais novo veio sem id"
+    return {mais_novo}, ""
+
+
 def visitar_a_visao_geral(page, insights_da_conta: list,
                           espera: int | None = None) -> str:
-    """Abre a visao geral do Studio e espera o insight da conta. Nunca
+    """Abre a visao geral do Studio e espera o insight da conta — a serie
+    E os seguidores, com VALOR (a chave `vv_history` existir com `null` nao
+    basta; foi assim que a 2a coleta de 21/10 saiu sem seguidores). Nunca
     levanta: devolve o erro em texto ("" = abriu). Nao achar o insight NAO e
     erro aqui — a ficha diz `vv_history: None` (nao medi)."""
     espera = ESPERA_DA_CONTA if espera is None else espera
@@ -758,7 +943,7 @@ def visitar_a_visao_geral(page, insights_da_conta: list,
         page.goto(URL_VISAO_GERAL, wait_until="domcontentloaded",
                   timeout=90_000)
         for _ in range(max(0, int(espera))):
-            if any("vv_history" in c for c in insights_da_conta):
+            if conta_completa(insights_da_conta):
                 break
             page.wait_for_timeout(1000)
     except Exception as exc:                                   # noqa: BLE001
@@ -767,8 +952,9 @@ def visitar_a_visao_geral(page, insights_da_conta: list,
 
 
 def guardar_a_conta(canal: str, resumo: dict, *, log=print, punicoes=(),
-                    qualidades=(), insights_da_conta=(), erro: str = "",
-                    agora: datetime | None = None) -> dict:
+                    qualidades=(), insights_da_conta=(), pedidos_da_conta=(),
+                    erro: str = "", agora: datetime | None = None,
+                    por_que_sem_punicao: str = "") -> dict:
     """Grava a ficha da conta e poe o resumo dela em `resumo["conta"]`.
 
     Nunca levanta: a conta e a parte nova, e os numeros dos posts (que ja
@@ -778,17 +964,23 @@ def guardar_a_conta(canal: str, resumo: dict, *, log=print, punicoes=(),
     try:
         ficha = ficha_da_conta(canal, punicoes=list(punicoes),
                                qualidades=list(qualidades),
-                               insights=list(insights_da_conta), agora=agora,
-                               erro=erro)
+                               insights=list(insights_da_conta),
+                               pedidos=list(pedidos_da_conta), agora=agora,
+                               erro=erro, por_que_sem_punicao=por_que_sem_punicao)
         gravar_conta(canal, ficha)
     except Exception as exc:                                   # noqa: BLE001
         ficha = {"erro": f"{type(exc).__name__}: {exc}"[:300]}
         erro = ficha["erro"]
     resumo["conta"] = resumo_da_conta(ficha)
     c = resumo["conta"]
-    log(f"[tiktok-metricas] {canal}: conta — serie "
-        f"{c.get('serie_dias') if c.get('serie_dias') is not None else 'NAO MEDIDA'}"
-        f" dia(s), seguidores {c.get('seguidores') if c.get('seguidores') is not None else 'nao medidos'}, "
+    if c.get("serie_pontos") is None:
+        serie = "NAO MEDIDA"
+    elif c.get("serie_datas") in ("sem", None):
+        serie = f"{c['serie_pontos']} ponto(s) SEM datas"
+    else:
+        serie = f"{c['serie_pontos']} dia(s) (datas {c['serie_datas'].replace('_', ' ')})"
+    log(f"[tiktok-metricas] {canal}: conta — serie {serie}"
+        f", seguidores {c.get('seguidores') if c.get('seguidores') is not None else 'nao medidos'}, "
         f"punicao {c['punicao'].replace('_', ' ')}, qualidade {c['qualidade'].replace('_', ' ')}"
         + (f" ({erro})" if erro else "") + ".")
     if erro:
@@ -805,6 +997,8 @@ def guardar_a_conta(canal: str, resumo: dict, *, log=print, punicoes=(),
 
 __all__ = ["Lista", "analise_anterior", "analise_do_insight",
            "carregar_contas", "carregar_salvas", "casar", "coletar",
+           "conta_completa", "datas_da_serie", "garantir_uma_analise",
+           "pedido_da_resposta",
            "escolher_para_analise", "ficha_da_conta", "gravar_conta",
            "guardar_a_conta", "item_do_studio", "ler_a_lista", "montar",
            "pasta_da_conta", "pasta_do_canal", "serie_da_conta",

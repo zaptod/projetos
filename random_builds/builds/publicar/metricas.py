@@ -600,7 +600,7 @@ def enviados(token: str, quantos: int | None = None) -> list[dict]:
                     params={"part": "contentDetails,statistics",
                             "mine": "true"})
     if not resposta.ok:
-        raise RuntimeError(motivo_da_recusa(resposta))
+        raise RuntimeError(motivo_da_recusa(resposta, api="data"))
     saida = ListaDoCanal()
     saida.declarados = -1
     itens = resposta.json().get("items") or []
@@ -620,7 +620,7 @@ def enviados(token: str, quantos: int | None = None) -> list[dict]:
                                 "id": ",".join(ids[i:i + 50]),
                                 "maxResults": 50})
         if not resposta.ok:
-            raise RuntimeError(motivo_da_recusa(resposta))
+            raise RuntimeError(motivo_da_recusa(resposta, api="data"))
         for item in resposta.json().get("items", []):
             snip = item.get("snippet") or {}
             saida.append({"youtube_id": item.get("id"),
@@ -910,7 +910,63 @@ def _provar_pelo_canal(linhas: list, videos: list) -> int:
     return mudou
 
 
-def motivo_da_recusa(resposta) -> str:
+# Qual API recusou (21/10/2026). Ate aqui o texto dizia "Analytics API" fixo,
+# e a leitura de hora em hora (Data API, `videos.list`) contava uma recusa da
+# Data API como se fosse da Analytics — procurar no painel errado do Google.
+NOMES_DAS_APIS = {"data": "YouTube Data API v3",
+                  "analytics": "YouTube Analytics API"}
+LIGAR_A_API = {"data": "console.cloud.google.com/apis/library/youtube.googleapis.com",
+               "analytics": "console.cloud.google.com/apis/library/"
+                            "youtubeanalytics.googleapis.com"}
+
+
+def api_da_resposta(resposta, api: str | None = None) -> str | None:
+    """`"data"`, `"analytics"` ou `None` (nao sei). Quem chama sabe a API e
+    deve dizer; sem isso, o endereco da resposta decide."""
+    if api in NOMES_DAS_APIS:
+        return api
+    url = str(getattr(resposta, "url", "") or "")
+    if "youtubeanalytics.googleapis.com" in url:
+        return "analytics"
+    if "/youtube/v3/" in url:
+        return "data"
+    return None
+
+
+def _razao_e_recado(resposta) -> tuple:
+    try:
+        erro = (resposta.json() or {}).get("error") or {}
+        if not isinstance(erro, dict):
+            return "", str(erro)[:200]
+        detalhes = erro.get("errors") or [{}]
+        razao = str((detalhes[0] if isinstance(detalhes[0], dict) else {}).get("reason") or "")
+        return razao, str(erro.get("message") or "")
+    except (ValueError, AttributeError, TypeError):
+        return "", (getattr(resposta, "text", "") or "")[:200]
+
+
+def tipo_da_recusa(resposta) -> str:
+    """O TIPO de uma recusa, para agrupar aviso: `"403 quotaExceeded"`,
+    `"401 authError"`, `"500"`. Nunca o nome da excecao — toda recusa vira
+    `RuntimeError`, e agrupar por ele calava a 2a recusa do dia, de outro
+    motivo (403 de cota as 15:00 depois de um 401 de manha)."""
+    razao, _recado = _razao_e_recado(resposta)
+    status = getattr(resposta, "status_code", None)
+    return f"{status} {razao}".strip() if razao else str(status)
+
+
+class RecusaDaAPI(RuntimeError):
+    """A API do Google respondeu, e recusou. `tipo` agrupa o aviso
+    (`tipo_da_recusa`), `api` diz qual delas."""
+
+    def __init__(self, resposta, api: str | None = None):
+        self.api = api_da_resposta(resposta, api)
+        self.tipo = tipo_da_recusa(resposta)
+        self.status = getattr(resposta, "status_code", None)
+        super().__init__(motivo_da_recusa(resposta, api=self.api))
+
+
+def motivo_da_recusa(resposta, api: str | None = None) -> str:
     """Le o MOTIVO que o Google mandou, em vez de chutar sempre o mesmo.
 
     Ate 11/09/2026 todo 401/403 virava "escopo yt-analytics.readonly
@@ -919,20 +975,21 @@ def motivo_da_recusa(resposta) -> str:
     projeto do Google Cloud. Diagnostico errado com cara de certeza custou
     uma reautorizacao inutil e mandou procurar no lugar errado — o mesmo
     defeito do "esta logado?" que errou dos dois lados (09/09/2026).
+
+    `api` (`"data"`/`"analytics"`) poe o nome da API certa no texto; sem
+    ela, o endereco da resposta decide, e sem endereco o texto diz que nao
+    sabe qual das duas foi (nunca chuta "Analytics").
     """
-    try:
-        erro = (resposta.json() or {}).get("error") or {}
-        detalhes = erro.get("errors") or [{}]
-        razao = str(detalhes[0].get("reason") or "")
-        recado = str(erro.get("message") or "")
-    except ValueError:
-        razao, recado = "", (resposta.text or "")[:200]
+    api = api_da_resposta(resposta, api)
+    nome = NOMES_DAS_APIS.get(api, "YouTube API (Data ou Analytics: nao sei qual)")
+    razao, recado = _razao_e_recado(resposta)
 
     if razao == "accessNotConfigured":
-        return ("YouTube Analytics API DESLIGADA no projeto do Google Cloud "
+        onde = (LIGAR_A_API[api] if api else
+                f"{LIGAR_A_API['analytics']} (Analytics) ou {LIGAR_A_API['data']} (Data)")
+        return (f"{nome} DESLIGADA no projeto do Google Cloud "
                 "(nao e escopo, nao e token). Ligue em "
-                "console.cloud.google.com/apis/library/youtubeanalytics.googleapis.com "
-                "e espere alguns minutos. Detalhe: " + recado[:200])
+                f"{onde} e espere alguns minutos. Detalhe: " + recado[:200])
     if razao in ("authError", "unauthorized") or resposta.status_code == 401:
         # 401 AQUI NUNCA E REVOGACAO. Refresh revogado falha ANTES, em
         # `token_de_acesso`, com `invalid_grant`. Chegar ate esta chamada
@@ -941,15 +998,19 @@ def motivo_da_recusa(resposta) -> str:
         # a tupla `(token, credenciais)` no cabecalho, esta funcao dizia
         # "token invalido ou revogado", e o Adrian ouviu que as tres
         # credenciais estavam mortas quando duas estavam vivas.
-        return (f"o Google recusou o token de acesso enviado "
+        return (f"o Google ({nome}) recusou o token de acesso enviado "
                 f"({resposta.status_code} {razao or 'sem reason'}: "
                 f"{recado[:200] or 'sem mensagem'}). O refresh funcionou, "
                 "entao nao e credencial revogada: confira o que vai no "
                 "cabecalho Authorization. So se persistir, reautorize: "
                 f"{comando_oauth()}")
     if razao == "insufficientPermissions":
-        return f"falta o escopo yt-analytics.readonly — rode: {comando_oauth()}"
-    return f"Analytics API {resposta.status_code} ({razao or 'sem reason'}): {recado[:200]}"
+        escopo = {"analytics": "falta o escopo yt-analytics.readonly",
+                  "data": "falta o escopo de leitura do YouTube (youtube.readonly)"}.get(
+            api, "falta o escopo yt-analytics.readonly (se for a Analytics) ou "
+                 "youtube.readonly (se for a Data API)")
+        return f"{escopo} — rode: {comando_oauth()}"
+    return f"{nome} {resposta.status_code} ({razao or 'sem reason'}): {recado[:200]}"
 
 
 # As metricas do resumo por video. `engagedViews` entrou em 21/10/2026: desde
@@ -998,11 +1059,11 @@ def retencao(youtube_id: str, token: str, desde: str) -> dict:
         # custaria uma consulta a mais). O que veio no lugar do numero e o
         # motivo, gravado — nunca 0.
         ENGAJADAS_RECUSADAS = True
-        recusa_das_engajadas = motivo_da_recusa(resumo)[:200]
+        recusa_das_engajadas = motivo_da_recusa(resumo, api="analytics")[:200]
         resumo = _get("analytics", API_ANALYTICS, timeout=30, headers=cab,
                       params={**base, "metrics": METRICAS_SEM_ENGAJADAS})
     if resumo.status_code in (401, 403):
-        return {"erro": motivo_da_recusa(resumo)}
+        return {"erro": motivo_da_recusa(resumo, api="analytics")}
     if not resumo.ok:
         return {"erro": f"Analytics API {resumo.status_code}: {resumo.text[:160]}"}
     corpo = resumo.json() or {}
