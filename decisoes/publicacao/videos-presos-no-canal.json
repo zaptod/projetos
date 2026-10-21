@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T14:50:19",
+      "evento": "2026-10-21T14:50:12",
+      "linha": 208,
+      "nota": "resposta sem pedido de origem: publicacao/videos-presos-no-canal = Apagar e não reenviar; acertar o ledger (recomendado)",
+      "opcao": "apagar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Ficaram assim porque o navegador fechava no meio do envio (conserto em andamento). Estão públicos mas sem vídeo. Apagar não tem volta. Reenviar estreia contraria a decisão duelo-no-lugar-da-estreia. Nenhum é duelo.",
   "criado": "2026-10-21T14:00:37.146360",
   "depende_de": [],
