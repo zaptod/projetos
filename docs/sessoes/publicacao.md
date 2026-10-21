@@ -80,6 +80,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **TikTok: o atraso que cresce com 6 contra 10** — Manter: o TikTok posta o que falta, na ordem (cada vez mais velho) (19/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Durante o teste (20-26/10) a fila segue em ordem; rever junto com o resultado do teste em 29/10.” `tiktok-atraso-depois-do-teste`
 - ✅ **Histórias: autorizar a edição para ligar a parte anterior** — Ficar só com o texto na descrição durante o teste (19/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Mexer na autorização da conta é do Adrian; durante o teste, só o texto.” `historias-escopo-de-edicao`
 - ✅ **Grade da semana 1: duelos 3/dia no YouTube, 1/dia no TikTok** — YouTube 3/dia + TikTok 1/dia (21:37), só duelo nos dois, par de classes sem repetir em 7 dias, upload em inglês (recomendado) (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir); ramo integracao/publicacao-semana1 9191852f” `grade-semana-1-duelos`
+- ⏳ **Repetir o envio quando a tela de detalhes do YouTube não aparece** — Quando o Studio não mostra a tela de detalhes (como no duelo das 09:37 de 21/10), a rodada tenta de novo no mesmo horário? `repetir-quando-detalhes-nao-vem`
 
 <!-- decisoes:fim -->
 
