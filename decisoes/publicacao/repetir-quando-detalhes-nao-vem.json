@@ -3,7 +3,14 @@
   "contexto": "Aconteceu 3 vezes no postar.txt inteiro. Repetir teria salvo o 09:37, mas se o upload começou sem aparecer sobra rascunho duplicado no canal. Hoje o duelo volta à fila e sai no próximo horário; o conserto 4e43d020 passa a tirar foto da tela na falha.",
   "criado": "2026-10-21T13:26:27.198705",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+      "em": "2026-10-21T13:26:38",
+      "opcao": "nao",
+      "origem": "cli"
+    }
+  ],
   "id": "repetir-quando-detalhes-nao-vem",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Quando o Studio não mostra a tela de detalhes (como no duelo das 09:37 de 21/10), a rodada tenta de novo no mesmo horário?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Repetir o envio quando a tela de detalhes do YouTube não aparece",
-  "vigente": null
+  "vigente": {
+    "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+    "em": "2026-10-21T13:26:38",
+    "opcao": "nao"
+  }
 }
