@@ -3,7 +3,14 @@
   "contexto": "Os 31 duelos da fila não mudam (sem carimbo re-simulam iguais). Regravar algum faria os 31 mudarem de luta e 5 de vencedor; não vamos regravar.",
   "criado": "2026-10-21T15:06:44.661880",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+      "em": "2026-10-21T15:06:46",
+      "opcao": "ligar",
+      "origem": "cli"
+    }
+  ],
   "id": "dinamismo-ligado-nas-novas",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Depois do merge, toda luta nova sai com o dinamismo (runner.DINAMISMO_LUTA_NOVA = True)?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Ligar o dinamismo em toda luta nova",
-  "vigente": null
+  "vigente": {
+    "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+    "em": "2026-10-21T15:06:46",
+    "opcao": "ligar"
+  }
 }
