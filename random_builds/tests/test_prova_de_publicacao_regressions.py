@@ -61,18 +61,22 @@ class QualidadeNoClique(unittest.TestCase):
             "Envio concluído ... O processamento vai começar em breve")
         self.assertEqual(Y._qualidade_agora(page)["qualidade"], "subindo")
 
-    def test_tela_de_sucesso_conta_como_hd_e_reconhecida(self):
+    def test_link_do_video_nao_prova_pronto(self):
+        # 21/10/2026: "Link do video" fica no painel da direita do envio
+        # desde o primeiro segundo. Contava como "reconhecido" e o clique
+        # saia com o arquivo a 3%.
         page = PaginaFalsa("Vídeo publicado — link do vídeo")
         achado = Y._qualidade_agora(page)
-        self.assertEqual(achado["qualidade"], "hd")
-        self.assertTrue(achado["reconhecido"])
+        self.assertEqual(achado["qualidade"], "desconhecida")
+        self.assertFalse(achado["reconhecido"])
 
-    def test_tela_estranha_diz_hd_mas_avisa_que_nao_entendeu(self):
-        # O DIA EM QUE O STUDIO TROCAR AS PALAVRAS. Sem `reconhecido`, a
-        # medicao viraria "hd" para tudo e a serie inteira seria uma mentira
-        # silenciosa — o mesmo defeito que este arquivo existe para impedir.
+    def test_tela_estranha_e_desconhecida_e_avisa_que_nao_entendeu(self):
+        # O DIA EM QUE O STUDIO TROCAR AS PALAVRAS. Ate 21/10/2026 dava "hd"
+        # com `reconhecido` falso; agora nao sei nao e pronto: espera, e no
+        # estouro do teto publica (regra de 16/09) com o navegador segurado
+        # ate o envio terminar.
         achado = Y._qualidade_agora(PaginaFalsa("bem-vindo ao novo studio"))
-        self.assertEqual(achado["qualidade"], "hd")
+        self.assertEqual(achado["qualidade"], "desconhecida")
         self.assertFalse(achado["reconhecido"])
 
     def test_le_o_dialogo_e_nao_a_pagina(self):

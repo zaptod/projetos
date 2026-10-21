@@ -25,6 +25,7 @@ automatizar credencial ali seria frágil e errado.
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from datetime import datetime
@@ -122,10 +123,20 @@ MENU_ENVIAR_VIDEOS = (
 # uma pagina que so esta carregando (foi o que aconteceu no DreamFace).
 PACIENCIA_S = 45.0
 ESPERA_PAGINA_S = 90.0
-# O YouTube processa o arquivo enquanto voce preenche; o botao so libera
-# quando ele termina de subir.
+# O YouTube processa o arquivo enquanto voce preenche. O prazo para o arquivo
+# terminar de subir — o botao habilitado NAO prova isso (21/10/2026): quem
+# prova e o rodape sem "envio em N%".
 ESPERA_UPLOAD_S = 900.0
 ESPERA_CONFIRMAR_S = 120.0
+# DEPOIS DO CLIQUE, O NAVEGADOR SO FECHA COM O ARQUIVO INTEIRO (decisao do
+# Adrian `publicacao/esperar-envio-terminar`, 21/10/2026: "ate 10 min; se nao
+# terminar, fica sem confirmacao e vai para 'a conferir', sem [POSTADO]").
+# Fechar o contexto persistente corta o envio: 2 estreias publicas e vazias
+# (8Rp3WUDsBgA, CHogZyWtA8I), 3 builds sumidos e 27 partes de historia so no
+# ledger, de 19 a 21/10.
+ESPERA_ENVIO_DEPOIS_DO_CLIQUE_S = 600.0
+# Leituras seguidas que falham (pagina fechada) antes de desistir de esperar.
+FALHAS_DE_LEITURA_DO_ENVIO = 3
 # A ESPERA DO UPLOAD FALA (06/10/2026). Ate 15 min calada, e o postar mede
 # "pendurado" pelo PULSO (toda linha da saida): 15 min de silencio deixavam
 # so ~4 min de folga para os 20 min de pulso parado. Uma linha por minuto,
@@ -152,6 +163,17 @@ class _AvisoDoUpload:
 
 class YouTubeWebFalhou(RuntimeError):
     """Erro legivel — o painel mostra a frase, nao o traceback."""
+
+
+class EnvioNaoTerminou(YouTubeWebFalhou):
+    """O clique saiu e o arquivo nao terminou de subir no prazo (21/10/2026).
+
+    E EXCECAO, e nao frase devolvida, de proposito: nas historias qualquer
+    frase devolvida vira `feito` e linha no ledger (`serie.registrar` grava o
+    `url` que vier). Levantando depois do clique, todo caminho (rodada,
+    `--so-youtube`, escoar, app, bot) cai na porta do PUB-1: "a conferir" no
+    YouTube, `youtube_clicou` na ficha, sem reposicao e sem [POSTADO].
+    """
 
 
 class LimiteDiarioDoYouTube(YouTubeWebFalhou):
@@ -419,6 +441,213 @@ FASES = (
     ("sd", ("processando ate hd", "processing hd")),
 )
 
+# O ARQUIVO AINDA SOBE (21/10/2026). O rodape do dialogo diz "Envio em 47%
+# ... tempo restante: 20 segundos" enquanto o arquivo sobe, e nenhuma frase de
+# FASES casava ("enviando" nao e "envio em"): o classificador caia em "hd" e o
+# clique saia com o arquivo pela metade. Medido nos laudos do ledger de 14 a
+# 21/10: historias 25 de 25 envios clicados assim (de 0% a 98%, `esperou_s`
+# 0), builds 7 de 60. E o `#done-button` HABILITA com o arquivo subindo — o
+# Studio deixa publicar antes; quem corta o envio e o navegador fechando.
+PORCENTAGEM_DO_ENVIO = re.compile(
+    r"(?:envio em|enviando|fazendo upload(?: de)?|uploading)\s*:?\s*"
+    r"(\d{1,3})\s*%")
+# "Pronto para publicar": as verificacoes acabaram. E a UNICA frase que da
+# `hd` (ate 21/10 a ausencia de frase dava `hd` — inclusive quando o que se
+# lia era o CABECALHO do dialogo: 12 de 60 envios dos builds).
+PRONTO = ("verificacoes concluidas", "checks complete",
+          "nenhum problema foi encontrado", "no issues found")
+# O que so aparece com o arquivo INTEIRO no YouTube: a fase depois do envio.
+# E a prova de que o navegador ja pode fechar sem cortar nada.
+ENVIO_CONCLUIDO = ("envio concluido", "upload complete",
+                   "processamento vai comecar", "processing will begin",
+                   "processando ate", "processando video", "processing sd",
+                   "processing hd") + PRONTO
+VERIFICANDO = re.compile(r"(?:verificac\w*|verificando|checking)\s*"
+                         r"\d{1,3}\s*%")
+
+
+def _progresso_do_envio(texto: str) -> dict:
+    """O arquivo ainda sobe? Puro; `texto` e o RODAPE do dialogo.
+
+    `{"envio": "subindo"|"concluido"|"", "porcento": int|None}`. `""` e
+    "nao sei" — nunca "concluido": texto que nao se entende nao prova que o
+    arquivo chegou inteiro (caso ZERO: rodape vazio da `""`).
+    """
+    texto = " ".join(_sem_acento(texto).split())
+    if not texto:
+        return {"envio": "", "porcento": None}
+    porcentos = [int(m.group(1)) for m in PORCENTAGEM_DO_ENVIO.finditer(texto)]
+    faltando = [p for p in porcentos if p < 100]
+    if faltando:
+        return {"envio": "subindo", "porcento": faltando[-1]}
+    if (porcentos or any(f in texto for f in ENVIO_CONCLUIDO)
+            or VERIFICANDO.search(texto)):
+        return {"envio": "concluido", "porcento": 100 if porcentos else None}
+    return {"envio": "", "porcento": None}
+
+
+# Onde o Studio poe o progresso, DENTRO do `ytcp-uploads-dialog`. Uma lista
+# so para as duas leituras (antes e depois do clique).
+SELETORES_DO_RODAPE = ("ytcp-video-upload-progress",
+                       ".ytcp-video-upload-progress",
+                       '[class*="upload-progress"]',
+                       ".left-button-area", "#dialog-footer")
+# Fora do dialogo: o painel de envios que fica depois que ele fecha.
+SELETORES_DO_MONITOR = ("ytcp-multi-progress-monitor",
+                        "ytcp-uploads-mini-indicator",
+                        '[class*="progress-monitor"]')
+
+
+def _anotar_envio(laudo: dict, lido: dict) -> None:
+    """Leva ao laudo o que a leitura disse do ARQUIVO (nao da qualidade).
+
+    `envio_concluido` so nasce verdadeiro, nunca volta: arquivo inteiro no
+    YouTube nao "dessobe".
+    """
+    envio = (lido or {}).get("envio") or ""
+    if envio == "concluido":
+        laudo["envio_concluido"] = True
+    elif envio == "subindo" and not laudo.get("envio_concluido"):
+        laudo["envio_lido"] = str((lido or {}).get("texto") or "")[:160]
+
+
+def _envio_pelos_textos(rodape: str = "", monitor: str = "",
+                        corpo: str = "") -> dict:
+    """O arquivo ja esta inteiro no YouTube? Puro, para o teste.
+
+    Depois do clique o dialogo de envio da lugar ao de "video publicado", e o
+    progresso pode estar no rodape (se o dialogo ainda existe), no painel de
+    envios ou so na pagina. Qualquer "envio em N%" com N < 100 em qualquer
+    um dos tres SEGURA; "concluido" so vale do rodape e do painel (as fases
+    do processamento) ou, na pagina inteira, pela frase explicita do envio
+    ("envio concluido", "envio em 100%") — a lista de videos atras nao fala
+    de fase de envio. Sem nada disso, `""` (nao sei), que nunca libera.
+    """
+    partes = [(" ".join(_sem_acento(t).split()), nome)
+              for t, nome in ((rodape, "rodape"), (monitor, "monitor"),
+                              (corpo, "corpo"))]
+    for texto, nome in partes:
+        achado = _progresso_do_envio(texto)
+        if achado["envio"] == "subindo":
+            trecho = PORCENTAGEM_DO_ENVIO.search(texto)
+            return {"envio": "subindo", "escopo": nome,
+                    "porcento": achado["porcento"],
+                    "texto": texto[max(0, trecho.start() - 40):
+                                   trecho.end() + 60] if trecho else texto[:160]}
+    for texto, nome in partes[:2]:
+        if _progresso_do_envio(texto)["envio"] == "concluido":
+            return {"envio": "concluido", "escopo": nome, "porcento": None,
+                    "texto": texto[:160]}
+    corpo = partes[2][0]
+    if (any(f in corpo for f in ("envio concluido", "upload complete"))
+            or PORCENTAGEM_DO_ENVIO.search(corpo)):
+        return {"envio": "concluido", "escopo": "corpo", "porcento": None,
+                "texto": ""}
+    return {"envio": "", "escopo": "nenhum", "porcento": None,
+            "texto": (partes[0][0] or partes[1][0])[:160]}
+
+
+def _envio_na_pagina(page) -> dict:
+    """`_envio_pelos_textos` da pagina de agora. Nunca levanta: a leitura
+    que falha volta com `erro` (pagina fechada conta para desistir)."""
+    try:
+        lido = page.evaluate(
+            "() => {"
+            " const texto = (e) => e ? (e.innerText || '') : '';"
+            " const d = document.querySelector('ytcp-uploads-dialog');"
+            " let rodape = '';"
+            f" for (const s of {json.dumps(list(SELETORES_DO_RODAPE))}) {{"
+            "   const e = d ? d.querySelector(s) : null;"
+            "   if (texto(e).trim()) { rodape = texto(e); break; }"
+            " }"
+            f" const monitor = {json.dumps(list(SELETORES_DO_MONITOR))}"
+            "   .map((s) => texto(document.querySelector(s))).join(' ');"
+            " return {rodape: rodape, monitor: monitor,"
+            "         corpo: texto(document.body)};"
+            "}")
+    except Exception as exc:                                   # noqa: BLE001
+        return {"envio": "", "escopo": "nenhum", "porcento": None,
+                "texto": "", "erro": f"{type(exc).__name__}: {exc}"[:160]}
+    if isinstance(lido, str):
+        lido = {"corpo": lido}
+    lido = lido if isinstance(lido, dict) else {}
+    return _envio_pelos_textos(lido.get("rodape") or "",
+                               lido.get("monitor") or "",
+                               lido.get("corpo") or "")
+
+
+def _esperar_o_envio(page, passo, laudo: dict,
+                     prazo_s: float | None = None) -> bool:
+    """Segura o navegador ate o arquivo estar inteiro no YouTube.
+
+    Decisao `publicacao/esperar-envio-terminar` (21/10/2026): ate
+    `ESPERA_ENVIO_DEPOIS_DO_CLIQUE_S` (10 min). True = pode fechar.
+
+    O CASO NORMAL NAO ESPERA NADA: se antes do clique alguma leitura ja viu o
+    arquivo inteiro (`envio_concluido`, anotado pela espera do botao e pela
+    do processamento), volta na hora, sem ler a pagina. So espera quem
+    clicou sem essa prova — o estouro do teto com estagio ilegivel (regra de
+    16/09) ou a espera que quebrou.
+    """
+    if laudo.get("envio_concluido"):
+        laudo["envio_depois_do_clique_s"] = 0.0
+        return True
+    prazo = ESPERA_ENVIO_DEPOIS_DO_CLIQUE_S if prazo_s is None else prazo_s
+    comeco = time.monotonic()
+    passo(f"o arquivo pode estar subindo ainda: seguro o navegador ate "
+          f"{prazo:.0f} s pelo 'envio concluido'.")
+    proxima_fala = comeco + FALA_DO_UPLOAD_S
+    ultimo, falhas, esperou = "", 0, 0.0
+    # O teto de voltas e a rede de seguranca do relogio (como em
+    # `_esperar_detalhes`): cada volta dorme 5 s.
+    for _volta in range(int(prazo / 5) + 2):
+        lido = _envio_na_pagina(page)
+        esperou = time.monotonic() - comeco
+        if lido["envio"] == "concluido":
+            laudo["envio_concluido"] = True
+            laudo["envio_depois_do_clique_s"] = round(esperou, 1)
+            passo(f"envio concluido ({esperou:.0f} s depois do clique).")
+            return True
+        if lido.get("texto"):
+            ultimo = lido["texto"]
+        falhas = falhas + 1 if lido.get("erro") else 0
+        if falhas >= FALHAS_DE_LEITURA_DO_ENVIO:
+            # PAGINA FECHADA: o envio ja morreu com ela. Esperar os 10 min
+            # inteiros nao traz nada de volta. (O erro cru fica no laudo, e nao
+            # na frase: "timed out" nela faria a rodada achar que foi rede.)
+            laudo["envio_leitura_falhou"] = lido["erro"]
+            break
+        if esperou >= prazo:
+            break
+        agora = time.monotonic()
+        if agora >= proxima_fala:
+            proxima_fala = agora + FALA_DO_UPLOAD_S
+            passo(f"o envio ainda nao terminou ({esperou:.0f} s de "
+                  f"{prazo:.0f} s; {ultimo[:80] or 'sem leitura'})...")
+        time.sleep(5)
+    laudo["envio_nao_terminou"] = {"espera_s": round(esperou, 1),
+                                   "ultimo": ultimo[:200],
+                                   "pagina_fechou": falhas
+                                   >= FALHAS_DE_LEITURA_DO_ENVIO}
+    return False
+
+
+def falha_do_envio_cortado(laudo: dict) -> str:
+    """A frase do clique cujo arquivo nao terminou de subir. Pura.
+
+    Comeca por "cliquei em publicar" (`desfecho.MARCAS_DE_CLIQUE`) e nao tem
+    palavra de rede: nao e reposta no horario, e vai para "a conferir".
+    """
+    info = laudo.get("envio_nao_terminou") or {}
+    frase = (f"cliquei em publicar, mas o envio do arquivo nao terminou em "
+             f"{float(info.get('espera_s') or 0):.0f} s")
+    if info.get("pagina_fechou"):
+        frase += " (a pagina fechou)"
+    if info.get("ultimo"):
+        frase += f" (ultima leitura: '{str(info['ultimo'])[:60]}')"
+    return frase + (". O video pode estar no ar VAZIO: confira em "
+                    "studio.youtube.com; nao reenvio para nao duplicar.")
+
 # Quanto esperar o video ficar pronto ANTES de clicar em publicar. O teto sai
 # da grade (ver `_teto_da_espera`): esperar nao pode empurrar a rodada para
 # dentro do horario seguinte.
@@ -547,6 +776,9 @@ def _esperar_qualidade(page, passo, laudo: dict, *, canal: str = "builds",
         lido = ler()
         if lido.get("reconhecido") and lido["qualidade"] != "desconhecida":
             ultimo_legivel = lido["qualidade"]
+        # O ARQUIVO INTEIRO SE ANOTA NA HORA EM QUE APARECE (21/10/2026): e o
+        # que deixa o depois do clique sem espera nenhuma no caso normal.
+        _anotar_envio(laudo, lido)
         return lido
 
     def lembrado(estagio: dict) -> str:
@@ -614,7 +846,8 @@ def _qualidade_agora(page) -> dict:
     ninguem perceberia.
     """
     vazio = {"qualidade": "desconhecida", "falta": "", "texto": "",
-             "reconhecido": False, "escopo": "nenhum"}
+             "reconhecido": False, "escopo": "nenhum", "envio": "",
+             "porcento_do_envio": None}
     # O ESCOPO E O DIALOGO, nao a pagina. Medido em 16/09/2026: lendo
     # `document.body.innerText` o laudo trazia o menu inteiro do Studio e,
     # pior, a LISTA DE VIDEOS atras do dialogo — que e justamente a dos
@@ -634,10 +867,7 @@ def _qualidade_agora(page) -> dict:
             "() => {"
             " const d = document.querySelector('ytcp-uploads-dialog');"
             " if (!d) return {dialogo: '', rodape: ''};"
-            " const sels = ['ytcp-video-upload-progress',"
-            "               '.ytcp-video-upload-progress',"
-            "               '[class*=\"upload-progress\"]',"
-            "               '.left-button-area', '#dialog-footer'];"
+            f" const sels = {json.dumps(list(SELETORES_DO_RODAPE))};"
             " let rodape = '';"
             " for (const s of sels) {"
             "   const e = d.querySelector(s);"
@@ -694,12 +924,28 @@ def _classificar_rodape(texto: str, rodape: str = "") -> dict:
                   ((rodape, "rodape"), (janela, "contagem")) if alvo]
     achado = FALTA.search(rodape) or FALTA.search(texto)
     falta = achado.group(0) if achado else ""
+
+    def saida(qualidade: str, alvo: str, reconhecido: bool,
+              escopo: str) -> dict:
+        envio = _progresso_do_envio(alvo)
+        return {"qualidade": qualidade, "falta": falta, "texto": alvo[:240],
+                "reconhecido": reconhecido, "escopo": escopo,
+                "envio": envio["envio"],
+                "porcento_do_envio": envio["porcento"]}
+
+    # 1. O ARQUIVO AINDA SOBE manda em tudo (21/10/2026): "envio em 3%" com
+    #    qualquer outra frase junto continua sendo arquivo pela metade.
+    for alvo, escopo in candidatos:
+        if _progresso_do_envio(alvo)["envio"] == "subindo":
+            return saida("subindo", alvo, True, escopo)
     for alvo, escopo in candidatos:
         for rotulo, frases in FASES:
             if any(frase in alvo for frase in frases):
-                return {"qualidade": rotulo, "falta": falta,
-                        "texto": alvo[:240], "reconhecido": True,
-                        "escopo": escopo}
+                return saida(rotulo, alvo, True, escopo)
+        if PORCENTAGEM_DO_ENVIO.search(alvo):
+            # "Envio em 100%" sem frase de fase: o arquivo chegou e o
+            # processamento ainda nao comecou — nada assistivel ainda.
+            return saida("processando", alvo, True, escopo)
     if falta:
         # CONTAGEM REGRESSIVA SEM FRASE CONHECIDA. Medido em 16/09/2026, na
         # primeira noite com esta medicao ligada: a barra dizia "10 minutos
@@ -710,20 +956,37 @@ def _classificar_rodape(texto: str, rodape: str = "") -> dict:
         # contagem: e nele que esta a frase que falta em FASES.
         alvo, escopo = ((rodape, "rodape") if FALTA.search(rodape)
                         else (janela, "contagem"))
-        return {"qualidade": "desconhecida", "falta": falta,
-                "texto": alvo[:240], "reconhecido": False, "escopo": escopo}
+        return saida("desconhecida", alvo, False, escopo)
+    for alvo, escopo in candidatos:
+        if any(frase in alvo for frase in PRONTO):
+            return saida("hd", alvo, True, escopo)
     if not rodape:
         # Sem rodape pelo seletor e sem contagem: o dialogo inteiro, como era
-        # antes — o unico jeito de ver "Envio concluido" nesse caso.
+        # antes — o unico jeito de ver "Envio concluido" nesse caso. Aqui so
+        # SEGURA (fase do envio ou do processamento); "pronto" nunca sai do
+        # dialogo inteiro.
+        inteiro = " ".join(texto.split())
+        if _progresso_do_envio(inteiro)["envio"] == "subindo":
+            return saida("subindo", inteiro, True, "dialogo")
         for rotulo, frases in FASES:
             if any(frase in texto for frase in frases):
-                return {"qualidade": rotulo, "falta": "",
-                        "texto": " ".join(texto.split())[:240],
-                        "reconhecido": True, "escopo": "dialogo"}
-    visto = any(_sem_acento(s) in texto for s in SINAIS_PUBLICADO)
-    return {"qualidade": "hd", "falta": "",
-            "texto": (rodape or " ".join(texto.split()))[:240],
-            "reconhecido": visto, "escopo": "rodape" if rodape else "dialogo"}
+                return saida(rotulo, inteiro, True, "dialogo")
+    # NAO SEI NAO E PRONTO (21/10/2026). Ate aqui o fim era `hd`: rodape com
+    # texto que ninguem conhece, ou nenhum rodape — e entao o que se lia era o
+    # CABECALHO (titulo, "salvo como privado", as abas), 12 de 60 envios dos
+    # builds de 14 a 21/10, todos logo depois de "sd, 3 minutos restantes".
+    # E o "link do video" do painel da direita, que existe desde o primeiro
+    # segundo do envio, ainda contava como "reconhecido". `desconhecida`
+    # espera como `processando` e, no estouro do teto, publica (regra de
+    # 16/09) — com o depois do clique segurando o navegador ate o arquivo
+    # estar inteiro.
+    if rodape:
+        return saida("desconhecida", rodape, False, "rodape")
+    cabecalho = saida("desconhecida", " ".join(texto.split()), False,
+                      "dialogo")
+    # O cabecalho nao prova nada sobre o arquivo, nem que ele chegou.
+    cabecalho.update(envio="", porcento_do_envio=None)
+    return cabecalho
 
 
 def _id_do_video(url: str) -> str:
@@ -1538,14 +1801,26 @@ def publicar(video, *, visibilidade: str | None = None,
             return ("video carregado e preenchido; a publicacao final ficou "
                     "com voce")
 
-        # O botao so habilita quando o arquivo termina de subir.
+        # O BOTAO HABILITA COM O ARQUIVO SUBINDO (21/10/2026). O comentario
+        # antigo dizia "so habilita quando o arquivo termina de subir", e nao e
+        # mais verdade: nas historias, 25 de 25 cliques de 14 a 21/10 sairam
+        # com o rodape em "envio em 0%" a "98%". Entao "pronto" e o botao
+        # habilitado E o rodape sem "envio em N%" (N < 100), no MESMO prazo
+        # de sempre para o arquivo subir (`ESPERA_UPLOAD_S`). O teto da
+        # espera do processamento, que sai da grade, nao e gasto com o envio.
         pronto = None
         limite = time.time() + ESPERA_UPLOAD_S
         aviso_do_upload = _AvisoDoUpload(passo, time.time())
+        subindo = ""
         while time.time() < limite and pronto is None:
             pronto = _primeiro(page, SINAIS_PRONTO, timeout=3.0)
             if pronto is not None:
-                break
+                lido = _qualidade_agora(page)
+                _anotar_envio(laudo, lido)
+                if lido.get("envio") != "subindo":
+                    break
+                subindo = str(lido.get("texto") or "")[:80]
+                pronto = None
             aviso_do_upload.talvez(time.time())
             # A COTA SE DESCOBRE AQUI, e nao depois de 15 min de espera: o
             # aviso ja esta na tela e nenhum botao vai habilitar. Perguntar
@@ -1558,13 +1833,20 @@ def publicar(video, *, visibilidade: str | None = None,
             aviso = _bateu_o_limite(page)
             if aviso:
                 raise LimiteDiarioDoYouTube(aviso)
+            if subindo:
+                # NENHUM CLIQUE: o arquivo nao terminou de subir. O rascunho
+                # fica privado, e o video volta a fila inteiro.
+                laudo["envio_nao_terminou_antes"] = subindo
+                raise YouTubeWebFalhou(
+                    f"o arquivo ainda subia depois de {ESPERA_UPLOAD_S:.0f} s "
+                    f"('{subindo}'). Nao publiquei: sairia cortado.")
             raise YouTubeWebFalhou(
                 "o YouTube nao terminou de processar o video a tempo. A "
                 "janela esta aberta: da para terminar na mao.")
 
-        # A ESPERA VAI AQUI, no ultimo instante antes do clique. O botao acima
-        # habilita quando o ARQUIVO TERMINA DE SUBIR, e nao quando o YouTube
-        # termina de processar — medido em 15/09/2026, a barra ainda dizia
+        # A ESPERA VAI AQUI, no ultimo instante antes do clique. O laco acima
+        # espera o ARQUIVO TERMINAR DE SUBIR, e nao o YouTube terminar de
+        # processar — medido em 15/09/2026, a barra ainda dizia
         # "Processando ate SD ... 3 minutos restantes" neste ponto. Desde
         # 16/09 isso era so MEDIDO, e a medida mostrou nove publicacoes assim.
         # Agora segura o clique.
@@ -1647,14 +1929,25 @@ def _depois_do_clique(page, passo, laudo: dict, canal: str, video) -> str:
                 laudo["youtube_id"] = _id_do_video(page.url)
             except Exception:
                 pass
+        # O NAVEGADOR SO FECHA COM O ARQUIVO INTEIRO (21/10/2026, decisao
+        # `esperar-envio-terminar`). O `return` daqui sai do `with
+        # contexto_persistente` de `publicar`, e fechar o contexto CORTA o
+        # envio: "Link do video" na tela (que `_confirmar` aceita) existe
+        # desde o primeiro segundo do envio e nao diz que o arquivo chegou.
+        # Vale tambem sem confirmacao: o video pode estar no ar, e inteiro e
+        # melhor que vazio. No caso normal (arquivo inteiro antes do clique)
+        # nao le nada e nao espera.
+        if not _esperar_o_envio(page, passo, laudo):
+            raise EnvioNaoTerminou(falha_do_envio_cortado(laudo))
     except Exception as exc:                                   # noqa: BLE001
         laudo["estado"] = "sem_confirmacao"
         try:
             _desf.resolver(
                 canal, video,
-                f"cliquei em publicar no YouTube e algo falhou depois "
-                f"({type(exc).__name__}): o video pode estar no ar como "
-                f"publicado ou RASCUNHO — confira em studio.youtube.com.",
+                str(exc) if isinstance(exc, EnvioNaoTerminou) else (
+                    f"cliquei em publicar no YouTube e algo falhou depois "
+                    f"({type(exc).__name__}): o video pode estar no ar como "
+                    f"publicado ou RASCUNHO — confira em studio.youtube.com."),
                 laudo, plataforma="youtube")
         except Exception:                                      # noqa: BLE001
             # `marcar_para_conferir` ja avisou no diario; a excecao que sobe

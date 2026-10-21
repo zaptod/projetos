@@ -36,6 +36,19 @@ from . import metricas, titulos
 # ninguem olha no segundo.
 DIAS_PADRAO = 3
 
+# O ENVIO CORTADO (21/10/2026). O `youtube_web` clicava em Publicar com o
+# arquivo a 3-20% e fechava o navegador: o video ficava PUBLICO e vazio,
+# preso em `uploadStatus: uploaded` (8Rp3WUDsBgA, CHogZyWtA8I, desde 19-20/10),
+# ou sumia. A publicacao agora segura o navegador (decisao
+# `esperar-envio-terminar`); a conferencia e a segunda rede: linha publicada
+# (`metricas.publicado`) de ha mais de 2 h com o video ainda `uploaded`, ou
+# sem video no canal (lista inteira), vai para "a conferir" do YouTube.
+# 2 h: o normal e processar em minutos (os duelos chegam a "verificacoes
+# concluidas" em 50-155 s); `6-APf13ZQXc` (05/10) seguia `uploaded` 4h40
+# depois do envio.
+HORAS_ATE_O_ENVIO_CORTADO = 2.0
+PREFIXO_DO_ENVIO = "[envio] "
+
 
 def pasta(canal: str = "builds") -> Path:
     return metricas.pasta_do_canal(canal).parent / "_conferencia"
@@ -279,7 +292,22 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
             or por_titulo.get(titulos.chave(linha.get("titulo")))
 
     fantasmas, casados, rascunhos, so_sd = [], [], [], []
+    cortados, sem_video = [], []
     vistos = set()
+
+    def velha(linha: dict) -> bool:
+        """Publicada (o criterio unico) ha mais de `HORAS_ATE_O_ENVIO_CORTADO`."""
+        instante = _instante_local(linha.get("quando"))
+        try:
+            idade = (agora - instante).total_seconds() if instante else -1
+        except TypeError:                     # relogio com fuso: nao sei
+            return False
+        return (metricas.publicado(linha)
+                and idade >= HORAS_ATE_O_ENVIO_CORTADO * 3600)
+
+    def preso(video) -> bool:
+        return str((video or {}).get("upload") or "").lower() == "uploaded"
+
     for linha in linhas:
         alvo = achar(linha)
         ficha = {"video_id": linha.get("video_id"),
@@ -302,12 +330,23 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
                                   "privacidade": pedaco.get("privacidade"),
                                   "upload": pedaco.get("upload"),
                                   "pedaco": True})
+            if preso(pedaco) and velha(linha):
+                cortados.append({**ficha, "youtube_id": pedaco.get("id"),
+                                 "motivo": "ainda 'uploaded' no canal",
+                                 "pedaco": True})
         if alvo is None:
             # O LEDGER AFIRMA E O CANAL NAO TEM. E o nome exato do defeito.
             fantasmas.append(ficha)
+            if velha(linha):
+                sem_video.append({**ficha,
+                                  "youtube_id": linha.get("youtube_id") or "",
+                                  "motivo": "sem video no canal"})
             continue
         vistos.add(id(alvo))
         casados.append(ficha)
+        if preso(alvo) and velha(linha):
+            cortados.append({**ficha, "youtube_id": alvo.get("id"),
+                             "motivo": "ainda 'uploaded' no canal"})
         if str(alvo.get("privacidade") or "").lower() in ("private", "privado"):
             # A ASSINATURA DO RASCUNHO DE 15/09/2026.
             rascunhos.append({**ficha, "youtube_id": alvo.get("id"),
@@ -437,7 +476,7 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     # foi cumprida?" nao sao a mesma coisa: um canal parado tem ledger
     # coerente (nao afirma nada) e grade furada. Misturar as duas faria toda
     # ficha de dia parcial nascer suja e apagaria o significado de `sujo`.
-    sujo = bool(fantasmas or rascunhos or orfaos_privados)
+    sujo = bool(fantasmas or rascunhos or orfaos_privados or cortados)
 
     # A LISTA DO CANAL VEIO INTEIRA? Ate 28/09/2026 a lista era so a playlist
     # de envios (`UU`), e ela nao traz todos os Shorts: as 21:55 daquele dia
@@ -451,8 +490,11 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     lista = metricas.conferir_lista(no_canal)
     incompleta = bool(lista) and not lista["completa"]
     if incompleta:
-        sujo = bool(rascunhos or orfaos_privados)
+        sujo = bool(rascunhos or orfaos_privados or cortados)
     veredito = "sujo" if sujo else ("incompleta" if incompleta else "limpo")
+    # Sem video no canal so prova envio cortado com a lista INTEIRA (o mesmo
+    # motivo do fantasma acima); o video que VEIO preso em `uploaded` prova.
+    envio_cortado = cortados + ([] if incompleta else sem_video)
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
@@ -474,6 +516,7 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
         "orfaos_privados_aceitos": orfaos_privados_aceitos,
         "rascunhos": rascunhos, "rascunhos_aceitos": ja_aceitos,
         "so_sd": so_sd, "duplicados": duplicados,
+        "envio_cortado": envio_cortado,
         "mesmo_video": mesmo_video,
         "taxa": round(len(casados) / len(linhas), 3) if linhas else 1.0,
         "lista": lista,
@@ -696,6 +739,12 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
                 f"{ficha.get('slots_da_grade', 0)} horarios cumpridos no dia de "
                 f"grade {ficha.get('dia_de_grade', '?')} — {ficha['veredito']}")
             _alarmes_da_conferencia(canal, ficha, avisos, atividade)
+            try:
+                _pousar_envios_cortados(canal, ficha, atividade, log)
+            except Exception as exc:                           # noqa: BLE001
+                # Pousar e extra: a conferencia do outro canal segue.
+                log(f"[conferencia] {canal}: envio cortado: "
+                    f"{type(exc).__name__}: {exc}")
         try:
             vigia = _vigiar(canal, anterior, contagem, relogio)
             _avisar_sinais(canal, vigia, avisos, atividade)
@@ -717,6 +766,70 @@ def conferir_tudo(canais=("builds", "historias"), *, dias: int = DIAS_PADRAO,
             log(f"[conferencia] {canal}: nao gravei a ficha: {exc}")
         fichas[canal] = ficha
     return fichas
+
+
+def _pousar_envios_cortados(canal: str, ficha: dict, atividade,
+                            log=print) -> list:
+    """Leva cada `envio_cortado` da ficha a lista "a conferir" e ACENDE.
+
+    A marca leva `PREFIXO_DO_ENVIO` (so uma pessoa a tira, como a de clique)
+    e e gravada por `desfecho.marcar_para_conferir` — o unico escritor da
+    lista. Alarme uma vez por video: o que ja esta na lista nao acende de
+    novo nas quatro rodadas da noite. Lista ilegivel = alarme, nada gravado.
+    Devolve os marcados agora.
+    """
+    itens = [i for i in (ficha.get("envio_cortado") or [])
+             if isinstance(i, dict) and i.get("video_id")]
+    if not itens:
+        return []
+    from . import desfecho
+    plataforma = ficha.get("plataforma") or "youtube"
+    etapa = "conferencia.envio_cortado"
+    try:
+        ja = desfecho.a_conferir(canal, plataforma)
+    except Exception as exc:                                   # noqa: BLE001
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"conferencia {canal}/{plataforma}: {len(itens)} envio(s) "
+            f"cortado(s) e a lista 'a conferir' nao abriu "
+            f"({type(exc).__name__}): nada marcado — confira no Studio: "
+            + ", ".join(str(i.get("youtube_id") or i["video_id"])
+                        for i in itens)[:300], canal=canal, etapa=etapa)
+        return []
+    novos, falhas = [], []
+    for item in itens:
+        if item["video_id"] in ja:
+            continue
+        texto = (f"{PREFIXO_DO_ENVIO}{item.get('motivo')} "
+                 f"({item.get('youtube_id') or 'sem id'}) ha mais de "
+                 f"{HORAS_ATE_O_ENVIO_CORTADO:.0f} h: o envio pode ter sido "
+                 "cortado; confira o video no Studio")
+        try:
+            desfecho.marcar_para_conferir(
+                canal, item["video_id"], texto, plataforma, aviso=texto,
+                etapa=etapa, erro=False)
+        except Exception as exc:                               # noqa: BLE001
+            falhas.append(f"{item['video_id']}: {type(exc).__name__}")
+            continue
+        novos.append(item)
+    if novos:
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"conferencia {canal}/{plataforma}: {len(novos)} envio(s) "
+            f"cortado(s) foram para 'a conferir': "
+            + "; ".join(f"{i['video_id']} {i.get('youtube_id') or '-'} "
+                        f"({i.get('motivo')})" for i in novos)[:400],
+            canal=canal, etapa=etapa)
+    if falhas:
+        atividade.registrar(
+            "conferencia", atividade.ERRO,
+            f"conferencia {canal}/{plataforma}: nao consegui marcar "
+            f"{len(falhas)} envio(s) cortado(s): " + ", ".join(falhas)[:300],
+            canal=canal, etapa=etapa)
+    ficha["envio_cortado_marcados"] = [i["video_id"] for i in novos]
+    log(f"[conferencia] {canal}: {len(itens)} envio(s) cortado(s), "
+        f"{len(novos)} marcado(s) agora")
+    return novos
 
 
 def _alarmes_da_conferencia(canal: str, ficha: dict, avisos: dict,

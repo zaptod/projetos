@@ -395,9 +395,13 @@ class SoORodapeClassificaTests(unittest.TestCase):
         fim = youtube_web._classificar_rodape(texto, "voltar salvar")
         self.assertEqual("processando", fim["qualidade"])
 
-    def test_caso_zero_sem_contagem_nem_frase_e_hd(self):
+    def test_caso_zero_sem_contagem_nem_frase_NAO_e_hd(self):
+        """21/10/2026: o cabecalho lido como barra dava `hd` (12 de 60 envios
+        dos builds de 14 a 21/10). Nao sei nao e pronto: espera."""
         fim = youtube_web._classificar_rodape(CABECALHO)
-        self.assertEqual("hd", fim["qualidade"])
+        self.assertEqual("desconhecida", fim["qualidade"])
+        self.assertFalse(fim["reconhecido"])
+        self.assertEqual("", fim["envio"], "cabecalho nao prova o arquivo")
 
     def test_pagina_que_devolve_texto_puro_ainda_funciona(self):
         class Pagina:

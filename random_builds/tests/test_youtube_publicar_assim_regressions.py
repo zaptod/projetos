@@ -236,9 +236,12 @@ class DepoisDoCliqueTests(unittest.TestCase):
                          desfecho.classificar("", {"tipo": "RuntimeError"}, laudo))
 
     def test_caminho_bom_segue_igual(self):
+        # `envio_concluido`: a espera antes do clique viu o arquivo inteiro
+        # (o caso normal desde 21/10/2026) — o depois do clique nao espera.
         pagina = PaginaFalsa(aviso=False, texto="Vídeo publicado",
                              link="https://youtu.be/AbCdEfGhIjK")
-        laudo = {"clicou": True, "youtube_id": "", "url": ""}
+        laudo = {"clicou": True, "youtube_id": "", "url": "",
+                 "envio_concluido": True}
         antes = youtube_web.ESPERA_CONFIRMAR_S
         youtube_web.ESPERA_CONFIRMAR_S = 3.0
         self.addCleanup(setattr, youtube_web, "ESPERA_CONFIRMAR_S", antes)
