@@ -3,7 +3,14 @@
   "contexto": "21/10: o youtube_web clicava com o arquivo a 3-20% e fechava o navegador, o que corta o envio. 2 estreias de 19-20/10 públicas e vazias, 3 builds sumiram, 27 partes de história só no ledger. 0 duelos presos (38/38 processados), por sorte da frase do Studio.",
   "criado": "2026-10-21T14:00:15.218438",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+      "em": "2026-10-21T14:00:31",
+      "opcao": "dez",
+      "origem": "cli"
+    }
+  ],
   "id": "esperar-envio-terminar",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Depois do clique em Publicar, quanto tempo a rodada espera o Studio dizer 'Envio concluído' antes de fechar o navegador?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Segurar o navegador até o envio do YouTube terminar",
-  "vigente": null
+  "vigente": {
+    "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+    "em": "2026-10-21T14:00:31",
+    "opcao": "dez"
+  }
 }

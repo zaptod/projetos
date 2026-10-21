@@ -81,7 +81,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Histórias: autorizar a edição para ligar a parte anterior** — Ficar só com o texto na descrição durante o teste (19/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10). Mexer na autorização da conta é do Adrian; durante o teste, só o texto.” `historias-escopo-de-edicao`
 - ✅ **Grade da semana 1: duelos 3/dia no YouTube, 1/dia no TikTok** — YouTube 3/dia + TikTok 1/dia (21:37), só duelo nos dois, par de classes sem repetir em 7 dias, upload em inglês (recomendado) (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir); ramo integracao/publicacao-semana1 9191852f” `grade-semana-1-duelos`
 - ✅ **Repetir o envio quando a tela de detalhes do YouTube não aparece** — Não repetir; o duelo volta à fila e sai no próximo horário (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `repetir-quando-detalhes-nao-vem`
-- ⏳ **Segurar o navegador até o envio do YouTube terminar** — Depois do clique em Publicar, quanto tempo a rodada espera o Studio dizer 'Envio concluído' antes de fechar o navegador? `esperar-envio-terminar`
+- ✅ **Segurar o navegador até o envio do YouTube terminar** — Até 10 min; se não terminar, fica sem confirmação e vai para 'a conferir', sem [POSTADO] (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `esperar-envio-terminar`
 
 <!-- decisoes:fim -->
 
