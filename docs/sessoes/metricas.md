@@ -65,8 +65,9 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 
 Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
 de novo em 28/09 (madrugada e noite), em 05/10 (a conferência no serviço do
-dia, §3), em 14/10 (a coleta que nem rodou em 13/10, §3) e em 19/10 (a
-análise dos vídeos e a cobertura da coleta, §3) está com a data e a hora. Onde um número da fotografia
+dia, §3), em 14/10 (a coleta que nem rodou em 13/10, §3), em 19/10 (a
+análise dos vídeos e a cobertura da coleta, §3) e em 21/10 (a medida da
+semana na mesma idade, §3) está com a data e a hora. Onde um número da fotografia
 não reproduziu, está dito. O que eu não medi está marcado como **não medi**,
 nunca preenchido por suposição.
 
@@ -80,6 +81,13 @@ nunca preenchido por suposição.
 | inscritos / vídeos / views do canal | Data API `channels?part=statistics` → `random_builds/outputs/_analise/canal_<canal>.json` | MEDIDO (desde 19/10, pela análise) |
 | views do CANAL por dia, inscritos ganhos/perdidos | Analytics `dimensions=day` → mesmo arquivo | MEDIDO (desde 19/10) |
 | views ganhas desde ontem, por vídeo | `random_builds/outputs/_analise/historico/<dia>.json` (fotografia diária) | MEDIDO (a 1ª é de 19/10; antes disso não existe série por vídeo) |
+| a HORA de cada número da fotografia | `quando_das_partes` e, por vídeo, a 4ª coluna (`medido_em`) da fotografia; `views_medidas_em` nos arquivos | MEDIDO (desde 21/10; 19–21/10 pela linha de fim de parte do log do serviço) |
+| views dos vídeos do YouTube com menos de 48 h, de hora em hora | `random_builds/outputs/_metricas_hora/<dia>.jsonl` (`hora_a_hora`, no disparo `NeuralFights_gerar_HH`) | MEDIDO (desde 21/10) |
+| views engajadas por vídeo | Analytics `engagedViews` → `engaged_views` no arquivo do vídeo | MEDIDO quando vem; sem o campo = **não medido** (desde 21/10) |
+| situação do post no TikTok (`status`, `visibility`, `in_review`, `permissions`) | `situacao` no arquivo do post | MEDIDO cru (formato **não medido**; desde 21/10) |
+| conta do TikTok: série diária de views, seguidores, punição, qualidade | `*/outputs/_metricas_tiktok_conta/<dia>.json` | MEDIDO quando chega; `lida: false` = **não medi**, nunca "sem punição" |
+| inscritos do canal por dia | `canal` na fotografia diária (total na hora + ganhos/perdidos da Analytics) | MEDIDO (desde 21/10) |
+| a medida da semana na mesma idade | `analise.json` → `mesma_idade`; `python -m builds.publicar.analise --semana`; `/semana` no Telegram | derivado, com o rótulo de certeza |
 | achados (o que mudar) | `random_builds/outputs/_analise/analise.json` + `index.html`, Biblioteca do app | derivado, com teste de significância |
 | views/dia, "dias no ar" | `metricas.views_por_dia` (piso de 1 dia) | derivado |
 | TikTok (views, tempo, curva, tráfego) | JSON do Studio → `*/outputs/_metricas_tiktok/*.json` | MEDIDO |
@@ -699,6 +707,110 @@ Números abaixo refeitos às 11:4x de 19/10 com o código novo.
    arena do duelo (Duto 117, Poço 111, Torre 99, n≈30 cada), zebra (138 ×
    105, n=11), estrutura e narrador da história — nada que passe do acaso.
 
+### A medida da semana na mesma idade (21/10/2026, ramo `metricas/coletor-sozinho`)
+
+Pedido: a comparação da semana do PLANO sair **sozinha**, sem o Adrian ler
+número à mão. O que faltava e o que entrou:
+
+- **A hora de cada número.** A fotografia diária guardava `[views, likes,
+  retenção]` sem hora. Agora leva `colunas`, `gravada_em`,
+  `quando_das_partes` (a última coleta boa de cada parte) e, por vídeo,
+  `[views, likes, retenção, medido_em, engaged_views]` (a lista só cresce no
+  fim: quem lê `[0]` continua lendo views). `medido_em` sai de
+  `views_medidas_em`, gravado pela Data API (`estatisticas`, a hora da
+  chamada) e pelo Studio (`Lista.receber`, a hora da resposta) — e não de
+  `atualizado`, que no YouTube sai até ~15 min depois (as consultas da
+  Analytics vêm no meio). As fotografias de 19, 20 e 21/10 nasceram sem hora:
+  a leitura usa a linha de **fim de parte** do log do serviço
+  (`historias/outputs/_logs/auto_AAAAMMDD.txt`), a última antes do arquivo da
+  fotografia; no YouTube as views foram lidas até ~20 min antes dela.
+  Fotografia sem hora nenhuma não entra e é contada (`fotos_sem_hora`).
+- **De hora em hora** (`builds/publicar/hora_a_hora.py`): 1 `videos.list`
+  (`statistics,status`, **1 unidade**) para os vídeos do YouTube de builds com
+  menos de 48 h no ledger, no começo de **todo** disparo
+  `NeuralFights_gerar_HH` (`main.py noite`, :02 de 00–05 e 07–23 h), antes de
+  qualquer saída dele — gerar ou não. Grava uma linha por leitura em
+  `random_builds/outputs/_metricas_hora/<dia>.jsonl` (views, likes,
+  comentários, privacidade e `idade_h`). Caso zero: sem vídeo novo, a linha
+  sai `vazio` com `pedidos: 0` e nenhuma chamada; API que não devolve nenhum
+  pedido é `erro` (`NadaDevolvido`), nunca "0 views". Exceção = linha `erro` +
+  **uma** linha de erro `metricas` no diário por dia e tipo. Duas leituras
+  boas a menos de 30 min: a segunda sai sem gastar cota. Teto de 50 ids (fica
+  o mais novo, `fora_do_teto` diz quantos). `noite.rodar(leitura_da_hora=…)`
+  só é ligado pelo `main.py`; o padrão `None` não lê (testes e ensaio).
+- **`engagedViews`** entra na consulta do resumo por vídeo
+  (`METRICAS_DO_RESUMO`). Vem com 2–3 dias de atraso; sem a coluna o campo
+  `engaged_views` **não existe** (não medido); linha vazia ou de zeros também
+  não tem. Se a Analytics recusar a consulta por causa dela (400), pede de
+  novo sem ela, grava `engaged_views_erro` e não volta a pedir no mesmo
+  processo — a retenção nunca cai junto.
+- **TikTok:** `situacao` de cada post (`status`, `visibility`, `in_review`,
+  `permissions`, crus; sem eles = não medi) e uma **ficha da conta por dia**
+  em `*/outputs/_metricas_tiktok_conta/<dia>.json`: a coleta escuta
+  `getPenaltyDetails` e `quality_advisor` a sessão inteira (quando o Studio os
+  pede), abre a visão geral (`URL_VISAO_GERAL`) e guarda `vv_history` e
+  seguidores do `data/insight`. `punicao.lida: false` é **não medi**, nunca
+  "sem punição"; o corpo cru vai junto (até 20 mil caracteres). **O formato
+  dessas respostas não foi medido** (não havia captura em disco): o
+  decifrador aceita `{status,value}`/`list` e ponto com `date`/`timestamp`;
+  ponto sem data fica com dia `None` — a data não é inventada. Visão geral que
+  cai não leva os posts: vira `erro` na ficha, `conta.erro` na marca e uma
+  linha de erro no diário.
+- **Inscritos na fotografia:** `canal.<canal>` com o total na hora (Data
+  API), views e vídeos do canal e `[dia, ganhos, perdidos]` da Analytics.
+- **A comparação** (`builds/publicar/mesma_idade.py`, dentro da análise):
+  `random_builds/config/medida_da_semana.json` diz a semana — `inicio` é a
+  HORA em que a mudança foi ao ar (semana 1: **20/10 09:00**; o 1º duelo com
+  o título novo saiu às 09:43, o de 01:22 ainda era o antigo). Novos = os
+  duelos de `[inicio, inicio+7d)`; antigos = os 7 dias antes. Para cada
+  idade (6, 12, 24, 48, 72 h e 7 dias), "views na idade X" é a observação
+  mais perto de X dentro de **±5 h, sem interpolar** (leitura de hora em
+  hora, fotografia diária ou o arquivo de hoje); YouTube só público; mediana
+  por vídeo; rótulo `analise.confianca`. Mais o % assistido e as views
+  engajadas dos vídeos com 3+ dias e os inscritos por mil views do canal (dia
+  sem linha da Analytics é contado, não é zero). Caso zero: sem config =
+  `sem_semana`; sem vídeo novo = `sem_novos`, "NÃO há comparação (não é 'sem
+  efeito')"; idade que nenhum novo alcançou = "ainda juntando". Vídeo do
+  YouTube com menos de 48 h e nenhuma leitura boa de hora em hora em 24 h =
+  aviso "leitura de hora em hora PARADA", que o `do_dia` manda ao diário.
+  Com uma leitura só, a mesma observação pode servir a 6 h e a 12 h: por
+  isso o texto por vídeo diz a idade REAL ("68 aos 9,5 h").
+
+Onde aparece: a página (seções "Medida da semana (mesma idade)" e "Conta do
+TikTok"), `analise.json` (`mesma_idade`, `conta_tiktok`),
+`python -m builds.publicar.analise --semana` (feita agora, só disco; sai 1
+sem comparação) e o relatório `semana` do Telegram (`/semana`; **sem horário
+padrão** — sai sozinho só com `"semana": "HH:MM"` em `relatorios`).
+
+Testes: `random_builds/tests/test_medida_da_semana_regressions.py` (43) e
+`remoto/test_relatorio_semana.py` (4).
+
+**Medido em 21/10 (código da worktree, dados de `E:\projetos`, só leitura;
+a linha de hora em hora foi gravada no scratchpad, não em `outputs/`):**
+
+- `engagedViews` é **aceito** pela Analytics na consulta por vídeo (09:56):
+  `-3sRib4Vh2M` 78 views / **18 engajadas** / 42,03%; `TPuwQUFoVoc` (19/10
+  21:42, 2 dias) ainda com linha de zeros → sem o campo (não medido).
+- Leitura de hora em hora às **09:56:41**: 12 vídeos com menos de 48 h, **1
+  chamada `data` + 1 `token`**, 0 não devolvidos, 0 sem id. Os duelos novos:
+  `rx3XnuU3rJw` **167 views aos 24,2 h**, `HyZJCselaKY` **43 aos 15,9 h**,
+  `cQ98mrehbiE` **75 aos 12,2 h**. O de hoje (`duelo_00132`, "Throwing Axes VS
+  Tactical Knives", horário 09:37) **não está no ledger**: o YouTube falhou às
+  09:45 ("a tela de detalhes não apareceu") — não há id para ler.
+- A comparação, às 09:56: YouTube **3 novos × 35 antigos** (13/10 09:00 →
+  20/10 09:00, públicos). 6 h: 68 (n=1) × 4 (n=3); 12 h: 59 (n=2) × 11,5
+  (n=2); 24 h: 167 (n=1) × 38 (n=4) = 4,4x — tudo **INCERTO** (n < 8);
+  48 h em diante: ainda juntando. % assistido: nenhum novo com 3+ dias ×
+  antigos 50,1% (n=18). Inscritos por mil: semana sem dia da Analytics ainda ×
+  anterior 0,4 (6 dias). TikTok **1 novo × 34 antigos**: 96 aos 9,7 h × 1,5
+  (n=6) aos 6 h e 2 (n=5) aos 12 h — incerto. Os antigos têm poucas leituras
+  perto de cada idade porque só existem as fotografias das ~07:20 de 19, 20 e
+  21/10 (a leitura de hora em hora nasce hoje): o lado antigo da semana 1 vai
+  continuar ralo; a semana 2 terá os dois lados lidos de hora em hora.
+- Conta e situação do TikTok: **não medi** — o código novo nunca rodou no
+  Studio de verdade (a 1ª coleta com ele é a do serviço do dia seguinte ao
+  merge). Conferir o bruto da 1ª ficha antes de confiar no `vv_history`.
+
 ## 4. As conferências que faltam, e o número que deveria acender
 
 | Falta | Hoje, medido | Acende quando |
@@ -826,6 +938,9 @@ dado ou a coleta está velha).
 - **Não rodar `metricas.atualizar()` nem `--atualizar` para "só olhar"**: ele
   grava em `outputs/` e gasta cota. Para olhar, `carregar_salvas` ou uma
   chamada direta à Analytics, que não toca disco.
+- **Não rodar `python -m builds.publicar.hora_a_hora` para "só olhar"**: lê
+  a API (1 unidade) e grava a linha do dia. Para olhar, `--ver` (sem rede) ou
+  `analise --semana` (só disco).
 - **Não tratar o que está em `_metricas/` como de hoje.** Confira
   `_atualizado_em.json` antes de citar número de disco.
 - **Não editar `random_builds/builds/publicar/*` fora do que é desta parte.**

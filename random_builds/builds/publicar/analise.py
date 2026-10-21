@@ -256,6 +256,14 @@ def registro(d: dict, canal: str, plataforma: str, agora: datetime,
         "retencao": round(retencao, 1) if retencao is not None else None,
         "segundos_vistos": _numero(d.get("media_segundos")),
         "publico": publico,
+        # A HORA do numero de views (21/10/2026): a comparacao na mesma idade
+        # e a fotografia diaria precisam dela. Arquivo antigo: `atualizado`.
+        "medido_em": str(d.get("views_medidas_em") or d.get("atualizado") or "") or None,
+        # A situacao do post no TikTok (crua; sem ela = nao medi).
+        "situacao": d.get("situacao") if isinstance(d.get("situacao"), dict) else None,
+        # Engaged views: so o que a Analytics deu; sem o campo = nao medido.
+        "engaged_views": (int(d["engaged_views"]) if isinstance(d.get("engaged_views"), (int, float))
+                          and not isinstance(d.get("engaged_views"), bool) else None),
         **{k: v for k, v in meta.items() if v is not None},
     }
 
@@ -328,6 +336,7 @@ def carregar(agora: datetime | None = None) -> dict:
     ontem = (agora.date() - timedelta(days=1)).isoformat()
     entrada["historico"] = _ler_json(pasta() / "historico" / f"{ontem}.json")
     entrada["fotos"] = _fotos()
+    _carregar_a_semana(entrada, agora)
     try:
         from .. import grade
         entrada["testes"] = {TESTE_DO_TIKTOK: grade.teste(TESTE_DO_TIKTOK),
@@ -341,6 +350,50 @@ def carregar(agora: datetime | None = None) -> dict:
         entrada["dias_de_coleta"] = []
         entrada["falhas"].append(f"histórico da coleta ilegível: {type(exc).__name__}: {exc}")
     return entrada
+
+
+def _carregar_a_semana(entrada: dict, agora: datetime) -> None:
+    """O que a medida da semana na mesma idade le do disco: a semana do
+    config, as leituras de hora em hora, a hora das fotografias antigas (pelo
+    log) e as fichas da conta do TikTok. Cada falha vira `falhas`."""
+    from . import hora_a_hora, mesma_idade, tiktok_metricas
+
+    try:
+        entrada["semana"], erro = mesma_idade.semana_vigente(agora)
+        entrada["erro_da_semana"] = erro
+        if erro:
+            entrada["falhas"].append(erro)
+    except Exception as exc:                                  # noqa: BLE001
+        entrada["semana"], entrada["erro_da_semana"] = None, f"{type(exc).__name__}: {exc}"
+        entrada["falhas"].append(f"medida da semana ilegível: {entrada['erro_da_semana']}")
+    try:
+        entrada["leituras_hora"] = hora_a_hora.carregar(dias=16, hoje=agora.date())
+    except Exception as exc:                                  # noqa: BLE001
+        entrada["leituras_hora"] = []
+        entrada["falhas"].append(f"leituras de hora em hora ilegíveis: {type(exc).__name__}: {exc}")
+    try:
+        # So as fotografias que nasceram sem a hora (19 a 21/10/2026).
+        sem_hora = [dia for dia, foto in (entrada.get("fotos") or {}).items()
+                    if not foto.get("quando_das_partes")]
+        limites = {}
+        for dia in sem_hora:
+            try:
+                limites[dia] = datetime.fromtimestamp(
+                    (pasta() / "historico" / f"{dia}.json").stat().st_mtime
+                ).isoformat(timespec="seconds")
+            except OSError:
+                pass
+        entrada["horas_das_fotos"] = mesma_idade.horas_pelo_log(sem_hora, limites)
+    except Exception as exc:                                  # noqa: BLE001
+        entrada["horas_das_fotos"] = {}
+        entrada["falhas"].append(f"hora das fotografias ilegível: {type(exc).__name__}: {exc}")
+    entrada["contas_tiktok"] = {}
+    for canal in metricas.CANAIS:
+        try:
+            entrada["contas_tiktok"][canal] = tiktok_metricas.carregar_contas(canal)
+        except Exception as exc:                              # noqa: BLE001
+            entrada["falhas"].append(f"fichas da conta do TikTok de {canal} ilegíveis: "
+                                     f"{type(exc).__name__}: {exc}")
 
 
 def registros(entrada: dict, meta=metadados) -> list[dict]:
@@ -1369,12 +1422,21 @@ _NOME_DO_TIPO = {"builds": "arena do duelo", "historias": "tipo de história"}
 def analisar(regs: list, cob: dict, agora: datetime, series: dict | None = None,
              historico: dict | None = None, falhas: list | None = None, *,
              testes: dict | None = None, ledger: dict | None = None,
-             fotos: dict | None = None) -> dict:
+             fotos: dict | None = None, semana: dict | None = None,
+             leituras: list | None = None, horas_das_fotos: dict | None = None,
+             erro_da_semana: str = "", contas_tiktok: dict | None = None) -> dict:
     """A analise inteira, sem disco e sem rede. `regs` vazio = `sem_dados`.
 
     `testes`: {nome: {"inicio", "fim"}} (`grade.teste`); `ledger` (por canal)
     e `fotos` (fotografias diarias) servem ao resultado deles.
+
+    `semana` (`mesma_idade.semana_vigente`), `leituras` (de hora em hora) e
+    `horas_das_fotos` servem a MEDIDA DA SEMANA na mesma idade
+    (`analise["mesma_idade"]`); `contas_tiktok` ({canal: {dia: ficha}}) a
+    situacao da conta no TikTok (`analise["conta_tiktok"]`).
     """
+    from . import mesma_idade
+
     series = series or {}
     testes = testes or {}
     avisos = list(falhas or [])
@@ -1496,13 +1558,72 @@ def analisar(regs: list, cob: dict, agora: datetime, series: dict | None = None,
                     a["mudar"] = (f"Em teste de {_data_br(r['inicio'])} a {_data_br(r['fim'])} "
                                   f"({ESTADO_DO_TESTE[r['estado']]}): o resultado está em "
                                   f"\"Testes\".")
+    # A MEDIDA DA SEMANA na mesma idade (21/10/2026) e a conta do TikTok.
+    try:
+        semana_na_idade = mesma_idade.comparar(
+            regs, agora, semana, fotos=fotos, leituras=leituras,
+            horas_das_fotos=horas_das_fotos, series=series,
+            erro_do_config=erro_da_semana)
+    except Exception as exc:                                  # noqa: BLE001
+        semana_na_idade = {"estado": "erro", "erro": f"{type(exc).__name__}: {exc}",
+                           "texto": f"Medida da semana FALHOU: {type(exc).__name__}: {exc}",
+                           "avisos": [f"medida da semana falhou: {type(exc).__name__}: {exc}"]}
+    avisos.extend(semana_na_idade.get("avisos") or [])
+    conta = conta_tiktok(contas_tiktok, regs, agora)
+    avisos.extend(conta.get("avisos") or [])
     return {"gerado_em": agora.isoformat(timespec="minutes"), "estado": estado,
             "avisos": avisos, "achados": achados, "nao_da": nao_da,
             "testes": resultado_dos_testes,
+            "mesma_idade": semana_na_idade, "conta_tiktok": conta,
             "partes": partes, "cobertura": cob,
             "regras": {"janela_dias": JANELA_DIAS, "maduro_dias": MADURO_DIAS,
                        "min_views_retencao": MIN_VIEWS_RETENCAO, "min_n": MIN_N,
                        "pausa_tiktok_h": PAUSA_TIKTOK_H}}
+
+
+def conta_tiktok(contas: dict | None, regs: list, agora: datetime) -> dict:
+    """A conta de cada perfil do TikTok: a ultima ficha do coletor (serie
+    diaria de views, seguidores, punicao, qualidade) e quantos posts recentes
+    trazem a situacao (`status`/`visibility`/`in_review`/`permissions`).
+
+    `contas=None` (quem chama nao carregou) = nada a dizer. Ficha que nao
+    existe ou nao leu a punicao NAO e "sem punicao": e aviso de "nao medi".
+    """
+    if contas is None:
+        return {"estado": "nao_carregado"}
+    saida = {"estado": "ok", "perfis": {}, "avisos": []}
+    for canal in metricas.CANAIS:
+        fichas = (contas or {}).get(canal) or {}
+        dia = max(fichas) if fichas else None
+        ficha = fichas.get(dia) or {}
+        recentes = [r for r in regs if r["canal"] == canal and r["plataforma"] == "tiktok"
+                    and r["idade_dias"] <= JANELA_DIAS]
+        com = [r for r in recentes if isinstance(r.get("situacao"), dict)]
+        vv = ficha.get("vv_history")
+        perfil = {"dia": dia, "seguidores": ficha.get("seguidores"),
+                  "vv_history": vv if isinstance(vv, list) else None,
+                  "punicao_lida": bool((ficha.get("punicao") or {}).get("lida")),
+                  "qualidade_lida": bool((ficha.get("qualidade") or {}).get("lida")),
+                  "erro": ficha.get("erro") or "",
+                  "posts_recentes": len(recentes), "com_situacao": len(com),
+                  "em_revisao": sum(1 for r in com if r["situacao"].get("in_review") is True)}
+        saida["perfis"][canal] = perfil
+        rotulo = f"TikTok de {NOME_DO_CANAL.get(canal, canal)}"
+        if not dia:
+            saida["avisos"].append(f"{rotulo}: a situação da conta (punição, série diária, "
+                                   "seguidores) nunca foi lida pelo coletor — não medi.")
+            continue
+        falta = [nome for nome, ok in (("punição", perfil["punicao_lida"]),
+                                       ("conselho de qualidade", perfil["qualidade_lida"]),
+                                       ("série diária de views", perfil["vv_history"] is not None),
+                                       ("seguidores", perfil["seguidores"] is not None)) if not ok]
+        if falta:
+            saida["avisos"].append(f"{rotulo}: não li {', '.join(falta)} em {_data_br(dia)} "
+                                   "(não medi — não quer dizer que está tudo bem).")
+        if recentes and not com:
+            saida["avisos"].append(f"{rotulo}: nenhum dos {len(recentes)} posts recentes trouxe a "
+                                   "situação (revisão/visibilidade) — não medi.")
+    return saida
 
 
 # ------------------------------------------------------------------- rede
@@ -1557,24 +1678,55 @@ def _gravar(caminho: Path, texto: str) -> None:
             os.unlink(temporario)
 
 
-def fotografia(regs: list, cob: dict) -> dict:
+COLUNAS_DA_FOTOGRAFIA = ["views", "likes", "retencao", "medido_em", "engaged_views"]
+
+
+def fotografia(regs: list, cob: dict, series: dict | None = None,
+               agora: datetime | None = None) -> dict:
     """Views de cada video hoje, para amanha saber quanto o canal GANHOU.
-    Os arquivos de metrica guardam so o total da vida do video."""
+    Os arquivos de metrica guardam so o total da vida do video.
+
+    Desde 21/10/2026 com a HORA: `quando_das_partes` (a ultima coleta boa de
+    cada parte) e, por video, `medido_em` (a hora em que AQUELAS views foram
+    lidas) — sem ela a comparacao na mesma idade teria de adivinhar. A lista
+    de cada video so CRESCE no fim (`COLUNAS_DA_FOTOGRAFIA`): quem le `[0]`
+    continua lendo views. E a serie de inscritos do canal (`canal`): o total
+    de hoje (Data API, na hora) e os ganhos/perdidos por dia (Analytics,
+    ~3 dias de atraso).
+    """
     saida: dict = {"estado_da_coleta": cob.get("estado"),
-                   "coleta_mais_velha": cob.get("coleta_mais_velha")}
+                   "coleta_mais_velha": cob.get("coleta_mais_velha"),
+                   "colunas": COLUNAS_DA_FOTOGRAFIA,
+                   "gravada_em": (agora or datetime.now()).isoformat(timespec="seconds"),
+                   "quando_das_partes": {nome: p.get("ultimo_ok") or None
+                                         for nome, p in (cob.get("partes") or {}).items()}}
     for r in regs:
         nome = nome_da_parte(r["canal"], r["plataforma"])
-        saida.setdefault(nome, {})[r["id"]] = [r["views"], r["likes"], r["retencao"]]
+        saida.setdefault(nome, {})[r["id"]] = [r["views"], r["likes"], r["retencao"],
+                                               r.get("medido_em"), r.get("engaged_views")]
+    canal_ = {}
+    for canal, serie in (series or {}).items():
+        if not isinstance(serie, dict):
+            continue
+        canal_[canal] = {
+            "inscritos": serie.get("inscritos"), "views_do_canal": serie.get("views_do_canal"),
+            "videos_do_canal": serie.get("videos_do_canal"), "buscado_em": serie.get("buscado_em"),
+            "colunas_dos_dias": ["dia", "inscritos_ganhos", "inscritos_perdidos"],
+            "dias": [[l[0], l[3], l[4]] for l in serie.get("dias") or []
+                     if isinstance(l, list) and len(l) >= 5]}
+    if canal_:
+        saida["canal"] = canal_
     return saida
 
 
-def gravar(analise: dict, regs: list, agora: datetime) -> Path:
+def gravar(analise: dict, regs: list, agora: datetime, series: dict | None = None) -> Path:
     destino = pasta()
     _gravar(destino / "analise.json", json.dumps(analise, ensure_ascii=False, indent=1,
                                                  default=str))
     _gravar(destino / "index.html", pagina(analise))
     _gravar(destino / "historico" / f"{agora.date().isoformat()}.json",
-            json.dumps(fotografia(regs, analise["cobertura"]), ensure_ascii=False))
+            json.dumps(fotografia(regs, analise["cobertura"], series, agora),
+                       ensure_ascii=False))
     return destino / "index.html"
 
 
@@ -1622,6 +1774,16 @@ def publicar_na_biblioteca(html_path: Path, executar=_biblioteca) -> str:
     return id_
 
 
+def _extras(entrada: dict) -> dict:
+    """Os argumentos nomeados de `analisar` que saem do `carregar`."""
+    return {"testes": entrada.get("testes"), "ledger": entrada.get("ledger"),
+            "fotos": entrada.get("fotos"), "semana": entrada.get("semana"),
+            "leituras": entrada.get("leituras_hora"),
+            "horas_das_fotos": entrada.get("horas_das_fotos"),
+            "erro_da_semana": entrada.get("erro_da_semana") or "",
+            "contas_tiktok": entrada.get("contas_tiktok")}
+
+
 def do_dia(log=print, agora: datetime | None = None, rede: bool = True,
            biblioteca: bool = True) -> dict:
     """O passo do servico do dia: serie do canal (rede), analise, pagina,
@@ -1642,9 +1804,8 @@ def do_dia(log=print, agora: datetime | None = None, rede: bool = True,
     regs = registros(entrada)
     cob = cobertura(entrada)
     analise = analisar(regs, cob, agora, entrada["series"], entrada["historico"],
-                       entrada["falhas"], testes=entrada.get("testes"),
-                       ledger=entrada.get("ledger"), fotos=entrada.get("fotos"))
-    caminho = gravar(analise, regs, agora)
+                       entrada["falhas"], **_extras(entrada))
+    caminho = gravar(analise, regs, agora, entrada["series"])
     if biblioteca:
         try:
             publicar_na_biblioteca(caminho)
@@ -1656,6 +1817,9 @@ def do_dia(log=print, agora: datetime | None = None, rede: bool = True,
     problemas = list(entrada["falhas"])
     if analise["estado"] in ("sem_dados", "velha"):
         problemas.insert(0, analise["avisos"][0])
+    # A leitura de hora em hora parada e a medida da semana sem chao: vao ao
+    # diario (e dali ao Telegram), nao so a pagina.
+    problemas.extend((analise.get("mesma_idade") or {}).get("avisos") or [])
     if problemas:
         try:
             from .. import atividade
@@ -1683,6 +1847,8 @@ h1{font-size:22px;margin:4px 0}h2{font-size:18px;margin:26px 0 8px}h3{font-size:
 .faixa.ruim{background:rgba(208,59,59,.12);border:1px solid var(--ruim)}
 .faixa.alerta{background:rgba(240,165,48,.12);border:1px solid var(--alerta)}
 .faixa.ok{background:rgba(12,163,12,.10);border:1px solid var(--bom)}
+.cartao.ruim{border-color:var(--ruim)}.cartao.alerta{border-color:var(--alerta)}
+.cartao p{margin:5px 0}
 .selo{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;padding:1px 8px;
 border:1px solid currentColor;margin-right:6px}
 .erro{color:var(--ruim)}.acerto{color:var(--bom)}.atencao{color:var(--alerta)}
@@ -1977,6 +2143,42 @@ def _cobertura_html(cob: dict) -> str:
             + "<h3>Hoje, parte por parte</h3>" + "".join(blocos))
 
 
+def _semana_html(c: dict) -> str:
+    """A medida da semana: o mesmo texto do Telegram, uma linha por paragrafo
+    (cabe em 390 px; numero com rotulo, nunca so a seta)."""
+    if not c.get("texto"):
+        return ""
+    classe = {"ok": "", "sem_semana": "alerta", "sem_novos": "ruim",
+              "sem_antigos": "ruim", "erro": "ruim"}.get(c.get("estado"), "alerta")
+    linhas = c["texto"].splitlines()
+    corpo = "".join(
+        f"<p class='{'sub' if l.startswith('    ') else ''}'>{_e(l.strip())}</p>" for l in linhas[1:])
+    return (f"<h2>Medida da semana (mesma idade)</h2>"
+            f"<div class='cartao {classe}'><p><b>{_e(linhas[0])}</b></p>{corpo}"
+            + (f"<p class='sub'>{_e(c.get('criterio'))}</p>" if c.get("criterio") else "")
+            + "</div>")
+
+
+def _conta_html(conta: dict) -> str:
+    perfis = conta.get("perfis") or {}
+    if not perfis:
+        return ""
+    blocos = []
+    for canal, p in perfis.items():
+        vv = p.get("vv_history")
+        serie = (f"{len(vv)} dia(s) na série" if isinstance(vv, list) else "série não lida")
+        blocos.append(
+            f"<p><b>{_e(NOME_DO_CANAL.get(canal, canal))}</b> — "
+            + (f"ficha de {_e(_data_br(p['dia']))}: " if p.get("dia") else "nunca lida: ")
+            + _e(f"seguidores {p['seguidores'] if p.get('seguidores') is not None else 'não medidos'}; "
+                 f"{serie}; punição {'lida' if p.get('punicao_lida') else 'NÃO lida'}; "
+                 f"qualidade {'lida' if p.get('qualidade_lida') else 'NÃO lida'}; "
+                 f"situação em {p.get('com_situacao', 0)} de {p.get('posts_recentes', 0)} posts "
+                 f"recentes ({p.get('em_revisao', 0)} em revisão)")
+            + "</p>")
+    return "<h2>Conta do TikTok</h2><div class='cartao'>" + "".join(blocos) + "</div>"
+
+
 def pagina(analise: dict) -> str:
     estado = analise.get("estado")
     faixa = {"sem_dados": ("ruim", "Sem dados: a coleta não trouxe nenhum vídeo. Nada aqui "
@@ -2017,6 +2219,8 @@ def pagina(analise: dict) -> str:
 <h2>O que mudar, do mais importante para o menos</h2>
 {corpo_achados}
 {_testes_html(analise.get('testes') or {})}
+{_semana_html(analise.get('mesma_idade') or {})}
+{_conta_html(analise.get('conta_tiktok') or {})}
 {''.join(secoes)}
 <h2>Ainda não dá para dizer</h2>
 {f'<ul>{nao_da}</ul>' if nao_da else '<p class="sub">Nada pendente.</p>'}
@@ -2043,8 +2247,40 @@ def _texto(analise: dict) -> str:
     testes = frases_dos_testes(analise.get("testes") or {})
     if testes:
         linhas += ["Testes:"] + [f"  {x}" for x in testes]
+    semana = (analise.get("mesma_idade") or {}).get("texto")
+    if semana:
+        linhas += [""] + semana.splitlines()
     linhas += ["Ainda não dá para dizer:"] + [f"  - {x}" for x in analise["nao_da"]]
     return "\n".join(linhas)
+
+
+def medida_da_semana(agora: datetime | None = None) -> dict:
+    """A comparacao na mesma idade feita AGORA, so com o disco (a coleta do
+    dia + as leituras de hora em hora ate este minuto). E o que o relatorio
+    do Telegram e o `--semana` mostram; a pagina usa a da manha."""
+    from . import mesma_idade
+
+    agora = agora or datetime.now()
+    entrada = carregar(agora)
+    regs = registros(entrada, meta=None)
+    c = mesma_idade.comparar(regs, agora, entrada.get("semana"), fotos=entrada.get("fotos"),
+                             leituras=entrada.get("leituras_hora"),
+                             horas_das_fotos=entrada.get("horas_das_fotos"),
+                             series=entrada.get("series"),
+                             erro_do_config=entrada.get("erro_da_semana") or "")
+    if entrada["falhas"]:
+        c["falhas"] = list(entrada["falhas"])
+        c["texto"] += "\n" + "\n".join(f"! {f}" for f in entrada["falhas"])
+    return c
+
+
+def texto_da_semana(agora: datetime | None = None) -> str:
+    """O texto da medida da semana, feito agora. Nunca levanta."""
+    try:
+        return medida_da_semana(agora)["texto"]
+    except Exception as exc:                                  # noqa: BLE001
+        return (f"Medida da semana FALHOU: {type(exc).__name__}: {exc}. "
+                "Sem ela não há comparação — não quer dizer que está tudo bem.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2055,18 +2291,22 @@ def main(argv: list[str] | None = None) -> int:
                         help="busca a série diária do canal (Analytics)")
     parser.add_argument("--biblioteca", action="store_true",
                         help="põe a página na Biblioteca do app")
+    parser.add_argument("--semana", action="store_true",
+                        help="só a medida da semana na mesma idade, feita agora (só lê)")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     agora = datetime.now()
+    if args.semana:
+        c = medida_da_semana(agora)
+        print(json.dumps(c, ensure_ascii=False, indent=1, default=str)
+              if args.json else c["texto"])
+        return 0 if c.get("estado") == "ok" else 1
     if args.ver:
         entrada = carregar(agora)
         regs = registros(entrada)
         analise = analisar(regs, cobertura(entrada), agora, entrada["series"],
-                           entrada["historico"], entrada["falhas"],
-                           testes=entrada.get("testes"),
-                           ledger=entrada.get("ledger"),
-                           fotos=entrada.get("fotos"))
+                           entrada["historico"], entrada["falhas"], **_extras(entrada))
     else:
         analise = do_dia(agora=agora, rede=args.rede, biblioteca=args.biblioteca)
     print(json.dumps(analise, ensure_ascii=False, indent=1, default=str)

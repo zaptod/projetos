@@ -216,8 +216,12 @@ def _noite(args) -> int:
               + (f": {', '.join(preparo)}" if preparo else ""))
         print(f"diario de hoje: {noite.diario_do_dia()}")
         return 0
+    # O disparo de hora em hora (NeuralFights_gerar_HH) tambem le as views dos
+    # videos novos do YouTube: 1 unidade de cota, nunca derruba a geracao.
+    from builds.publicar import hora_a_hora
     resultado = noite.rodar(ensaio=args.ensaio, duelos=args.duelos,
-                            builds=args.builds, sem_worker=args.sem_worker)
+                            builds=args.builds, sem_worker=args.sem_worker,
+                            leitura_da_hora=lambda: hora_a_hora.disparo("builds"))
     return noite.codigo_de_saida(resultado)
 
 

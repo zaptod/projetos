@@ -25,8 +25,13 @@ description: A revisão semanal do docs/PLANO.md — medir se a mudança da sema
    `... metricas-youtube-analytics/scripts/analytics_direto.py dia --de <inicio> --ate <fim>`
    → inscritos líquidos ÷ views × 1000 (os canais que cresceram: 0,4–8,3; o nosso ~0,5).
 4. **A página do Adrian**: `python -m builds.publicar.analise --ver` (o serviço do dia grava e
-   põe na Biblioteca do app às 07:02). Ela não sabe da mudança da semana se ninguém lhe disse a
-   data — compare você, com o script.
+   põe na Biblioteca do app às 07:02). Desde o ramo `metricas/coletor-sozinho` (21/10) ela SABE
+   a mudança: `random_builds/config/medida_da_semana.json` (`inicio` = a HORA em que a mudança
+   foi ao ar; escreva a semana nova ANTES de olhar) e mostra "Medida da semana (mesma idade)":
+   novos × antigos aos 6/12/24/48/72 h e 7 dias (±5 h, sem interpolar), % assistido, views
+   engajadas e inscritos por mil. Feita agora, só disco: `python -m builds.publicar.analise
+   --semana` (sai 1 sem comparação) ou `/semana` no Telegram. O script acima continua sendo a
+   conta pelo total com 3+ dias.
 5. **Relatório** (curto, para o orquestrador): a mudança, a janela, n de cada lado, as medianas,
    o rótulo, "ainda juntando" e a recomendação ("dobrar", "cortar" ou "medir mais uma semana").
    O Gemini assiste os 5 melhores e 5 piores (semana 4); som só o Adrian julga.

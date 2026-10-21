@@ -533,6 +533,11 @@ def estatisticas(youtube_ids: list[str], token: str) -> dict:
             headers={"Authorization": f"Bearer {token}"})
         if not resposta.ok:
             raise RuntimeError(f"Data API {resposta.status_code}: {resposta.text[:200]}")
+        # A HORA DO NUMERO (21/10/2026). `atualizado` e a hora em que o
+        # arquivo foi escrito, ate ~15 min depois desta leitura (as consultas
+        # da Analytics vem no meio); comparar videos na MESMA IDADE pede a
+        # hora em que as views foram lidas.
+        lidas_em = datetime.now().isoformat(timespec="seconds")
         for item in resposta.json().get("items", []):
             st = item.get("statistics", {})
             detalhes = item.get("contentDetails", {})
@@ -548,6 +553,7 @@ def estatisticas(youtube_ids: list[str], token: str) -> dict:
                 # "sd" aqui e INDICIO, nao veredito: o campo reflete a melhor
                 # renderizacao ja disponivel e demora a virar "hd".
                 "definicao": detalhes.get("definition"),
+                "views_medidas_em": lidas_em,
             }
     return saida
 
@@ -946,20 +952,64 @@ def motivo_da_recusa(resposta) -> str:
     return f"Analytics API {resposta.status_code} ({razao or 'sem reason'}): {recado[:200]}"
 
 
+# As metricas do resumo por video. `engagedViews` entrou em 21/10/2026: desde
+# 31/03/2025 todo comeco/replay de Short conta "view", e a view "engajada" e a
+# que o YouTube usa para o que conta de verdade (e a que separa "passou no
+# feed" de "assistiu"). A Analytics a entrega com 2-3 dias de atraso.
+METRICAS_SEM_ENGAJADAS = "views,averageViewDuration,averageViewPercentage"
+METRICAS_DO_RESUMO = METRICAS_SEM_ENGAJADAS + ",engagedViews"
+# Uma recusa por processo basta: sem isto, cada video pagaria duas consultas.
+ENGAJADAS_RECUSADAS = False
+
+
+def _coluna(corpo: dict, linha: list, nome: str, posicao: int | None):
+    """O valor da coluna `nome` na linha, pelo `columnHeaders` da resposta
+    (a ordem que a Analytics DIZ) ou, sem cabecalho, pela `posicao` pedida.
+    `None` = a coluna nao veio — nao e zero."""
+    cabecalhos = [str((c or {}).get("name") or "")
+                  for c in (corpo.get("columnHeaders") or [])]
+    if cabecalhos:
+        posicao = cabecalhos.index(nome) if nome in cabecalhos else None
+    if posicao is None or posicao >= len(linha):
+        return None
+    valor = linha[posicao]
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return None
+    return int(valor)
+
+
 def retencao(youtube_id: str, token: str, desde: str) -> dict:
     """Media de visualizacao e a CURVA (Analytics API). Sem o escopo, devolve
     `erro` explicando o que falta — nunca levanta."""
+    global ENGAJADAS_RECUSADAS
     hoje = date.today().isoformat()
     base = {"ids": "channel==MINE", "startDate": desde, "endDate": hoje,
             "filters": f"video=={youtube_id}"}
     cab = {"Authorization": f"Bearer {token}"}
+    pedir_engajadas = not ENGAJADAS_RECUSADAS
     resumo = _get("analytics", API_ANALYTICS, timeout=30, headers=cab, params={
-        **base, "metrics": "views,averageViewDuration,averageViewPercentage"})
+        **base, "metrics": (METRICAS_DO_RESUMO if pedir_engajadas
+                            else METRICAS_SEM_ENGAJADAS)})
+    recusa_das_engajadas = ""
+    if pedir_engajadas and resumo.status_code == 400:
+        # `engagedViews` e metrica nova (2025). Se a Analytics recusar a
+        # consulta por causa dela, a retencao NAO pode morrer junto: pede de
+        # novo sem ela, e nao volta a pedir neste processo (cada video
+        # custaria uma consulta a mais). O que veio no lugar do numero e o
+        # motivo, gravado — nunca 0.
+        ENGAJADAS_RECUSADAS = True
+        recusa_das_engajadas = motivo_da_recusa(resumo)[:200]
+        resumo = _get("analytics", API_ANALYTICS, timeout=30, headers=cab,
+                      params={**base, "metrics": METRICAS_SEM_ENGAJADAS})
     if resumo.status_code in (401, 403):
         return {"erro": motivo_da_recusa(resumo)}
     if not resumo.ok:
         return {"erro": f"Analytics API {resumo.status_code}: {resumo.text[:160]}"}
-    linhas = resumo.json().get("rows") or []
+    corpo = resumo.json() or {}
+    linhas = corpo.get("rows") or []
+    pediu = pedir_engajadas and not recusa_das_engajadas
+    engajadas = (_coluna(corpo, linhas[0], "engagedViews", 3 if pediu else None)
+                 if linhas and linhas[0] and linhas[0][0] else None)
     if not linhas:
         # SEM LINHAS NAO E ZERO. `ids=channel==MINE` filtra pelo canal DO
         # TOKEN: um video que esta em outro canal do mesmo dono devolve lista
@@ -982,6 +1032,14 @@ def retencao(youtube_id: str, token: str, desde: str) -> dict:
                         "medir (nao e 0%)."}
     saida = {"views_analytics": linhas[0][0], "media_segundos": linhas[0][1],
              "media_percentual": linhas[0][2]}
+    # ENGAGED VIEWS: so entra o que a Analytics DEU. Sem o numero, o campo
+    # nao existe (o vazio e "nao medido", nunca 0); recusada, fica o motivo.
+    if engajadas is not None:
+        saida["engaged_views"] = engajadas
+    elif recusa_das_engajadas or ENGAJADAS_RECUSADAS:
+        saida["engaged_views_erro"] = (recusa_das_engajadas or
+                                       "a Analytics recusou engagedViews nesta coleta")
+    saida["analytics_medida_em"] = datetime.now().isoformat(timespec="seconds")
     curva = _get("analytics", API_ANALYTICS, timeout=30, headers=cab, params={
         **base, "metrics": "audienceWatchRatio,relativeRetentionPerformance",
         "dimensions": "elapsedVideoTimeRatio"})

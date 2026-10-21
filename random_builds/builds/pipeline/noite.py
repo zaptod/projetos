@@ -1065,11 +1065,19 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
           relogio=None, gerar_duelo=None, drenar_worker=None,
           jobs=None, estoque=None, proximo=None, tela=None,
           builds: int | None = None, gerar_build=None,
-          estoque_builds=None, contagem=None, jogo=None) -> dict:
+          estoque_builds=None, contagem=None, jogo=None,
+          leitura_da_hora=None) -> dict:
     """Uma rodada. Devolve o que aconteceu; nunca levanta por conta da tarefa.
 
     `jogo`: duble de `jogo_aberto` (funcao sem argumento que devolve o nome
     do jogo aberto ou None).
+
+    `leitura_da_hora` (21/10/2026): funcao sem argumento chamada no COMECO do
+    disparo, antes de qualquer saida (desligada, pausada, fora da janela,
+    trava ocupada) — a leitura das views dos videos novos de hora em hora
+    (`publicar.hora_a_hora.disparo`). So o `main.py noite` (a tarefa do
+    Agendador) a liga; `None`, o padrao, nao le nada — os testes e o ensaio
+    nao vao a rede.
 
     `ensaio`: faz TODAS as conferencias e diz o que faria, sem gerar nada e
     sem escrever no diario compartilhado. E o duble do teste de ponta a
@@ -1101,7 +1109,8 @@ def rodar(*, config: dict | None = None, ensaio: bool = False,
                        jobs=jobs, estoque=estoque, proximo=proximo,
                        travas=travas, controle=controle, builds=builds,
                        gerar_build=gerar_build, estoque_builds=estoque_builds,
-                       contagem=contagem, jogo=jogo)
+                       contagem=contagem, jogo=jogo,
+                       leitura_da_hora=leitura_da_hora)
     finally:
         try:
             sys.stdout.flush()
@@ -1129,10 +1138,19 @@ def _contagem_para_o_plano(contagem, estoque, estoque_builds):
 def _rodada(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
             drenar_worker, jobs, estoque, proximo, travas, controle,
             builds=None, gerar_build=None, estoque_builds=None,
-            contagem=None, jogo=None) -> dict:
+            contagem=None, jogo=None, leitura_da_hora=None) -> dict:
     agora = relogio()
     rotulo = " (ENSAIO: nada e gerado)" if ensaio else ""
     print(f"[noite] disparo das {agora:%H:%M}{rotulo}")
+    if leitura_da_hora is not None and not ensaio:
+        # A medicao de hora em hora vem ANTES de qualquer saida: o disparo
+        # que nao gera nada (fora da janela, trava ocupada) e a maioria, e e
+        # justamente a regularidade dele que a leitura aproveita.
+        try:
+            leitura_da_hora()
+        except Exception as exc:                               # noqa: BLE001
+            print(f"[noite] a leitura de hora em hora falhou: "
+                  f"{type(exc).__name__}: {exc}")
 
     if not config.get("ativo", True):
         print("[noite] a geracao esta desligada (`ativo: false`). Nada a fazer.")

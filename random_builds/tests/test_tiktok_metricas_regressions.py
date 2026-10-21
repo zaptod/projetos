@@ -450,8 +450,13 @@ class ColetaQueNaoMedeTests(unittest.TestCase):
         salvos = T.coletar("builds", log=lambda *_a: None, analisar=False,
                            resumo=resumo)
         self.assertEqual(1, len(salvos))
+        # A conta (21/10/2026) vem junto: sem nenhuma resposta dela, tudo
+        # "nao lido" — nunca "sem punicao".
+        conta = resumo.pop("conta")
         self.assertEqual({"envios": 1, "posts": 30, "lista": "completa",
                           "casados": 1}, resumo)
+        self.assertEqual({"serie_dias": None, "seguidores": None,
+                          "punicao": "nao_lida", "qualidade": "nao_lida"}, conta)
 
 
 if __name__ == "__main__":

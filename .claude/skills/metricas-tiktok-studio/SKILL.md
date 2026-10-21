@@ -19,10 +19,13 @@ description: Medir os duelos no TikTok (perfil do canal "builds") — views, % a
    deram certo; 5–10 h → 4 de 33). Unidade = BLOCO de posts, não post.
 4. **Elegibilidade / punição**: o PLANO registra (agente metricas, 20/10 02h) "sem punição na
    conta nem vídeo restrito (getPenaltyDetails 0, quality_advisor vazio)" — lido à mão no
-   Studio; **o coletor NÃO guarda** situação por post, punição nem série diária da conta (é
-   pendência do plano em `random_builds/builds/publicar/tiktok_metricas.py`). Para refazer,
-   abra o Studio com o perfil REAL (abaixo) e leia a rede da página; nunca diga "elegível" sem
-   ter lido.
+   Studio. Desde o ramo `metricas/coletor-sozinho` (21/10) o coletor GUARDA: `situacao` de
+   cada post (`status`/`visibility`/`in_review`/`permissions`, crus) e uma ficha por dia da
+   conta em `*/outputs/_metricas_tiktok_conta/<dia>.json` (`vv_history`, `seguidores`,
+   `punicao`/`qualidade` com `lida` e o corpo cru) — ler com
+   `tiktok_metricas.carregar_contas('builds')`. O FORMATO dessas respostas não foi medido pelo
+   código: confira o bruto da 1ª ficha real antes de confiar no `vv_history` decifrado.
+   `lida: false` = não medi, NUNCA "sem punição"; nunca diga "elegível" sem ter lido.
 5. **Coletar de novo** é o serviço do dia (`tiktok_metricas.coletar`, abre o Chrome): não rode
    para "só olhar"; se precisar, fora da janela das postagens e com a publicação parada.
 

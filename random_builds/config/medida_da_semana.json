@@ -1,0 +1,17 @@
+{
+  "_leia": "A medida da semana do docs/PLANO.md (builds.publicar.mesma_idade). 'inicio' e a HORA em que a mudanca foi AO AR, nao o commit; a semana vai 7 dias e os 'antigos' sao os 7 dias antes. Escreva a semana nova ANTES de olhar o resultado.",
+  "semanas": [
+    {
+      "semana": 1,
+      "inicio": "2026-10-20T09:00",
+      "_por_que_09h": "o 1o duelo com o titulo novo (rx3XnuU3rJw, 'Longbow VS Heavy Crossbow — who wins?') foi ao ar 20/10 09:43; o de 20/10 01:22 (073ooZpysAs, 'Drusila ... x Sigrid ...') ainda era o formato antigo",
+      "mudanca": "Canal em inglês: título com o confronto, faixa com os nomes, pergunta no 1º segundo, luta no quadro 0",
+      "canal": "builds",
+      "formato": "duelo",
+      "plataformas": ["youtube", "tiktok"]
+    }
+  ],
+  "idades_h": [6, 12, 24, 48, 72, 168],
+  "tolerancia_h": 5,
+  "dias_de_cada_lado": 7
+}
