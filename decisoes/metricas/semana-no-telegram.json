@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T10:37:40",
+      "evento": "2026-10-21T10:35:24",
+      "linha": 205,
+      "nota": "resposta sem pedido de origem: metricas/semana-no-telegram = Todo dia às 21:05 pelo bot (recomendado)",
+      "opcao": "diario",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Coletor novo (ramo metricas/coletor-sozinho) calcula a medida da semana do PLANO sozinho; o Adrian não quer ler número à mão (medir-sozinho-nao-perguntar).",
   "criado": "2026-10-21T10:35:18.126972",
   "depende_de": [],
