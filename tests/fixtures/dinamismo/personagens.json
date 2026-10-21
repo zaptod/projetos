@@ -1,0 +1,223 @@
+[
+ {
+  "nome": "Tiberio Vhormeden",
+  "tamanho": 1.68,
+  "forca": 7.8,
+  "mana": 5.9,
+  "nome_arma": "Dharkambir",
+  "cor_r": 43,
+  "cor_g": 217,
+  "cor_b": 226,
+  "classe": "Gladiador (Combate)",
+  "personalidade": "Equilibrado",
+  "kit_skills": [
+   "Impacto Sônico",
+   "Terremoto",
+   "Velocidade Arcana",
+   "Golpe do Executor"
+  ],
+  "genero": "m"
+ },
+ {
+  "nome": "Cassiel Fletekollen",
+  "tamanho": 1.96,
+  "forca": 6.4,
+  "mana": 7.1,
+  "nome_arma": "Cyrthane",
+  "cor_r": 69,
+  "cor_g": 247,
+  "cor_b": 110,
+  "classe": "Feiticeiro (Caos)",
+  "personalidade": "Zerg Rush",
+  "kit_skills": [
+   "Parar o Tempo",
+   "Apocalipse",
+   "Troca de Almas",
+   "Mutação"
+  ],
+  "genero": "f"
+ },
+ {
+  "nome": "Gunnar Vexevok",
+  "tamanho": 1.53,
+  "forca": 7.0,
+  "mana": 4.2,
+  "nome_arma": "Miraglonn",
+  "cor_r": 216,
+  "cor_g": 13,
+  "cor_b": 108,
+  "classe": "Berserker (Fúria)",
+  "personalidade": "Agressivo",
+  "kit_skills": [
+   "Mjolnir",
+   "Ritual Carmesim",
+   "Avanço Brutal",
+   "Estilhaço Vermelho"
+  ],
+  "genero": "m"
+ },
+ {
+  "nome": "Aurelia Telmard",
+  "tamanho": 1.59,
+  "forca": 5.9,
+  "mana": 3.4,
+  "nome_arma": "Miraorben",
+  "cor_r": 160,
+  "cor_g": 206,
+  "cor_b": 8,
+  "classe": "Paladino (Sagrado)",
+  "personalidade": "Perseguidor",
+  "kit_skills": [
+   "Raio Sagrado",
+   "Julgamento Celestial",
+   "Avanço Brutal",
+   "Ressurreição"
+  ],
+  "genero": "f"
+ },
+ {
+  "nome": "Vesper Aerjabor",
+  "tamanho": 1.72,
+  "forca": 6.5,
+  "mana": 7.6,
+  "nome_arma": "Sirrisworl",
+  "cor_r": 233,
+  "cor_g": 239,
+  "cor_b": 43,
+  "classe": "Assassino (Crítico)",
+  "personalidade": "Pugilista",
+  "kit_skills": [
+   "Medo Profundo",
+   "Colheita de Almas",
+   "Portal Sombrio",
+   "Esfera Sombria"
+  ],
+  "genero": "f"
+ },
+ {
+  "nome": "Vesper Fynvalum",
+  "tamanho": 1.94,
+  "forca": 7.2,
+  "mana": 3.3,
+  "nome_arma": "Fyngald",
+  "cor_r": 249,
+  "cor_g": 17,
+  "cor_b": 32,
+  "classe": "Ladino (Evasão)",
+  "personalidade": "Protetor",
+  "kit_skills": [
+   "Esporos Alucinógenos",
+   "Nuvem Tóxica",
+   "Teleporte Relâmpago",
+   "Lâmina de Sangue"
+  ],
+  "genero": "f"
+ },
+ {
+  "nome": "Mirel Umbrusilmirn",
+  "tamanho": 1.74,
+  "forca": 5.8,
+  "mana": 4.8,
+  "nome_arma": "Noctonduen",
+  "cor_r": 170,
+  "cor_g": 2,
+  "cor_b": 232,
+  "classe": "Ladino (Evasão)",
+  "personalidade": "Tático",
+  "kit_skills": [
+   "Esporos Alucinógenos",
+   "Nuvem Tóxica",
+   "Teleporte Relâmpago",
+   "Lâmina de Sangue"
+  ],
+  "genero": "f"
+ },
+ {
+  "nome": "Vex Fylermar",
+  "tamanho": 2.2,
+  "forca": 4.8,
+  "mana": 5.1,
+  "nome_arma": "Acieloth",
+  "cor_r": 8,
+  "cor_g": 206,
+  "cor_b": 199,
+  "classe": "Assassino (Crítico)",
+  "personalidade": "Contemplativo",
+  "kit_skills": [
+   "Fenda do Vazio",
+   "Colheita de Almas",
+   "Passo do Vazio",
+   "Maldição"
+  ],
+  "genero": "m"
+ },
+ {
+  "nome": "Vanya Kraxadusrugan",
+  "tamanho": 1.93,
+  "forca": 5.5,
+  "mana": 6.6,
+  "nome_arma": "Kazonvinkul",
+  "cor_r": 63,
+  "cor_g": 221,
+  "cor_b": 42,
+  "classe": "Ladino (Evasão)",
+  "personalidade": "Predador Alfa",
+  "kit_skills": [
+   "Esporos Alucinógenos",
+   "Nuvem Tóxica",
+   "Teleporte Relâmpago",
+   "Dardo Venenoso"
+  ],
+  "genero": "f"
+ },
+ {
+  "nome": "Orion Drusuplith",
+  "tamanho": 1.73,
+  "forca": 6.7,
+  "mana": 8.6,
+  "nome_arma": "Druszodin",
+  "cor_r": 120,
+  "cor_g": 44,
+  "cor_b": 249,
+  "classe": "Feiticeiro (Caos)",
+  "personalidade": "Psicopata",
+  "kit_skills": [
+   "Parar o Tempo",
+   "Apocalipse",
+   "Troca de Almas",
+   "Roleta Russa"
+  ],
+  "genero": "m"
+ },
+ {
+  "nome": "Hiro Zynhjal",
+  "tamanho": 1.75,
+  "forca": 8.6,
+  "mana": 4.2,
+  "nome_arma": "Vaelgeminn",
+  "cor_r": 209,
+  "cor_g": 67,
+  "cor_b": 20,
+  "classe": "Monge (Chi)",
+  "personalidade": "Viking",
+  "genero": "m"
+ },
+ {
+  "nome": "Flora do Trovão",
+  "tamanho": 2.14,
+  "forca": 8.4,
+  "mana": 5.1,
+  "nome_arma": "Adagas Gêmeas Comum",
+  "cor_r": 142,
+  "cor_g": 247,
+  "cor_b": 56,
+  "classe": "Cavaleiro (Defesa)",
+  "personalidade": "Tático",
+  "kit_skills": [
+   "Impacto Sônico",
+   "Sacrifício",
+   "Avanço Brutal",
+   "Reflexo Espelhado"
+  ]
+ }
+]

@@ -38,7 +38,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
                corrente_v2: bool | None = None,
                reserva_pos_ko: dict | None = None,
                textos_da_tela: dict | None = None,
-               cores_da_tela: dict | None = None) -> dict:
+               cores_da_tela: dict | None = None,
+               dinamismo: bool | None = None) -> dict:
     """Roda o gravador oficial num subprocesso e devolve o resultado da luta.
 
     `resolucao` grava em tamanho nativo (1080x1920 para o celular) — sem o
@@ -51,6 +52,9 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
     `corrente_v2` e a chave da corrente nova DESTA luta (core/corrente.py):
     True/False carimba no match_config; None nao carimba (vale o padrao do
     motor). Quem re-simula passa o que o fight.json guardou.
+
+    `dinamismo` e a chave do afastamento do colado longo
+    (neural_fights/core/dinamismo.py), com a mesma regra.
     """
     comando = [
         sys.executable, "-X", "utf8",
@@ -74,6 +78,8 @@ def gravar_uma(*, p1: str, p2: str, seed: int, saida: Path | None, cenario: str,
         comando.append("--sem-hud")
     if corrente_v2 is not None:
         comando.append("--corrente-v2" if corrente_v2 else "--sem-corrente-v2")
+    if dinamismo is not None:
+        comando.append("--dinamismo" if dinamismo else "--sem-dinamismo")
     if reserva_pos_ko:
         # o letreiro do K.O. que o renderer vai desenhar (runner.reserva_do_letreiro):
         # a camera da cauda poe o vencedor abaixo dele. So a cauda muda.

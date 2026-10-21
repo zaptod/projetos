@@ -2466,7 +2466,8 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
                     cauda_pos_ko: float | None = None, headless: bool = False,
                     desenhar: bool = False, sonda: bool = True, hashes: bool = False,
                     roster_provider=None, anotar_som: bool | None = None,
-                    corrente_v2: bool | None = None) -> dict:
+                    corrente_v2: bool | None = None,
+                    dinamismo: bool | None = None) -> dict:
     """Roda a luta com o MESMO laco do gravador e devolve a timeline.
 
     Os mesmos numeros de ``fight_recorder.gravar_luta`` (60 Hz, captura a cada
@@ -2487,6 +2488,8 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
       ``sons`` sai preenchida com o som REAL da luta.
     - ``corrente_v2`` carimba a chave da corrente nova no match_config
       (``None`` = nao carimba = a corrente antiga, como toda luta gravada).
+    - ``dinamismo`` carimba a chave do afastamento do colado longo
+      (core/dinamismo.py); ``None`` = o padrao do motor (desligada).
 
     Devolve ``{"resultado", "timeline" (dict ou None), "hashes" (lista ou None)}``.
     """
@@ -2527,6 +2530,9 @@ def gravar_timeline(*, p1: str, p2: str, seed: int = 0, cenario: str = "Arena Pe
     if corrente_v2 is not None:
         # Chave da corrente nova (core/corrente.py). Ausente = a antiga.
         match_config["corrente_v2"] = bool(corrente_v2)
+    if dinamismo is not None:
+        # Chave do dinamismo (core/dinamismo.py). Ausente = o motor de antes.
+        match_config["dinamismo"] = bool(dinamismo)
     extras = {}
     if roster_provider is not None:
         extras["roster_provider"] = roster_provider

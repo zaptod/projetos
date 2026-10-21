@@ -259,6 +259,8 @@ def executar_luta(spec: dict[str, Any], fonte: FonteDeDados) -> dict[str, Any]:
             # A chave so entra quando a spec a pede: sem ela o match_config
             # e o mesmo de antes do rework (luta antiga identica).
             **({"corrente_v2": bool(spec["corrente_v2"])} if "corrente_v2" in spec else {}),
+            # idem para o dinamismo (core/dinamismo.py, 21/10/2026)
+            **({"dinamismo": bool(spec["dinamismo"])} if "dinamismo" in spec else {}),
         },
         seed=spec["seed"],
         max_duration=120.0,
@@ -886,6 +888,12 @@ def build_parser() -> SafeArgumentParser:
         help="roda o corpus com a corrente nova (bola fisica + enlace); padrao = a antiga",
     )
     parser.add_argument(
+        "--dinamismo",
+        action="store_true",
+        help="roda o corpus com o afastamento do colado longo (core/dinamismo.py); "
+             "padrao = o motor de antes",
+    )
+    parser.add_argument(
         "--vfx",
         action="store_true",
         help="mede o volume visual (objetos de VFX por frame) e avalia os alvos de limpeza da luta",
@@ -1042,6 +1050,8 @@ def main(argv: list[str] | None = None) -> int:
     specs = corpus_smoke(fonte) if args.corpus == "smoke" else corpus_completo(fonte)
     if args.corrente_v2:
         specs = [dict(spec, corrente_v2=True) for spec in specs]
+    if args.dinamismo:
+        specs = [dict(spec, dinamismo=True) for spec in specs]
     inicio = time.perf_counter()
     lutas = rodar_corpus(specs, fonte, progresso=args.progresso)
     duracao_execucao = time.perf_counter() - inicio
@@ -1067,6 +1077,7 @@ def main(argv: list[str] | None = None) -> int:
                 "dados": fonte.modo,
                 "onda": args.onda,
                 "corrente_v2": bool(args.corrente_v2),
+                "dinamismo": bool(args.dinamismo),
             },
             "resumo": {k: v for k, v in resumo.items() if not k.startswith("_")},
             "quadros": resumo.get("_quadros", {}),

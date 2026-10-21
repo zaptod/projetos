@@ -41,6 +41,7 @@ from neural_fights.core.physics import intersect_line_circle, colisao_linha_linh
 from neural_fights.utils.fonts import get_fonte, get_fonte_impact, get_fonte_mono
 from neural_fights.core.hitbox import sistema_hitbox, verificar_hit, atualizar_debug, DEBUG_VISUAL
 from neural_fights.core import corrente as _corrente
+from neural_fights.core import dinamismo as _dinamismo
 from neural_fights.core.arena import set_arena  # v9.0 Sistema de Arena
 from neural_fights.ai import CombatChoreographer  # Sistema de Coreografia v5.0
 from neural_fights.core.game_feel import GameFeelManager, HitStopManager  # Sistema de Game Feel v8.0
@@ -444,6 +445,13 @@ class Simulador:
             self._enlaces = []
             for lutador in (self.p1, self.p2):
                 _corrente.preparar_lutador(lutador)
+
+        # Dinamismo (21/10/2026, core/dinamismo.py): chave da LUTA, como a
+        # corrente. Desligada, nada roda nem e alocado — a luta antiga
+        # re-simula identica.
+        self.__dict__.pop("_dinamismo", None)
+        if _dinamismo.chave_ligada(self.match_config):
+            self._dinamismo = {"colado_t": 0.0, "recarga": 0.0, "t": 0.0}
 
         self.particulas = []; self.decals = []; self.textos = []; self.shockwaves = []; self.projeteis = []
         self.impact_flashes = []; self.magic_clashes = []; self.block_effects = []
@@ -2316,6 +2324,8 @@ class Simulador:
             
             self.resolver_fisica_corpos(dt)
             self._detectar_standoff(dt)
+            if self.__dict__.get("_dinamismo") is not None:
+                self._atualizar_dinamismo(dt)
             if self.__dict__.get("corrente_v2", False):
                 # A bola anda DEPOIS dos corpos (a mao ja esta no lugar do
                 # tick) e ANTES do acerto (o caminho varrido e o do tick).
@@ -4026,6 +4036,71 @@ class Simulador:
             momento(0.4)
         return True
 
+    def _atualizar_dinamismo(self, dt):
+        """Dinamismo (21/10/2026): colado por mais de ``DINAMISMO_COLADO_MAX_S``
+        vira afastamento — empurrão para os dois lados (deslizando na parede,
+        saindo do canto) e a IA recuando/circulando por ``DINAMISMO_RESPIRO_S``.
+
+        Sem sorteio: o relógio, a direção e o verbo saem do estado (core/
+        dinamismo.py). O agarrão travado não conta nem dispara (o desfecho
+        dele já separa); o enlace da corrente puxa de propósito e conta.
+        """
+        from neural_fights.utils.config import (
+            DINAMISMO_COLADO_MAX_S,
+            DINAMISMO_RECARGA_S,
+            DINAMISMO_RESPIRO_S,
+        )
+        est = self._dinamismo
+        p1, p2 = self.p1, self.p2
+        est["t"] += dt   # relógio da luta (o hit stop não chega aqui)
+        if est["recarga"] > 0.0:
+            est["recarga"] = max(0.0, est["recarga"] - dt)
+        if not _dinamismo.vale_agora(est):
+            # Luta longa (quem se cura, dois tanques): depois de ATE_S o
+            # corpo a corpo fecha a luta (core/dinamismo.vale_agora).
+            return
+        if (
+            p1.morto or p2.morto
+            or self.__dict__.get("_agarrao") is not None
+            or self._alvo_em_transicao_sombria(p1)
+            or self._alvo_em_transicao_sombria(p2)
+        ):
+            return
+        est["colado_t"] = _dinamismo.acumular(
+            est["colado_t"], _dinamismo.colados(p1, p2), dt)
+        if est["colado_t"] < DINAMISMO_COLADO_MAX_S or est["recarga"] > 0.0:
+            return
+
+        (v1x, v1y), (v2x, v2y) = _dinamismo.impulsos(p1, p2, self.arena)
+        p1.vel[0] += v1x
+        p1.vel[1] += v1y
+        p2.vel[0] += v2x
+        p2.vel[1] += v2y
+        for lutador, (vx, vy) in ((p1, (v1x, v1y)), (p2, (v2x, v2y))):
+            brain = getattr(lutador, "brain", None)
+            if brain is None or (vx == 0.0 and vy == 0.0):
+                continue
+            definir = getattr(brain, "_definir_acao", None)
+            if callable(definir):
+                # Prioridade 0: fura até o hold P1 (iniciativa, instinto,
+                # plano ESMAGAR). Medido: com P1, quem prensava na parede
+                # seguia prensando e o colado voltava em 0,4 s.
+                definir(_dinamismo.verbo_de_saida(lutador), fonte="respiro",
+                        prioridade=0, hold_s=DINAMISMO_RESPIRO_S)
+            brain.tell_atual = {
+                "tipo": "respiro",
+                "ate": getattr(brain, "tempo_combate", 0.0) + DINAMISMO_RESPIRO_S,
+            }
+        p1.contadores_luta["respiros"] = p1.contadores_luta.get("respiros", 0) + 1
+        est["colado_t"] = 0.0
+        est["recarga"] = DINAMISMO_RECARGA_S
+        # O rompimento é um EVENTO para quem assiste (como o do clinch):
+        # onda de choque e tremor, sem sorteio.
+        mx = (p1.pos[0] + p2.pos[0]) / 2 * PPM
+        my = (p1.pos[1] + p2.pos[1]) / 2 * PPM
+        self.shockwaves.append(Shockwave(mx, my, (210, 210, 220), 1.0))
+        self.cam.aplicar_shake(5.0, 0.12)
+
     def _resolver_clinch(self, dist, dx, dy):
         """Onda 8G: quebra o clinch de um jeito DIVERSO e com autor.
 
@@ -4495,6 +4570,24 @@ class Simulador:
             kb_x, kb_y = knockback_final
             defensor.vel[0] += kb_x
             defensor.vel[1] += kb_y
+            if (
+                self.__dict__.get("_dinamismo") is not None
+                and _dinamismo.vale_agora(self._dinamismo)
+            ):
+                # Dinamismo (21/10/2026): golpe com os discos colados é
+                # choque — o defensor descola e o atacante recua. Só a
+                # velocidade muda (o dano é o mesmo); sem sorteio.
+                (dvx, dvy), (avx, avy) = _dinamismo.impulso_do_choque(
+                    atacante, defensor, kb_x, kb_y, self.arena)
+                if dvx or dvy or avx or avy:
+                    defensor.vel[0] += dvx
+                    defensor.vel[1] += dvy
+                    kb_x += dvx
+                    kb_y += dvy
+                    atacante.vel[0] += avx
+                    atacante.vel[1] += avy
+                    atacante.contadores_luta["choques"] = (
+                        atacante.contadores_luta.get("choques", 0) + 1)
             magnitude_knockback = math.hypot(kb_x, kb_y)
             direcao_vfx = (
                 math.atan2(kb_y, kb_x)
@@ -6442,8 +6535,9 @@ class Simulador:
                 surf_q.set_alpha(140)
                 self.tela.blit(surf_q, (cx - surf_q.get_width() // 2 + int(wob),
                                         cy - raio - 52))
-            elif tell.get("tipo") == "desvio":
+            elif tell.get("tipo") in ("desvio", "respiro"):
                 # Onda 8F: linhas de velocidade na lateral — leu e saiu.
+                # Dinamismo (21/10): o afastamento do colado leva as mesmas.
                 vx, vy = getattr(l, "vel", (0.0, 0.0))[:2]
                 mag = math.hypot(vx, vy) or 1.0
                 ux, uy = -vx / mag, -vy / mag

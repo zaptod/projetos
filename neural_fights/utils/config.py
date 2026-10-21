@@ -157,6 +157,31 @@ HITSTOP_DANO_MIN_PCT = 0.06   # fracao da vida_max do ALVO
 # chave so para lutas novas). Ligar em producao e decisao do Adrian (A/B).
 CORRENTE_V2 = False
 
+# === DINAMISMO (pedido do Adrian, 21/10/2026) ===
+# "Nao quero os personagens colados um no outro muito tempo." Colado = os
+# discos DESENHADOS (raio tamanho/2; o da fisica e tamanho/4) a menos de
+# FRACAO x raio desenhado medio de borda a borda (o criterio do medidor
+# tools/dinamismo_luta.py). Depois de COLADO_MAX_S de contato (o relogio
+# esquece ESQUECE_FATOR x mais rapido com os corpos soltos), os dois se
+# afastam com um empurrao visivel e a IA sai por RESPIRO_S (recua ou
+# circula), sem entrar na parede. Chave da LUTA (core/dinamismo.py):
+# ``match_config["dinamismo"]``; ausente = DINAMISMO (desligada), entao toda
+# luta gravada antes re-simula identica. O random_builds carimba True nas
+# lutas novas (runner.chave_dinamismo_padrao).
+DINAMISMO = False
+DINAMISMO_COLADO_FRACAO_RAIO = 0.5
+DINAMISMO_COLADO_MAX_S = 0.4
+DINAMISMO_ESQUECE_FATOR = 2.0
+DINAMISMO_EMPURRAO = 16.0      # m/s; com ATRITO 8 -> ~2 m de cada lado
+DINAMISMO_RESPIRO_S = 0.45     # hold P0 do verbo de saida
+DINAMISMO_RECARGA_S = 0.4      # entre dois afastamentos
+DINAMISMO_ATE_S = 60.0         # depois disto (s de luta) o corpo a corpo fecha a luta
+DINAMISMO_PAREDE_M = 0.35      # folga da parede para nao empurrar contra ela
+# Choque: golpe corpo a corpo que acerta com os discos colados descola os
+# dois (o defensor sai com pelo menos KB_MIN para longe; o atacante recua).
+DINAMISMO_CHOQUE_KB_MIN = 18.0
+DINAMISMO_CHOQUE_RECUO = 9.0
+
 # ============================================================
 # ONDA 11B: qualidade 1-a-1 das skills
 # ============================================================

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from . import capture, highlights
 from .runner import (PORTRAIT_POR_PERFIL, RESOLUCAO_POR_PERFIL,
-                     camera_do_perfil, corrente_da_luta)
+                     camera_do_perfil, corrente_da_luta, dinamismo_da_luta)
 
 # Tolerancias da conferencia: o fight.json guarda o tempo dos golpes com 3
 # casas e a duracao com 1.
@@ -70,7 +70,8 @@ def anotar_luta(luta: dict, gameplay: dict, origem: str,
 
     A chave da corrente e a que a luta GRAVOU (`corrente_v2` do round ou do
     fight.json; sem o campo, a antiga): re-simular com o padrao de hoje
-    mudaria a luta de quem tem corrente."""
+    mudaria a luta de quem tem corrente. O mesmo vale para o dinamismo
+    (`dinamismo` do round ou do fight.json; sem o campo, o motor de antes)."""
     perfil, clipe = _referencia(luta)
     trechos = [(float(a), float(b)) for a, b in (clipe.get("trechos") or [])]
     if not trechos:
@@ -84,7 +85,8 @@ def anotar_luta(luta: dict, gameplay: dict, origem: str,
         sem_hud=bool(gameplay.get("sem_hud", True)),
         camera_largura_min=gameplay.get("camera_largura_min"),
         camera_espera_zoom=gameplay.get("camera_espera_zoom"),
-        corrente_v2=corrente_da_luta(luta, fight))
+        corrente_v2=corrente_da_luta(luta, fight),
+        dinamismo=dinamismo_da_luta(luta, fight))
     if not resultado.get("sucesso"):
         raise RuntimeError(f"re-simulacao falhou: {resultado.get('erro')}")
     if "sons" not in resultado:

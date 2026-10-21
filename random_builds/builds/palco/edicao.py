@@ -252,11 +252,12 @@ def montar_sobre_o_palco(fight: dict, edit_plan: dict, pasta: Path, *, perfil: s
     trechos = [[float(a), float(b), 1.0] for a, b in (luta.get("clipes") or {}).get(perfil, {}).get("trechos") or []]
     duelo_cfg = cfg.get("duelo") or {}
     print(f"[16G] {rotulo}: {luta['p1']} x {luta['p2']} | seed {luta['seed']} | {luta['cenario']}", flush=True)
-    from ..tournament.runner import corrente_da_luta
+    from ..tournament.runner import corrente_da_luta, dinamismo_da_luta
     tempos = {}
     inicio = time.time()
     doc, _ = fonte.timeline_da_luta(p1=luta["p1"], p2=luta["p2"], seed=int(luta["seed"]), cenario=luta["cenario"],
                                     corrente_v2=corrente_da_luta(luta, fight),
+                                    dinamismo=dinamismo_da_luta(luta, fight),
                                     tentativas=1, camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
                                     camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
     tempos["timeline_s"] = round(time.time() - inicio, 1)

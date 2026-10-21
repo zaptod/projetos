@@ -179,10 +179,11 @@ def ab_do_duelo(duelo_id: str, velho: str | None = None, *, hud: bool = False, r
     duelo_cfg = cfg.get("duelo") or {}
     print(f"[palco] A/B de {duelo_id}: {luta['p1']} x {luta['p2']} | seed {luta['seed']} | {luta['cenario']}",
           flush=True)
-    from ..tournament.runner import corrente_da_luta
+    from ..tournament.runner import corrente_da_luta, dinamismo_da_luta
     doc, _usada = fonte.timeline_da_luta(p1=luta["p1"], p2=luta["p2"], seed=int(luta["seed"]),
                                          cenario=luta["cenario"], tentativas=1,
                                          corrente_v2=corrente_da_luta(luta, fight),
+                                         dinamismo=dinamismo_da_luta(luta, fight),
                                          camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
                                          camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
     res = doc.get("resultado") or {}
@@ -258,9 +259,10 @@ def duelo_no_palco(*, p1=None, p2=None, seed=None, arena=None, com_ab: bool = Fa
         (pasta / "fight.json").write_text(json.dumps(fight, ensure_ascii=False, indent=1), encoding="utf-8")
         luta = fight["luta"]
         duelo_cfg = config.carregar().get("duelo") or {}
-        from ..tournament.runner import corrente_da_luta
+        from ..tournament.runner import corrente_da_luta, dinamismo_da_luta
         doc, _ = fonte.timeline_da_luta(p1=p1, p2=p2, seed=int(luta["seed"]), cenario=cenario, tentativas=1,
                                         corrente_v2=corrente_da_luta(luta, fight),
+                                        dinamismo=dinamismo_da_luta(luta, fight),
                                         camera_largura_min_m=duelo_cfg.get("camera_largura_min_m"),
                                         camera_espera_zoom_in=duelo_cfg.get("camera_espera_zoom_in"))
         trechos = [[float(a), float(b), 1.0] for a, b in luta["clipes"]["celular"]["trechos"]]

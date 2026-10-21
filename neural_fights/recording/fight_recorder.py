@@ -696,6 +696,7 @@ def gravar_luta(
     som_no_video: bool = True,
     timeline: str | Path | None = None,
     corrente_v2: bool | None = None,
+    dinamismo: bool | None = None,
     reserva_pos_ko: dict | None = None,
     textos_da_tela: dict | None = None,
     cores_da_tela: dict | None = None,
@@ -732,6 +733,10 @@ def gravar_luta(
 
     ``corrente_v2`` carimba a chave da corrente nova (bola fisica + enlace)
     no match_config; ``None`` nao carimba e a luta usa a corrente antiga.
+
+    ``dinamismo`` carimba a chave do afastamento do colado longo
+    (core/dinamismo.py, 21/10/2026); ``None`` nao carimba e vale o padrao do
+    motor (desligada), como toda luta gravada antes dela.
 
     ``cauda_pos_ko``: segundos gravados depois do K.O.; ``None`` (padrao) =
     ate a fanfarra de vitoria acabar (``cauda_pos_ko_de()``).
@@ -783,6 +788,9 @@ def gravar_luta(
     # a regeracao de uma luta antiga continua a mesma.
     if corrente_v2 is not None:
         match_config["corrente_v2"] = bool(corrente_v2)
+    # Dinamismo (core/dinamismo.py): o mesmo desenho — so quem grava pede.
+    if dinamismo is not None:
+        match_config["dinamismo"] = bool(dinamismo)
 
     extras = {}
     if roster_provider is not None:
@@ -942,6 +950,8 @@ def gravar_luta(
             # A chave da corrente que ESTA luta usou (carimbo ou padrao do
             # motor): quem grava o fight.json a guarda para re-simular igual.
             "corrente_v2": bool(getattr(sim, "corrente_v2", False)),
+            # idem para o dinamismo (o fight.json guarda para re-simular igual)
+            "dinamismo": sim.__dict__.get("_dinamismo") is not None,
             "cenario": cenario,
             "portrait": bool(match_config["portrait_mode"]),
             "resolucao": [largura, altura],
@@ -1057,6 +1067,12 @@ def build_parser() -> argparse.ArgumentParser:
                        default=None, help="carimba corrente_v2=True no match_config")
     chave.add_argument("--sem-corrente-v2", dest="corrente_v2", action="store_const", const=False,
                        help="carimba corrente_v2=False (a corrente antiga)")
+    # Chave do dinamismo (core/dinamismo.py), com a mesma regra da corrente.
+    dinamismo = parser.add_mutually_exclusive_group()
+    dinamismo.add_argument("--dinamismo", dest="dinamismo", action="store_const", const=True,
+                           default=None, help="carimba dinamismo=True no match_config")
+    dinamismo.add_argument("--sem-dinamismo", dest="dinamismo", action="store_const",
+                           const=False, help="carimba dinamismo=False (o motor de antes)")
     parser.add_argument("--reserva-pos-ko", type=tipo_reserva_pos_ko, default=None,
                         metavar="TOPO,SEGUNDOS[,HUD]",
                         help="letreiro do K.O. do video: borda de baixo (fracao da "
@@ -1153,6 +1169,7 @@ def main(argv: list[str] | None = None) -> int:
             anotar_som=not args.sem_som,
             timeline=args.timeline,
             corrente_v2=args.corrente_v2,
+            dinamismo=args.dinamismo,
             reserva_pos_ko=args.reserva_pos_ko,
             textos_da_tela=args.textos_da_tela,
             cores_da_tela=args.cores_da_tela,
