@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "21/10: o youtube_web clicava com o arquivo a 3-20% e fechava o navegador, o que corta o envio. 2 estreias de 19-20/10 públicas e vazias, 3 builds sumiram, 27 partes de história só no ledger. 0 duelos presos (38/38 processados), por sorte da frase do Studio.",
+  "criado": "2026-10-21T14:00:15.218438",
+  "depende_de": [],
+  "historico": [],
+  "id": "esperar-envio-terminar",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Cabe folgado antes do próximo horário (o menor intervalo da grade é de horas).",
+      "id": "dez",
+      "pede_comentario": false,
+      "rotulo": "Até 10 min; se não terminar, fica sem confirmação e vai para 'a conferir', sem [POSTADO] (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Rodada curta, mas um arquivo lento vira 'a conferir' mais vezes.",
+      "id": "tres",
+      "pede_comentario": false,
+      "rotulo": "Até 3 min"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Depois do clique em Publicar, quanto tempo a rodada espera o Studio dizer 'Envio concluído' antes de fechar o navegador?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Segurar o navegador até o envio do YouTube terminar",
+  "vigente": null
+}
