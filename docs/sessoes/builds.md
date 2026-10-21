@@ -1840,8 +1840,8 @@ duas réguas, −16,1/−15,7/−15,7 LUFS, pico ≤ −1,6 dBTP, nada congelado
 grude acabou, mas os lutadores encolheram ~40% na tela (centros a 4,67 m na
 mediana contra 2,63), a luta foi a 41–50 s e o corte de tédio pulou 16–24 s,
 os golpes por segundo caíram (2,46 → 2,04) e o fim arrastou com os dois
-afastados. Ajustes com chave (todos DESLIGADOS no padrão, que segue igual a
-`eb36ddbe` em 60/60): `DINAMISMO_HP_FIM` e `DINAMISMO_FIM_NO_ACABAR`
+afastados. Ajustes com chave (no commit 258fa565 todos desligados; o padrão
+de hoje é o da "causa, na IA", abaixo): `DINAMISMO_HP_FIM` e `DINAMISMO_FIM_NO_ACABAR`
 (desfecho sem separar), `DINAMISMO_SOLTO_FRACAO_RAIO` (o verbo de saída acaba
 quando os corpos já estão soltos), `DINAMISMO_SEM_GOLPE_S` (respiro só no
 colado sem golpe) e `DINAMISMO_ALCANCE_DIFERENCA_M` + `ASSIM_*` (alcances
@@ -1854,6 +1854,35 @@ desiguais). **Nenhuma combinação passa em tudo**, medido em ~25 variantes:
   sobe (+12 pp na variante mais suave nas 600, +17 só com o empurrão); a
   compensação por alcance (o curto não recua, empurrão pela metade) tirou
   3–7 pp e devolveu o colado.
+
+**A causa, na IA (decisão `builds/dinamismo-caminho` = "ia", 21/10 noite) —
+é o que vale hoje.** O golpe de perto acerta pelo raio DESENHADO
+(`hitbox`: tamanho/2 × `range_mult` + o raio desenhado do alvo: uma espada
+acerta com os centros a 2,7 m), mas a IA media o alcance pelo raio da FÍSICA
+(tamanho/4): armava o golpe abaixo de ~1,6 m e queria ficar a 0,7 m — com os
+discos desenhados se cobrindo. Com a chave (`DINAMISMO_IA`,
+`core/dinamismo.preparar_ia`), quem luta de perto (lâminas, Mágica, Orbital e
+a corrente antiga) mede como o golpe mede: arma o golpe a 95% do alcance
+real, fica com a borda a 0,8 m (`FAIXA_BORDA_M`; a corrente antiga a 1,2 m,
+no meio do anel) e, mais perto que 0,6 m, nenhum verbo empurra para dentro
+(sobra um passo para trás). O respiro ficou mínimo (só o colado SEM golpe há
+0,8 s, empurrão 6 m/s, solto em 1 raio, nada no desfecho < 12% de vida ou no
+plano ACABAR); choque e bate e sai DESLIGADOS. Pós-K.O. (só com a chave): o
+raio do último golpe se apaga (parava 2,4 s em cima do cartão: a cena
+pós-K.O. não roda `_atualizar_beams`) e o vencedor desliza para fora do disco
+do perdedor.
+
+Lote de 60 (base 8f51d7bd → IA na borda): maior colado 2,19 → 0,73 s na
+mediana e 9,63 → 2,82 s no pior; colado total 608 → 210 s (−65,6%); nenhuma
+> 90 s (máx. 76,2); golpes/s 2,46 → 2,48; maior trecho sem golpe 2,64 →
+2,61 s (mediana) e 8,75 → 5,58 s (pior); duração mediana 22,2 → 23,6 s;
+distância entre centros p50 2,63 → 2,96 m. Diâmetro na tela dos 3 vídeos de
+prova (`metricas_video.diametro_lutador_p50`): 0,237/0,225/0,254 (base
+0,253/0,221/0,244; o eb36ddbe dava 0,148/0,149/0,134). Classe em 1.200 lutas
+(lote de 600 + o mesmo com seed+1): maior variação +8,6 pp (Duelista), Mago
++0,8; ruído do motor velho 600 × 600 = 13,6 pp. Uma luta de 95 s nas 1.200
+(Gladiador Orbital × Cavaleiro Reta). Mesma seed 2x = mesma luta (60/60);
+chave desligada = base (60/60).
 
 O medidor ganhou golpes, golpes de 10+, golpes/s, maior trecho sem golpe,
 distância entre centros (p50) e a série de vida; o `comparar.py` da pasta de

@@ -2745,6 +2745,10 @@ class AIBrain:
             getattr(p.dados, "arma_obj", None), "tipo", ""
         ) == "Corrente":
             return
+        # Dinamismo (a IA na borda): quem luta de perto fica na faixa que o
+        # golpe alcança (core/dinamismo.faixa_da_borda), como a corrente V2.
+        if p.__dict__.get("dinamismo_faixa") is not None:
+            return
 
         # Ajusta alcance ideal baseado no matchup
         if perc["matchup_favoravel"] > 0.3:
@@ -4846,6 +4850,10 @@ class AIBrain:
         arma = p.dados.arma_obj if p.dados else None
         if not arma:
             return 2.0  # Fallback sem arma
+        faixa_borda = p.__dict__.get("dinamismo_faixa")
+        if faixa_borda is not None:
+            # Dinamismo (a IA na borda): o alcance que a hitbox acerta
+            return faixa_borda[2]
         
         tipo = arma.tipo
         raio = p.raio_fisico if hasattr(p, 'raio_fisico') else 0.4

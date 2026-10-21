@@ -129,7 +129,9 @@ class BateESaiTests(unittest.TestCase):
                                 _definir_acao=lambda *a, **kw: pedidos.append((a, kw)))
         return SimpleNamespace(brain=brain), pedidos
 
+    @mock.patch.object(config, "DINAMISMO_CHOQUE_SAIDA_S", 0.8)
     def test_quem_acerta_colado_recua_ou_circula_com_prioridade_0(self):
+        # desligado no padrão desde a IA na borda; a chave ainda funciona
         from neural_fights.simulation.simulacao import Simulador
 
         for mob, verbo in ((0.1, "RECUAR"), (0.8, "CIRCULAR")):
@@ -162,9 +164,11 @@ class ChavesDoAjusteTests(unittest.TestCase):
         quase = SimpleNamespace(vida=10.0, vida_max=100.0, brain=None)
         acabando = SimpleNamespace(vida=80.0, vida_max=100.0,
                                    brain=SimpleNamespace(plano={"tipo": "ACABAR"}))
-        # caso zero: as chaves desligadas (o padrão) não mudam nada
-        self.assertFalse(dinamismo.fase_final(vivo, quase))
-        self.assertFalse(dinamismo.fase_final(vivo, acabando))
+        # caso zero: as chaves desligadas não mudam nada
+        with mock.patch.object(config, "DINAMISMO_HP_FIM", None), \
+                mock.patch.object(config, "DINAMISMO_FIM_NO_ACABAR", False):
+            self.assertFalse(dinamismo.fase_final(vivo, quase))
+            self.assertFalse(dinamismo.fase_final(vivo, acabando))
         with mock.patch.object(config, "DINAMISMO_HP_FIM", 0.12):
             self.assertTrue(dinamismo.fase_final(vivo, quase))
             self.assertFalse(dinamismo.fase_final(vivo, vivo))
@@ -175,13 +179,15 @@ class ChavesDoAjusteTests(unittest.TestCase):
         a = _corpo(0.0, 0.0, dados=SimpleNamespace(tamanho=1.8))
         perto = _corpo(1.8 + 0.5, 0.0, dados=SimpleNamespace(tamanho=1.8))
         longe = _corpo(1.8 + 1.5, 0.0, dados=SimpleNamespace(tamanho=1.8))
-        self.assertFalse(dinamismo.soltos(a, longe))         # desligado
+        with mock.patch.object(config, "DINAMISMO_SOLTO_FRACAO_RAIO", None):
+            self.assertFalse(dinamismo.soltos(a, longe))     # desligado
         with mock.patch.object(config, "DINAMISMO_SOLTO_FRACAO_RAIO", 1.5):
             self.assertFalse(dinamismo.soltos(a, perto))      # borda 0,5 < 1,35
             self.assertTrue(dinamismo.soltos(a, longe))       # borda 1,5 > 1,35
 
     def test_respiro_so_no_colado_sem_golpe(self):
-        self.assertTrue(dinamismo.parado_sem_golpe({"t": 5.0, "t_golpe": 4.9}))
+        with mock.patch.object(config, "DINAMISMO_SEM_GOLPE_S", None):
+            self.assertTrue(dinamismo.parado_sem_golpe({"t": 5.0, "t_golpe": 4.9}))
         with mock.patch.object(config, "DINAMISMO_SEM_GOLPE_S", 0.6):
             self.assertFalse(dinamismo.parado_sem_golpe({"t": 5.0, "t_golpe": 4.9}))
             self.assertTrue(dinamismo.parado_sem_golpe({"t": 5.0, "t_golpe": 4.0}))
@@ -204,6 +210,92 @@ class ChavesDoAjusteTests(unittest.TestCase):
                 self.assertEqual(dinamismo.papel_de_alcance(arco, espada), "longo")
                 self.assertEqual(dinamismo.verbo_de_saida(espada, arco), "APROXIMAR")
                 self.assertIsNone(dinamismo.verbo_de_saida(arco, espada))
+
+
+class IaNaBordaTests(unittest.TestCase):
+    """A causa do grude: a IA media o alcance pelo raio da física."""
+
+    def _lutador(self, tipo, tamanho=1.8, **extra):
+        return SimpleNamespace(dados=SimpleNamespace(tamanho=tamanho,
+                                                     arma_obj=SimpleNamespace(tipo=tipo)),
+                               raio_fisico=tamanho / 4, **extra)
+
+    def test_alcance_e_o_da_hitbox_pelo_raio_desenhado(self):
+        from neural_fights.core.hitbox import HITBOX_PROFILES
+
+        espada, alvo = self._lutador("Reta"), self._lutador("Reta")
+        mult = HITBOX_PROFILES["Reta"]["range_mult"]
+        # hitbox.is_in_hitbox: raio desenhado × range_mult + o raio do alvo
+        self.assertAlmostEqual(dinamismo.alcance_do_golpe(espada, alvo), 0.9 * mult + 0.9)
+        # caso zero: a IA de antes media 0,45 × mult — metade
+        self.assertGreater(dinamismo.alcance_do_golpe(espada, alvo), 2 * espada.raio_fisico * mult)
+        self.assertIsNone(dinamismo.alcance_do_golpe(self._lutador("Arco"), alvo))
+        self.assertIsNone(dinamismo.alcance_do_golpe(
+            self._lutador("Corrente", corrente_v2=True), alvo))
+
+    def test_faixa_fica_onde_os_discos_quase_se_tocam(self):
+        espada, alvo = self._lutador("Reta"), self._lutador("Reta")
+        minimo, ideal, alcance = dinamismo.faixa_da_borda(espada, alvo)
+        contato = 1.8
+        self.assertAlmostEqual(minimo, contato + config.DINAMISMO_FAIXA_MIN_M)
+        self.assertGreater(ideal, contato + config.DINAMISMO_COLADO_FRACAO_RAIO * 0.9)
+        self.assertLess(ideal, alcance)
+        dinamismo.preparar_ia(espada, alvo)
+        self.assertEqual(espada.alcance_ideal, ideal)
+        arqueiro = self._lutador("Arco")
+        dinamismo.preparar_ia(arqueiro, alvo)
+        self.assertIsNone(dinamismo.faixa_de(arqueiro))
+
+    @unittest.skipUnless((FIXTURE / "personagens.json").is_file(), "fixture do dinamismo ausente")
+    def test_simulador_so_prepara_com_a_chave(self):
+        from neural_fights.simulation.headless import HeadlessMatchRunner
+
+        vistos = {}
+
+        class Sonda:
+            def on_inicio(self, sim):
+                vistos.setdefault("faixa", []).append(
+                    (dinamismo.faixa_de(sim.p1), dinamismo.faixa_de(sim.p2)))
+
+            def on_frame(self, sim, dt):
+                pass
+
+        for extra in ({"dinamismo": False}, {"dinamismo": True}):
+            HeadlessMatchRunner({"p1_nome": LOTE[1]["p1"], "p2_nome": LOTE[1]["p2"],
+                                 "cenario": "Poco", "best_of": 1, **extra},
+                                max_duration=0.2, seed=1, probe=Sonda(),
+                                roster_provider=_fonte().provider()).run()
+        desligada, ligada = vistos["faixa"]
+        self.assertEqual(desligada, (None, None))
+        self.assertTrue(any(f is not None for f in ligada))
+
+
+class PosKoTests(unittest.TestCase):
+    def _sim(self, distancia):
+        from neural_fights.simulation.simulacao import Simulador
+
+        sim = Simulador.__new__(Simulador)
+        corpo = dict(z=0.0, raio_fisico=0.45, dados=SimpleNamespace(tamanho=1.8))
+        sim.p1 = SimpleNamespace(pos=[5.0, 9.0], **corpo)
+        sim.p2 = SimpleNamespace(pos=[5.0 + distancia, 9.0], **corpo)
+        sim.vencedor_round_side = "p1"
+        sim.arena = ARENA
+        beam = SimpleNamespace(ativo=True, vida=0.15)
+        sim.beams = [beam]
+        return sim, beam
+
+    def test_raio_apaga_e_vencedor_sai_de_cima(self):
+        sim, beam = self._sim(0.6)
+        for _ in range(60):
+            sim._limpar_cena_pos_ko(DT)
+        self.assertFalse(beam.ativo)                 # o raio de 0,15 s não fica no cartão
+        self.assertGreaterEqual(dinamismo.borda(sim.p1, sim.p2), 0.15 - 1e-6)
+        self.assertEqual(sim.p2.pos, [5.6, 9.0])     # o perdedor não se mexe
+
+    def test_caso_zero_separados_nao_mexe(self):
+        sim, _ = self._sim(3.0)
+        sim._limpar_cena_pos_ko(DT)
+        self.assertEqual(sim.p1.pos, [5.0, 9.0])
 
 
 class ChaveDaLutaTests(unittest.TestCase):
@@ -247,7 +339,7 @@ class SimuladorTests(unittest.TestCase):
     def test_ligada_tem_o_relogio(self):
         visto = self._estado({"dinamismo": True})
         self.assertTrue(visto["inicio"])
-        self.assertEqual(set(visto["frame"]), {"colado_t", "recarga", "t"})
+        self.assertLessEqual({"colado_t", "recarga", "t"}, set(visto["frame"]))
 
 
 def _fonte():
@@ -321,9 +413,16 @@ class MetasNoLoteTests(unittest.TestCase):
         # caso zero: a chave mudou a luta (a medida compara algo de verdade)
         self.assertNotEqual(self.medidas[True][0], self.medidas[False][0])
 
-    def test_chave_ligada_afasta_e_choca(self):
-        self.assertTrue(all(m["respiros"] > 0 for m in self.medidas[True]))
-        self.assertTrue(any(m["choques"] > 0 for m in self.medidas[True]))
+    def test_chave_ligada_poe_a_ia_na_borda(self):
+        # A causa (IA na borda) responde pelo grosso: o respiro é raro e o
+        # choque e o bate e sai estão desligados no padrão.
+        self.assertTrue(all(m["choques"] == 0 for m in self.medidas[True]))
+        self.assertLess(sum(m["respiros"] for m in self.medidas[True]),
+                        2 * len(self.medidas[True]))
+        # o golpe não cai: a IA bate da borda em vez de entrar no outro
+        antes = statistics.fmean(m["golpes_por_s"] for m in self.medidas[False])
+        depois = statistics.fmean(m["golpes_por_s"] for m in self.medidas[True])
+        self.assertGreaterEqual(depois, 0.95 * antes, (antes, depois))
 
     def test_caso_zero_sem_a_chave_cola_muito(self):
         antes = self.medidas[False]

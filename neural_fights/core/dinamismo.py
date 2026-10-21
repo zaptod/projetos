@@ -255,6 +255,96 @@ def papel_de_alcance(lutador, outro) -> str | None:
     return None
 
 
+# --------------------------------------------------------------- a IA na borda
+#
+# A CAUSA do grude (21/10/2026, decisão ``builds/dinamismo-caminho`` = "ia"):
+# o golpe corpo a corpo acerta pelo raio DESENHADO (``hitbox``: raio_char =
+# tamanho/2 × range_mult, contra o disco desenhado do alvo), mas a IA mede o
+# alcance pelo raio da FÍSICA (tamanho/4 × range_mult). Uma espada acerta com
+# os centros a 2,7 m e a IA só armava o golpe abaixo de ~1,6 m e queria ficar
+# a 0,7 m: com os discos desenhados se cobrindo. Com a chave, a IA mede como o
+# golpe mede e fica na faixa em que os discos quase se tocam.
+
+TIPOS_DE_PERTO = ("Reta", "Dupla", "Transformável", "Mágica", "Orbital")
+
+
+def _tipo(lutador) -> str:
+    return str(getattr(getattr(getattr(lutador, "dados", None), "arma_obj", None), "tipo", "") or "")
+
+
+def _corrente_antiga(lutador) -> bool:
+    return "Corrente" in _tipo(lutador) and not getattr(lutador, "corrente_v2", False)
+
+
+def de_perto(lutador) -> bool:
+    """Arma que acerta pela hitbox: as lâminas, a área, o orbital e a
+    corrente antiga (a V2 tem o anel da bola, ``core/corrente.alcances``)."""
+    tipo = _tipo(lutador)
+    return any(t in tipo for t in TIPOS_DE_PERTO) or _corrente_antiga(lutador)
+
+
+def alcance_do_golpe(lutador, alvo) -> float | None:
+    """Distância entre CENTROS (m) até onde o golpe de perto acerta: a mesma
+    conta do ``hitbox.is_in_hitbox`` (raio desenhado × range_mult + o raio
+    desenhado do alvo). ``None`` para arma que não é de perto."""
+    if not de_perto(lutador):
+        return None
+    tipo = lutador.dados.arma_obj.tipo
+    try:
+        from neural_fights.core.hitbox import HITBOX_PROFILES
+
+        perfil = next((v for k, v in HITBOX_PROFILES.items() if k in tipo), HITBOX_PROFILES["Reta"])
+        mult = float(perfil.get("range_mult", 2.0))
+    except Exception:
+        mult = 2.0
+    if _corrente_antiga(lutador):
+        # hitbox._colisao_arco: o anel vai até alcance + 1,5 raio do alvo
+        return raio_desenhado(lutador) * mult + 1.5 * raio_desenhado(alvo)
+    return raio_desenhado(lutador) * mult + raio_desenhado(alvo)
+
+
+def faixa_da_borda(lutador, alvo) -> tuple[float, float, float] | None:
+    """``(minimo, ideal, alcance)`` em distância entre centros para quem
+    luta de perto: abaixo de ``minimo`` (borda < ``DINAMISMO_FAIXA_MIN_M``) a
+    IA sai de dentro do outro; ``ideal`` = borda ``DINAMISMO_FAIXA_BORDA_M``,
+    nunca além de ``DINAMISMO_FAIXA_FRACAO`` do que o golpe alcança."""
+    from neural_fights.utils.config import (
+        DINAMISMO_FAIXA_BORDA_M,
+        DINAMISMO_FAIXA_FRACAO,
+        DINAMISMO_FAIXA_MIN_M,
+    )
+
+    alcance = alcance_do_golpe(lutador, alvo)
+    if alcance is None:
+        return None
+    from neural_fights.utils.config import DINAMISMO_FAIXA_BORDA_CORRENTE_M
+
+    contato = raio_desenhado(lutador) + raio_desenhado(alvo)
+    borda_max = max(0.0, alcance - contato)
+    borda = DINAMISMO_FAIXA_BORDA_CORRENTE_M if _corrente_antiga(lutador) else DINAMISMO_FAIXA_BORDA_M
+    ideal = contato + min(borda, borda_max * DINAMISMO_FAIXA_FRACAO)
+    minimo = min(ideal, contato + DINAMISMO_FAIXA_MIN_M)
+    return minimo, ideal, alcance
+
+
+def preparar_ia(lutador, alvo) -> None:
+    """Liga a IA na borda (chamado pelo Simulador com as duas chaves).
+
+    Grava ``dinamismo_faixa`` = (minimo, ideal, alcance) e o ``alcance_ideal``
+    de quem luta de perto; quem atira (Arco, Arremesso) e a corrente seguem
+    como estão."""
+    faixa = faixa_da_borda(lutador, alvo)
+    if faixa is None:
+        return
+    lutador.dinamismo_faixa = faixa
+    lutador.alcance_ideal = faixa[1]
+
+
+def faixa_de(lutador):
+    """A faixa da borda deste lutador, ou ``None`` (chave desligada / não é de perto)."""
+    return getattr(lutador, "__dict__", {}).get("dinamismo_faixa")
+
+
 def pode_ser_empurrado(lutador) -> bool:
     """Quem tem a velocidade zerada pelo próprio estado não sai do lugar."""
     if getattr(lutador, "morto", False):
@@ -373,6 +463,11 @@ __all__ = [
     "CHAVE",
     "acumular",
     "alcance_da_arma",
+    "alcance_do_golpe",
+    "de_perto",
+    "faixa_da_borda",
+    "faixa_de",
+    "preparar_ia",
     "borda",
     "chave_ligada",
     "colados",

@@ -452,6 +452,12 @@ class Simulador:
         self.__dict__.pop("_dinamismo", None)
         if _dinamismo.chave_ligada(self.match_config):
             self._dinamismo = {"colado_t": 0.0, "recarga": 0.0, "t": 0.0}
+            from neural_fights.utils.config import DINAMISMO_IA
+            if DINAMISMO_IA:
+                # A causa (core/dinamismo, "a IA na borda"): a IA mede o
+                # alcance como o golpe mede e fica onde os discos quase se tocam.
+                _dinamismo.preparar_ia(self.p1, self.p2)
+                _dinamismo.preparar_ia(self.p2, self.p1)
 
         self.particulas = []; self.decals = []; self.textos = []; self.shockwaves = []; self.projeteis = []
         self.impact_flashes = []; self.magic_clashes = []; self.block_effects = []
@@ -791,6 +797,9 @@ class Simulador:
         # lia get_ticks()/time.time() e continuava animando com o jogo
         # congelado.
         self.tempo_visual += dt
+        if self.__dict__.get("_dinamismo") is not None:
+            self._limpar_cena_pos_ko(dt)
+
         # Camada C (atmosfera) congela no hit-stop e no letterbox.
         gf = getattr(self, "game_feel", None)
         self.budget.congelado = bool(
@@ -4111,6 +4120,40 @@ class Simulador:
         my = (p1.pos[1] + p2.pos[1]) / 2 * PPM
         self.shockwaves.append(Shockwave(mx, my, (210, 210, 220), 1.0))
         self.cam.aplicar_shake(5.0, 0.12)
+
+    def _limpar_cena_pos_ko(self, dt):
+        """Depois do K.O. (lutas com a chave do dinamismo, conferente 21/10):
+
+        - o raio (Beam) do último golpe parava no ar: a cena pós-K.O. não
+          roda ``_atualizar_beams`` e o raio de 0,15 s ficava 2,4 s em cima
+          do cartão final. Aqui ele só se apaga (sem acerto novo);
+        - o vencedor que terminou a luta em cima do perdedor desliza para
+          fora do disco desenhado dele (no máximo ``DINAMISMO_POS_KO_MS``),
+          em vez de cobri-lo no cartão. Sem sorteio; a luta já acabou."""
+        from neural_fights.utils.config import DINAMISMO_POS_KO_MS
+
+        for beam in getattr(self, "beams", []) or []:
+            if getattr(beam, "ativo", False):
+                beam.vida = float(getattr(beam, "vida", 0.0)) - dt
+                if beam.vida <= 0.0:
+                    beam.ativo = False
+        lado = getattr(self, "vencedor_round_side", None)
+        if lado not in ("p1", "p2") or DINAMISMO_POS_KO_MS <= 0.0:
+            return
+        vencedor = getattr(self, lado)
+        perdedor = self.p2 if lado == "p1" else self.p1
+        falta = 0.15 - _dinamismo.borda(vencedor, perdedor)
+        if falta <= 0.0:
+            return
+        dx = vencedor.pos[0] - perdedor.pos[0]
+        dy = vencedor.pos[1] - perdedor.pos[1]
+        n = math.hypot(dx, dy)
+        if n < 1e-9:
+            dx, dy, n = 0.0, -1.0, 1.0
+        passo = min(falta, DINAMISMO_POS_KO_MS * dt)
+        ux, uy = _dinamismo.direcao_de_saida(vencedor, dx / n, dy / n, self.arena)
+        vencedor.pos[0] += ux * passo
+        vencedor.pos[1] += uy * passo
 
     def _soltar_saidas(self, est):
         """Encerra o hold P0 de quem o dinamismo mandou sair, assim que os

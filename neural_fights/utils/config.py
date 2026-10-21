@@ -170,20 +170,20 @@ CORRENTE_V2 = False
 # lutas novas (runner.chave_dinamismo_padrao).
 DINAMISMO = False
 DINAMISMO_COLADO_FRACAO_RAIO = 0.5
-DINAMISMO_COLADO_MAX_S = 0.3
+DINAMISMO_COLADO_MAX_S = 0.8      # respiro: so o grude parado (com SEM_GOLPE_S)
 DINAMISMO_ESQUECE_FATOR = 2.0
-DINAMISMO_EMPURRAO = 16.0      # m/s; com ATRITO 8 -> ~2 m de cada lado
+DINAMISMO_EMPURRAO = 6.0       # m/s; com ATRITO 8 -> ~0,75 m de cada lado (era 16: a camera abria)
 DINAMISMO_RESPIRO_S = 0.45     # hold P0 do verbo de saida
 DINAMISMO_RECARGA_S = 0.4      # entre dois afastamentos
 DINAMISMO_ATE_S = 60.0         # depois disto (s de luta) o corpo a corpo fecha a luta
 DINAMISMO_PAREDE_M = 0.35      # folga da parede para nao empurrar contra ela
 # Choque: golpe corpo a corpo que acerta com os discos colados descola os
 # dois (o defensor sai com pelo menos KB_MIN para longe; o atacante recua).
-DINAMISMO_CHOQUE_KB_MIN = 18.0
-DINAMISMO_CHOQUE_RECUO = 9.0
+DINAMISMO_CHOQUE_KB_MIN = 0.0   # choque DESLIGADO desde a IA na borda (era 18)
+DINAMISMO_CHOQUE_RECUO = 0.0    # (era 9)
 # Bate e sai: depois do choque, quem acertou recua/circula por SAIDA_S (hold
 # P0 da IA); 0 desliga.
-DINAMISMO_CHOQUE_SAIDA_S = 0.8
+DINAMISMO_CHOQUE_SAIDA_S = 0.0  # bate e sai DESLIGADO (era 0,8: menos golpe, fim arrastado)
 # Alcances desiguais (core/dinamismo.papel_de_alcance): separar os corpos da
 # distancia de graca a quem bate de longe (o Mago foi de 27% a 49%). Com as
 # armas a ALCANCE_DIFERENCA_M ou mais de distancia de alcance (None desliga):
@@ -194,11 +194,25 @@ DINAMISMO_ALCANCE_DIFERENCA_M = None
 # Desfecho (core/dinamismo.fase_final): abaixo de HP_FIM da vida (ou no plano
 # ACABAR) nada separa. Solto (core/dinamismo.soltos): borda acima de
 # SOLTO_FRACAO_RAIO x raio desenhado medio encerra o verbo de saida. None desliga.
-DINAMISMO_HP_FIM = None
-DINAMISMO_FIM_NO_ACABAR = False   # o plano ACABAR tambem e desfecho
+DINAMISMO_HP_FIM = 0.12
+# A IA na borda (core/dinamismo.preparar_ia, a CAUSA do grude): a IA de perto
+# mede o alcance pela hitbox (raio desenhado) e fica com a borda entre os
+# discos desenhados em FAIXA_BORDA_M (nunca alem de FAIXA_FRACAO do que o
+# golpe alcanca); abaixo de FAIXA_MIN_M ela sai (avanco -FAIXA_RECUO); o golpe
+# arma a FAIXA_GATILHO do alcance real.
+DINAMISMO_IA = True
+# Pos-K.O.: o vencedor sai de cima do perdedor a ate POS_KO_MS m/s (0 desliga).
+DINAMISMO_POS_KO_MS = 3.0
+DINAMISMO_FAIXA_BORDA_M = 0.8
+DINAMISMO_FAIXA_BORDA_CORRENTE_M = 1.2   # a corrente antiga bate do meio do anel
+DINAMISMO_FAIXA_FRACAO = 0.8
+DINAMISMO_FAIXA_MIN_M = 0.6
+DINAMISMO_FAIXA_RECUO = 1.0
+DINAMISMO_FAIXA_GATILHO = 0.95
+DINAMISMO_FIM_NO_ACABAR = True    # o plano ACABAR tambem e desfecho
 # Respiro so no colado SEM golpe corpo a corpo ha SEM_GOLPE_S (None = sempre).
-DINAMISMO_SEM_GOLPE_S = None
-DINAMISMO_SOLTO_FRACAO_RAIO = None
+DINAMISMO_SEM_GOLPE_S = 0.8
+DINAMISMO_SOLTO_FRACAO_RAIO = 1.0
 DINAMISMO_ASSIM_EMPURRAO = 1.0
 DINAMISMO_ASSIM_CHOQUE = 1.0
 DINAMISMO_ASSIM_VERBO_CURTO = "padrao"

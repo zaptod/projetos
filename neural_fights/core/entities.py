@@ -2418,14 +2418,24 @@ class Lutador:
             # congelar — o freio x0.2 da 8G parava o corpo, e o cara-a-cara
             # era isso. A componente lateral domina; sobra 10% de avanço.
             zona_contato = max(0.9, self.alcance_ideal * 0.8)
+            # Dinamismo (a IA na borda): em cima do alvo = na faixa onde os
+            # discos DESENHADOS quase se tocam; mais perto que o mínimo, o
+            # verbo ofensivo orbita SAINDO em vez de avançar 10%.
+            faixa_borda = self.__dict__.get("dinamismo_faixa")
+            avanco = 0.1
+            if faixa_borda is not None:
+                zona_contato = faixa_borda[1]
+                if distancia < faixa_borda[0]:
+                    from neural_fights.utils.config import DINAMISMO_FAIXA_RECUO
+                    avanco = -DINAMISMO_FAIXA_RECUO
             alvo_atordoado = (
                 getattr(getattr(self, "_inimigo_atual", None), "stun_timer", 0.0) or 0.0
             ) > 0.0
             if distancia < zona_contato and not alvo_atordoado:
                 dir_c = getattr(self.brain, "dir_circular", 1) or 1
                 rad_lat = math.radians(self.angulo_olhar + 90 * dir_c)
-                mx = math.cos(rad_lat) * mult * 0.6 + mx * mult * 0.1
-                my = math.sin(rad_lat) * mult * 0.6 + my * mult * 0.1
+                mx = math.cos(rad_lat) * mult * 0.6 + mx * mult * avanco
+                my = math.sin(rad_lat) * mult * 0.6 + my * mult * avanco
             else:
                 mx *= mult
                 my *= mult
@@ -2573,6 +2583,18 @@ class Lutador:
         ):
             self.vel_z = self.rng_runtime.uniform(8.0, 11.0)
 
+        # Dinamismo (a IA na borda): dentro do mínimo da faixa, verbo NENHUM
+        # empurra para dentro do outro — a componente para a frente sai e
+        # sobra um passo para trás (o lado e o pulo ficam). Sem sorteio.
+        faixa_borda = self.__dict__.get("dinamismo_faixa")
+        if faixa_borda is not None and distancia < faixa_borda[0]:
+            from neural_fights.utils.config import DINAMISMO_FAIXA_RECUO
+            fx, fy = math.cos(rad), math.sin(rad)
+            frente = mx * fx + my * fy
+            if frente > -DINAMISMO_FAIXA_RECUO:
+                mx += (-DINAMISMO_FAIXA_RECUO - frente) * fx
+                my += (-DINAMISMO_FAIXA_RECUO - frente) * fy
+
         self.vel[0] += mx * acc * dt
         self.vel[1] += my * acc * dt
 
@@ -2697,6 +2719,14 @@ class Lutador:
             if arma_tipo == "Corrente" and getattr(self, "corrente_v2", False):
                 from neural_fights.core import corrente as _corrente
                 alcance_ataque = _corrente.alcances(self)["max"]
+
+            # Dinamismo (21/10/2026, a IA na borda): o golpe de perto arma
+            # quando o alvo está no alcance REAL da hitbox (raio desenhado),
+            # não no da física — sem isto a IA entrava no outro para bater.
+            faixa_borda = self.__dict__.get("dinamismo_faixa")
+            if faixa_borda is not None:
+                from neural_fights.utils.config import DINAMISMO_FAIXA_GATILHO
+                alcance_ataque = faixa_borda[2] * DINAMISMO_FAIXA_GATILHO
 
             # Ajustes APENAS para armas ranged (não sobrescreve corpo-a-corpo!)
             # Onda 4: fonte única no catálogo de tipos. O motor disparava de
