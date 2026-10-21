@@ -3,7 +3,14 @@
   "contexto": "Pedido do Adrian 21/10: menos tempo colado. Tempo colado -51,8%, pior trecho 9,63→1,92 s no lote de 60. Duelo previsível ('o mago sempre ganha') tira a graça do 'who wins?'.",
   "criado": "2026-10-21T15:06:32.255639",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+      "em": "2026-10-21T15:06:34",
+      "opcao": "compensar",
+      "origem": "cli"
+    }
+  ],
   "id": "dinamismo-mago-mais-forte",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "Com o 'bate e sai' (quem acerta colado recua 0,8 s), o Mago foi de 27,1% para 49,2% de vitórias em 600 lutas (+22 pp; ruído do motor = 13,6 pp). Aceitar ou compensar?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Lutas sem colar deixaram o Mago mais forte",
-  "vigente": null
+  "vigente": {
+    "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+    "em": "2026-10-21T15:06:34",
+    "opcao": "compensar"
+  }
 }
