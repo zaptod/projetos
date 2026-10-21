@@ -3,7 +3,15 @@
   "contexto": "Ficaram assim porque o navegador fechava no meio do envio (conserto em andamento). Estão públicos mas sem vídeo. Apagar não tem volta. Reenviar estreia contraria a decisão duelo-no-lugar-da-estreia. Nenhum é duelo.",
   "criado": "2026-10-21T14:00:37.146360",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "aparelho": "614c026b",
+      "comentario": "",
+      "em": "2026-10-21T14:50:12",
+      "opcao": "apagar",
+      "origem": "app"
+    }
+  ],
   "id": "videos-presos-no-canal",
   "midias": [],
   "opcoes": [
@@ -27,7 +35,11 @@
   },
   "pergunta": "Apagar do YouTube os 2 estreias públicas e vazias (8Rp3WUDsBgA, CHogZyWtA8I, presas em 'processando' desde 19-20/10) e os 3 builds com 'Processamento interrompido'?",
   "projeto": "publicacao",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Apagar do canal os vídeos que ficaram vazios",
-  "vigente": null
+  "vigente": {
+    "comentario": "",
+    "em": "2026-10-21T14:50:12",
+    "opcao": "apagar"
+  }
 }
