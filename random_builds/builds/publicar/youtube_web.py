@@ -1227,6 +1227,72 @@ def falha_do_envio(laudo: dict, abertura_s: float) -> str:
     return ("infraestrutura: " + frase) if de_rede else frase
 
 
+# ARQUIVO ENTREGUE -> CAMPO DE TITULO. Medido no postar.txt, 20 envios de
+# 19 a 21/10/2026: de 3 a 17 s. Ate 21/10 a espera era `_primeiro(...,
+# timeout=60)`, que e 60 s POR SELETOR: com os 4 de CAMPO_TITULO ausentes,
+# 240 s calados (09:41:17 -> 09:45:19 no duelo_00132, `dur_s` 257,5) e nenhuma
+# foto. Agora e UM prazo para a lista inteira, e a falha sai com a tela.
+ESPERA_DETALHES_S = 90.0
+DIALOGO_DE_ENVIO = "ytcp-uploads-dialog"
+
+
+def _esperar_detalhes(page, seletores=CAMPO_TITULO,
+                      prazo_s: float = ESPERA_DETALHES_S):
+    """O campo de titulo da tela de detalhes, ou None. Nunca levanta.
+
+    Um prazo so para todos os seletores (pergunta a cada ~1 s). O teto de
+    voltas e a rede de seguranca do relogio: cada volta dorme 1 s de
+    verdade, entao `prazo_s` voltas nunca terminam antes do prazo.
+    """
+    limite = time.monotonic() + prazo_s
+    for _volta in range(int(prazo_s) + 1):
+        for seletor in seletores:
+            try:
+                alvo = page.locator(seletor).first
+                if alvo.is_visible():
+                    return alvo
+            except Exception:                                  # noqa: BLE001
+                continue
+        if time.monotonic() >= limite:
+            break
+        time.sleep(1.0)
+    return None
+
+
+def _texto_do_dialogo(page) -> str:
+    """O texto do dialogo de envio (300 caracteres), ou "". Nunca levanta."""
+    try:
+        alvo = page.locator(DIALOGO_DE_ENVIO).first
+        if alvo.count():
+            return " ".join((alvo.inner_text(timeout=2000) or "").split())[:300]
+    except Exception:                                          # noqa: BLE001
+        pass
+    return ""
+
+
+def falha_dos_detalhes(espera_s: float, texto: str = "",
+                       tela: str = "") -> str:
+    """A frase de "entreguei o arquivo e a tela de detalhes nao veio". Pura.
+
+    NAO e `infraestrutura:`: nao ha medida de rede (a pagina abriu rapido —
+    16 s no caso de 21/10), e a causa so a foto diz. O comeco da frase e o
+    mesmo de antes de 21/10, para quem ja procura por ele no postar.txt.
+
+    A FOTO VEM ANTES DO TEXTO, e so com o nome do arquivo: o postar.txt, o
+    Telegram e o diario cortam o erro em 200 caracteres (`falha_yt[:200]`,
+    `atividade` `[:200]`), e "YouTubeWebFalhou: " + a frase com o caminho
+    inteiro no fim passava de 200 — o caminho da foto era justamente o que
+    sumia. A pasta e uma so (`escrita.PASTA_DAS_TELAS`).
+    """
+    frase = (f"a tela de detalhes nao apareceu em {espera_s:.0f} s "
+             "(o upload nao comecou?).")
+    if tela:
+        frase += f" Tela: telas/{Path(tela).name}."
+    if texto:
+        frase += f" Dialogo: {texto[:200]}"
+    return frase
+
+
 def publicar(video, *, visibilidade: str | None = None,
              postar: bool | None = None, config: dict | None = None,
              canal: str = "builds", agendar_para: str | None = None,
@@ -1359,10 +1425,25 @@ def publicar(video, *, visibilidade: str | None = None,
         if aviso:
             raise LimiteDiarioDoYouTube(aviso)
 
-        titulo = _primeiro(page, CAMPO_TITULO, timeout=60.0)
+        # A ESPERA E UMA SO, e a falha leva a tela (21/10/2026, 09:37 dos
+        # builds): 240 s de espera, nenhuma foto, e nao dava para dizer se
+        # era cota, dialogo novo do Studio ou pagina travada.
+        comeco_dos_detalhes = time.monotonic()
+        # `CAMPO_TITULO` escrito aqui DE PROPOSITO: o contrato
+        # `test_a_cota_e_perguntada_LOGO_DEPOIS_do_envio` (historias) le o
+        # fonte e exige a cota antes da espera pelo titulo.
+        titulo = _esperar_detalhes(page, CAMPO_TITULO)
         if titulo is None:
-            raise YouTubeWebFalhou(
-                "a tela de detalhes nao apareceu (o upload nao comecou?).")
+            # A cota pode aparecer DEPOIS da pergunta logo apos o envio.
+            aviso = _bateu_o_limite(page)
+            if aviso:
+                raise LimiteDiarioDoYouTube(aviso)
+            espera_s = time.monotonic() - comeco_dos_detalhes
+            texto = _texto_do_dialogo(page)
+            tela = escrita.fotografar(page, "youtube_sem_detalhes")
+            laudo["detalhes_nao_vieram"] = {
+                "espera_s": round(espera_s, 1), "texto": texto, "tela": tela}
+            raise YouTubeWebFalhou(falha_dos_detalhes(espera_s, texto, tela))
         # O MODO VAI PARA O LAUDO (e dele para o ledger): "digitado" quer
         # dizer que a colagem nao pegou no Studio e o tecla a tecla assumiu.
         # E a unica forma de saber, depois, se o Studio mudou o campo.
