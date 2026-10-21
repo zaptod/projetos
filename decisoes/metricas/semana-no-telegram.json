@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Coletor novo (ramo metricas/coletor-sozinho) calcula a medida da semana do PLANO sozinho; o Adrian não quer ler número à mão (medir-sozinho-nao-perguntar).",
+  "criado": "2026-10-21T10:35:18.126972",
+  "depende_de": [],
+  "historico": [],
+  "id": "semana-no-telegram",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "diario",
+      "pede_comentario": false,
+      "rotulo": "Todo dia às 21:05 pelo bot (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "",
+      "id": "sob-pedido",
+      "pede_comentario": false,
+      "rotulo": "Só quando alguém mandar /semana"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "O relatório /semana (comparação na mesma idade, com rótulo de certeza) sai sozinho todo dia?",
+  "projeto": "metricas",
+  "situacao": "pendente",
+  "titulo": "Medida da semana no Telegram todo dia",
+  "vigente": null
+}

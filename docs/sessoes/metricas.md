@@ -58,6 +58,9 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 - ✅ **Objetivo único por 30 dias: Neural Fights crescer** — Seguir só o docs/PLANO.md: duelos do Neural Fights, 3.000 views/dia, 150 inscritos, 1 vídeo >100 mil, uma mudança medida por semana (20/10/2026) · “Decisão do Adrian no chat, 20/10/2026: 'quero que comece hoje ... quero seguir apenas esse plano.'” `objetivo-unico-neural-fights`
 - ✅ **Canal de duelos em inglês** — Só o que o público vê em inglês (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `canal-em-ingles`
 
+**Métricas**
+- ⏳ **Medida da semana no Telegram todo dia** — O relatório /semana (comparação na mesma idade, com rótulo de certeza) sai sozinho todo dia? `semana-no-telegram`
+
 <!-- decisoes:fim -->
 
 Documento de passagem. A fotografia do §2 é de 27/09/2026; o que foi medido
