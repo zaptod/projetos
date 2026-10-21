@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Pedido do Adrian 21/10: movimento e dinamismo, sem ficar colado. Base: pior trecho colado 9,63 s, mediana 2,19 s. eb36ddbe reprovado pelo conferente (lutador 40% menor, final arrastado, Mago +22 pp).",
+  "criado": "2026-10-21T15:57:15.189402",
+  "depende_de": [],
+  "historico": [],
+  "id": "dinamismo-caminho",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O que o Adrian pediu de verdade. Trabalho maior; muda o equilíbrio de todas as classes, medido no lote de 600.",
+      "id": "ia",
+      "pede_comentario": false,
+      "rotulo": "Atacar a causa na IA: golpe de perto sai na borda, sem colar (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Pior trecho 9,6->6,5 s, colado -29%, golpes quase iguais.",
+      "id": "denso",
+      "pede_comentario": false,
+      "rotulo": "Afrouxar a meta (s3): luta densa, grude só diminui"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Colado -44%, pior 2,3 s, golpes -12%, Mago +12 pp.",
+      "id": "solto",
+      "pede_comentario": false,
+      "rotulo": "Manter a meta (u5): quase sem grude, menos golpes"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Nenhuma de ~25 variantes do 'respiro' passa em tudo: 51% dos golpes saem com os lutadores colados, porque o alcance ideal do corpo a corpo (1,2-2,2 m) fica dentro do contato dos discos. Qual caminho?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Lutas sem colar: afrouxar a meta ou mexer na IA",
+  "vigente": null
+}
