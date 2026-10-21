@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T13:26:58",
+      "evento": "2026-10-21T13:26:38",
+      "linha": 206,
+      "nota": "comportamento atual mantido",
+      "opcao": "nao",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Aconteceu 3 vezes no postar.txt inteiro. Repetir teria salvo o 09:37, mas se o upload começou sem aparecer sobra rascunho duplicado no canal. Hoje o duelo volta à fila e sai no próximo horário; o conserto 4e43d020 passa a tirar foto da tela na falha.",
   "criado": "2026-10-21T13:26:27.198705",
   "depende_de": [],
