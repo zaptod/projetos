@@ -120,6 +120,40 @@ class ContasPurasTests(unittest.TestCase):
         self.assertEqual(dinamismo.verbo_de_saida(SimpleNamespace()), "RECUAR")
 
 
+class BateESaiTests(unittest.TestCase):
+    """Quem acerta colado sai (``Simulador._sair_depois_do_choque``)."""
+
+    def _atacante(self, mobilidade):
+        pedidos = []
+        brain = SimpleNamespace(perfil={"mobilidade": mobilidade},
+                                _definir_acao=lambda *a, **kw: pedidos.append((a, kw)))
+        return SimpleNamespace(brain=brain), pedidos
+
+    def test_quem_acerta_colado_recua_ou_circula_com_prioridade_0(self):
+        from neural_fights.simulation.simulacao import Simulador
+
+        for mob, verbo in ((0.1, "RECUAR"), (0.8, "CIRCULAR")):
+            atacante, pedidos = self._atacante(mob)
+            Simulador._sair_depois_do_choque(None, atacante, -9.0, 0.0)
+            self.assertEqual(len(pedidos), 1)
+            (acao,), kw = pedidos[0]
+            self.assertEqual(acao, verbo)
+            self.assertEqual(kw["prioridade"], 0)
+            self.assertEqual(kw["hold_s"], config.DINAMISMO_CHOQUE_SAIDA_S)
+
+    def test_caso_zero_sem_recuo_ou_desligado_nao_mexe_na_ia(self):
+        from neural_fights.simulation.simulacao import Simulador
+
+        atacante, pedidos = self._atacante(0.1)
+        # sem recuo (o atacante não pode ser empurrado): a IA segue a dela
+        Simulador._sair_depois_do_choque(None, atacante, 0.0, 0.0)
+        with mock.patch.object(config, "DINAMISMO_CHOQUE_SAIDA_S", 0.0):
+            Simulador._sair_depois_do_choque(None, atacante, -9.0, 0.0)
+        self.assertEqual(pedidos, [])
+        # sem cérebro (boneco de treino): nada quebra
+        Simulador._sair_depois_do_choque(None, SimpleNamespace(), -9.0, 0.0)
+
+
 class ChaveDaLutaTests(unittest.TestCase):
     def test_ausente_vale_o_padrao_desligado(self):
         self.assertFalse(config.DINAMISMO)
@@ -219,6 +253,21 @@ class MetasNoLoteTests(unittest.TestCase):
         self.assertEqual(digitais, DIGITAL_ANTES)
         self.assertTrue(all(m["respiros"] == 0 and m["choques"] == 0
                             for m in self.medidas[False]))
+
+    def test_mesma_seed_mesma_luta_duas_vezes(self):
+        # O afastamento e o bate e sai não sorteiam: a mesma seed refaz a
+        # mesma luta, medida inteira (vencedor, HP, golpes, colado, passos).
+        from neural_fights.tools.dinamismo_luta import medir_luta
+
+        fonte = _fonte()
+        for indice in (0, 3):
+            item = LOTE[indice]
+            de_novo = medir_luta(item["p1"], item["p2"], item["seed"], item["cenario"],
+                                 extra_config={"dinamismo": True},
+                                 roster_provider=fonte.provider())
+            self.assertEqual(de_novo, self.medidas[True][indice])
+        # caso zero: a chave mudou a luta (a medida compara algo de verdade)
+        self.assertNotEqual(self.medidas[True][0], self.medidas[False][0])
 
     def test_chave_ligada_afasta_e_choca(self):
         self.assertTrue(all(m["respiros"] > 0 for m in self.medidas[True]))

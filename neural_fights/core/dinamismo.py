@@ -19,7 +19,15 @@ e nenhum stream de RNG anda a mais):
   componente que empurraria contra a parede vira deslize ao longo dela, e
   no canto o corpo sai para o centro da arena;
 - ``impulsos``: quanto cada um anda; quem não pode se mexer (agarrado,
-  dormindo, canalizando parado) deixa o impulso inteiro para o outro.
+  dormindo, canalizando parado) deixa o impulso inteiro para o outro;
+- ``impulso_do_choque``: golpe que acerta colado descola os dois, e quem
+  acertou "bate e sai" (``Simulador._sair_depois_do_choque``: recua ou
+  circula por ``DINAMISMO_CHOQUE_SAIDA_S``).
+
+Medido no lote de 60 lutas (31 duelos da fila de 21/10 + 29 sorteados),
+motor de ``8f51d7bd`` → chave ligada: maior trecho colado 2,19 → 0,61 s na
+mediana e 9,63 → 1,92 s no pior; tempo colado total 608 → 293 s (−52%).
+Ver ``docs/sessoes/builds.md`` §14 (inclui o efeito nas classes).
 
 Chave da LUTA: ``match_config["dinamismo"]``. Ausente, vale
 ``utils.config.DINAMISMO`` (desligada): toda luta gravada antes sai

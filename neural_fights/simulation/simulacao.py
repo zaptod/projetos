@@ -4101,6 +4101,23 @@ class Simulador:
         self.shockwaves.append(Shockwave(mx, my, (210, 210, 220), 1.0))
         self.cam.aplicar_shake(5.0, 0.12)
 
+    def _sair_depois_do_choque(self, atacante, avx, avy):
+        """Bate e sai (21/10/2026): quem acerta um golpe colado recua ou
+        circula por ``DINAMISMO_CHOQUE_SAIDA_S`` em vez de seguir andando
+        para dentro (o recuo de velocidade sozinho durava 1-2 quadros: a IA
+        voltava a PRESSIONAR e o colado seguia em trechos curtos). Sem
+        sorteio: o verbo sai do perfil (``dinamismo.verbo_de_saida``)."""
+        from neural_fights.utils.config import DINAMISMO_CHOQUE_SAIDA_S
+
+        if DINAMISMO_CHOQUE_SAIDA_S <= 0.0 or (avx == 0.0 and avy == 0.0):
+            return
+        brain = getattr(atacante, "brain", None)
+        definir = getattr(brain, "_definir_acao", None)
+        if not callable(definir):
+            return
+        definir(_dinamismo.verbo_de_saida(atacante), fonte="choque",
+                prioridade=0, hold_s=DINAMISMO_CHOQUE_SAIDA_S)
+
     def _resolver_clinch(self, dist, dx, dy):
         """Onda 8G: quebra o clinch de um jeito DIVERSO e com autor.
 
@@ -4588,6 +4605,7 @@ class Simulador:
                     atacante.vel[1] += avy
                     atacante.contadores_luta["choques"] = (
                         atacante.contadores_luta.get("choques", 0) + 1)
+                    self._sair_depois_do_choque(atacante, avx, avy)
             magnitude_knockback = math.hypot(kb_x, kb_y)
             direcao_vfx = (
                 math.atan2(kb_y, kb_x)

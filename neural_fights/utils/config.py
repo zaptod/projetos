@@ -170,7 +170,7 @@ CORRENTE_V2 = False
 # lutas novas (runner.chave_dinamismo_padrao).
 DINAMISMO = False
 DINAMISMO_COLADO_FRACAO_RAIO = 0.5
-DINAMISMO_COLADO_MAX_S = 0.4
+DINAMISMO_COLADO_MAX_S = 0.3
 DINAMISMO_ESQUECE_FATOR = 2.0
 DINAMISMO_EMPURRAO = 16.0      # m/s; com ATRITO 8 -> ~2 m de cada lado
 DINAMISMO_RESPIRO_S = 0.45     # hold P0 do verbo de saida
@@ -181,6 +181,9 @@ DINAMISMO_PAREDE_M = 0.35      # folga da parede para nao empurrar contra ela
 # dois (o defensor sai com pelo menos KB_MIN para longe; o atacante recua).
 DINAMISMO_CHOQUE_KB_MIN = 18.0
 DINAMISMO_CHOQUE_RECUO = 9.0
+# Bate e sai: depois do choque, quem acertou recua/circula por SAIDA_S (hold
+# P0 da IA); 0 desliga.
+DINAMISMO_CHOQUE_SAIDA_S = 0.8
 
 # ============================================================
 # ONDA 11B: qualidade 1-a-1 das skills

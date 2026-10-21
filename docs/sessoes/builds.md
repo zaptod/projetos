@@ -1760,3 +1760,82 @@ começo 19/10 16:30 com 26 duelos, 10 builds e 52 estreias; sem jogo aberto):
 
 Script da projeção (fora do git):
 `C:\Users\adrian\AppData\Local\Temp\claude\e--projetos\3494d475-f7b5-498b-8dd1-7421616e2724\scratchpad\projetar_a832.py novo|antigo [dias]`.
+
+## 14. Dinamismo: menos tempo colado (21/10/2026)
+
+Pedido do Adrian: "não quero os personagens colados um no outro muito tempo,
+quero movimento e dinamismo nas lutas". Ramo `builds/motor-dinamismo`.
+
+**O que é "colado"** (`neural_fights/tools/dinamismo_luta.py`, mesmo critério
+do motor em `core/dinamismo.colados`): a distância entre as BORDAS dos discos
+DESENHADOS (raio `tamanho/2`, ~0,9 m; o da física é `tamanho/4` e deixa os
+discos se cobrirem até a metade) menor que 0,5 × o raio desenhado médio
+(~0,45 m), contando o `z` de quem pula/voa (posição na tela). Um trecho
+colado é contínuo; folgas < 0,25 s não o quebram. Tempo colado total = soma
+dos quadros colados (60 Hz) do lote.
+
+**O que mudou na luta** (chave da LUTA `match_config["dinamismo"]`, como a
+corrente nova; ausente = o motor de antes):
+- **respiro**: colado por mais de `DINAMISMO_COLADO_MAX_S` (0,3 s; o relógio
+  esquece 2x mais rápido solto), os dois são empurrados para fora
+  (16 m/s, deslizando na parede, saindo do canto pelo centro) e a IA recua
+  (ou circula, se ágil) por 0,45 s com prioridade 0. Recarga 0,4 s; vale até
+  60 s de luta (depois o corpo a corpo fecha a luta). Agarrão travado não
+  conta;
+- **choque**: golpe corpo a corpo que acerta com os discos colados descola o
+  defensor (mín. 18 m/s para longe) e recua o atacante (9 m/s); o dano não
+  muda;
+- **bate e sai**: quem acertou o choque recua/circula por
+  `DINAMISMO_CHOQUE_SAIDA_S` = 0,8 s (`Simulador._sair_depois_do_choque`).
+  Sem ele o recuo durava 1–2 quadros e o colado seguia em trechos curtos.
+- Nada sorteia: o verbo sai do perfil, a direção do estado.
+
+O `random_builds` carimba `dinamismo: true` em toda luta NOVA (duelo,
+estreia, torneio: `runner.DINAMISMO_LUTA_NOVA`) e grava no `fight.json`;
+quem re-simula (som da luta, palco, A/B) repassa o carimbo, e luta sem o
+campo sai com `False`.
+
+**Medido** (headless 60 Hz, banco vivo copiado às 13:10 de 21/10; o ANTES é
+o motor de `8f51d7bd` extraído por `git archive`, não a chave desligada).
+Lote de 60 = os 31 duelos da fila de 21/10 + 29 pares sorteados, mesmas
+seeds e arenas (`E:\tmp_pytest\dinamismo2\lote60.json`):
+
+| critério | antes | depois | meta |
+|---|---|---|---|
+| maior trecho colado, mediana | 2,19 s | **0,61 s** | ≤ 1,5 s |
+| maior trecho colado, pior luta | 9,63 s | **1,92 s** | ≤ 3 s |
+| tempo colado total | 608 s | **293 s (−51,8%)** | −50% |
+| lutas com trecho > 2 s | 35 | 0 | |
+| luta mais longa | 63,9 s | 82,8 s | ≤ 90 s |
+| duração mediana | 22,2 s | 31,2 s (fila: 20,6 → 36,7 s) | |
+| vencedor diferente | — | 10/60 | |
+| maior variação de vitória por classe | — | 25 pp | ≤ 10 pp |
+
+A variação por classe **não se mede com 60 lutas**: só trocar a seed do
+motor velho (seed+1) já dá 25 pp (classes com 4–15 aparições). Num lote de
+600 pares sorteados (`lote600.json`), seed+1 no motor velho dá até 13,6 pp
+(o piso do ruído). Com o dinamismo, nas 600: colado total −49,3%, mediana
+0,62 s, pior 3,68 s, nenhuma > 90 s (máx. 85,3), e **só o Mago passa do
+ruído: 27,1% → 49,2% (+22 pp, 59 aparições)**; o resto fica entre −7,5
+(Ninja, Berserker) e +8,3 (Criomante). Separar os corpos dá ao Mago a
+distância que ele não tinha.
+
+Determinismo: a mesma seed duas vezes = a mesma luta em 60/60 (vencedor,
+duração, HP, golpes, colado, passos). Chave desligada = motor de
+`8f51d7bd` em 60/60, então nenhum duelo do estoque muda ao ser re-renderizado
+ou re-sonorizado. Regravar com `main.py duelo` (mesmo par/seed) usaria a
+chave ligada: os 31 da fila mudariam a luta, 5 deles de vencedor.
+
+Prova pelo caminho real (`main.py duelo` da worktree, banco numa cópia,
+fora do catálogo), os 3 duelos da fila que mais colavam, mesmo par/seed/arena;
+o gravador deu o mesmo vencedor e a mesma duração do headless nos 3, e o
+`fight.json` leva `dinamismo: true`. Os três: 1080x1920, 28,0 s, som nas
+duas réguas, −16,1/−15,7/−15,7 LUFS, pico ≤ −1,6 dBTP, nada congelado:
+- `duelo_00153` Tiberio × Cassiel (Poço): maior colado 9,63 → 0,67 s; luta 27,1 → 49,6 s;
+- `duelo_00157` Gunnar × Aurelia (Poço): 7,62 → 0,57 s; vencedor troca (Aurelia);
+- `duelo_00159` Vesper × Vesper (Torre): 6,90 → 0,72 s; vencedor troca (Fynvalum).
+
+Variantes medidas no mesmo lote (60): sem o bate e sai −40,5%; com 0,6 s
+−49,9% (mas −43,4% nas 600); limiar 0,25 s ou empurrão 20 m/s passam de
+90 s. Medidas e scripts: `E:\tmp_pytest\dinamismo2\` (`comparar.py`,
+`varrer.py` troca as constantes do config por `DIN_PARAMS`).
