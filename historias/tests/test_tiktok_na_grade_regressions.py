@@ -490,6 +490,10 @@ class AtrasadoNoTikTokTests(unittest.TestCase):
         self.postar = _postar()
         # Horario do TikTok vago, sem relogio nem ledger de producao.
         self.postar._vaga_do_tiktok = lambda *a, **k: ""
+        # A ordem dos canais le o relogio (`_ordem_dos_canais`, 21/10/2026):
+        # fora do horario dos duelos, que nao e o assunto daqui.
+        self.postar._ordem_dos_canais = (
+            lambda agora=None: self.postar.ORDEM_DO_RELATORIO)
         # A recuperacao esta DESLIGADA em producao desde 16/09/2026: ela
         # repostou no ar, porque o ledger e cego para o passado do TikTok.
         # Estes testes descrevem o contrato de QUANDO ela estiver ligada.

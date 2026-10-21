@@ -41,12 +41,14 @@ DIAS_PADRAO = 3
 # preso em `uploadStatus: uploaded` (8Rp3WUDsBgA, CHogZyWtA8I, desde 19-20/10),
 # ou sumia. A publicacao agora segura o navegador (decisao
 # `esperar-envio-terminar`); a conferencia e a segunda rede: linha publicada
-# (`metricas.publicado`) de ha mais de 2 h com o video ainda `uploaded`, ou
-# sem video no canal (lista inteira), vai para "a conferir" do YouTube.
-# 2 h: o normal e processar em minutos (os duelos chegam a "verificacoes
-# concluidas" em 50-155 s); `6-APf13ZQXc` (05/10) seguia `uploaded` 4h40
-# depois do envio.
-HORAS_ATE_O_ENVIO_CORTADO = 2.0
+# (`metricas.publicado`) de ha mais de 12 h com o video ainda `uploaded`, ou
+# sem video no canal (lista inteira e com publicos declarados), vai para "a
+# conferir" do YouTube. A marca SAI SOZINHA quando o video aparece
+# `processed` (`_pousar_envios_cortados`).
+# 12 h, e nao 2: `6-APf13ZQXc` (05/10) ficou `uploaded` 4h40 e terminou
+# `processed` — com 2 h seria alarme falso. Os presos de 19-20/10 seguiam
+# `uploaded` mais de 30 h depois.
+HORAS_ATE_O_ENVIO_CORTADO = 12.0
 PREFIXO_DO_ENVIO = "[envio] "
 
 
@@ -292,7 +294,7 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
             or por_titulo.get(titulos.chave(linha.get("titulo")))
 
     fantasmas, casados, rascunhos, so_sd = [], [], [], []
-    cortados, sem_video = [], []
+    cortados, sem_video, envio_ok = [], [], []
     vistos = set()
 
     def velha(linha: dict) -> bool:
@@ -307,6 +309,9 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
 
     def preso(video) -> bool:
         return str((video or {}).get("upload") or "").lower() == "uploaded"
+
+    def processado(video) -> bool:
+        return str((video or {}).get("upload") or "").lower() == "processed"
 
     for linha in linhas:
         alvo = achar(linha)
@@ -347,6 +352,13 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
         if preso(alvo) and velha(linha):
             cortados.append({**ficha, "youtube_id": alvo.get("id"),
                              "motivo": "ainda 'uploaded' no canal"})
+        # O ENVIO QUE TERMINOU: o video e todos os pedacos da linha no canal,
+        # `processed`. E o que solta a marca `[envio] ` sozinha.
+        pedacos = [por_id.get(str(x or "")) for x in
+                   (linha.get("youtube_ids") or ())]
+        if (all(p is not None for p in pedacos)
+                and all(processado(v) for v in [alvo, *pedacos])):
+            envio_ok.append(linha.get("video_id"))
         if str(alvo.get("privacidade") or "").lower() in ("private", "privado"):
             # A ASSINATURA DO RASCUNHO DE 15/09/2026.
             rascunhos.append({**ficha, "youtube_id": alvo.get("id"),
@@ -492,9 +504,15 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     if incompleta:
         sujo = bool(rascunhos or orfaos_privados or cortados)
     veredito = "sujo" if sujo else ("incompleta" if incompleta else "limpo")
-    # Sem video no canal so prova envio cortado com a lista INTEIRA (o mesmo
-    # motivo do fantasma acima); o video que VEIO preso em `uploaded` prova.
-    envio_cortado = cortados + ([] if incompleta else sem_video)
+    # SEM VIDEO NO CANAL SO PROVA COM A LISTA PROVADA INTEIRA (conferente,
+    # 21/10/2026). `incompleta` e falsa tambem quando nao ha como saber:
+    # `conferir_lista` devolve None sem `declarados`, e a lista vazia com
+    # `declarados == 0` (o token de OUTRO canal) e "inteira" — com isso o
+    # ledger todo virava "sem video": 21 linhas de builds e 28 de historias.
+    # O video que VEIO preso em `uploaded` prova sozinho.
+    lista_provada = bool(lista and lista.get("completa")
+                         and int(lista.get("declarados") or 0) > 0)
+    envio_cortado = cortados + (sem_video if lista_provada else [])
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
@@ -516,7 +534,7 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
         "orfaos_privados_aceitos": orfaos_privados_aceitos,
         "rascunhos": rascunhos, "rascunhos_aceitos": ja_aceitos,
         "so_sd": so_sd, "duplicados": duplicados,
-        "envio_cortado": envio_cortado,
+        "envio_cortado": envio_cortado, "envio_ok": envio_ok,
         "mesmo_video": mesmo_video,
         "taxa": round(len(casados) / len(linhas), 3) if linhas else 1.0,
         "lista": lista,
@@ -776,15 +794,40 @@ def _pousar_envios_cortados(canal: str, ficha: dict, atividade,
     e e gravada por `desfecho.marcar_para_conferir` — o unico escritor da
     lista. Alarme uma vez por video: o que ja esta na lista nao acende de
     novo nas quatro rodadas da noite. Lista ilegivel = alarme, nada gravado.
+
+    E A MARCA SAI SOZINHA (conferente, 21/10/2026): o video marcado `[envio]`
+    que a conferencia ve `processed` (`envio_ok`: ele e todos os pedacos)
+    terminou de processar, e `desfecho.soltar_marca` com o prefixo a tira —
+    so ela; a marca de clique (sem prefixo) nunca sai por aqui.
     Devolve os marcados agora.
     """
     itens = [i for i in (ficha.get("envio_cortado") or [])
              if isinstance(i, dict) and i.get("video_id")]
-    if not itens:
+    prontos = {str(v) for v in (ficha.get("envio_ok") or []) if v}
+    if not itens and not prontos:
         return []
     from . import desfecho
     plataforma = ficha.get("plataforma") or "youtube"
     etapa = "conferencia.envio_cortado"
+    if prontos:
+        try:
+            marcadas = desfecho.marcas(canal, plataforma)
+        except Exception:                                      # noqa: BLE001
+            marcadas = {}              # ilegivel: o aviso vem logo abaixo
+        soltas = []
+        for vid, marca in (marcadas or {}).items():
+            estado = str((marca or {}).get("estado") or "")
+            if vid in prontos and estado.startswith(PREFIXO_DO_ENVIO):
+                if desfecho.soltar_marca(canal, vid, plataforma,
+                                         prefixo=PREFIXO_DO_ENVIO):
+                    soltas.append(vid)
+        if soltas:
+            ficha["envio_cortado_soltos"] = soltas
+            log(f"[conferencia] {canal}: {len(soltas)} envio(s) que "
+                f"terminaram de processar sairam de 'a conferir': "
+                + ", ".join(soltas)[:200])
+    if not itens:
+        return []
     try:
         ja = desfecho.a_conferir(canal, plataforma)
     except Exception as exc:                                   # noqa: BLE001

@@ -745,6 +745,10 @@ class VoltaFinalTests(unittest.TestCase):
         self.m = _postar()
         m = self.m
         m._linha = lambda *_a, **_k: None
+        # O caso medido e o das 06:37 (fora do horario dos duelos): a ordem
+        # dos canais le o relogio desde 21/10 (`_ordem_dos_canais`); a volta
+        # final dos duelos esta em `test_duelos_antes_das_historias`.
+        m._ordem_dos_canais = lambda agora=None: m.ORDEM_DO_RELATORIO
         m._dormir = lambda s: None
         m.esperar_a_rede = lambda **k: True
         m._ainda_no_horario = lambda comeco, slot, **k: True

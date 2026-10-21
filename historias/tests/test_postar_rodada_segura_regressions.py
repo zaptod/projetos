@@ -281,6 +281,10 @@ class _BaseDaRodada(unittest.TestCase):
     def setUp(self):
         self.m = m = _postar()
         m._linha = lambda *_a, **_k: None
+        # A ORDEM DOS CANAIS LE O RELOGIO (21/10/2026, `_ordem_dos_canais`):
+        # estes casos nao sao sobre o horario, entao ficam fora do horario dos
+        # duelos — senao a suite ficava vermelha das 09:37 as 12:07.
+        m._ordem_dos_canais = lambda agora=None: m.ORDEM_DO_RELATORIO
         m.esperar_a_rede = lambda **k: True
         self.avisos = []
         m.avisar = lambda r: self.avisos.append(r)

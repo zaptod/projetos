@@ -501,9 +501,12 @@ def _video(youtube_id, video_id, upload="processed"):
             "publicado_em": "2026-10-20T22:00:00Z"}
 
 
+_CONFERIR = conferencia.conferir        # o de verdade, mesmo com o duble
+
+
 def _conferir(publicados, no_canal):
-    return conferencia.conferir("builds", publicados=publicados,
-                                no_canal=no_canal, agora=AGORA, aceitos={})
+    return _CONFERIR("builds", publicados=publicados, no_canal=no_canal,
+                     agora=AGORA, aceitos={})
 
 
 class ConferenciaTests(unittest.TestCase):
@@ -519,30 +522,64 @@ class ConferenciaTests(unittest.TestCase):
         self.assertEqual("8Rp3WUDsBgA", item["youtube_id"])
         self.assertEqual("sujo", ficha["veredito"])
 
-    def test_uploaded_de_1_h_ainda_pode_estar_processando(self):
-        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 1.0)],
-                          [_video("aaaaaaaaaaa", "d1", upload="uploaded")])
+    def test_uploaded_de_4h40_ainda_pode_estar_processando(self):
+        """6-APf13ZQXc (05/10): `uploaded` 4h40 depois e terminou
+        `processed`. Com o limite de 2 h seria alarme falso."""
+        ficha = _conferir([_linha("d1", "6-APf13ZQXc", 4 + 40 / 60)],
+                          [_video("6-APf13ZQXc", "d1", upload="uploaded")])
         self.assertEqual([], ficha["envio_cortado"])
+        self.assertEqual(12.0, conferencia.HORAS_ATE_O_ENVIO_CORTADO)
 
-    def test_processado_nao_e_cortado(self):
-        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 5.0)],
+    def test_processado_nao_e_cortado_e_vai_para_envio_ok(self):
+        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 13.0)],
                           [_video("aaaaaaaaaaa", "d1")])
         self.assertEqual([], ficha["envio_cortado"])
+        self.assertEqual(["d1"], ficha["envio_ok"])
         self.assertEqual("limpo", ficha["veredito"])
 
-    def test_sem_video_no_canal_com_a_lista_inteira(self):
-        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 5.0)], [])
+    def test_sem_video_no_canal_com_a_lista_provada_inteira(self):
+        """So com `declarados` > 0 e todos os publicos na lista."""
+        lista = metricas.ListaDoCanal(
+            [_video("bbbbbbbbbbb", "outro")])
+        lista.declarados = 1
+        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 13.0)], lista)
         (item,) = ficha["envio_cortado"]
         self.assertEqual("sem video no canal", item["motivo"])
+
+    def test_sem_video_sem_declarados_nao_prova(self):
+        """CASO ZERO (conferente, 21/10): `conferir_lista` = None (lista sem
+        `declarados`) dava o ledger inteiro como "sem video" — 21 linhas de
+        builds e 28 de historias marcadas."""
+        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 13.0),
+                           _linha("d2", "ccccccccccc", 20.0)], [])
+        self.assertEqual([], ficha["envio_cortado"])
+
+    def test_sem_video_com_zero_declarados_nao_prova(self):
+        """Lista vazia com `declarados == 0` (o token de OUTRO canal) e
+        "inteira" para `conferir_lista`, e nao prova nada."""
+        lista = metricas.ListaDoCanal()
+        lista.declarados = 0
+        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 13.0)], lista)
+        self.assertEqual([], ficha["envio_cortado"])
 
     def test_sem_video_com_a_lista_incompleta_nao_prova(self):
         lista = metricas.ListaDoCanal()
         lista.declarados = 5
-        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 5.0)], lista)
+        ficha = _conferir([_linha("d1", "aaaaaaaaaaa", 13.0)], lista)
         self.assertEqual([], ficha["envio_cortado"])
 
+    def test_pedaco_preso_segura_o_envio_ok(self):
+        linha = _linha("h1", "aaaaaaaaaaa", 13.0)
+        linha["youtube_ids"] = ["aaaaaaaaaaa", "ddddddddddd"]
+        ficha = _conferir([linha], [_video("aaaaaaaaaaa", "h1"),
+                                    _video("ddddddddddd", "h1",
+                                           upload="uploaded")])
+        self.assertEqual([], ficha["envio_ok"])
+        (item,) = ficha["envio_cortado"]
+        self.assertEqual("ddddddddddd", item["youtube_id"])
+
     def test_linha_nao_publicada_nao_entra(self):
-        linha = _linha("d1", "aaaaaaaaaaa", 5.0)
+        linha = _linha("d1", "aaaaaaaaaaa", 13.0)
         linha["publicado"] = False
         ficha = _conferir([linha], [_video("aaaaaaaaaaa", "d1",
                                            upload="uploaded")])
@@ -577,11 +614,28 @@ class PousoNaConferenciaTests(unittest.TestCase):
             return set(self.ja)
         _trocar(self, desfecho, "a_conferir", a_conferir)
 
+        self.no_disco = {}             # {video_id: estado} da lista dublada
+        self.soltas = []
+
         def marcar(canal, video_id, estado, plataforma="tiktok", **k):
             self.marcas.append((canal, video_id, estado, plataforma))
             self.ja.add(video_id)
+            self.no_disco[video_id] = estado
             return True
         _trocar(self, desfecho, "marcar_para_conferir", marcar)
+        _trocar(self, desfecho, "marcas",
+                lambda canal, plataforma="tiktok": {
+                    v: {"estado": e} for v, e in self.no_disco.items()})
+
+        def soltar(canal, video_id, plataforma="tiktok", *, prefixo):
+            if not self.no_disco.get(video_id, "").startswith(prefixo):
+                return False
+            self.soltas.append((canal, video_id, plataforma, prefixo))
+            self.no_disco.pop(video_id)
+            self.ja.discard(video_id)
+            return True
+        _trocar(self, desfecho, "soltar_marca", soltar)
+        self.ficha = ficha
 
     def _alarmes(self):
         return [a for a, k in self.diario
@@ -602,6 +656,31 @@ class PousoNaConferenciaTests(unittest.TestCase):
                                   agora=AGORA)
         self.assertEqual(1, len(self.marcas))
         self.assertEqual(1, len(self._alarmes()))
+
+    def test_a_marca_sai_sozinha_quando_o_video_processa(self):
+        """O preso de ontem que terminou: a conferencia o ve `processed` e a
+        marca `[envio] ` sai; a de clique (sem prefixo) fica."""
+        vid = "generation_00121:estreia:celular"
+        conferencia.conferir_tudo(("builds",), log=lambda _t: None,
+                                  agora=AGORA)
+        self.assertIn(vid, self.no_disco)
+        self.no_disco["duelo_00099:duelo:celular"] = (
+            "cliquei em publicar e nao veio confirmacao")
+        processado = _conferir(
+            [_linha(vid, "8Rp3WUDsBgA", 13.0),
+             _linha("duelo_00099:duelo:celular", "eeeeeeeeeee", 13.0)],
+            [_video("8Rp3WUDsBgA", vid),
+             _video("eeeeeeeeeee", "duelo_00099:duelo:celular")])
+        self.assertEqual([], processado["envio_cortado"])
+        _trocar(self, conferencia, "conferir",
+                lambda *a, **k: dict(processado))
+        conferencia.conferir_tudo(("builds",), log=lambda _t: None,
+                                  agora=AGORA)
+        self.assertEqual([("builds", vid, "youtube",
+                           conferencia.PREFIXO_DO_ENVIO)], self.soltas)
+        self.assertNotIn(vid, self.no_disco)
+        self.assertIn("duelo_00099:duelo:celular", self.no_disco,
+                      "a marca de clique so sai por conferencia humana")
 
     def test_lista_ilegivel_acende_e_nao_grava(self):
         from builds.publicar import desfecho

@@ -4190,6 +4190,40 @@ def _publicar_canal(canal: str, funcao, *, so_ver: bool,
     return [r] + extras
 
 
+ORDEM_DO_RELATORIO = ("historias", "builds")
+
+
+def _ordem_dos_canais(agora=None) -> tuple:
+    """Em que ordem a rodada RODA os canais. Os duelos primeiro no horario
+    deles (21/10/2026); fora dele, historias e builds como sempre.
+
+    Por que: o plano e o canal de duelos (`docs/PLANO.md`), e os dois canais
+    rodam no mesmo processo, um depois do outro. Desde que o `youtube_web`
+    segura o navegador ate o arquivo inteiro (decisao
+    `esperar-envio-terminar`), as historias passaram a esperar o envio e o
+    processamento (de 2 s a 3 min de "tempo restante" lidos no clique, mais o
+    teto da qualidade) — e o duelo das 09:37, 17:57 e 21:37 saia depois. Em
+    21/10, 09:37, o duelo ja so era entregue as 09:41:17.
+
+    "E o horario dos builds?" tem UMA resposta: `_fora_da_grade_do_canal`
+    (a unica leitura de relogio da grade do canal), em qualquer dos dois
+    destinos. Fora dele os builds so devolvem `fora_da_grade`, e a ordem de
+    sempre fica.
+
+    O QUE MUDA ALEM DA ORDEM, e so isto: a volta final (`_volta_final`) exige
+    um canal que rodou DEPOIS; nos horarios dos builds ela passa das
+    historias para os builds. Medido no `postar.txt` inteiro em 21/10: 0
+    voltas finais disparadas. As fichas saem na ordem do relatorio
+    (`ORDEM_DO_RELATORIO`) — Telegram, `[POSTADO]` e codigo de saida iguais;
+    recuperacao, reserva e recuperacao do YouTube rodam depois, como antes.
+    """
+    duelos = ("builds", "historias")
+    for plataforma in ("youtube", "tiktok"):
+        if not _fora_da_grade_do_canal("builds", plataforma, agora):
+            return duelos
+    return ORDEM_DO_RELATORIO
+
+
 def _publicou_sem_queda(ficha: dict) -> bool:
     """A ficha prova que a rede voltou: publicou e nada caiu por rede."""
     return bool(ficha.get("feito")) and not _derrubados_pela_rede(ficha)
@@ -6783,8 +6817,9 @@ def _main(args) -> int:
     if pausa and args.so in (None, "historias"):
         _linha(f"[postar] historias: {pausa}; nada sai no YouTube nem no "
                "TikTok (inclusive a recuperacao).")
-    for canal, funcao in (("historias", postar_historia),
-                          ("builds", postar_build)):
+    funcoes = {"historias": postar_historia, "builds": postar_build}
+    for canal in _ordem_dos_canais():
+        funcao = funcoes[canal]
         if args.so not in (None, canal):
             continue
         if canal == "historias" and pausa:
@@ -6799,6 +6834,10 @@ def _main(args) -> int:
     # publicou sem queda (`_volta_final`, 06/10/2026).
     resultados = _volta_final(rodados, so_ver=args.ver,
                               comeco=comeco_da_rodada, slot=slot_da_rodada)
+    # A ORDEM DE RODAR NAO MUDA A FICHA: relatorio, Telegram e codigo de
+    # saida continuam historias e depois builds (`_ordem_dos_canais`).
+    resultados = sorted(resultados, key=lambda r: ORDEM_DO_RELATORIO.index(
+        r.get("canal")) if r.get("canal") in ORDEM_DO_RELATORIO else 99)
     # O CANAL FORA DA SUA GRADE NAO TENTOU (20/10/2026, builds em tres
     # horarios): a ficha dele sai do relatorio, do Telegram e do codigo de
     # saida — sete rodadas por dia avisando "builds: nao saiu" seriam alarme
