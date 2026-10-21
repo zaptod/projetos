@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T15:06:36",
+      "evento": "2026-10-21T15:06:34",
+      "linha": 209,
+      "nota": "resposta sem pedido de origem: builds/dinamismo-mago-mais-forte = Compensar o Mago antes de ligar, para ficar dentro de 10 pp (recomendado)",
+      "opcao": "compensar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Pedido do Adrian 21/10: menos tempo colado. Tempo colado -51,8%, pior trecho 9,63→1,92 s no lote de 60. Duelo previsível ('o mago sempre ganha') tira a graça do 'who wins?'.",
   "criado": "2026-10-21T15:06:32.255639",
   "depende_de": [],
