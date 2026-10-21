@@ -1,41 +1,40 @@
 # NOTA do chat anterior
 
-Chat de 14/10 → 20/10/2026 ~02h (orquestrador), renovado a pedido do Adrian: "quero que comece hoje, vamos assumir de outro chat, quero seguir apenas esse plano."
+Chat de 20/10 02h → 21/10 ~11h (orquestrador). Parado a pedido do Adrian: "pare em um local seguro". Nada pela metade na árvore principal; os três trabalhos abertos estão em worktrees com commit WIP.
 
-## OBJETIVO ÚNICO — leia primeiro
-**`docs/PLANO.md`** (CLAUDE.md §0, Grimório `geral/objetivo-unico-neural-fights`, memória `objetivo-unico-plano-30-dias`): fazer o canal de DUELOS do Neural Fights crescer de 20/10 a 19/11 — 3.000 views/dia, 150 inscritos, 1 vídeo >100 mil. UMA mudança medida por semana. Pesquisa em `docs/pesquisa/shorts-que-deram-certo.md` (espelho: Orbitality, duelo de bolinhas em Python, 47,9 mil inscritos em 7 meses) e `docs/pesquisa/ferramentas-de-video.md` (HyperFrames + Remotion). O Adrian disse que estava gastando token à toa por falta de objetivo: **nada fora do plano sem ele pedir.**
+## OBJETIVO ÚNICO
+`docs/PLANO.md` (canal de DUELOS do Neural Fights, 20/10→19/11: 3.000 views/dia, 150 inscritos, 1 vídeo >100 mil). Nada fora do plano sem o Adrian pedir. "Tudo"/"cada setor" = só as partes dos duelos (memória `pedido-vale-so-para-o-objetivo`).
 
-## Em andamento — terminar PRIMEIRO (semana 1 do plano, começa HOJE 20/10)
-1. **Semana 1 — só texto, sem mexer no motor:** títulos "Arma/Classe VS Arma/Classe — quem vence?" (hoje são nomes inventados: "Drusila Vyrhordan x Sigrid Brasbalmirn"), faixa fixa no topo com os dois nomes nas cores dos lutadores (o HUD já está na zona segura: 434c553/aafd8f0/305b994), pergunta escrita no 1º segundo, luta já no quadro 0. Onde: títulos/copy em random_builds (memória `tom-das-copys-dos-videos`), renderer `random_builds/builds/video/renderer.py`. Conferente antes de ir ao ar.
-2. **Publicação da semana 1 — YouTube 3/dia em horário fixo, TikTok 1–3/dia.** Há WIPs prontos que mudam a grade e precisam ser AJUSTADOS ao plano (eram 10 YouTube + 6 TikTok):
-   - ramo `worktree-agent-a2c31810ad6750ff2` (bab6d817 + WIP 13e8d819 + WIP b4f8decd, NÃO TESTADO): TikTok com fila própria, duelo no lugar da estreia no YouTube, noite das histórias + parte seguinte. Foi aplicado e REVERTIDO (f2a64886) porque a recuperação/reserva do TikTok lê o relógio e o ledger REAIS → 10 testes de historias vermelhos na árvore principal. Falta: tornar a checagem de grade injetável, rodar as suítes da árvore principal com o código do ramo à frente no PYTHONPATH em 3 horários, ajustar `testes` no config (o teste 20–26/10 não começou).
-   - ramo `worktree-agent-a832b969b7de13af8` a346e118 (geração por formato, mais duelos): REVERTIDO (564b92cb) porque depende do item acima. Aplicar JUNTO, rebaseado.
-   - Atenção: a grade do plano (YouTube 3/dia) é diferente das duas. Decidir com os números: menos posts e só confrontos diferentes.
-3. **Com o Adrian (pedir logo):** abrir o TikTok Studio e ver se os vídeos estão "elegíveis para recomendação" (8–15 views/dia sugere bloqueio); conferir no YouTube Studio as views reais por dia (o canal tinha 27.605 views no total em 20/10 — "1.100/dia" da análise era pico).
+## No ar (semana 1 do plano, desde 20/10)
+- Canal de duelos em INGLÊS (decisão `geral/canal-em-ingles`): título "X VS Y — who wins?", faixa no topo nas cores (= cor do corpo, 23e3587e), WHO WINS? + voz en-US no quadro 0, cartão "X WIN(S)!", duelo < 15 s fora da fila (b529b242).
+- Grade (bd1140aa, decisão `publicacao/grade-semana-1-duelos`): builds YouTube 09:37/17:57/21:37, TikTok 21:37, só duelo, idioma "en" no upload; troca sozinha em 01/11 para 12:07/20:37/22:37. Histórias seguem 10+6.
+- Estoque regravado em inglês e com a cor certa; fila ~31 duelos (~10 dias). 20/10: os 3 saíram e o TikTok (96 views em 10 h, antigos ~1,5).
+- 19 skills em `.claude/skills/` (12 da casa + 7 de fora), agentes pré-carregam pelo campo `skills:`.
 
-## Conferir ao abrir (do retrato de 20/10 ~02h)
-- **Vila parada** no coordenador: veio do commit `a6f02e20` ("vila: fechada FICA fechada; Vila.exe e atalho para reabrir"), que um agente fez DIRETO na árvore principal, sem conferente. Confira se ela parou porque o Adrian fechou (comportamento novo) ou se quebrou; ver o diff e o atalho.
-- **Bot com código velho:** `python -m coordenador reiniciar bot` fora da janela das postagens.
-- Commits que não passaram por mim: `a6f02e20` (Vila), `0629831e` (Blue Lock, "a main mudou — só documentação") e `826efc3d` (assinatura da Vila). Revisar os três.
+## Em andamento — terminar PRIMEIRO
+1. **Duelo das 09:37 de 21/10 NÃO publicou** (duelo_00132, "YouTubeWebFalhou: a tela de detalhes nao apareceu" em outputs/postar.txt ~09:45; fora do ledger e do a_conferir). Worktree `E:\projetos-wt\pub-0937`, ramo `publicacao/falha-0937`, WIP 6bb533ab NÃO TESTADO (youtube_web.py + teste test_detalhes_nao_vieram_regressions.py). FALTA: (a) ver pela Data API se ficou RASCUNHO órfão no canal (risco de duplicata); (b) por que foi pelo navegador e não pela API oficial; (c) ver se 17:57/21:37 de 21/10 saíram (`publicacao-conferir-ledger`); (d) testar, conferente, integrador.
+2. **Coletor que mede sozinho** — `E:\projetos-wt\metricas-coletor`, ramo `metricas/coletor-sozinho`, b511f54a + 337d022d. Autor: 8301 testes verdes. Conferente foi PARADO no meio (não aprovou ainda). FALTA: conferente (página pagina_analise.html a 390x844, caso zero, diff de hora_a_hora.py no noite.rodar), integrador, `coordenador reiniciar bot` (para /semana), pôr `"semana": "21:05"` nos relatórios padrão de `remoto/config.py` (decisão `metricas/semana-no-telegram` = diário 21:05), atualizar a linha do PLANO que diz que o coletor não guarda. TikTok do coletor nunca rodou no Studio real: conferir o 1º arquivo cru.
+3. **Lutas sem ficar colado** (pedido do Adrian 21/10) — `E:\projetos-wt\motor-dinamismo`, ramo `builds/motor-dinamismo`, WIP 3d17fb3c NÃO TESTADO (neural_fights/core/dinamismo.py "respiro + reengajamento", tools/dinamismo_luta.py, simulacao.py, recorder, runner…). FALTA tudo da prova: medir ANTES × DEPOIS no mesmo lote de 60 lutas (maior trecho colado ≤1,5 s mediana/≤3 s pior; tempo colado −50%; nenhuma >90 s; vitórias por classe sem mudar >10 pontos), testes, 3 vídeos de prova, conferente. Aviso: mudar o motor faz duelos antigos não se reproduzirem (já aconteceu com 14/10).
 
-## Parado (fora do plano — NÃO retomar sem o Adrian pedir)
-- Formatos do Blue Lock (ramo `worktree-agent-a5bf20c8a149fe832`, 640e572 + WIP d542b2a7; só drible-do-bachira aprovado; relatório `E:\tmp_pytest\conferente\bluelock2\RELATORIO_onda1_v2.md`).
-- Casinha do Blue Lock (ramo `worktree-agent-a53d8bfb4c1aa0cd3`, 472d1107 + WIP 942404b6; app aprovado, PC com 4 defeitos).
-- Mudança completa para o PC `am` (ramo `worktree-agent-a17b6b10f3f33e011`, 3a1e3f8e + 31ac8a16 testados + WIP 4b35781c; chaves DESLIGADAS). No plano o am só produz duelos (mecanismo `python -m builds.pc_am`, doc docs/sessoes/pc-am.md).
-- Decididas e não feitas: builds/madrugada-na-transicao (desligar), builds/voz-do-windows-12-a-19-10 (refazer voz das 51 roletas só se forem publicadas).
+## Próximos do plano
+- Medida da semana 1: fecha ~27–30/10 (Analytics atrasa 2–3 dias; rx3XnuU3rJw maduro em 23/10). Primeira leitura 21/10: novo 4–17x os antigos na mesma idade, INCERTO (n=3, formato + menos posts juntos).
+- Semana 2 (`docs/pesquisa/som-ganchos-e-musica.md`): tirar a música de baixo da luta, silêncio antes do golpe final, K.O. mais alto e corte 1 s depois; câmera parada; 45–58 s.
+- Menores registrados: cartel/camera fora da zona segura (sem. 2), capa horizontal, rótulo do plano tapado pela lâmina, nome pequeno sobre o lutador azul/vermelho em vez da cor; furos da varredura de português (`+=`, ramo if) — `random_builds/tests/test_ingles_do_duelo_regressions.py`.
 
-## No ar (feito neste chat)
-App v72/v73 (sem dado velho com o PC fora; alarme da Mesa no Telegram), HUD do duelo na zona segura + câmera da luta, fim do vídeo de luta (cauda pós-K.O.), Análise dos vídeos (Biblioteca do app, diária 07:02), Blue Lock integrado (espelho só leitura, vigia da main e de TODOS os ramos a cada 30 min, atalho "Blue Lock — versões" na Área de Trabalho), fsync da Mesa (b1f65ad) e Mesa restaurada, edge-tts 7.3.1 (voz voltou; estava 403 desde 12/10), navegador automático fora da tela (88dd912), CI verde, PC `am` provisionado (Python 3.14.4, Git, Node 24, ffmpeg em C:\nf).
+## Pedidos do Adrian ainda abertos
+- "quero que você altere na ia ou nas mecanicas, para que não aconteçam essas situaçoes onde os personagens ficam colados um no outro muito tempo, quero movimento e dinamismo nas lutas." (item 3; ele aceitou a versão completa, 2–3 h).
 
-## Decisões e regras novas (viraram memória)
-- `adrian-nao-quer-decidir`: o orquestrador escolhe a recomendada, registra já respondida no Grimório e executa.
-- `objetivo-unico-plano-30-dias`, `pc-am-trabalhador`, `blue-lock-integrado`, `mesa-zerada-na-queda`, `voz-403-edge-tts`.
-- Tela do PC principal: **1280x720 lógicos, 680 úteis** (memória `painel-ui-reativo` corrigida).
-- O merge no repositório do Blue Lock é do Adrian (o modo automático nega PATCH/push); o vigia só manda o comando. Vale o merge do `fix/isagi-off-ball-20261020` (1770/1770 testes, CI verde).
+## Decisões e regras novas (viraram memória/Grimório)
+- Memórias: `medir-sozinho-nao-perguntar` (métrica é o agente metricas que mede, nunca pedir ao Adrian), `pedido-vale-so-para-o-objetivo`, `um-projeto-por-vez` atualizada: LIMITE DE AGENTES REVOGADO ("PODE PASSAR DESSA PORRA DESSE LIMITE").
+- Grimório: geral/canal-em-ingles, publicacao/grade-semana-1-duelos, builds/estoque-duelos-em-ingles, builds/regravar-com-motor-novo, metricas/semana-no-telegram.
 
 ## Armadilhas encontradas
-- **Teste verde na worktree ≠ verde na árvore principal** quando o código lê relógio/ledger/estado REAIS (publicação revertida 2×). Rode as suítes da árvore principal com o código da worktree à frente, antes de aplicar.
-- **Falhas silenciosas por dias:** Mesa zerada (16→19/10), voz 403 (12→19/10). Procure erro repetido no log, não só o último.
-- **Agentes não podem commitar na árvore principal** (houve 826efc3d direto). Nem matar Chrome que não abriram (um agente matou ~35 em 19/10 11:05).
-- **SSH no am:** usuário `alvo`, shell padrão CMD; PowerShell via `-EncodedCommand`. Testes de janela Tk falham lá sem sessão de desktop.
-- **4+ agentes ao mesmo tempo** passa do limite dele (3) e bate no teto de uso; renove o chat antes.
+- **Isolamento de worktree recusou** ("core.worktree redirect") quando o diretório veio como `e:\projetos` minúsculo; criar à mão: `git worktree add E:\projetos-wt\<nome> -b <ramo> refactor/arquitetura` e mandar o agente trabalhar SÓ lá. Sobrou `.claude/worktrees/agent-ac866c6f349dea304` travada (locked, base 3e5e2a4c) — limpar.
+- Worktrees de agente nascem do `main` velho (3e5e2a4c): mandar alinhar com refactor/arquitetura antes.
+- `.gitignore` ignorava `.claude/*`: exceção `!.claude/skills/` posta (bc7a1eaf).
+- PowerShell 5.1: `git diff > arquivo` grava UTF-16 e o apply recusa; patches pelo Bash.
+- Lutas gravadas antes de 14/10 não se reproduzem no motor atual (mesmo vencedor/K.O., outra duração/HP). Regravar muda a ordem da fila (catálogo ordena pelo mtime do mp4).
+- Regravar sem contar luta de novo: script no scratchpad (`regravar_duelo.py`/`regravar_cor.py`: FightSession.gerar + _entregar_duelo, sem ledger.registrar).
+- Medida de voz pelo "gêmeo mudo" é inválida (subestima); usar a do conferente (~+23 dB).
+- O retrato acusa horários "VAZIOS" de builds por medir pela grade da plataforma (10/6), não a do canal (3/1): alarme falso.
+- Uma história de 20/10 23:37 (historia_00085 p01, B_lmtyXdHkY) ficou PRIVADA no canal com o ledger dizendo pública — fora do plano, não mexido.
