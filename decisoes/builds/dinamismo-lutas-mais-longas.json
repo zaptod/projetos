@@ -3,7 +3,14 @@
   "contexto": "O vídeo segue em 28 s pelo corte de tédio; a semana 2 do plano quer vídeos de 45-58 s, então luta mais longa ajuda.",
   "criado": "2026-10-21T15:06:38.315803",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+      "em": "2026-10-21T15:06:40",
+      "opcao": "aceitar",
+      "origem": "cli"
+    }
+  ],
   "id": "dinamismo-lutas-mais-longas",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "A luta dos 31 duelos da fila foi de 20,6 para 36,7 s na mediana (nenhuma passa de 90 s). Aceitar?",
   "projeto": "builds",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Lutas sem colar ficam mais longas",
-  "vigente": null
+  "vigente": {
+    "comentario": "Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).",
+    "em": "2026-10-21T15:06:40",
+    "opcao": "aceitar"
+  }
 }

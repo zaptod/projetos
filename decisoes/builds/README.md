@@ -67,4 +67,4 @@ Legenda: ✅ decidida · ⏳ pendente · 🔒 bloqueada · ↺ a rever
 - ✅ **Estoque de duelos: regravar em inglês** — Regravar os 18 publicáveis com o código novo, fora da janela das postagens (recomendado) (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `estoque-duelos-em-ingles`
 - ✅ **7 duelos de 12/10 não se reproduzem no motor atual** — Regravar com o motor atual, mesmo par/seed/arena/id/título; o que der < 15 s vira pendente (recomendado) (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `regravar-com-motor-novo`
 - ✅ **Lutas sem colar deixaram o Mago mais forte** — Compensar o Mago antes de ligar, para ficar dentro de 10 pp (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `dinamismo-mago-mais-forte`
-- ⏳ **Lutas sem colar ficam mais longas** — A luta dos 31 duelos da fila foi de 20,6 para 36,7 s na mediana (nenhuma passa de 90 s). Aceitar? `dinamismo-lutas-mais-longas`
+- ✅ **Lutas sem colar ficam mais longas** — Aceitar (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `dinamismo-lutas-mais-longas`
