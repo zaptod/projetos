@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T15:06:48",
+      "evento": "2026-10-21T15:06:46",
+      "linha": 211,
+      "nota": "resposta sem pedido de origem: builds/dinamismo-ligado-nas-novas = Ligar nas novas, fila intacta (recomendado)",
+      "opcao": "ligar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Os 31 duelos da fila não mudam (sem carimbo re-simulam iguais). Regravar algum faria os 31 mudarem de luta e 5 de vencedor; não vamos regravar.",
   "criado": "2026-10-21T15:06:44.661880",
   "depende_de": [],
