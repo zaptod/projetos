@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T15:06:42",
+      "evento": "2026-10-21T15:06:40",
+      "linha": 210,
+      "nota": "resposta sem pedido de origem: builds/dinamismo-lutas-mais-longas = Aceitar (recomendado)",
+      "opcao": "aceitar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "O vídeo segue em 28 s pelo corte de tédio; a semana 2 do plano quer vídeos de 45-58 s, então luta mais longa ajuda.",
   "criado": "2026-10-21T15:06:38.315803",
   "depende_de": [],
