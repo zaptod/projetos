@@ -184,6 +184,25 @@ DINAMISMO_CHOQUE_RECUO = 9.0
 # Bate e sai: depois do choque, quem acertou recua/circula por SAIDA_S (hold
 # P0 da IA); 0 desliga.
 DINAMISMO_CHOQUE_SAIDA_S = 0.8
+# Alcances desiguais (core/dinamismo.papel_de_alcance): separar os corpos da
+# distancia de graca a quem bate de longe (o Mago foi de 27% a 49%). Com as
+# armas a ALCANCE_DIFERENCA_M ou mais de distancia de alcance (None desliga):
+# o empurrao do respiro vale ASSIM_EMPURRAO, o choque do curto no longo vale
+# ASSIM_CHOQUE, e o verbo de cada um e ASSIM_VERBO_CURTO/_LONGO ("padrao",
+# "nenhum" = a IA segue a dela, ou um verbo do motor).
+DINAMISMO_ALCANCE_DIFERENCA_M = None
+# Desfecho (core/dinamismo.fase_final): abaixo de HP_FIM da vida (ou no plano
+# ACABAR) nada separa. Solto (core/dinamismo.soltos): borda acima de
+# SOLTO_FRACAO_RAIO x raio desenhado medio encerra o verbo de saida. None desliga.
+DINAMISMO_HP_FIM = None
+DINAMISMO_FIM_NO_ACABAR = False   # o plano ACABAR tambem e desfecho
+# Respiro so no colado SEM golpe corpo a corpo ha SEM_GOLPE_S (None = sempre).
+DINAMISMO_SEM_GOLPE_S = None
+DINAMISMO_SOLTO_FRACAO_RAIO = None
+DINAMISMO_ASSIM_EMPURRAO = 1.0
+DINAMISMO_ASSIM_CHOQUE = 1.0
+DINAMISMO_ASSIM_VERBO_CURTO = "padrao"
+DINAMISMO_ASSIM_VERBO_LONGO = "padrao"
 
 # ============================================================
 # ONDA 11B: qualidade 1-a-1 das skills

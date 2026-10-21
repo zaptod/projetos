@@ -154,6 +154,58 @@ class BateESaiTests(unittest.TestCase):
         Simulador._sair_depois_do_choque(None, SimpleNamespace(), -9.0, 0.0)
 
 
+class ChavesDoAjusteTests(unittest.TestCase):
+    """Desfecho, solto, colado sem golpe e alcance (21/10, conferente)."""
+
+    def test_desfecho_pela_vida_e_pelo_plano_acabar(self):
+        vivo = SimpleNamespace(vida=80.0, vida_max=100.0, brain=None)
+        quase = SimpleNamespace(vida=10.0, vida_max=100.0, brain=None)
+        acabando = SimpleNamespace(vida=80.0, vida_max=100.0,
+                                   brain=SimpleNamespace(plano={"tipo": "ACABAR"}))
+        # caso zero: as chaves desligadas (o padrão) não mudam nada
+        self.assertFalse(dinamismo.fase_final(vivo, quase))
+        self.assertFalse(dinamismo.fase_final(vivo, acabando))
+        with mock.patch.object(config, "DINAMISMO_HP_FIM", 0.12):
+            self.assertTrue(dinamismo.fase_final(vivo, quase))
+            self.assertFalse(dinamismo.fase_final(vivo, vivo))
+        with mock.patch.object(config, "DINAMISMO_FIM_NO_ACABAR", True):
+            self.assertTrue(dinamismo.fase_final(acabando, vivo))
+
+    def test_solto_pela_borda_desenhada(self):
+        a = _corpo(0.0, 0.0, dados=SimpleNamespace(tamanho=1.8))
+        perto = _corpo(1.8 + 0.5, 0.0, dados=SimpleNamespace(tamanho=1.8))
+        longe = _corpo(1.8 + 1.5, 0.0, dados=SimpleNamespace(tamanho=1.8))
+        self.assertFalse(dinamismo.soltos(a, longe))         # desligado
+        with mock.patch.object(config, "DINAMISMO_SOLTO_FRACAO_RAIO", 1.5):
+            self.assertFalse(dinamismo.soltos(a, perto))      # borda 0,5 < 1,35
+            self.assertTrue(dinamismo.soltos(a, longe))       # borda 1,5 > 1,35
+
+    def test_respiro_so_no_colado_sem_golpe(self):
+        self.assertTrue(dinamismo.parado_sem_golpe({"t": 5.0, "t_golpe": 4.9}))
+        with mock.patch.object(config, "DINAMISMO_SEM_GOLPE_S", 0.6):
+            self.assertFalse(dinamismo.parado_sem_golpe({"t": 5.0, "t_golpe": 4.9}))
+            self.assertTrue(dinamismo.parado_sem_golpe({"t": 5.0, "t_golpe": 4.0}))
+            self.assertTrue(dinamismo.parado_sem_golpe({"t": 5.0}))
+
+    def test_alcance_desigual_troca_o_verbo(self):
+        arco = SimpleNamespace(dados=SimpleNamespace(arma_obj="arco"),
+                               brain=SimpleNamespace(perfil={"mobilidade": 0.1}))
+        espada = SimpleNamespace(dados=SimpleNamespace(arma_obj="espada"),
+                                 brain=SimpleNamespace(perfil={"mobilidade": 0.1}))
+        alcances = {"arco": 14.0, "espada": 2.0}
+        with mock.patch.object(dinamismo, "alcance_da_arma",
+                               side_effect=lambda l: alcances[l.dados.arma_obj]):
+            self.assertIsNone(dinamismo.papel_de_alcance(espada, arco))   # desligado
+            self.assertEqual(dinamismo.verbo_de_saida(espada, arco), "RECUAR")
+            with mock.patch.object(config, "DINAMISMO_ALCANCE_DIFERENCA_M", 4.0), \
+                    mock.patch.object(config, "DINAMISMO_ASSIM_VERBO_CURTO", "APROXIMAR"), \
+                    mock.patch.object(config, "DINAMISMO_ASSIM_VERBO_LONGO", "nenhum"):
+                self.assertEqual(dinamismo.papel_de_alcance(espada, arco), "curto")
+                self.assertEqual(dinamismo.papel_de_alcance(arco, espada), "longo")
+                self.assertEqual(dinamismo.verbo_de_saida(espada, arco), "APROXIMAR")
+                self.assertIsNone(dinamismo.verbo_de_saida(arco, espada))
+
+
 class ChaveDaLutaTests(unittest.TestCase):
     def test_ausente_vale_o_padrao_desligado(self):
         self.assertFalse(config.DINAMISMO)

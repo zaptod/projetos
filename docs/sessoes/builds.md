@@ -1835,6 +1835,31 @@ duas réguas, −16,1/−15,7/−15,7 LUFS, pico ≤ −1,6 dBTP, nada congelado
 - `duelo_00157` Gunnar × Aurelia (Poço): 7,62 → 0,57 s; vencedor troca (Aurelia);
 - `duelo_00159` Vesper × Vesper (Torre): 6,90 → 0,72 s; vencedor troca (Fynvalum).
 
+**Reprovado pelo conferente (21/10, tarde)** e o Mago fora do aceite
+(`builds/dinamismo-mago-mais-forte`: compensar antes de ligar). Nos 3 vídeos o
+grude acabou, mas os lutadores encolheram ~40% na tela (centros a 4,67 m na
+mediana contra 2,63), a luta foi a 41–50 s e o corte de tédio pulou 16–24 s,
+os golpes por segundo caíram (2,46 → 2,04) e o fim arrastou com os dois
+afastados. Ajustes com chave (todos DESLIGADOS no padrão, que segue igual a
+`eb36ddbe` em 60/60): `DINAMISMO_HP_FIM` e `DINAMISMO_FIM_NO_ACABAR`
+(desfecho sem separar), `DINAMISMO_SOLTO_FRACAO_RAIO` (o verbo de saída acaba
+quando os corpos já estão soltos), `DINAMISMO_SEM_GOLPE_S` (respiro só no
+colado sem golpe) e `DINAMISMO_ALCANCE_DIFERENCA_M` + `ASSIM_*` (alcances
+desiguais). **Nenhuma combinação passa em tudo**, medido em ~25 variantes:
+- 51% dos golpes da base saem com os discos colados (30 lutas): separar
+  sempre tira golpe por segundo (melhor variante 2,32 contra 2,46);
+- boa parte do colado mais longo é o desfecho (vida < 25%): sem separar ali,
+  o pior trecho volta a 4–8 s e a queda do total para em −28% a −36%;
+- o Mago perde por estar colado (27% na base): qualquer redução de colado o
+  sobe (+12 pp na variante mais suave nas 600, +17 só com o empurrão); a
+  compensação por alcance (o curto não recua, empurrão pela metade) tirou
+  3–7 pp e devolveu o colado.
+
+O medidor ganhou golpes, golpes de 10+, golpes/s, maior trecho sem golpe,
+distância entre centros (p50) e a série de vida; o `comparar.py` da pasta de
+medidas calcula o corte de tédio do duelo (`highlights.planejar_corte_tedio`
+com os parâmetros do duelo) e a maior queda de vida num corte.
+
 Variantes medidas no mesmo lote (60): sem o bate e sai −40,5%; com 0,6 s
 −49,9% (mas −43,4% nas 600); limiar 0,25 s ou empurrão 20 m/s passam de
 90 s. Medidas e scripts: `E:\tmp_pytest\dinamismo2\` (`comparar.py`,

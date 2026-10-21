@@ -115,6 +115,60 @@ def vale_agora(estado) -> bool:
         return True
 
 
+def _hp_frac(lutador) -> float:
+    try:
+        return float(lutador.vida) / max(1e-9, float(lutador.vida_max))
+    except (AttributeError, TypeError, ValueError):
+        return 1.0
+
+
+def fase_final(p1, p2) -> bool:
+    """O desfecho não se interrompe: com um dos dois abaixo de
+    ``DINAMISMO_HP_FIM`` da vida, ou com alguém no plano ACABAR (o "FINISH"
+    da tela), nem respiro nem choque nem bate e sai. Medido pelo conferente
+    nos vídeos de 21/10: sem isto o fim arrastava 13 s com o perdedor a 3 HP
+    e os dois afastados."""
+    from neural_fights.utils.config import DINAMISMO_FIM_NO_ACABAR, DINAMISMO_HP_FIM
+
+    for lutador in (p1, p2):
+        if DINAMISMO_HP_FIM is not None and _hp_frac(lutador) < DINAMISMO_HP_FIM:
+            return True
+        if not DINAMISMO_FIM_NO_ACABAR:
+            continue
+        plano = getattr(getattr(lutador, "brain", None), "__dict__", {}).get("plano")
+        if isinstance(plano, Mapping) and plano.get("tipo") == "ACABAR":
+            return True
+    return False
+
+
+def soltos(p1, p2) -> bool:
+    """Já separados o bastante (borda > ``DINAMISMO_SOLTO_FRACAO_RAIO`` do
+    raio desenhado médio): o verbo de saída acaba aqui e a IA volta à dela.
+    O respiro separa para não grudar, não para fugir — com o recuo inteiro a
+    câmera abria e o lutador encolhia 40% na tela (conferente, 21/10)."""
+    from neural_fights.utils.config import DINAMISMO_SOLTO_FRACAO_RAIO
+
+    if DINAMISMO_SOLTO_FRACAO_RAIO is None:
+        return False
+    limite = DINAMISMO_SOLTO_FRACAO_RAIO * (raio_desenhado(p1) + raio_desenhado(p2)) / 2.0
+    return borda(p1, p2) > limite
+
+
+def parado_sem_golpe(estado) -> bool:
+    """O grude de verdade: colado SEM golpe corpo a corpo há
+    ``DINAMISMO_SEM_GOLPE_S`` (``None`` = qualquer colado). Medido na base
+    (8f51d7bd, 30 lutas): 51% dos golpes saem com os discos colados — o
+    colado trocando golpes é luta, não grude."""
+    from neural_fights.utils.config import DINAMISMO_SEM_GOLPE_S
+
+    if DINAMISMO_SEM_GOLPE_S is None:
+        return True
+    try:
+        return float(estado.get("t", 0.0)) - float(estado.get("t_golpe", -1e9)) >= DINAMISMO_SEM_GOLPE_S
+    except (AttributeError, TypeError, ValueError):
+        return True
+
+
 def acumular(relogio: float, colado: bool, dt: float) -> float:
     """O relógio do colado: sobe com o contato, desce 2x mais rápido solto."""
     from neural_fights.utils.config import DINAMISMO_ESQUECE_FATOR
@@ -164,6 +218,43 @@ def direcao_de_saida(lutador, dx: float, dy: float, arena) -> tuple[float, float
     return dx / n, dy / n
 
 
+def alcance_da_arma(lutador) -> float:
+    """Alcance máximo da arma (m), pelo perfil que a própria IA usa
+    (``weapon_analysis.get_weapon_profile``: o Arco 14, o Arremesso 10, a
+    espada ~2). Sem arma ou sem perfil: 0 (não conta como longo)."""
+    arma = getattr(getattr(lutador, "dados", None), "arma_obj", None)
+    if arma is None:
+        return 0.0
+    try:
+        from neural_fights.core.weapon_analysis import get_weapon_profile
+
+        perfil = get_weapon_profile(arma)
+        return float(getattr(perfil, "alcance_maximo", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+
+def papel_de_alcance(lutador, outro) -> str | None:
+    """``"curto"``/``"longo"`` quando a diferença de alcance das armas passa
+    de ``DINAMISMO_ALCANCE_DIFERENCA_M``; ``None`` no confronto parelho.
+
+    É o que o afastamento não pode ignorar: separar os corpos dá distância
+    DE GRAÇA a quem bate de longe. Medido no lote de 600 (21/10): o Mago
+    (Arco/Arremesso em 33 das 56 lutas) foi de 27% a 49% de vitórias só com
+    o empurrão, sem nenhum verbo da IA."""
+    from neural_fights.utils.config import DINAMISMO_ALCANCE_DIFERENCA_M
+
+    if DINAMISMO_ALCANCE_DIFERENCA_M is None:
+        return None
+    meu = alcance_da_arma(lutador)
+    dele = alcance_da_arma(outro)
+    if meu - dele >= DINAMISMO_ALCANCE_DIFERENCA_M:
+        return "longo"
+    if dele - meu >= DINAMISMO_ALCANCE_DIFERENCA_M:
+        return "curto"
+    return None
+
+
 def pode_ser_empurrado(lutador) -> bool:
     """Quem tem a velocidade zerada pelo próprio estado não sai do lugar."""
     if getattr(lutador, "morto", False):
@@ -193,7 +284,7 @@ def impulsos(p1, p2, arena) -> tuple[tuple[float, float], tuple[float, float]]:
     Cada um recebe ``DINAMISMO_EMPURRAO`` para longe do outro, na direção
     de saída dele; quem não pode se mexer cede a parte dele ao outro.
     """
-    from neural_fights.utils.config import DINAMISMO_EMPURRAO
+    from neural_fights.utils.config import DINAMISMO_ASSIM_EMPURRAO, DINAMISMO_EMPURRAO
 
     ex = p2.pos[0] - p1.pos[0]
     ey = p2.pos[1] - p1.pos[1]
@@ -203,8 +294,11 @@ def impulsos(p1, p2, arena) -> tuple[tuple[float, float], tuple[float, float]]:
     d2 = direcao_de_saida(p2, ex, ey, arena)
     m1 = pode_ser_empurrado(p1)
     m2 = pode_ser_empurrado(p2)
-    f1 = DINAMISMO_EMPURRAO * (1.0 if m1 else 0.0) * (1.0 if m2 else 2.0)
-    f2 = DINAMISMO_EMPURRAO * (1.0 if m2 else 0.0) * (1.0 if m1 else 2.0)
+    # alcances desiguais: só descola, sem abrir a distância de quem bate de longe
+    base = DINAMISMO_EMPURRAO * (
+        DINAMISMO_ASSIM_EMPURRAO if papel_de_alcance(p1, p2) else 1.0)
+    f1 = base * (1.0 if m1 else 0.0) * (1.0 if m2 else 2.0)
+    f2 = base * (1.0 if m2 else 0.0) * (1.0 if m1 else 2.0)
     return (d1[0] * f1, d1[1] * f1), (d2[0] * f2, d2[1] * f2)
 
 
@@ -222,6 +316,7 @@ def impulso_do_choque(atacante, defensor, kb_x: float, kb_y: float, arena):
     que aquele corpo não sai do lugar.
     """
     from neural_fights.utils.config import (
+        DINAMISMO_ASSIM_CHOQUE,
         DINAMISMO_CHOQUE_KB_MIN,
         DINAMISMO_CHOQUE_RECUO,
     )
@@ -229,24 +324,42 @@ def impulso_do_choque(atacante, defensor, kb_x: float, kb_y: float, arena):
     nada = ((0.0, 0.0), (0.0, 0.0))
     if math.hypot(kb_x, kb_y) < 1e-9 or not colados(atacante, defensor):
         return nada
+    # o curto que acerta o longo colado não o arremessa para a distância dele
+    fator = DINAMISMO_ASSIM_CHOQUE if papel_de_alcance(atacante, defensor) == "curto" else 1.0
     ex = defensor.pos[0] - atacante.pos[0]
     ey = defensor.pos[1] - atacante.pos[1]
     if math.hypot(ex, ey) < 1e-9:
         ex, ey = kb_x, kb_y
     dx, dy = direcao_de_saida(defensor, ex, ey, arena)
     componente = kb_x * dx + kb_y * dy
-    falta = max(0.0, DINAMISMO_CHOQUE_KB_MIN - componente)
+    falta = max(0.0, DINAMISMO_CHOQUE_KB_MIN * fator - componente)
     defesa = (dx * falta, dy * falta) if pode_ser_empurrado(defensor) else (0.0, 0.0)
     ax, ay = direcao_de_saida(atacante, -ex, -ey, arena)
-    recuo = DINAMISMO_CHOQUE_RECUO if pode_ser_empurrado(atacante) else 0.0
+    recuo = DINAMISMO_CHOQUE_RECUO * fator if pode_ser_empurrado(atacante) else 0.0
     return defesa, (ax * recuo, ay * recuo)
 
 
-def verbo_de_saida(lutador) -> str:
+def verbo_de_saida(lutador, outro=None) -> str | None:
     """O que a IA faz durante o respiro, sem sorteio: o ágil (mobilidade
     alta) circula (de lado e abrindo distância abaixo de 2,5 m), o resto
     recua — os dois verbos que o motor já anda (``Lutador.executar_movimento``).
-    FLANQUEAR não serve: anda a 50° PARA o outro e cola de novo."""
+    FLANQUEAR não serve: anda a 50° PARA o outro e cola de novo.
+
+    Com alcances desiguais (``papel_de_alcance``) o verbo é o de
+    ``DINAMISMO_ASSIM_VERBO_CURTO``/``_LONGO``: ``"padrao"`` (o de cima),
+    ``"nenhum"`` (``None``: a IA segue a dela) ou um verbo do motor (o curto
+    volta para a faixa dele)."""
+    if outro is not None:
+        from neural_fights.utils import config as _cfg
+
+        papel = papel_de_alcance(lutador, outro)
+        if papel is not None:
+            escolha = (_cfg.DINAMISMO_ASSIM_VERBO_CURTO if papel == "curto"
+                       else _cfg.DINAMISMO_ASSIM_VERBO_LONGO)
+            if escolha == "nenhum":
+                return None
+            if escolha != "padrao":
+                return escolha
     brain = getattr(lutador, "brain", None)
     perfil = getattr(brain, "perfil", None) if brain is not None else None
     try:
@@ -259,12 +372,17 @@ def verbo_de_saida(lutador) -> str:
 __all__ = [
     "CHAVE",
     "acumular",
+    "alcance_da_arma",
     "borda",
     "chave_ligada",
     "colados",
     "direcao_de_saida",
+    "fase_final",
+    "soltos",
     "impulso_do_choque",
     "impulsos",
+    "papel_de_alcance",
+    "parado_sem_golpe",
     "pode_ser_empurrado",
     "raio_desenhado",
     "vale_agora",

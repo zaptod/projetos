@@ -4055,6 +4055,9 @@ class Simulador:
         est["t"] += dt   # relógio da luta (o hit stop não chega aqui)
         if est["recarga"] > 0.0:
             est["recarga"] = max(0.0, est["recarga"] - dt)
+        # Separou o bastante (ou entrou no desfecho): o verbo de saída que o
+        # dinamismo pôs acaba já e a IA volta à dela (core/dinamismo.soltos).
+        self._soltar_saidas(est)
         if not _dinamismo.vale_agora(est):
             # Luta longa (quem se cura, dois tanques): depois de ATE_S o
             # corpo a corpo fecha a luta (core/dinamismo.vale_agora).
@@ -4064,11 +4067,16 @@ class Simulador:
             or self.__dict__.get("_agarrao") is not None
             or self._alvo_em_transicao_sombria(p1)
             or self._alvo_em_transicao_sombria(p2)
+            or _dinamismo.fase_final(p1, p2)
         ):
             return
         est["colado_t"] = _dinamismo.acumular(
             est["colado_t"], _dinamismo.colados(p1, p2), dt)
         if est["colado_t"] < DINAMISMO_COLADO_MAX_S or est["recarga"] > 0.0:
+            return
+        if not _dinamismo.parado_sem_golpe(est):
+            # colado TROCANDO golpes não é o grude: o choque de cada golpe
+            # já descola (só o colado sem golpe vira respiro)
             return
 
         (v1x, v1y), (v2x, v2y) = _dinamismo.impulsos(p1, p2, self.arena)
@@ -4076,17 +4084,20 @@ class Simulador:
         p1.vel[1] += v1y
         p2.vel[0] += v2x
         p2.vel[1] += v2y
-        for lutador, (vx, vy) in ((p1, (v1x, v1y)), (p2, (v2x, v2y))):
+        for lutador, outro, (vx, vy) in ((p1, p2, (v1x, v1y)), (p2, p1, (v2x, v2y))):
             brain = getattr(lutador, "brain", None)
             if brain is None or (vx == 0.0 and vy == 0.0):
                 continue
             definir = getattr(brain, "_definir_acao", None)
-            if callable(definir):
+            verbo = _dinamismo.verbo_de_saida(lutador, outro)
+            if callable(definir) and verbo is not None:
                 # Prioridade 0: fura até o hold P1 (iniciativa, instinto,
                 # plano ESMAGAR). Medido: com P1, quem prensava na parede
-                # seguia prensando e o colado voltava em 0,4 s.
-                definir(_dinamismo.verbo_de_saida(lutador), fonte="respiro",
-                        prioridade=0, hold_s=DINAMISMO_RESPIRO_S)
+                # seguia prensando e o colado voltava em 0,4 s. Alcances
+                # desiguais: o verbo pode ser outro ou nenhum (dinamismo).
+                if definir(verbo, fonte="respiro",
+                           prioridade=0, hold_s=DINAMISMO_RESPIRO_S):
+                    est.setdefault("saindo", []).append(lutador)
             brain.tell_atual = {
                 "tipo": "respiro",
                 "ate": getattr(brain, "tempo_combate", 0.0) + DINAMISMO_RESPIRO_S,
@@ -4101,7 +4112,24 @@ class Simulador:
         self.shockwaves.append(Shockwave(mx, my, (210, 210, 220), 1.0))
         self.cam.aplicar_shake(5.0, 0.12)
 
-    def _sair_depois_do_choque(self, atacante, avx, avy):
+    def _soltar_saidas(self, est):
+        """Encerra o hold P0 de quem o dinamismo mandou sair, assim que os
+        corpos estão soltos (``dinamismo.soltos``) ou no desfecho
+        (``dinamismo.fase_final``). Só mexe no hold que ELE pôs: se a IA já
+        trocou de ação (fonte diferente), nada a fazer."""
+        saindo = est.get("saindo")
+        if not saindo:
+            return
+        p1, p2 = self.p1, self.p2
+        if not (_dinamismo.soltos(p1, p2) or _dinamismo.fase_final(p1, p2)):
+            return
+        for lutador in saindo:
+            brain = getattr(lutador, "brain", None)
+            if brain is not None and brain.__dict__.get("_acao_fonte") in ("respiro", "choque"):
+                brain._acao_hold_ate = getattr(brain, "tempo_combate", 0.0)
+        saindo.clear()
+
+    def _sair_depois_do_choque(self, atacante, avx, avy, defensor=None):
         """Bate e sai (21/10/2026): quem acerta um golpe colado recua ou
         circula por ``DINAMISMO_CHOQUE_SAIDA_S`` em vez de seguir andando
         para dentro (o recuo de velocidade sozinho durava 1-2 quadros: a IA
@@ -4115,8 +4143,15 @@ class Simulador:
         definir = getattr(brain, "_definir_acao", None)
         if not callable(definir):
             return
-        definir(_dinamismo.verbo_de_saida(atacante), fonte="choque",
-                prioridade=0, hold_s=DINAMISMO_CHOQUE_SAIDA_S)
+        # O curto que acerta o longo NÃO sai (``verbo_de_saida`` com o
+        # defensor): recuar daria ao longo a distância dele de graça.
+        verbo = _dinamismo.verbo_de_saida(atacante, defensor)
+        if verbo is None:
+            return
+        if definir(verbo, fonte="choque", prioridade=0, hold_s=DINAMISMO_CHOQUE_SAIDA_S):
+            est = self.__dict__.get("_dinamismo")
+            if est is not None:
+                est.setdefault("saindo", []).append(atacante)
 
     def _resolver_clinch(self, dist, dx, dy):
         """Onda 8G: quebra o clinch de um jeito DIVERSO e com autor.
@@ -4590,10 +4625,12 @@ class Simulador:
             if (
                 self.__dict__.get("_dinamismo") is not None
                 and _dinamismo.vale_agora(self._dinamismo)
+                and not _dinamismo.fase_final(atacante, defensor)
             ):
                 # Dinamismo (21/10/2026): golpe com os discos colados é
                 # choque — o defensor descola e o atacante recua. Só a
                 # velocidade muda (o dano é o mesmo); sem sorteio.
+                self._dinamismo["t_golpe"] = self._dinamismo.get("t", 0.0)
                 (dvx, dvy), (avx, avy) = _dinamismo.impulso_do_choque(
                     atacante, defensor, kb_x, kb_y, self.arena)
                 if dvx or dvy or avx or avy:
@@ -4605,7 +4642,7 @@ class Simulador:
                     atacante.vel[1] += avy
                     atacante.contadores_luta["choques"] = (
                         atacante.contadores_luta.get("choques", 0) + 1)
-                    self._sair_depois_do_choque(atacante, avx, avy)
+                    self._sair_depois_do_choque(atacante, avx, avy, defensor)
             magnitude_knockback = math.hypot(kb_x, kb_y)
             direcao_vfx = (
                 math.atan2(kb_y, kb_x)

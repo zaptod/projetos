@@ -88,12 +88,28 @@ class SondaDinamismo:
         self._estado_dist = None
         self.aproximacoes = 0
         self.afastamentos = 0
+        # golpes (o mesmo registro do gravador: SondaDeDano) e a vida a 10 Hz
+        self.eventos: list[tuple[float, str, float]] = []
+        self.serie_hp: list[tuple[float, float, float]] = []
+        self._registros: dict[str, list] = {}
+        self._dist: list[float] = []
 
     def on_inicio(self, sim) -> None:
         self._sim = sim
         for slot in ("p1", "p2"):
             lutador = getattr(sim, slot)
             self._pos_ant[slot] = (float(lutador.pos[0]), float(lutador.pos[1]))
+            lista: list = []
+            lutador.registro_eventos_dano = lista
+            self._registros[slot] = lista
+
+    def _drenar(self, sim) -> None:
+        for slot in ("p1", "p2"):
+            lista = self._registros.get(slot)
+            if lista:
+                for dano, _categoria in lista:
+                    self.eventos.append((round(self.t, 3), slot, float(dano)))
+                lista.clear()
 
     @staticmethod
     def _na_parede(arena, lutador) -> bool:
@@ -111,14 +127,21 @@ class SondaDinamismo:
     def on_frame(self, sim, dt: float) -> None:
         p1, p2 = sim.p1, sim.p2
         if getattr(sim, "round_finalizado", False) or p1.morto or p2.morto:
+            self._drenar(sim)   # o golpe do K.O.
             return
         self.t += dt
         self.frames += 1
+        self._drenar(sim)
+        if self.frames % 6 == 1:
+            self.serie_hp.append((round(self.t, 2),
+                                  round(100 * float(p1.vida) / max(1e-9, float(p1.vida_max)), 1),
+                                  round(100 * float(p2.vida) / max(1e-9, float(p2.vida_max)), 1)))
         r1 = raio_desenhado(p1)
         r2 = raio_desenhado(p2)
         # o disco de quem pula/voa e desenhado ``z`` acima do chao (off_y)
         dist = math.hypot(p2.pos[0] - p1.pos[0],
                           (p2.pos[1] - float(p2.z or 0.0)) - (p1.pos[1] - float(p1.z or 0.0)))
+        self._dist.append(dist)
         borda = dist - (r1 + r2)
         limite = COLADO_FRACAO_RAIO * (r1 + r2) / 2.0
         colado = borda < limite
@@ -212,8 +235,21 @@ class SondaDinamismo:
         parede_colado = sum(1 for c, d in zip(self._colado, self._detalhe) if c and d[1])
         agarrao_colado = sum(1 for c, d in zip(self._colado, self._detalhe) if c and d[0])
         hitstop_colado = sum(1 for c, d in zip(self._colado, self._detalhe) if c and d[6])
+        # golpes: por segundo de luta, os de 10+ de dano (o que o olho conta
+        # como impacto) e o maior trecho sem golpe (do início ao K.O.)
+        tempos = sorted(t for t, _s, d in self.eventos if d > 0.0)
+        marcos = [0.0, *tempos, self.t]
+        sem_golpe = max((b - a for a, b in zip(marcos, marcos[1:])), default=self.t)
+        dists = sorted(self._dist)
         return {
             "frames": len(self._colado),
+            "golpes": len(tempos),
+            "golpes_10": sum(1 for _t, _s, d in self.eventos if d >= 10.0),
+            "golpes_por_s": round(len(tempos) / max(self.t, 1e-9), 3),
+            "maior_sem_golpe_s": round(sem_golpe, 2),
+            "dist_centros_p50_m": round(dists[len(dists) // 2], 3) if dists else 0.0,
+            "eventos": self.eventos,
+            "serie_hp": self.serie_hp,
             "pct_colado": round(colado_n / n, 4),
             "pct_sobreposto": round(self._sobreposto / n, 4),
             "maior_colado_s": round(maior, 2),
