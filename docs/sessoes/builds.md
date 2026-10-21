@@ -163,6 +163,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **7 duelos de 12/10 não se reproduzem no motor atual** — Regravar com o motor atual, mesmo par/seed/arena/id/título; o que der < 15 s vira pendente (recomendado) (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `regravar-com-motor-novo`
 - ✅ **Lutas sem colar deixaram o Mago mais forte** — Compensar o Mago antes de ligar, para ficar dentro de 10 pp (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `dinamismo-mago-mais-forte`
 - ✅ **Lutas sem colar ficam mais longas** — Aceitar (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `dinamismo-lutas-mais-longas`
+- ⏳ **Ligar o dinamismo em toda luta nova** — Depois do merge, toda luta nova sai com o dinamismo (runner.DINAMISMO_LUTA_NOVA = True)? `dinamismo-ligado-nas-novas`
 
 <!-- decisoes:fim -->
 

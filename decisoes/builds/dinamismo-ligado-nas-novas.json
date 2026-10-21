@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Os 31 duelos da fila não mudam (sem carimbo re-simulam iguais). Regravar algum faria os 31 mudarem de luta e 5 de vencedor; não vamos regravar.",
+  "criado": "2026-10-21T15:06:44.661880",
+  "depende_de": [],
+  "historico": [],
+  "id": "dinamismo-ligado-nas-novas",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O que já está pronto sai como está.",
+      "id": "ligar",
+      "pede_comentario": false,
+      "rotulo": "Ligar nas novas, fila intacta (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Muda 5 vencedores e a ordem da fila.",
+      "id": "regravar",
+      "pede_comentario": false,
+      "rotulo": "Ligar e regravar a fila"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Depois do merge, toda luta nova sai com o dinamismo (runner.DINAMISMO_LUTA_NOVA = True)?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Ligar o dinamismo em toda luta nova",
+  "vigente": null
+}
