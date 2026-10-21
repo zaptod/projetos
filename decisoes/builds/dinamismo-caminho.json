@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T15:57:26",
+      "evento": "2026-10-21T15:57:21",
+      "linha": 212,
+      "nota": "resposta sem pedido de origem: builds/dinamismo-caminho = Atacar a causa na IA: golpe de perto sai na borda, sem colar (recomendado)",
+      "opcao": "ia",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Pedido do Adrian 21/10: movimento e dinamismo, sem ficar colado. Base: pior trecho colado 9,63 s, mediana 2,19 s. eb36ddbe reprovado pelo conferente (lutador 40% menor, final arrastado, Mago +22 pp).",
   "criado": "2026-10-21T15:57:15.189402",
   "depende_de": [],
