@@ -444,9 +444,14 @@ def avisos(c: dict, regs: list, semana: dict, agora: datetime) -> list:
                  and (_instante(r.get("quando")) or datetime.min) > agora - timedelta(hours=48)]
     lidas = c["leituras_hora_24h"]
     if yt is not None and novos_48h and not lidas["ok"]:
-        saida.append(f"leitura de hora em hora PARADA: {len(novos_48h)} vídeo(s) do YouTube com "
-                     f"menos de 48 h e nenhuma leitura boa nas últimas 24 h "
-                     f"({lidas['erro']} com erro)")
+        # O numero diz O QUE conta (conferente, 21/10): a leitura de hora em
+        # hora le TODO video do canal com menos de 48 h; a medida usa so os
+        # do formato dela. Os dois vao escritos.
+        da_medida = sum(1 for r in novos_48h if r.get("formato") == semana["formato"])
+        saida.append(f"leitura de hora em hora PARADA: nenhuma leitura boa nas últimas 24 h "
+                     f"({lidas['erro']} com erro) — {len(novos_48h)} vídeo(s) do YouTube do "
+                     f"canal {semana['canal']} com menos de 48 h, todos os formatos; "
+                     f"{da_medida} deles {semana['formato']}(s) desta medida")
     if c.get("fotos_sem_hora"):
         saida.append(f"{c['fotos_sem_hora']} número(s) de fotografias sem hora ficaram fora da "
                      "comparação na mesma idade")

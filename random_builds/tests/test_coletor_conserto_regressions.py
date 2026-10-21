@@ -554,6 +554,25 @@ class AindaJuntandoTests(unittest.TestCase):
         self.assertEqual(1, vinte_e_quatro["novos"]["sem_leitura"])
 
 
+class AvisoParadaTests(unittest.TestCase):
+
+    def test_parada_diz_o_que_o_numero_conta(self):
+        # "PARADA: 9 vídeo(s)" contava todo video do canal com < 48 h (2a volta
+        # do conferente): o texto diz os dois numeros.
+        duelo = _reg("d", AGORA - timedelta(hours=6), 10)
+        build = {**_reg("b", AGORA - timedelta(hours=7), 5), "formato": "build"}
+        c = mesma_idade.comparar([duelo, build], AGORA, SEMANA, leituras=[])
+        parada = next(a for a in c["avisos"] if "PARADA" in a)
+        self.assertIn("2 vídeo(s) do YouTube do canal builds com menos de 48 h", parada)
+        self.assertIn("todos os formatos", parada)
+        self.assertIn("1 deles duelo(s) desta medida", parada)
+
+    def test_caso_zero_sem_video_recente_nao_acusa(self):
+        velho = _reg("v", AGORA - timedelta(hours=60), 10)
+        c = mesma_idade.comparar([velho], AGORA, SEMANA, leituras=[])
+        self.assertFalse(any("PARADA" in a for a in c["avisos"]))
+
+
 # ======================================================== 8. titulo e pagina
 class TituloEPaginaTests(unittest.TestCase):
 

@@ -784,8 +784,8 @@ sem comparação) e o relatório `semana` do Telegram (`/semana` e **todo dia à
 21:05**, Grimório `metricas/semana-no-telegram`; padrão em `remoto/config.py`).
 
 Testes: `random_builds/tests/test_medida_da_semana_regressions.py` (43),
-`random_builds/tests/test_coletor_conserto_regressions.py` (28) e
-`remoto/test_relatorio_semana.py` (8).
+`random_builds/tests/test_coletor_conserto_regressions.py` (30),
+`remoto/test_relatorio_semana.py` (8) e `remoto/test_envio_em_partes.py` (10).
 
 **Medido em 21/10 (código da worktree, dados de `E:\projetos`, só leitura;
 a linha de hora em hora foi gravada no scratchpad, não em `outputs/`):**
@@ -817,7 +817,8 @@ a linha de hora em hora foi gravada no scratchpad, não em `outputs/`):**
 O conferente rodou a entrega no caminho real e achou oito defeitos — três
 deles do tipo da lei desta parte (medidor que cala ou que dá número bonito).
 O que era, o conserto e o teste (`test_coletor_conserto_regressions.py`, 28
-casos; 29 falham no código de antes, contando os 4 novos do `remoto`):
+casos na 1ª volta e 2 na 2ª; 29 falharam no código de antes, contando os 4
+novos do `remoto`; e `remoto/test_envio_em_partes.py`, 10, da 2ª volta):
 
 1. **`/semana` cortado.** `remoto/api.py` cortava toda mensagem em 4.000
    caracteres. A semana cheia (21 duelos no YouTube + 7 no TikTok de cada
@@ -828,10 +829,22 @@ casos; 29 falham no código de antes, contando os 4 novos do `remoto`):
    a página); (b) o Telegram recebe o texto **curto** (`texto_da_semana`
    padrão = sem a linha de cada vídeo, que fica na página e no `--semana`):
    a semana cheia dá **2.712**; (c) se ainda passar, `api.partes_da_mensagem`
-   manda em partes quebradas em fim de linha (vale para todo texto do bot;
-   uma parte que falha devolve a falha e o relatório não é marcado como
-   enviado — repete inteiro na volta seguinte). O `/semana` real às 15:43
-   de 21/10: **2.330 caracteres, 24 linhas**, com "PARADA" na 4ª linha.
+   manda em partes quebradas em fim de linha, contando **unidades UTF-16**
+   (é como o Telegram conta: 🟢 vale 2) — vale para todo texto do bot. O
+   `/semana` real às 15:43 de 21/10: **2.330 caracteres, 24 linhas**, com
+   "PARADA" na 4ª linha. **2ª volta do conferente:** na 1ª versão, a parte
+   que falhava fazia o chamador reenviar o texto inteiro a cada volta — com
+   a parte 2 recusada para sempre, a parte 1 chegava ~120 vezes por hora
+   (`partes_bot.py`: 10 voltas = 10 vezes). Agora o `Telegram` lembra, por
+   chat e texto, até onde chegou e retoma dali; recusa definitiva (4xx que
+   não é 429) conta tentativa e, na 3ª (`TETO_DE_TENTATIVAS`), a parte é
+   **pulada**, o resto segue e a resposta diz `parcial` (o bot põe no log);
+   falta de rede não conta. Quem tem fila (alerta, aviso, pendentes,
+   `remoto --avisar`) conta a entrega pela metade como entregue e enfileira
+   **só** o `resto`. Medido no `partes_bot.py`: parte 1 chega **1 vez** com
+   a parte 2 falhando uma vez (antes 2) e falhando sempre (antes 10). O
+   "PARADA" diz o que conta: todo vídeo do canal com menos de 48 h (todos os
+   formatos) e quantos deles são da medida.
 2. **Horário.** Grimório `metricas/semana-no-telegram` = todo dia às 21:05:
    `"semana": "21:05"` no `PADRAO` de `remoto/config.py` (o `remoto.json`
    real não tem `relatorios`, então o padrão vale; precisa reiniciar o bot).
@@ -966,7 +979,9 @@ a versão nova repete na rodada seguinte.
 - **Mensagem do bot cortada no fim.** `Telegram.mensagem` cortava em 4.000 e o
   que morava no fim sumia calado: a medida da semana cheia perdia o TikTok e
   todos os avisos (21/10). Aviso mora no **topo**, e texto longo vai em partes
-  (`api.partes_da_mensagem`).
+  (`api.partes_da_mensagem`, em unidades UTF-16). E parte não pode ser
+  reenviada: quem chama repete o texto inteiro, então quem retoma é o
+  `Telegram` (por chat e texto), com teto de 3 recusas por parte.
 - **Agrupar aviso pelo nome da exceção.** Toda recusa da API vira
   `RuntimeError`; "um aviso por dia e tipo" com esse tipo cala a 2ª recusa,
   de outro motivo. O tipo é o código + motivo do Google (`RecusaDaAPI.tipo`).

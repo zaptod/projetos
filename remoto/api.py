@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -43,38 +44,82 @@ def _e_erro_de_formatacao(resposta: dict) -> bool:
     return any(sinal in motivo for sinal in FALHAS_DE_FORMATACAO)
 
 
-# Folga sob os 4096 do Telegram (o teto conta caracteres depois das entidades).
+# Folga sob os 4096 do Telegram. O teto do Telegram conta UNIDADES UTF-16,
+# nao caracteres do Python: emoji fora do plano basico (🟢, 📏) vale 2. 110
+# linhas com 🟢 davam 3.999 caracteres e 4.099 unidades (conferente, 21/10).
 LIMITE_DA_MENSAGEM = 4000
+# Recusa DEFINITIVA da mesma parte (4xx que nao e 429 nem de formatacao) ate
+# a parte ser pulada. Falta de rede nao conta: aquilo volta.
+TETO_DE_TENTATIVAS = 3
+# Entregas pela metade lembradas (por chat e texto), e por quanto tempo.
+MEMORIA_MAXIMA = 50
+MEMORIA_S = 24 * 3600
+
+
+def unidades(texto: str) -> int:
+    """O tamanho como o Telegram conta: unidades UTF-16."""
+    return len(str(texto).encode("utf-16-le")) // 2
+
+
+def _cabe(linha: str, limite: int) -> int:
+    """Quantos caracteres do comeco de `linha` cabem em `limite` unidades
+    (sem partir um emoji ao meio). Pelo menos 1."""
+    total = 0
+    for i, ch in enumerate(linha):
+        total += 2 if ord(ch) > 0xFFFF else 1
+        if total > limite:
+            return max(1, i)
+    return len(linha)
 
 
 def partes_da_mensagem(texto: str, limite: int = LIMITE_DA_MENSAGEM) -> list:
-    """O texto em pedacos de ate `limite`, quebrados em FIM DE LINHA.
+    """O texto em pedacos de ate `limite` UNIDADES UTF-16, quebrados em FIM
+    DE LINHA.
 
     Nada se perde: juntar as partes com "\\n" devolve o texto (so a linha
     sozinha maior que o limite e quebrada no meio, e parte feita so de
     espaco nao vai — o Telegram recusa texto vazio). Texto curto = uma
     parte. Texto vazio = `[""]` (o envio decide o que fazer, como antes)."""
     texto = str(texto if texto is not None else "")
-    if len(texto) <= limite:
+    if unidades(texto) <= limite:
         return [texto]
-    partes, atual = [], None
+    partes, atual, tamanho = [], None, 0
     for linha in texto.split("\n"):
-        while len(linha) > limite:
+        while unidades(linha) > limite:
             if atual is not None:
                 partes.append(atual)
                 atual = None
-            partes.append(linha[:limite])
-            linha = linha[limite:]
+            corte = _cabe(linha, limite)
+            partes.append(linha[:corte])
+            linha = linha[corte:]
+        n = unidades(linha)
         if atual is None:
-            atual = linha
-        elif len(atual) + 1 + len(linha) <= limite:
+            atual, tamanho = linha, n
+        elif tamanho + 1 + n <= limite:
             atual += "\n" + linha
+            tamanho += 1 + n
         else:
             partes.append(atual)
-            atual = linha
+            atual, tamanho = linha, n
     if atual is not None:
         partes.append(atual)
-    return [p for p in partes if p.strip()] or [texto[:limite]]
+    return [p for p in partes if p.strip()] or [texto[:_cabe(texto, limite)]]
+
+
+def chegou_algo(resposta: dict) -> bool:
+    """A mensagem chegou, ao menos em parte? Entrega PELA METADE conta como
+    entregue para quem tem fila: o que falta vai em `resposta["resto"]`, e e
+    so ele que se enfileira (reenfileirar o texto inteiro repetia a parte 1)."""
+    if not isinstance(resposta, dict):
+        return bool(resposta and resposta.get("ok"))
+    return bool(resposta.get("ok") or resposta.get("partes_enviadas"))
+
+
+def _recusa_definitiva(resposta: dict) -> bool:
+    """O Telegram respondeu e disse NAO de um jeito que repetir nao conserta.
+    `{}` (sem rede), 429 (devagar) e 5xx voltam; 4xx fica."""
+    codigo = (resposta or {}).get("error_code")
+    return isinstance(codigo, int) and 400 <= codigo < 500 and codigo != 429
 
 
 class Telegram:
@@ -82,6 +127,10 @@ class Telegram:
         self.token = token
         # injetavel para o teste nao tocar a rede
         self._abrir = abrir or urllib.request.urlopen
+        # (chat, texto) -> {"feitas", "falhas", "puladas", "em"}: a entrega
+        # PELA METADE de um texto longo. Quem chama reenvia o texto inteiro
+        # (relatorio, alerta, fila); daqui sai so o que ainda nao chegou.
+        self._pela_metade: dict = {}
 
     # ------------------------------------------------------------- interno
     def _url(self, metodo: str) -> str:
@@ -134,17 +183,63 @@ class Telegram:
         # perdia o TikTok e todo aviso "!"). Agora o texto longo vai em
         # PARTES, quebradas em fim de linha; so uma linha sozinha maior que o
         # teto e quebrada no meio.
+        #
+        # RETOMADA (conferente, 21/10): quem chama reenvia o texto INTEIRO
+        # quando a resposta nao e ok, a cada volta do laco. Sem memoria, a
+        # parte 1 chegava de novo a cada volta (~120 vezes por hora com a
+        # parte 2 recusada para sempre). Agora a parte que ja chegou nao vai
+        # de novo; a recusa definitiva da mesma parte conta tentativa, e na
+        # `TETO_DE_TENTATIVAS` ela e PULADA (o resto segue) e a resposta diz
+        # `parcial` — nunca "tudo certo" calado.
+        partes = partes_da_mensagem(texto)
+        if len(partes) == 1:
+            return self._uma_parte(chat_id, partes[0], markdown)
+        chave = (str(chat_id), str(texto))
+        agora = time.monotonic()
+        self._esquecer_velhas(agora)
+        estado = self._pela_metade.get(chave) or {"feitas": 0, "falhas": 0,
+                                                  "puladas": [], "em": agora}
+        estado["em"] = agora
         resposta: dict = {}
-        for corpo in partes_da_mensagem(texto):
+        while estado["feitas"] < len(partes):
+            i = estado["feitas"]
+            resposta = self._uma_parte(chat_id, partes[i], markdown)
+            if resposta.get("ok"):
+                estado["feitas"], estado["falhas"] = i + 1, 0
+                continue
+            if _recusa_definitiva(resposta):
+                estado["falhas"] += 1
+                if estado["falhas"] >= TETO_DE_TENTATIVAS:
+                    estado["puladas"].append(i + 1)
+                    estado["feitas"], estado["falhas"] = i + 1, 0
+                    continue
+            self._pela_metade[chave] = estado
+            return {**resposta, "ok": False, "partes": len(partes),
+                    "partes_enviadas": i, "puladas": list(estado["puladas"]),
+                    "resto": "\n".join(partes[i:])}
+        self._pela_metade.pop(chave, None)
+        saida = {**resposta, "ok": True, "partes": len(partes),
+                 "partes_enviadas": len(partes) - len(estado["puladas"])}
+        if estado["puladas"]:
+            saida.update(parcial=True, puladas=list(estado["puladas"]),
+                         description=f"partes {estado['puladas']} de {len(partes)} "
+                                     f"recusadas {TETO_DE_TENTATIVAS}x e puladas")
+        return saida
+
+    def _uma_parte(self, chat_id, corpo: str, markdown: bool) -> dict:
+        resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
+                               parse_mode="Markdown" if markdown else None,
+                               disable_web_page_preview="true")
+        if markdown and not resposta.get("ok") and _e_erro_de_formatacao(resposta):
             resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
-                                   parse_mode="Markdown" if markdown else None,
                                    disable_web_page_preview="true")
-            if markdown and not resposta.get("ok") and _e_erro_de_formatacao(resposta):
-                resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
-                                       disable_web_page_preview="true")
-            if not resposta.get("ok"):
-                return resposta          # parte que nao foi: quem chama tenta de novo
         return resposta
+
+    def _esquecer_velhas(self, agora: float) -> None:
+        for chave in [k for k, v in self._pela_metade.items() if agora - v["em"] > MEMORIA_S]:
+            self._pela_metade.pop(chave, None)
+        while len(self._pela_metade) >= MEMORIA_MAXIMA:
+            self._pela_metade.pop(min(self._pela_metade, key=lambda k: self._pela_metade[k]["em"]))
 
     def arquivo(self, chat_id, caminho, *, legenda: str = "",
                 como_video: bool = True) -> dict:

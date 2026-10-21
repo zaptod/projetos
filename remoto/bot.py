@@ -25,7 +25,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import avisos, comandos, config, vigia_tailnet
+from . import api, avisos, comandos, config, vigia_tailnet
 from .api import Telegram
 
 
@@ -52,6 +52,13 @@ SEM_REDE_ESPERA_S = 10.0   # uma volta sem rede dorme isto antes de seguir
 GETME_ESPERA_S = 30.0      # getMe sem rede: tenta de novo a cada isto
 RELATORIO_REAPROVEITA_S = 3600.0
 ALERTAS_UM_A_UM = 5        # os mais novos saem um a um; o resto vai junto
+
+
+def _enfileirar_restos(restos, chave, origem: str) -> None:
+    """O que faltou de uma mensagem entregue PELA METADE vai para a fila —
+    so o resto: reenfileirar o texto inteiro mandava a parte 1 de novo."""
+    for resto in dict.fromkeys(r for r in restos if isinstance(r, str) and r.strip()):
+        avisos.enfileirar(resto, chave=(f"{chave}|resto" if chave else None), origem=origem)
 
 
 def caminho_do_visto() -> Path:
@@ -239,15 +246,18 @@ class Bot:
         """Passa pelo porteiro e manda; sem entrega, vai para a fila. True = saiu."""
         if not avisos.liberar(texto, chave=chave, origem="bot.alerta"):
             return False
-        entregues = 0
+        entregues, restos = 0, []
         for chat in config.carregar()["autorizados"]:
             try:
-                if self.tg.mensagem(chat, texto, markdown=markdown).get("ok"):
+                resposta = self.tg.mensagem(chat, texto, markdown=markdown)
+                if api.chegou_algo(resposta):
                     entregues += 1
+                    restos.append(resposta.get("resto"))
             except Exception:                                  # noqa: BLE001
                 pass
         if entregues:
             avisos.confirmar(texto, chave=chave, origem="bot.alerta")
+            _enfileirar_restos(restos, chave, "bot.alerta")
             return True
         avisos.desfazer(texto, chave=chave)
         avisos.enfileirar(texto, chave=chave, origem="bot.alerta")
@@ -297,36 +307,51 @@ class Bot:
         hoje = datetime.now().strftime("%Y-%m-%d")
         for nome in vencidos:
             guardado = self._relatorio_montado.get(nome)
-            if guardado and time.monotonic() - guardado[1] < RELATORIO_REAPROVEITA_S:
+            # Entregue PELA METADE: o mesmo texto fica, por mais velho que
+            # seja — o Telegram retoma da parte que falta so se o texto for
+            # o mesmo; remontar mandaria a parte 1 de novo (21/10).
+            if guardado and ((len(guardado) > 2 and guardado[2]) or
+                             time.monotonic() - guardado[1] < RELATORIO_REAPROVEITA_S):
                 texto = guardado[0]
             else:
                 texto = relatorios.montar(nome)
-                self._relatorio_montado[nome] = (texto, time.monotonic())
-            entregues = 0
+                self._relatorio_montado[nome] = (texto, time.monotonic(), False)
+            entregues, pela_metade = 0, False
             for chat in config.carregar()["autorizados"]:
                 try:
-                    if self.tg.mensagem(chat, texto, markdown=True).get("ok"):
+                    resposta = self.tg.mensagem(chat, texto, markdown=True)
+                    if resposta.get("ok"):
                         entregues += 1
+                        if resposta.get("parcial"):
+                            self.log(f"[remoto] relatorio de {nome}: "
+                                     f"{resposta.get('description')}.")
+                    elif resposta.get("partes_enviadas"):
+                        pela_metade = True
                 except Exception:                              # noqa: BLE001
                     pass
             if entregues:
                 relatorios.marcar(nome, hoje)
                 self._relatorio_montado.pop(nome, None)
                 self.log(f"[remoto] relatorio de {nome} enviado.")
+            elif pela_metade:
+                self._relatorio_montado[nome] = (texto, self._relatorio_montado[nome][1], True)
 
     def avisar_todos(self, texto: str, *, chave: str | None = None) -> bool:
         """Aviso espontaneo (nao e resposta a comando): passa pelo porteiro."""
         if not avisos.liberar(texto, chave=chave, origem="bot"):
             return False
-        entregues = 0
+        entregues, restos = 0, []
         for chat in config.carregar()["autorizados"]:
             try:
-                if self.tg.mensagem(chat, texto).get("ok"):
+                resposta = self.tg.mensagem(chat, texto)
+                if api.chegou_algo(resposta):
                     entregues += 1
+                    restos.append(resposta.get("resto"))
             except Exception:                                  # noqa: BLE001
                 pass
         if entregues:
             avisos.confirmar(texto, chave=chave, origem="bot")
+            _enfileirar_restos(restos, chave, "bot")
             return True
         avisos.desfazer(texto, chave=chave)
         avisos.enfileirar(texto, chave=chave, origem="bot")
@@ -384,11 +409,13 @@ class Bot:
                      + primeiro.strftime("%H:%M") + ")\n\n"
                      + "\n\n".join(str(item.get("texto", "")) for item in liberados)
                      if len(liberados) > 1 else str(liberados[0].get("texto", "")))
-            entregues = 0
+            entregues, restos = 0, []
             for chat in config.carregar()["autorizados"]:
                 try:
-                    if self.tg.mensagem(chat, texto).get("ok"):
+                    resposta = self.tg.mensagem(chat, texto)
+                    if api.chegou_algo(resposta):
                         entregues += 1
+                        restos.append(resposta.get("resto"))
                 except Exception:                              # noqa: BLE001
                     pass
             if entregues:
@@ -396,6 +423,7 @@ class Bot:
                     avisos.confirmar(item.get("texto", ""), chave=item.get("chave"),
                                      origem=item.get("origem", "bot"))
                 saidos.extend(liberados)
+                _enfileirar_restos(restos, None, liberados[0].get("origem", "bot"))
             else:
                 for item in liberados:
                     avisos.desfazer(item.get("texto", ""), chave=item.get("chave"))

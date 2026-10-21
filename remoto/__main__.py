@@ -212,7 +212,7 @@ def avisar(texto: str, *, chave: str | None = None) -> bool:
     o aviso ja chegou, e quem chamou nao deve registrar falha por isso.
     """
     from . import avisos
-    from .api import Telegram
+    from .api import Telegram, chegou_algo
 
     destinos = config.carregar()["autorizados"]
     if not destinos:
@@ -223,15 +223,23 @@ def avisar(texto: str, *, chave: str | None = None) -> bool:
         print("[remoto] aviso repetido (mesmo texto ha menos de um dia); calado.")
         return True
     tg = Telegram(config.token())
-    entregues = 0
+    entregues, restos = 0, []
     for chat in destinos:
         try:
-            if tg.mensagem(chat, texto, markdown=True).get("ok"):
+            resposta = tg.mensagem(chat, texto, markdown=True)
+            if chegou_algo(resposta):
                 entregues += 1
+                restos.append(resposta.get("resto"))
         except Exception as exc:                               # noqa: BLE001
             print(f"[remoto] nao consegui avisar {chat}: {exc}")
     if entregues:
         avisos.confirmar(texto, chave=chave, origem=origem)
+        # Entregue PELA METADE: so o que faltou vai para a fila do bot (este
+        # processo morre aqui; o texto inteiro na fila mandaria a parte 1 de
+        # novo).
+        for resto in dict.fromkeys(r for r in restos if isinstance(r, str) and r.strip()):
+            avisos.enfileirar(resto, chave=(f"{chave}|resto" if chave else None),
+                              origem=origem)
         return True
     avisos.desfazer(texto, chave=chave)
     avisos.enfileirar(texto, chave=chave, origem=origem)
