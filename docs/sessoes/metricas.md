@@ -59,7 +59,7 @@ Fonte: `decisoes/metricas/` e `decisoes/geral/`. **Decisão vigente do Adrian ma
 - ✅ **Canal de duelos em inglês** — Só o que o público vê em inglês (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `canal-em-ingles`
 
 **Métricas**
-- ⏳ **Medida da semana no Telegram todo dia** — O relatório /semana (comparação na mesma idade, com rótulo de certeza) sai sozinho todo dia? `semana-no-telegram`
+- ✅ **Medida da semana no Telegram todo dia** — Todo dia às 21:05 pelo bot (recomendado) (21/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `semana-no-telegram`
 
 <!-- decisoes:fim -->
 

@@ -3,7 +3,14 @@
   "contexto": "Coletor novo (ramo metricas/coletor-sozinho) calcula a medida da semana do PLANO sozinho; o Adrian não quer ler número à mão (medir-sozinho-nao-perguntar).",
   "criado": "2026-10-21T10:35:18.126972",
   "depende_de": [],
-  "historico": [],
+  "historico": [
+    {
+      "comentario": "Escolhida pelo orquestrador (adrian-nao-quer-decidir)",
+      "em": "2026-10-21T10:35:24",
+      "opcao": "diario",
+      "origem": "cli"
+    }
+  ],
   "id": "semana-no-telegram",
   "midias": [],
   "opcoes": [
@@ -27,7 +34,11 @@
   },
   "pergunta": "O relatório /semana (comparação na mesma idade, com rótulo de certeza) sai sozinho todo dia?",
   "projeto": "metricas",
-  "situacao": "pendente",
+  "situacao": "decidida",
   "titulo": "Medida da semana no Telegram todo dia",
-  "vigente": null
+  "vigente": {
+    "comentario": "Escolhida pelo orquestrador (adrian-nao-quer-decidir)",
+    "em": "2026-10-21T10:35:24",
+    "opcao": "diario"
+  }
 }
