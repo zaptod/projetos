@@ -43,7 +43,9 @@ ALTA, MEDIA, A_CONFERIR = "alta", "media", "a_conferir"
 FOLGA_ALTA = timedelta(minutes=2)
 PEDACO = re.compile(r"\s*\((\d+) de (\d+)\)\s*$")
 PRIVADO = ("private", "privado")
-APAGADO = "apagado_do_canal"
+# Um nome so para o estado: quem escolhe o que sobe pergunta a
+# `metricas.apagado_do_canal` (21/10/2026).
+APAGADO = metricas.ESTADO_APAGADO
 ESTADOS_JA_DECIDIDOS = ("rascunho", "privado_de_proposito", APAGADO)
 
 

@@ -130,6 +130,31 @@ def publicado(linha) -> bool:
     return bool(linha.get("url"))
 
 
+# APAGADO DO CANAL POR DECISAO DO ADRIAN (21/10/2026, `videos-presos-no-canal`:
+# "apagar e NAO reenviar"). Quem grava e `curar_ledger.py --apagado-do-canal`
+# (cf4653cf): a linha do YouTube vira `publicado: false` e este `estado`. Para
+# `publicado()` ela deixa de contar — e e justamente por isso que todo caminho
+# que escolhe o que SOBE (filas, dividas, recuperacao, o funil do YouTube)
+# tem de perguntar aqui: "nao publicado" sozinho quer dizer "falta subir".
+ESTADO_APAGADO = "apagado_do_canal"
+
+
+def apagado_do_canal(linha) -> bool:
+    """Esta linha diz que o video foi APAGADO do canal de proposito?"""
+    return isinstance(linha, dict) and linha.get("estado") == ESTADO_APAGADO
+
+
+def apagados(linhas, plataforma: str | None = "youtube") -> set:
+    """Os `video_id` do projeto com linha apagada (naquela plataforma). Puro.
+
+    O caso ZERO e o conjunto vazio: ledger sem apagado nao barra nada.
+    """
+    return {str(l.get("video_id")) for l in (linhas or ())
+            if apagado_do_canal(l) and l.get("video_id")
+            and (plataforma is None
+                 or str(l.get("plataforma") or "youtube").lower() == plataforma)}
+
+
 def prova_ok(laudo: dict | list | None) -> bool | None:
     """O laudo sustenta a afirmacao "publiquei"?
 

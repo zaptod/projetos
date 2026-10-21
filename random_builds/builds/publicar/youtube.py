@@ -91,6 +91,38 @@ def modo(config: dict | None = None) -> str:
     return str(escolhido).strip().lower() or "navegador"
 
 
+class ApagadoDoCanal(RuntimeError):
+    """O video foi apagado do canal por decisao do Adrian: nao reenvia."""
+
+
+_CORTE_NO_ID = re.compile(r":corte\d+$")
+
+
+def barrar_apagado(video, canal: str = "builds") -> None:
+    """Levanta `ApagadoDoCanal` se o ledger diz que o video foi APAGADO do
+    YouTube de proposito (`metricas.apagado_do_canal`).
+
+    O pedaco de uma parte longa sobe com id `<parte>:corteNN`
+    (`cortes._copia`); o ledger guarda a parte. FALHA FECHADA: ledger que nao
+    abre tambem barra — reenviar o apagado e o erro caro, adiar e barato.
+    """
+    from . import metricas
+    vid = _CORTE_NO_ID.sub("", str(getattr(video, "id", "") or ""))
+    if not vid:
+        return
+    try:
+        linhas = metricas.publicados(canal)
+    except Exception as exc:                                   # noqa: BLE001
+        raise ApagadoDoCanal(
+            f"nao consegui ler o ledger de {canal} para saber se {vid} foi "
+            f"apagado do canal ({type(exc).__name__}); nao subo.") from exc
+    if vid in metricas.apagados(linhas, "youtube"):
+        raise ApagadoDoCanal(
+            f"{vid} foi apagado do canal de {canal} por decisao do Adrian "
+            "(`videos-presos-no-canal`: apagar e nao reenviar); nao subo de "
+            "novo.")
+
+
 def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
     """Publica pelo caminho escolhido no config. E a porta que todos usam.
 
@@ -108,6 +140,11 @@ def publicar_como_configurado(video, *, log=None, config=None, **kw) -> str:
     # de abrir o Studio, e o motivo fica na lista "a conferir".
     from . import audio
     audio.barrar_luta_muda(video, canal, "youtube")
+    # O APAGADO DO CANAL NAO VOLTA (21/10/2026, decisao `videos-presos-no-
+    # canal`: "apagar e NAO reenviar"). Aqui, antes de abrir o Studio, porque
+    # esta e a porta de todo upload do YouTube — a fila, a divida, o
+    # `--so-youtube`, o `main.py publicar`, o app e o bot.
+    barrar_apagado(video, canal)
     caminho = modo(config)
     fala(f"[youtube] publicando por {caminho.upper()}")
     # O laudo do upload. Sai daqui por `prova=` (dicionario preenchido no

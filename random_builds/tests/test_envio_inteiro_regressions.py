@@ -578,6 +578,17 @@ class ConferenciaTests(unittest.TestCase):
         (item,) = ficha["envio_cortado"]
         self.assertEqual("ddddddddddd", item["youtube_id"])
 
+    def test_duas_linhas_do_mesmo_video_cortado_manda(self):
+        """Conferente, 21/10: linha velha presa em `uploaded` ha 30 h e linha
+        nova `processed` ha 13 h, mesmo `video_id`. O video caia nas duas
+        listas e cada passada soltava e marcava de novo, com um ERRO."""
+        ficha = _conferir([_linha("Z", "zzzzzzzzzz1", 30.0),
+                           _linha("Z", "zzzzzzzzzz2", 13.0)],
+                          [_video("zzzzzzzzzz1", "Z", upload="uploaded"),
+                           _video("zzzzzzzzzz2", "Z")])
+        self.assertEqual(["Z"], [i["video_id"] for i in ficha["envio_cortado"]])
+        self.assertEqual([], ficha["envio_ok"])
+
     def test_linha_nao_publicada_nao_entra(self):
         linha = _linha("d1", "aaaaaaaaaaa", 13.0)
         linha["publicado"] = False
@@ -681,6 +692,20 @@ class PousoNaConferenciaTests(unittest.TestCase):
         self.assertNotIn(vid, self.no_disco)
         self.assertIn("duelo_00099:duelo:celular", self.no_disco,
                       "a marca de clique so sai por conferencia humana")
+
+    def test_duas_linhas_nao_viram_solta_e_marca_a_cada_passada(self):
+        vid = "generation_00121:estreia:celular"
+        duas = _conferir(
+            [_linha(vid, "8Rp3WUDsBgA", 30.0), _linha(vid, "NovoEnvio01", 13.0)],
+            [_video("8Rp3WUDsBgA", vid, upload="uploaded"),
+             _video("NovoEnvio01", vid)])
+        _trocar(self, conferencia, "conferir", lambda *a, **k: dict(duas))
+        for _passada in range(3):
+            conferencia.conferir_tudo(("builds",), log=lambda _t: None,
+                                      agora=AGORA)
+        self.assertEqual([], self.soltas)
+        self.assertEqual(1, len(self.marcas))
+        self.assertEqual(1, len(self._alarmes()), "um ERRO, e nao um por passada")
 
     def test_lista_ilegivel_acende_e_nao_grava(self):
         from builds.publicar import desfecho

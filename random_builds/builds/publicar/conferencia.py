@@ -513,6 +513,13 @@ def conferir(canal: str = "builds", plataforma: str = "youtube", *,
     lista_provada = bool(lista and lista.get("completa")
                          and int(lista.get("declarados") or 0) > 0)
     envio_cortado = cortados + (sem_video if lista_provada else [])
+    # DUAS LINHAS DO MESMO VIDEO (conferente, 21/10/2026): a velha presa em
+    # `uploaded` ha mais de 12 h e a nova `processed`. O video entrava nas
+    # duas listas, e cada passada soltava a marca, marcava de novo e gravava
+    # um ERRO. Cortado manda: so solta quem nao tem linha cortada.
+    cortados_ids = {str(i.get("video_id")) for i in envio_cortado}
+    envio_ok = list(dict.fromkeys(
+        v for v in envio_ok if str(v) not in cortados_ids))
     return {
         "canal": canal, "plataforma": plataforma,
         "dia": hoje.isoformat(), "janela_dias": int(dias),
@@ -790,9 +797,10 @@ def _pousar_envios_cortados(canal: str, ficha: dict, atividade,
                             log=print) -> list:
     """Leva cada `envio_cortado` da ficha a lista "a conferir" e ACENDE.
 
-    A marca leva `PREFIXO_DO_ENVIO` (so uma pessoa a tira, como a de clique)
-    e e gravada por `desfecho.marcar_para_conferir` — o unico escritor da
-    lista. Alarme uma vez por video: o que ja esta na lista nao acende de
+    A marca leva `PREFIXO_DO_ENVIO` e e gravada por
+    `desfecho.marcar_para_conferir` — o unico escritor da lista. Sai de duas
+    formas: uma pessoa, ou esta funcao quando o video aparece `processed` e
+    sem linha cortada (abaixo). A de clique, sem prefixo, so uma pessoa tira. Alarme uma vez por video: o que ja esta na lista nao acende de
     novo nas quatro rodadas da noite. Lista ilegivel = alarme, nada gravado.
 
     E A MARCA SAI SOZINHA (conferente, 21/10/2026): o video marcado `[envio]`

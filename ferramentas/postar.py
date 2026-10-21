@@ -327,7 +327,11 @@ def fila_de_historias() -> list:
     """
     from contos.publicar import catalogo, serie
 
-    publicados = [l for l in serie.publicados() if _saiu(l)]
+    linhas = serie.publicados()
+    publicados = [l for l in linhas if _saiu(l)]
+    # O apagado do canal nunca volta a fila (21/10/2026, ver `_builds_prontos`).
+    from builds.publicar import metricas as _metricas
+    apagados = _metricas.apagados(linhas, None)
     # QUALQUER PLATAFORMA CONTA. Em 15/09/2026 a fila passou a contar so o
     # YouTube (para a parte que so foi ao TikTok nao sumir do YouTube), e a
     # revisao adversarial mediu o preco: com o YouTube na cota o dia inteiro,
@@ -345,7 +349,7 @@ def fila_de_historias() -> list:
     tem = {(v.fonte_id, int(v.parte or 0)) for v in videos}
     tem |= {(str(l.get("fonte_id")), int(l.get("parte") or 0))
             for l in publicados}
-    pendentes = [v for v in videos if v.id not in ja
+    pendentes = [v for v in videos if v.id not in ja and v.id not in apagados
                  and all((v.fonte_id, n) in tem
                          for n in range(1, int(v.parte or 1)))]
     # A QUE VAI PASSAR DO PRAZO DE FRESCOR vem antes das outras novas
@@ -1690,13 +1694,16 @@ def _procurar_divida_do_youtube() -> tuple:
         if l.get("parte"):
             fonte = str(l.get("fonte_id") or vid.split(":")[0])
             partes_no_youtube.add((fonte, int(l.get("parte"))))
+    # O apagado do canal nao e divida (o mesmo crivo dos builds, 21/10/2026).
+    from builds.publicar import metricas as _metricas
+    apagados = _metricas.apagados(publicados, "youtube")
     devidas: dict = {}
     for l in publicados:
         quando = str(l.get("quando") or "")
         vid = str(l.get("video_id") or "")
         if (l.get("plataforma") != "tiktok" or not _saiu(l)
                 or quando < CORTE_DA_DIVIDA_DO_YOUTUBE
-                or not vid or vid in no_youtube):
+                or not vid or vid in no_youtube or vid in apagados):
             continue
         devidas.setdefault(vid, quando)
     if not devidas:
@@ -3084,11 +3091,26 @@ def privados_no_youtube(canal: str = "builds", limite: int = 40) -> list:
     except Exception:                                          # noqa: BLE001
         cheias = set()
 
+    # O APAGADO DO CANAL NAO VOLTA AO AR (21/10/2026, `videos-presos-no-
+    # canal`), nem pelo id do YouTube que a linha guardou em `apagado_id`.
+    try:
+        from builds.publicar import metricas as _metricas
+        linhas = _publicados_do_canal(canal)
+        apagados = _metricas.apagados(linhas, "youtube")
+        ids_apagados = {str(l.get("apagado_id")) for l in linhas
+                        if _metricas.apagado_do_canal(l) and l.get("apagado_id")}
+    except Exception as exc:                                   # noqa: BLE001
+        _linha(f"[postar] {canal}: nao consegui ler os apagados do canal "
+               f"({type(exc).__name__}); NAO recupero nesta rodada.")
+        return []
+
     fora = []
     for video in fila:
         linha = conhecidas.get(video["id"], {})
         projeto = str(linha.get("video_id") or "")
         if projeto and projeto in bloqueados:
+            continue
+        if video["id"] in ids_apagados or (projeto and projeto in apagados):
             continue
         fonte = str(linha.get("fonte_id") or projeto.split(":")[0])
         if fonte and fonte in cheias:
@@ -4303,7 +4325,12 @@ def _builds_prontos(config=None, *, medir_audio: bool = True,
     # Qualquer plataforma conta (ver `fila_de_historias`): contando so o
     # YouTube, a cota repetia o mesmo video em todo horario e o TikTok ficava
     # vazio.
-    ja = {l.get("video_id") for l in metricas.publicados() if _saiu(l)}
+    linhas = metricas.publicados()
+    ja = {l.get("video_id") for l in linhas if _saiu(l)}
+    # O APAGADO DO CANAL NUNCA VOLTA A FILA (21/10/2026, decisao
+    # `videos-presos-no-canal`: "apagar e nao reenviar"). A linha apagada tem
+    # `publicado: false`, e sem isto o build so com ela voltaria como novo.
+    ja |= metricas.apagados(linhas, None)
     pendentes = [v for v in C.listar()
                  if v.id not in ja and getattr(v, "perfil", "") == "celular"]
     if not pendentes:
@@ -4649,13 +4676,18 @@ def _procurar_divida_dos_builds() -> tuple:
     no_youtube = {str(l.get("video_id") or "") for l in publicados
                   if str(l.get("plataforma") or "youtube").lower() == "youtube"
                   and _saiu(l)}
+    # O APAGADO DO CANAL NAO E DIVIDA (21/10/2026, `videos-presos-no-canal`:
+    # "apagar e nao reenviar"). Os 5 apagados de 21/10 estao no TikTok e sem
+    # YouTube publicado: so a troca de build/estreia por duelo na cota os
+    # segurava fora daqui.
+    apagados = metricas.apagados(publicados, "youtube")
     devidas: dict = {}
     for l in publicados:
         quando = str(l.get("quando") or "")
         vid = str(l.get("video_id") or "")
         if (l.get("plataforma") != "tiktok" or not _saiu(l)
                 or quando < CORTE_DA_DIVIDA_DOS_BUILDS
-                or not vid or vid in no_youtube):
+                or not vid or vid in no_youtube or vid in apagados):
             continue
         # A ESTREIA NAO E DIVIDA (19/10/2026, `duelo-no-lugar-da-estreia`):
         # o YouTube de builds trocou a estreia pelo duelo, e a do TikTok fica
