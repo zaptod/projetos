@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-21T14:00:52",
+      "evento": "2026-10-21T14:00:31",
+      "linha": 207,
+      "nota": "vira tarefa da publicacao depois do integrador",
+      "opcao": "dez",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "21/10: o youtube_web clicava com o arquivo a 3-20% e fechava o navegador, o que corta o envio. 2 estreias de 19-20/10 públicas e vazias, 3 builds sumiram, 27 partes de história só no ledger. 0 duelos presos (38/38 processados), por sorte da frase do Studio.",
   "criado": "2026-10-21T14:00:15.218438",
   "depende_de": [],
