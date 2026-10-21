@@ -785,8 +785,21 @@ def confiabilidade(agora: datetime | None = None, *, ficha=None) -> str:
     return "\n".join(linhas)
 
 
+def semana(agora: datetime | None = None) -> str:
+    """A medida da semana do PLANO na MESMA IDADE (21/10/2026).
+
+    FORMATA E NAO CALCULA: o numero mora em
+    `builds.publicar.analise.medida_da_semana`, que le so o disco (a coleta
+    do dia e as leituras de hora em hora). Sem horario padrao: sai pelo
+    `/semana`; para sair sozinho, `"semana": "HH:MM"` em `relatorios`.
+    """
+    from builds.publicar import analise
+    return "📏 *Medida da semana*\n" + analise.texto_da_semana(agora)
+
+
 RELATORIOS = {"metas": metas, "funcionamento": funcionamento,
-              "auditoria": auditoria, "confiabilidade": confiabilidade}
+              "auditoria": auditoria, "confiabilidade": confiabilidade,
+              "semana": semana}
 
 
 def montar(nome: str, agora: datetime | None = None) -> str:

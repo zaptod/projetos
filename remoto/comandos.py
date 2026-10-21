@@ -76,6 +76,7 @@ def ajuda(_args: str = "") -> str:
         "/lote — o estoque contra o lote da semana (piso e janela)\n"
         "/funcionamento — tempos, erros e agendamento das últimas 24h\n"
         "/confiabilidade — o que saiu hoje e o que dá para provar\n"
+        "/semana — a mudança da semana: vídeos novos × antigos na mesma idade\n"
         "/testar\\_conserto <carimbo> — a suíte com um remendo proposto\n"
         "/pausar [minutos] · /retomar · /parar\n"
         "/responder <id> <texto> — continua aquele pedido (o id vem no aviso)\n"
@@ -272,6 +273,12 @@ def confiabilidade(_args: str = "") -> str:
     return relatorios.montar("confiabilidade")
 
 
+def semana(_args: str = "") -> str:
+    """A medida da semana do PLANO na mesma idade (novos x antigos). So le disco."""
+    from . import relatorios
+    return relatorios.montar("semana")
+
+
 def auditoria(_args: str = "") -> str:
     """Os quatro controles, e o que a grade vai barrar no proximo horario.
 
@@ -338,6 +345,7 @@ TABELA = {
     "relatorio": funcionamento,
     "confiabilidade": confiabilidade,
     "prova": confiabilidade,
+    "semana": semana,
     "testar_conserto": testar_conserto,
     "auditoria": auditoria,
     "auditar": auditoria,
