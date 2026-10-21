@@ -36,9 +36,66 @@ class OComando(unittest.TestCase):
         self.assertIs(comandos.TABELA["semana"], comandos.semana)
         self.assertIn("/semana", comandos.ajuda())
 
-    def test_nao_sai_sozinho_sem_horario(self):
-        # Mandar mensagem todo dia e decisao; o padrao so tem os tres de antes.
-        self.assertNotIn("semana", config.PADRAO["relatorios"])
+    def test_sai_sozinho_as_21_05(self):
+        # Grimorio metricas/semana-no-telegram (21/10/2026): "todo dia as
+        # 21:05 pelo bot". Antes o padrao nao tinha `semana` (so por pedido).
+        from datetime import datetime
+        horarios = config.PADRAO["relatorios"]
+        self.assertEqual("21:05", horarios["semana"])
+        self.assertIn("semana", relatorios.devidos(
+            horarios, datetime(2026, 10, 22, 21, 5), ja_enviados={}))
+        self.assertNotIn("semana", relatorios.devidos(
+            horarios, datetime(2026, 10, 22, 21, 4), ja_enviados={}))
+        self.assertNotIn("semana", relatorios.devidos(
+            horarios, datetime(2026, 10, 22, 21, 30),
+            ja_enviados={"semana": "2026-10-22"}), "uma vez por dia")
+
+
+class OEnvioLongo(unittest.TestCase):
+    """O Telegram corta em 4096; ate 21/10 o envio cortava em 4000 e o fim
+    sumia (a medida da semana cheia perdia o TikTok e os avisos "!")."""
+
+    def _bot(self):
+        from remoto import api
+        enviados = []
+
+        class _T(api.Telegram):
+            def chamar(self, metodo, **campos):
+                enviados.append(campos)
+                return {"ok": True}
+        return _T("x"), enviados
+
+    def test_texto_longo_vai_inteiro_em_partes(self):
+        texto = "\n".join(f"linha {i:04d} " + "x" * 80 for i in range(100))   # ~9 mil
+        tg, enviados = self._bot()
+        self.assertTrue(tg.mensagem(1, texto, markdown=True).get("ok"))
+        self.assertGreater(len(enviados), 1)
+        self.assertTrue(all(len(e["text"]) <= 4000 for e in enviados))
+        self.assertEqual(texto, "\n".join(e["text"] for e in enviados), "nada se perde")
+
+    def test_texto_curto_e_uma_mensagem_so(self):
+        tg, enviados = self._bot()
+        tg.mensagem(1, "oi")
+        self.assertEqual(["oi"], [e["text"] for e in enviados])
+
+    def test_linha_gigante_e_quebrada_sem_perder_nada(self):
+        from remoto import api
+        partes = api.partes_da_mensagem("a" * 9000)
+        self.assertEqual([4000, 4000, 1000], [len(p) for p in partes])
+        self.assertEqual(["oi"], api.partes_da_mensagem("oi"))
+        self.assertEqual([""], api.partes_da_mensagem(""))
+
+    def test_parte_que_falha_para_e_devolve_a_falha(self):
+        from remoto import api
+        vezes = []
+
+        class _T(api.Telegram):
+            def chamar(self, metodo, **campos):
+                vezes.append(campos)
+                return {"ok": len(vezes) == 1, "description": "rede"}
+        resposta = _T("x").mensagem(1, "\n".join("y" * 900 for _ in range(10)))
+        self.assertFalse(resposta.get("ok"), "o relatorio nao pode ser marcado como enviado")
+        self.assertEqual(2, len(vezes))
 
 
 if __name__ == "__main__":

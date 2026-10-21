@@ -133,13 +133,20 @@ class RelatoriosCabemNoTelegramTests(unittest.TestCase):
         self.assertIn("p04", chamadas[-1])
 
     def test_o_corte_de_4000_vale_para_os_dois_envios(self):
-        espiao = Espiao([_erro_400("can't parse entities"), _ok()])
+        # Desde 21/10/2026 o texto longo vai em PARTES (antes era cortado e o
+        # fim sumia): cada envio, com ou sem Markdown, cabe em 4000, e as
+        # partes que chegaram somam o texto inteiro.
+        espiao = Espiao([_erro_400("can't parse entities"), _ok(),
+                         _erro_400("can't parse entities"), _ok(),
+                         _erro_400("can't parse entities"), _ok()])
         # "Z" e nao "x": o corpo urlencoded traz `text=`, `chat_id=` e
         # `disable_web_page_preview=`, e contar "x" somava a letra do proprio
         # nome do campo — o teste falhou por 4001 na primeira versao.
-        api.Telegram("t", abrir=espiao).mensagem(1, "Z" * 9000, markdown=True)
+        resposta = api.Telegram("t", abrir=espiao).mensagem(1, "Z" * 9000, markdown=True)
+        self.assertTrue(resposta.get("ok"))
         for corpo in espiao.chamadas:
             self.assertLessEqual(corpo.count("Z"), 4000)
+        self.assertEqual(9000, sum(c.count("Z") for c in espiao.chamadas[1::2]))
 
 
 # ------------------------------------------------ APP-9: o laco sem rede

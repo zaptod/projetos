@@ -43,6 +43,40 @@ def _e_erro_de_formatacao(resposta: dict) -> bool:
     return any(sinal in motivo for sinal in FALHAS_DE_FORMATACAO)
 
 
+# Folga sob os 4096 do Telegram (o teto conta caracteres depois das entidades).
+LIMITE_DA_MENSAGEM = 4000
+
+
+def partes_da_mensagem(texto: str, limite: int = LIMITE_DA_MENSAGEM) -> list:
+    """O texto em pedacos de ate `limite`, quebrados em FIM DE LINHA.
+
+    Nada se perde: juntar as partes com "\\n" devolve o texto (so a linha
+    sozinha maior que o limite e quebrada no meio, e parte feita so de
+    espaco nao vai — o Telegram recusa texto vazio). Texto curto = uma
+    parte. Texto vazio = `[""]` (o envio decide o que fazer, como antes)."""
+    texto = str(texto if texto is not None else "")
+    if len(texto) <= limite:
+        return [texto]
+    partes, atual = [], None
+    for linha in texto.split("\n"):
+        while len(linha) > limite:
+            if atual is not None:
+                partes.append(atual)
+                atual = None
+            partes.append(linha[:limite])
+            linha = linha[limite:]
+        if atual is None:
+            atual = linha
+        elif len(atual) + 1 + len(linha) <= limite:
+            atual += "\n" + linha
+        else:
+            partes.append(atual)
+            atual = linha
+    if atual is not None:
+        partes.append(atual)
+    return [p for p in partes if p.strip()] or [texto[:limite]]
+
+
 class Telegram:
     def __init__(self, token: str, *, abrir=None):
         self.token = token
@@ -95,15 +129,21 @@ class Telegram:
         pior — depende de quem escreve o relatorio lembrar de escapar, e o
         proximo relatorio vai esquecer de novo.
         """
-        # 4096 e o teto do Telegram; cortar aqui evita perder a mensagem
-        # inteira por causa de uma lista longa.
-        corpo = texto[:4000]
-        resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
-                               parse_mode="Markdown" if markdown else None,
-                               disable_web_page_preview="true")
-        if markdown and not resposta.get("ok") and _e_erro_de_formatacao(resposta):
-            return self.chamar("sendMessage", chat_id=chat_id, text=corpo,
-                               disable_web_page_preview="true")
+        # 4096 e o teto do Telegram. Ate 21/10/2026 o texto era CORTADO em
+        # 4000 — e o que morava no fim sumia calado (a medida da semana cheia
+        # perdia o TikTok e todo aviso "!"). Agora o texto longo vai em
+        # PARTES, quebradas em fim de linha; so uma linha sozinha maior que o
+        # teto e quebrada no meio.
+        resposta: dict = {}
+        for corpo in partes_da_mensagem(texto):
+            resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
+                                   parse_mode="Markdown" if markdown else None,
+                                   disable_web_page_preview="true")
+            if markdown and not resposta.get("ok") and _e_erro_de_formatacao(resposta):
+                resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
+                                       disable_web_page_preview="true")
+            if not resposta.get("ok"):
+                return resposta          # parte que nao foi: quem chama tenta de novo
         return resposta
 
     def arquivo(self, chat_id, caminho, *, legenda: str = "",

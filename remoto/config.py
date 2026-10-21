@@ -72,8 +72,12 @@ PADRAO = {
     # `confiabilidade` as 22:30 (decisao do Adrian, 16/09/2026 18:58):
     # depois do horario das 21:37 e antes do das 22:37 — o dia ja esta quase
     # fechado e ainda da para agir no ultimo post. Quase sempre e uma linha.
+    #
+    # `semana` as 21:05 (Grimorio metricas/semana-no-telegram, 21/10/2026:
+    # "todo dia as 21:05 pelo bot"): a medida da semana do PLANO na mesma
+    # idade, logo depois do `metas` das 21:00.
     "relatorios": {"metas": "21:00", "funcionamento": "09:00",
-                   "confiabilidade": "22:30"},
+                   "confiabilidade": "22:30", "semana": "21:05"},
 }
 
 

@@ -790,8 +790,10 @@ def semana(agora: datetime | None = None) -> str:
 
     FORMATA E NAO CALCULA: o numero mora em
     `builds.publicar.analise.medida_da_semana`, que le so o disco (a coleta
-    do dia e as leituras de hora em hora). Sem horario padrao: sai pelo
-    `/semana`; para sair sozinho, `"semana": "HH:MM"` em `relatorios`.
+    do dia e as leituras de hora em hora). Sai sozinho as 21:05 (padrao em
+    `config.PADRAO`, Grimorio metricas/semana-no-telegram) e pelo `/semana`.
+    O texto e o CURTO (avisos no topo, sem linha por video): a semana cheia
+    passava de 8 mil caracteres e o Telegram cortava os avisos.
     """
     from builds.publicar import analise
     return "📏 *Medida da semana*\n" + analise.texto_da_semana(agora)

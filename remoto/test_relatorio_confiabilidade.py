@@ -127,23 +127,25 @@ class SaiSozinhoSoAs2230(unittest.TestCase):
 
     def test_os_automaticos_sao_exatamente_estes(self):
         # Um quarto relatorio automatico e mais uma mensagem por dia no
-        # celular dele: tem de ser decisao, nao efeito colateral.
+        # celular dele: tem de ser decisao, nao efeito colateral. O quarto,
+        # `semana` as 21:05, E decisao: Grimorio metricas/semana-no-telegram
+        # (21/10/2026, "todo dia as 21:05 pelo bot").
         self.assertEqual({"metas": "21:00", "funcionamento": "09:00",
-                          "confiabilidade": "22:30"},
+                          "confiabilidade": "22:30", "semana": "21:05"},
                          config.PADRAO["relatorios"])
 
     def test_o_horario_vence_uma_vez_por_dia(self):
         from datetime import datetime
         horarios = config.PADRAO["relatorios"]
+        # `semana` (21:05) ja saiu: o teste olha so o das 22:30.
+        enviados = {"metas": "2026-09-16", "funcionamento": "2026-09-16",
+                    "semana": "2026-09-16"}
         antes = relatorios.devidos(horarios, datetime(2026, 9, 16, 22, 29),
-                                   ja_enviados={"metas": "2026-09-16",
-                                                "funcionamento": "2026-09-16"})
+                                   ja_enviados=dict(enviados))
         depois = relatorios.devidos(horarios, datetime(2026, 9, 16, 22, 31),
-                                    ja_enviados={"metas": "2026-09-16",
-                                                 "funcionamento": "2026-09-16"})
+                                    ja_enviados=dict(enviados))
         ja_foi = relatorios.devidos(horarios, datetime(2026, 9, 16, 23, 0),
-                                    ja_enviados={"metas": "2026-09-16",
-                                                 "funcionamento": "2026-09-16",
+                                    ja_enviados={**enviados,
                                                  "confiabilidade": "2026-09-16"})
         self.assertNotIn("confiabilidade", antes)
         self.assertEqual(["confiabilidade"], depois)
