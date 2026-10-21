@@ -43,7 +43,8 @@ ALTA, MEDIA, A_CONFERIR = "alta", "media", "a_conferir"
 FOLGA_ALTA = timedelta(minutes=2)
 PEDACO = re.compile(r"\s*\((\d+) de (\d+)\)\s*$")
 PRIVADO = ("private", "privado")
-ESTADOS_JA_DECIDIDOS = ("rascunho", "privado_de_proposito")
+APAGADO = "apagado_do_canal"
+ESTADOS_JA_DECIDIDOS = ("rascunho", "privado_de_proposito", APAGADO)
 
 
 def _linha(texto: str = "") -> None:
@@ -81,10 +82,14 @@ def _cura(indice, linha, tipo, certeza, depois, motivo) -> dict:
 
 
 def calcular_curas(linhas: list, videos: list, canal: str = "builds",
-                   privadas=()) -> list:
+                   privadas=(), apagados=()) -> list:
     """As curas de UM canal. Uma linha recebe no maximo uma cura de conteudo.
 
     Ordem das regras, e ela importa:
+      0. APAGADO DO CANAL (`apagados`, youtube_ids passados por uma pessoa):
+         DECISAO do Adrian, entao vem antes de tudo. So pega se o video NAO
+         esta na lista do canal — id digitado errado ou video ainda no ar
+         vira aviso (`apagados_sem_efeito`), nunca cura.
       1. ID REPETIDO: dono e a linha mais proxima da hora do video; as outras
          perdem o id (o caso A/B de generation_00081). Sem o video na lista do
          canal nao ha hora para comparar, e a escolha seria arbitraria: "a
@@ -120,6 +125,32 @@ def calcular_curas(linhas: list, videos: list, canal: str = "builds",
 
     def youtube(L):
         return isinstance(L, dict) and (L.get("plataforma") or "youtube") == "youtube"
+
+    # 0. apagado do canal. POR QUE (21/10/2026, decisao
+    # `publicacao/videos-presos-no-canal`): cinco envios ficaram vazios no
+    # canal de builds (o navegador fechava no meio: duracao P0D, "Envio
+    # interrompido" / "Processamento interrompido") e foram apagados. A linha
+    # deixa de contar como publicada — a guarda de titulo e a conferencia
+    # param de ver no ar o que nao esta — e o id antigo fica em `apagado_id`.
+    # NAO e reenvio: a fila de builds pula o que saiu em qualquer destino, e
+    # os cinco estao no TikTok.
+    apagados = {str(a) for a in (apagados or ()) if a}
+    for i, L in enumerate(linhas):
+        if not apagados or not youtube(L) or L.get("estado") == APAGADO:
+            continue
+        vid = str(L.get("youtube_id") or "")
+        if vid not in apagados or vid in por_id:
+            continue
+        depois = {"publicado": False, "estado": APAGADO, "url": "",
+                  "youtube_id": None, "publicado_em": None,
+                  "apagado_id": vid}
+        if L.get("url") and not _e_link(L.get("url")):
+            depois["estado_texto"] = L.get("url")
+        curas.append(_cura(
+            i, L, APAGADO, ALTA, depois,
+            f"{vid} foi apagado do canal por decisao do Adrian e nao esta "
+            "mais na lista do canal"))
+        tocadas.add(i)
 
     # 1. id repetido
     grupos: dict = {}
@@ -394,6 +425,32 @@ def privadas_sem_efeito(linhas: list, curas: list, privadas) -> list:
     return saida
 
 
+def apagados_sem_efeito(linhas: list, curas: list, apagados) -> list:
+    """`[(youtube_id, motivo)]` dos `--apagado-do-canal` que nao pegaram.
+
+    O mesmo cuidado de `privadas_sem_efeito`: id digitado errado, ou video
+    que ainda esta na lista do canal (nao foi apagado), nao some calado.
+    """
+    curados = {c["antes"].get("youtube_id") for c in curas
+               if c["tipo"] == APAGADO}
+    saida = []
+    for vid in dict.fromkeys(str(a) for a in (apagados or ()) if a):
+        if vid in curados:
+            continue
+        dele = [L for L in linhas if isinstance(L, dict)
+                and (L.get("plataforma") or "youtube") == "youtube"
+                and vid in (str(L.get("youtube_id") or ""),
+                            str(L.get("apagado_id") or ""))]
+        if not dele:
+            saida.append((vid, "nenhuma linha de YouTube com este youtube_id"))
+        elif any(L.get("estado") == APAGADO for L in dele):
+            continue
+        else:
+            saida.append((vid, "o video ainda esta na lista do canal (nao foi "
+                               "apagado)"))
+    return saida
+
+
 # ------------------------------------------------------------------- casca
 def buscar_canal(canal: str) -> list:
     """A UNICA funcao com rede: uploads do canal com privacidade e data."""
@@ -664,7 +721,7 @@ def so_dos_tipos(curas: list, tipos=()) -> list:
 
 def curar_canal(canal: str, videos: list, *, gravar_de_fato: bool,
                 privadas=(), carimbo: str = "", tentativas: int = 3,
-                tipos=()) -> tuple:
+                tipos=(), apagados=()) -> tuple:
     """(linhas, curas, copia). Le, calcula e grava DENTRO da trava.
 
     A lista do canal chega pronta: a chamada de rede nao pode acontecer com
@@ -685,7 +742,8 @@ def curar_canal(canal: str, videos: list, *, gravar_de_fato: bool,
             bruto = ler_bruto(caminho)
             linhas = ler(caminho, bruto)
             curas = so_dos_tipos(
-                calcular_curas(linhas, videos, canal, privadas=privadas),
+                calcular_curas(linhas, videos, canal, privadas=privadas,
+                               apagados=apagados),
                 tipos)
             if not gravar_de_fato:
                 return linhas, curas, None
@@ -711,6 +769,12 @@ def main(argv=None) -> int:
         help="video_id que ficou privado POR DECISAO (repetivel): a linha "
              "vira publicado=true, estado=privado_de_proposito")
     parser.add_argument(
+        "--apagado-do-canal", dest="apagados", action="append", default=[],
+        metavar="YOUTUBE_ID",
+        help="youtube_id APAGADO do canal por decisao (repetivel): a linha "
+             "vira publicado=false, estado=apagado_do_canal, e so se o video "
+             "ja nao esta na lista do canal")
+    parser.add_argument(
         "--so-tipo", dest="tipos", action="append", default=[],
         metavar="TIPO",
         help="so relata e grava as curas deste tipo (repetivel), p.ex. "
@@ -732,11 +796,13 @@ def main(argv=None) -> int:
     # Um id so e aviso se nao pegou em NENHUM canal: o id de uma build nunca
     # vai estar no ledger das historias.
     sem_efeito: dict = {}
+    apagado_sem_efeito: dict = {}
     for canal in canais:
         videos = buscar_canal(canal)
         linhas, curas, copia = curar_canal(
             canal, videos, gravar_de_fato=args.gravar,
-            privadas=args.privadas, carimbo=carimbo, tipos=args.tipos)
+            privadas=args.privadas, carimbo=carimbo, tipos=args.tipos,
+            apagados=args.apagados)
         (pasta / f"{canal}.json").write_text(
             json.dumps(curas, ensure_ascii=False, indent=1), encoding="utf-8")
         geral[canal] = resumo(curas)
@@ -745,6 +811,8 @@ def main(argv=None) -> int:
             _linha(f"   {n:4d}  {chave}")
         for vid, motivo in privadas_sem_efeito(linhas, curas, args.privadas):
             sem_efeito.setdefault(vid, {})[canal] = motivo
+        for vid, motivo in apagados_sem_efeito(linhas, curas, args.apagados):
+            apagado_sem_efeito.setdefault(vid, {})[canal] = motivo
         if copia:
             _linha(f"[{canal}] GRAVADO. Copia do antes: {copia}")
     for vid, motivos in sem_efeito.items():
@@ -752,6 +820,11 @@ def main(argv=None) -> int:
             continue
         detalhe = "; ".join(f"{c}: {m}" for c, m in motivos.items())
         _linha(f"AVISO: --privada-de-proposito {vid} nao teve efeito ({detalhe})")
+    for vid, motivos in apagado_sem_efeito.items():
+        if len(motivos) < len(canais):
+            continue
+        detalhe = "; ".join(f"{c}: {m}" for c, m in motivos.items())
+        _linha(f"AVISO: --apagado-do-canal {vid} nao teve efeito ({detalhe})")
     (pasta / "resumo.json").write_text(
         json.dumps({"gravado": bool(args.gravar), "canais": geral},
                    ensure_ascii=False, indent=1), encoding="utf-8")

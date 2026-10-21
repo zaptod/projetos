@@ -197,6 +197,76 @@ class VideoPrivado(unittest.TestCase):
         self.assertEqual([(0, "historia_privada", "a_conferir")], _tipos(curas))
 
 
+class ApagadoDoCanal(unittest.TestCase):
+    """21/10/2026, decisao `publicacao/videos-presos-no-canal` ("apagar").
+
+    O caso medido: cinco envios do canal de builds ficaram vazios (o
+    navegador fechava no meio). Pela Data API, `8Rp3WUDsBgA` e `CHogZyWtA8I`
+    em uploaded/processing, P0D; `CVN0zvP9dwI`, `4uL9SZDiZug` e
+    `HJg-UxbKToc` ja fora da lista ("Processamento interrompido" no Studio).
+    As cinco linhas de YouTube (634, 635, 421, 458, 496 do ledger) contavam
+    como publicadas, e as cinco de TikTok dos mesmos videos estao certas.
+    Conta de mao: 5 curas, YouTube publicado -5, TikTok 0.
+    """
+
+    def _linhas(self):
+        return [_yt("g121:estreia:celular", "ESTREIA",
+                    url="https://youtu.be/vazio1", youtube_id="vazio1"),
+                _yt("g98:build:celular", "BUILD",
+                    url="publicado no YouTube (com a confirmacao extra)",
+                    youtube_id="vazio2"),
+                _yt("g98:build:celular", "BUILD", url="publicado no TikTok",
+                    plataforma="tiktok"),
+                _yt("g7:duelo:celular", "DUELO", url="https://youtu.be/bom",
+                    youtube_id="bom")]
+
+    def test_apagado_deixa_de_contar_e_guarda_o_id(self):
+        linhas = self._linhas()
+        curas = C.so_dos_tipos(
+            C.calcular_curas(linhas, [_video("bom", titulo="DUELO")],
+                             apagados=["vazio1", "vazio2"]),
+            [C.APAGADO])
+        self.assertEqual([(0, C.APAGADO, "alta"), (1, C.APAGADO, "alta")],
+                         _tipos(curas))
+        novas = C.aplicar(linhas, curas)
+        self.assertEqual([False, False, True, True],
+                         [M.publicado(L) for L in novas])
+        self.assertEqual("vazio1", novas[0]["apagado_id"])
+        self.assertIsNone(novas[0]["youtube_id"])
+        self.assertEqual("", novas[1]["url"])
+        self.assertEqual("publicado no YouTube (com a confirmacao extra)",
+                         novas[1]["estado_texto"])
+        self.assertEqual(linhas[2], novas[2], "o TikTok nao muda")
+        self.assertEqual(linhas[3], novas[3], "o duelo nao muda")
+        self.assertEqual("vazio2", novas[1]["cura"][0]["antes"]["youtube_id"])
+
+    def test_video_ainda_na_lista_do_canal_nao_e_curado_e_vira_aviso(self):
+        # Antes de apagar, o vazio1 ainda esta na lista: nada muda.
+        linhas = self._linhas()
+        apagados = ["vazio1", "digitado_errado"]
+        curas = C.calcular_curas(linhas, [_video("vazio1", titulo="ESTREIA")],
+                                 apagados=apagados)
+        self.assertNotIn(C.APAGADO, {c["tipo"] for c in curas})
+        avisos = dict(C.apagados_sem_efeito(linhas, curas, apagados))
+        self.assertIn("ainda esta na lista", avisos["vazio1"])
+        self.assertIn("nenhuma linha", avisos["digitado_errado"])
+
+    def test_curar_de_novo_nao_acha_mais_nada_nem_avisa(self):
+        linhas = self._linhas()
+        curadas = C.aplicar(linhas, C.calcular_curas(
+            linhas, [], apagados=["vazio1", "vazio2"]))
+        de_novo = C.calcular_curas(curadas, [], apagados=["vazio1", "vazio2"])
+        self.assertEqual([], de_novo)
+        self.assertEqual([], C.apagados_sem_efeito(
+            curadas, de_novo, ["vazio1", "vazio2"]))
+
+    def test_sem_apagados_nada_muda(self):
+        # Caso ZERO: sem a flag, a regra nao existe.
+        linhas = self._linhas()
+        self.assertNotIn(C.APAGADO, {c["tipo"] for c in
+                                     C.calcular_curas(linhas, [])})
+
+
 class GemeoDeVerdade(unittest.TestCase):
     """B4 da revisao de 16/09/2026, confirmado nos dados: 11 dos 12 "gemeos"
     achados so pelo titulo foram ao ar ~17 dias ANTES do rascunho. Eram

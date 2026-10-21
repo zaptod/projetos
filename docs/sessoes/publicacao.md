@@ -1105,6 +1105,23 @@ ids na linha) fechou em `10142b1` (28/09).
   `YqbQUrY1nuE` (h32 p04) deixou de ser rascunho em 28/09, ver acima; builds `YUgFci9d_5Y` ("final celular",
   duelo_00010, 27/09), `_9d1f2LPYw4` e `Vt04zdE4o1k` (15/09). Nenhum deles
   entra na recuperação de builds (descrição vazia).
+- **Envios vazios apagados do canal de builds (21/10, 16:03–16:13)**, decisão
+  `videos-presos-no-canal` ("apagar e não reenviar"): o navegador fechava no
+  meio do envio e cinco ficaram públicos e sem vídeo. Provados vazios antes:
+  as estreias `8Rp3WUDsBgA` (00121) e `CHogZyWtA8I` (00120) pela Data API
+  (uploaded/processing, P0D), apagadas por `videos.delete` (204); os builds
+  `CVN0zvP9dwI` (00098), `4uL9SZDiZug` (00110) e `HJg-UxbKToc` (00120) pelo
+  JSON do próprio Studio (`VIDEO_STATUS_FAILED`, 0 s; a Data API não os vê e
+  o delete dá 404), apagados no Studio ("Excluir para sempre"). Capturas em
+  `E:\tmp_pytest\apagar_vazios\`. Ledger: `curar_ledger.py --gravar --so-tipo
+  apagado_do_canal --apagado-do-canal <youtube_id>…` (cura nova: só pega se
+  o vídeo já não está na lista do canal; `publicado:false`, `estado:
+  apagado_do_canal`, id antigo em `apagado_id`) — YouTube publicado 330 →
+  325, TikTok 313 igual; cópia `publicados.jsonl.antes-cura-20261021_162022`.
+  **Não voltam à fila** só porque os cinco estão no TikTok (fila nova) e
+  build/estreia estão em `TROCAS_NA_COTA` (dívida do YouTube): se a troca
+  sair, os três depois de `CORTE_DA_DIVIDA_DOS_BUILDS` (00120 build e as
+  duas estreias) viram dívida e sobem de novo.
 - **Variantes B**: em 27/09, 23:55, as 25 estavam fora da fila por título
   repetido; às 00:05 de 28/09, 18 já passavam — a parte Builds está dando
   título próprio a elas. A gordura de builds sai de 0 com isso. **3 por
@@ -1138,6 +1155,7 @@ cd E:\projetos
 python -m builds.publicar.conferencia --canal builds --dias 3     # ledger x canal (só lê a API)
 python -m builds.publicar.conferencia --canal historias --dias 3
 python ferramentas/curar_ledger.py                                # A SECO: só relata o que mudaria
+python ferramentas/curar_ledger.py --canal builds --so-tipo apagado_do_canal --apagado-do-canal <id>   # vídeo apagado do canal por decisão (a seco; --gravar aplica)
 python ferramentas/postar.py --ver   # o que postaria; gordura em vídeos/dias, alvo até segunda 07h, frescor
 python random_builds/main.py metricas                             # último dado salvo, sem rede
 type outputs\postar.txt                                           # log das rodadas (enorme; leia o fim)
