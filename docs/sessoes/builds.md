@@ -161,6 +161,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Vídeos narrados com a voz do Windows (12 a 19/10)** — Refazer a voz só do que ainda não foi publicado; o que já foi ao ar fica (recomendado) (19/10/2026) · “Escolhida pelo orquestrador: o Adrian delegou as decisões (14/10).” `voz-do-windows-12-a-19-10`
 - ✅ **Estoque de duelos: regravar em inglês** — Regravar os 18 publicáveis com o código novo, fora da janela das postagens (recomendado) (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `estoque-duelos-em-ingles`
 - ✅ **7 duelos de 12/10 não se reproduzem no motor atual** — Regravar com o motor atual, mesmo par/seed/arena/id/título; o que der < 15 s vira pendente (recomendado) (20/10/2026) · “Escolhida pelo orquestrador (adrian-nao-quer-decidir)” `regravar-com-motor-novo`
+- ⏳ **Lutas sem colar deixaram o Mago mais forte** — Com o 'bate e sai' (quem acerta colado recua 0,8 s), o Mago foi de 27,1% para 49,2% de vitórias em 600 lutas (+22 pp; ruído do motor = 13,6 pp). Aceitar ou compensar? `dinamismo-mago-mais-forte`
 
 <!-- decisoes:fim -->
 
