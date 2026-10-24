@@ -202,7 +202,12 @@ DINAMISMO_HP_FIM = 0.12
 # arma a FAIXA_GATILHO do alcance real.
 DINAMISMO_IA = True
 # Pos-K.O.: o vencedor sai de cima do perdedor a ate POS_KO_MS m/s (0 desliga).
-DINAMISMO_POS_KO_MS = 3.0
+DINAMISMO_POS_KO_MS = 80.0
+# K.O. de longe: o vencedor vai ao encontro do caido ate os centros ficarem a
+# POS_KO_DIST_MAX_M (os dois cabem no quadro do cartao).
+DINAMISMO_POS_KO_DIST_MAX_M = 3.0
+DINAMISMO_POS_KO_FORA_ARENA = 0.2   # fracao da janela que o cartao pode mostrar fora da arena (era 0)
+DINAMISMO_POS_KO_FRACAO_MIN = 0.08   # piso do vencedor na tela p/ enquadrar os dois (era 0,15)
 DINAMISMO_FAIXA_BORDA_M = 0.8
 DINAMISMO_FAIXA_BORDA_CORRENTE_M = 1.2   # a corrente antiga bate do meio do anel
 DINAMISMO_FAIXA_FRACAO = 0.8

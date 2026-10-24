@@ -66,7 +66,8 @@ def duracao_total(trechos: list[tuple[float, float]]) -> float:
 def planejar_corte_tedio(gravacao: dict, *, max_total: float = 45.0,
                          seca_min: float = 4.0, contexto: float = 1.0,
                          protecao_ko: float = 8.0, abertura: float = 0.8,
-                         minimo_para_cortar: float = 12.0
+                         minimo_para_cortar: float = 12.0,
+                         degraus_finos: bool = False
                          ) -> list[tuple[float, float]]:
     """Trechos `(inicio, duracao)` que FICAM: a luta menos o tedio.
 
@@ -79,6 +80,10 @@ def planejar_corte_tedio(gravacao: dict, *, max_total: float = 45.0,
       desfecho e o que o espectador veio ver.
     - Se ainda passar de `max_total`, a regra de seca aperta em degraus;
       se nem assim couber, cai no recorte quente+desfecho do formato antigo.
+    - `degraus_finos` (so lutas com o dinamismo, 24/10/2026): antes desse
+      recorte, mais tres degraus (seca e contexto menores) — cortam so o
+      que esta entre golpes, em vez de pular metade da luta num corte seco
+      com a vida despencando (conferente, duelo_00006: 16,5 s de pulo).
     """
     total = float(gravacao.get("duracao_video") or 0.0)
     if total <= 0:
@@ -89,14 +94,15 @@ def planejar_corte_tedio(gravacao: dict, *, max_total: float = 45.0,
     fim_luta = float(gravacao.get("ko_em_video") or total)
     tempos = sorted(float(e[0]) for e in (gravacao.get("eventos_dano") or []))
 
-    def cortes_para(seca: float) -> list[tuple[float, float]]:
+    def cortes_para(seca: float, contexto: float = contexto,
+                    protecao: float = protecao_ko) -> list[tuple[float, float]]:
         marcos = [0.0, *tempos, fim_luta]
         cortes = []
         for a, b in zip(marcos, marcos[1:]):
             if b - a <= seca:
                 continue
             ini = abertura if a == 0.0 else a + contexto
-            fim = min(b - contexto, fim_luta - protecao_ko)
+            fim = min(b - contexto, fim_luta - protecao)
             if fim - ini >= 0.8:
                 cortes.append((round(ini, 2), round(fim, 2)))
         return _fundir(cortes)
@@ -105,6 +111,18 @@ def planejar_corte_tedio(gravacao: dict, *, max_total: float = 45.0,
         trechos = _complemento(cortes_para(seca), total)
         if duracao_total(trechos) <= max_total + 1e-6:
             return trechos
+
+    if degraus_finos:
+        for seca, ctx in ((1.0, 0.4), (0.6, 0.3), (0.4, 0.25)):
+            trechos = _complemento(cortes_para(seca, ctx), total)
+            if duracao_total(trechos) <= max_total + 1e-6:
+                return trechos
+        # ultimo degrau: ate 20% acima do teto (o duelo de 28 s vira ate
+        # 33,6 s, dentro dos 20-35 s do formato) antes de pular metade da luta
+        for seca, ctx, prot in ((0.4, 0.25, protecao_ko), (0.3, 0.2, 4.0), (0.25, 0.15, 3.0)):
+            trechos = _complemento(cortes_para(seca, ctx, prot), total)
+            if duracao_total(trechos) <= max_total * 1.2 + 1e-6:
+                return trechos
 
     # Luta longa e densa demais: o corte de tedio nao basta. Ficam a ABERTURA
     # (quem e quem, primeiro sangue) e o DESFECHO ate o teto, com um jump cut

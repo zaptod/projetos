@@ -1884,6 +1884,28 @@ prova (`metricas_video.diametro_lutador_p50`): 0,237/0,225/0,254 (base
 (Gladiador Orbital × Cavaleiro Reta). Mesma seed 2x = mesma luta (60/60);
 chave desligada = base (60/60).
 
+**Cartão e corte (24/10, conferente reprovou os duelos 00004..00006).**
+Só com a chave do dinamismo (o estoque não muda):
+- K.O. de longe: o caído saía do quadro (`pct_frames_visiveis` 0,960 no
+  00005). O vencedor agora vai ao encontro do caído até os centros ficarem a
+  3,0 m (`DINAMISMO_POS_KO_DIST_MAX_M`, 80 m/s: o K.O. é em câmera lenta), a
+  câmera enquadra os dois com o vencedor a partir de 8% da largura (era 15%)
+  e o cartão pode mostrar 20% fora da arena (o vencedor não fica colado na
+  borda). Efeitos de habilidade (áreas, invocações, armadilhas, status) são
+  apagados. A "mancha verde" no rosto do 00006 não é efeito: é a boca aberta
+  da festa do vencedor.
+- Corte de tédio (`highlights.planejar_corte_tedio(degraus_finos=True)`, ligado
+  por `runner.gravar_confronto` nas lutas com a chave): antes do recorte seco
+  (2,8 s de abertura + os últimos 25 s) tenta mais degraus de seca/contexto
+  menores, aceitando até 20% acima dos 28 s (33,6 s, dentro dos 20–35 s do
+  formato). Sem a chave, igual a antes.
+
+Medido no lote de 60 (caminho do duelo: câmera DIRETOR 1080x1920 com a reserva
+do letreiro): `pct_frames_visiveis` mínimo 0,904 (base) → 0,987 (agora), 2 → 1
+lutas abaixo de 0,99. Lutas com corte seco de pulo > 8 s: 15 → 6 (eventos de
+dano em tempo de vídeo). Ficam as lutas densas de 40 s+ (ex. duelo_00159, 62
+golpes): os degraus que as caberiam deixam clipes de 0,2 s, pior que o pulo.
+
 O medidor ganhou golpes, golpes de 10+, golpes/s, maior trecho sem golpe,
 distância entre centros (p50) e a série de vida; o `comparar.py` da pasta de
 medidas calcula o corte de tédio do duelo (`highlights.planejar_corte_tedio`

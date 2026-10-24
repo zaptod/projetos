@@ -514,7 +514,9 @@ def gravar_confronto(p1: str, p2: str, cenario: str, base_seed: int,
         seca_min=float(gameplay["seca"]), contexto=float(gameplay["contexto"]),
         protecao_ko=float(gameplay["protecao_ko"]),
         abertura=float(gameplay["abertura"]),
-        minimo_para_cortar=float(gameplay.get("minimo_para_cortar", 12.0)))
+        minimo_para_cortar=float(gameplay.get("minimo_para_cortar", 12.0)),
+        # luta com o dinamismo: corte fino em vez de pular metade da luta
+        degraus_finos=bool(referencia.get("dinamismo", dinamico)))
     remap = highlights.remapear_gravacao(referencia, trechos)
 
     clipes = {}

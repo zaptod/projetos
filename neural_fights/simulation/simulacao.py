@@ -458,6 +458,15 @@ class Simulador:
                 # alcance como o golpe mede e fica onde os discos quase se tocam.
                 _dinamismo.preparar_ia(self.p1, self.p2)
                 _dinamismo.preparar_ia(self.p2, self.p1)
+            # cauda do K.O.: os dois ficam no quadro do cartão mesmo de longe
+            # (o piso de 15% da largura para o vencedor deixava o caído fora)
+            from neural_fights.utils.config import DINAMISMO_POS_KO_FRACAO_MIN
+            if getattr(self, "cam", None) is not None and DINAMISMO_POS_KO_FRACAO_MIN is not None:
+                self.cam.diretor_pos_ko_fracao_min = DINAMISMO_POS_KO_FRACAO_MIN
+                # e o par centrado no cartão: a parede encostada não o empurra
+                # para a borda da tela (duelo_00006: vencedor em x 45-275)
+                from neural_fights.utils.config import DINAMISMO_POS_KO_FORA_ARENA
+                self.cam.diretor_pos_ko_fora_arena = DINAMISMO_POS_KO_FORA_ARENA
 
         self.particulas = []; self.decals = []; self.textos = []; self.shockwaves = []; self.projeteis = []
         self.impact_flashes = []; self.magic_clashes = []; self.block_effects = []
@@ -4137,13 +4146,44 @@ class Simulador:
                 beam.vida = float(getattr(beam, "vida", 0.0)) - dt
                 if beam.vida <= 0.0:
                     beam.ativo = False
+        # efeito de habilidade que ficou no chão/ar (poça, aura, área) não
+        # fica sobre o rosto do vencedor no cartão
+        for area in getattr(self, "areas", []) or []:
+            if getattr(area, "ativo", False):
+                area.ativo = False
+        for lista in ("summons", "traps", "projeteis", "portais"):
+            for obj in getattr(self, lista, []) or []:
+                if getattr(obj, "ativo", False):
+                    obj.ativo = False
+        for lut in (self.p1, self.p2):
+            timers = getattr(lut, "status_timers", None)
+            if timers is not None and not getattr(lut, "morto", False):
+                ativos = tuple(timers.ativos())
+                if ativos:
+                    timers.limpar(*ativos)      # o rosto do vencedor sem aura/mancha
         lado = getattr(self, "vencedor_round_side", None)
         if lado not in ("p1", "p2") or DINAMISMO_POS_KO_MS <= 0.0:
             return
         vencedor = getattr(self, lado)
         perdedor = self.p2 if lado == "p1" else self.p1
+        from neural_fights.utils.config import DINAMISMO_POS_KO_DIST_MAX_M
         falta = 0.15 - _dinamismo.borda(vencedor, perdedor)
         if falta <= 0.0:
+            # K.O. de longe: o vencedor vai ao encontro do caído até os dois
+            # caberem no quadro do cartão (a câmera só enquadra os dois com o
+            # vencedor ocupando 15% da largura; senão o caído saía da tela)
+            ex = perdedor.pos[0] - vencedor.pos[0]
+            ey = perdedor.pos[1] - vencedor.pos[1]
+            d = math.hypot(ex, ey)
+            sobra = d - DINAMISMO_POS_KO_DIST_MAX_M
+            if sobra <= 0.0 or d < 1e-9:
+                return
+            passo = min(sobra, DINAMISMO_POS_KO_MS * dt)
+            novo = [vencedor.pos[0] + ex / d * passo, vencedor.pos[1] + ey / d * passo]
+            if self.arena is None or (
+                    self.arena.min_x + 0.5 < novo[0] < self.arena.max_x - 0.5
+                    and self.arena.min_y + 0.5 < novo[1] < self.arena.max_y - 0.5):
+                vencedor.pos[0], vencedor.pos[1] = novo
             return
         dx = vencedor.pos[0] - perdedor.pos[0]
         dy = vencedor.pos[1] - perdedor.pos[1]

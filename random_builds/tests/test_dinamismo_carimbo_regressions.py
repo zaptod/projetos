@@ -138,3 +138,20 @@ def test_palco_resimula_a_luta_gravada_com_o_carimbo():
         fonte.timeline_da_luta(p1="a", p2="b", seed=1, cenario="Arena", tentativas=1, dinamismo=False)
         fonte.timeline_da_luta(p1="a", p2="b", seed=1, cenario="Arena", tentativas=1, dinamismo=True)
     assert vistos == [None, False, True]
+
+
+def test_corte_fino_nao_pula_metade_da_luta_e_o_padrao_nao_muda():
+    from builds.tournament import highlights
+
+    # luta de 40 s com golpe a cada 1,8 s: densa demais para o corte de 2 s
+    eventos = [(1.0 + 1.8 * i, "p1", 10.0, "x") for i in range(20)]
+    grav = {"duracao_video": 40.0, "ko_em_video": 40.0, "eventos_dano": eventos}
+    args = dict(max_total=28.0, seca_min=2.0, contexto=0.5, protecao_ko=6.0,
+                abertura=0.4, minimo_para_cortar=8.0)
+    velho = highlights.planejar_corte_tedio(grav, **args)
+    fino = highlights.planejar_corte_tedio(grav, degraus_finos=True, **args)
+    assert velho == highlights.planejar_corte_tedio(grav, degraus_finos=False, **args)
+    assert len(velho) == 2 and velho[0] == (0.0, 2.8)          # o recorte seco de antes
+    maior_pulo = max(b[0] - (a[0] + a[1]) for a, b in zip(fino, fino[1:]))
+    assert len(fino) > 2 and maior_pulo < 4.0
+    assert highlights.duracao_total(fino) <= 28.0 * 1.2 + 1e-6

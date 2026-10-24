@@ -297,6 +297,22 @@ class PosKoTests(unittest.TestCase):
         sim._limpar_cena_pos_ko(DT)
         self.assertEqual(sim.p1.pos, [5.0, 9.0])
 
+    def test_ko_de_longe_vencedor_vai_ao_encontro_do_caido(self):
+        # o caído longe saía do quadro do cartão (duelo_00005: 0,960 visível)
+        sim, _ = self._sim(8.0)
+        sim.p1.pos, sim.p2.pos = [1.0, 9.0], [9.0, 9.0]
+        for _ in range(60):
+            sim._limpar_cena_pos_ko(DT)
+        self.assertAlmostEqual(sim.p2.pos[0] - sim.p1.pos[0], config.DINAMISMO_POS_KO_DIST_MAX_M, places=3)
+        self.assertEqual(sim.p2.pos, [9.0, 9.0])      # o caído não se mexe
+
+    def test_area_de_habilidade_nao_fica_no_cartao(self):
+        sim, _ = self._sim(3.0)
+        area = SimpleNamespace(ativo=True)
+        sim.areas = [area]
+        sim._limpar_cena_pos_ko(DT)
+        self.assertFalse(area.ativo)
+
 
 class ChaveDaLutaTests(unittest.TestCase):
     def test_ausente_vale_o_padrao_desligado(self):
