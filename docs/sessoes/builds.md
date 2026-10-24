@@ -1723,6 +1723,13 @@ Ver a pergunta ao Adrian no relato do ramo.
   vídeos; `metas_do_plano`: reposição e estoque zero = o piso; lote = o que
   sai até a próxima segunda 07h + o piso. O `piso_de_reposicao` (20) segue
   sendo só o alerta da publicação;
+  **Piso olha a grade a frente (24/10):** `metas_do_plano` passa `agora` e o
+  consumo do piso e o MAIOR dos proximos `piso_por_formato_em_dias` dias, cada
+  um pela grade do dia (`consumo_por_dia(quando=)`). Medido em 24/10 08:36:
+  26 duelos prontos, grade de 3/dia, piso 12 => 0 duelos gerados em 22, 23 e
+  24/10; com a grade de 8/dia entrando em `grade.HORAS_POR_CANAL_DESDE` a
+  27/10, o piso de sabado vira 4 x 8 = 32 (faltam 6), sem mexer no config e
+  sem reverter depois. Teste: `test_piso_olha_a_grade_a_frente_regressions.py`.
 - `videos_por_roleta` 2: a meta da build é em vídeos (A e B), o passo é uma
   roleta, e a roleta em preparo conta 2;
 - a ordem é refeita a cada passo (menos dias primeiro; empate, duelo). Caso

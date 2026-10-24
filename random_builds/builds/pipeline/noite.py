@@ -414,17 +414,32 @@ def postagens_da_plataforma(inicio: datetime, fim: datetime,
 
 
 def piso_do_formato(formato: str, config: dict,
-                    config_publicacao: dict | None = None) -> int:
+                    config_publicacao: dict | None = None,
+                    agora: datetime | None = None) -> int:
     """O piso do formato em VIDEOS: `piso_por_formato_em_dias` x o que a
     publicacao tira dele por dia. Duelo 4 x 6,25 = 25; build 2 x 3,75 = 8;
-    estreia 2 x 0,75 = 2."""
+    estreia 2 x 0,75 = 2.
+
+    Com `agora`, o consumo e o MAIOR dos proximos `piso_por_formato_em_dias`
+    dias (hoje incluido), cada um pela grade DO DIA (`grade.tabela_do_canal`).
+    Sem isso o piso de uma troca de grade so subia no dia da troca: em 24/10
+    (3 duelos/dia, estoque 26) a geracao nao fazia nada, e em 27/10 (8/dia)
+    sobravam 2 dias de estoque. Sem `agora`, o consumo de hoje (como antes)."""
     dias = dict(PISO_EM_DIAS_DE_QUEDA)
     dias.update(config.get("piso_por_formato_em_dias") or {})
     try:
         em_dias = max(0.0, float(dias.get(formato, 0)))
     except (TypeError, ValueError):
         em_dias = float(PISO_EM_DIAS_DE_QUEDA.get(formato, 0))
-    consumo = consumo_por_dia(config_publicacao).get(formato, 0.0)
+    if agora is None:
+        consumo = consumo_por_dia(config_publicacao).get(formato, 0.0)
+    else:
+        a_frente = max(1, int(math.ceil(em_dias)))
+        dia = agora.date() if isinstance(agora, datetime) else agora
+        consumo = max(
+            consumo_por_dia(config_publicacao,
+                            quando=dia + timedelta(days=i)).get(formato, 0.0)
+            for i in range(a_frente))
     return int(math.ceil(em_dias * consumo - 1e-9))
 
 
@@ -440,7 +455,7 @@ def metas_do_plano(config: dict, agora: datetime, modo: str,
     segunda 07:02 = duelo 70 x 5/8 + 25 = 69, build 70 x 3/8 + 8 = 35,
     estreia 42 x 1/8 + 2 = 8 (a estreia so sai no TikTok, 6 por dia).
     """
-    saida = {f: piso_do_formato(f, config, config_publicacao)
+    saida = {f: piso_do_formato(f, config, config_publicacao, agora)
              for f in ("duelo", "build", "estreia")}
     if modo != "lote":
         return saida
@@ -673,7 +688,7 @@ def fatias(config_publicacao: dict | None = None) -> dict:
 
 
 def consumo_por_dia(config_publicacao: dict | None = None,
-                    horarios: int | None = None) -> dict:
+                    horarios: int | None = None, quando=None) -> dict:
     """Quantos videos NOVOS de cada formato a publicacao tira do estoque por
     dia: duelo 10 x 5/8 = 6,25 e build 10 x 3/8 = 3,75 (YouTube, sem
     estreia desde 19/10/2026); estreia 6 x 1/8 = 0,75 (TikTok). `horarios`
@@ -685,7 +700,7 @@ def consumo_por_dia(config_publicacao: dict | None = None,
         if plataforma == "youtube" and horarios is not None:
             n = int(horarios)
         else:
-            n = len(_horas_dos_builds(grade, plataforma))
+            n = len(_horas_dos_builds(grade, plataforma, quando))
         saida[formato] = n * fracao
     return saida
 
