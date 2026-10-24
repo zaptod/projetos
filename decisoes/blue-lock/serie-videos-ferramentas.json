@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-24T13:47:11",
+      "evento": "2026-10-24T13:47:06",
+      "linha": 215,
+      "nota": "resposta sem pedido de origem: blue-lock/serie-videos-ferramentas = Instalar fixo e isolado (recomendado)",
+      "opcao": "instalar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Pedido do Adrian em 24/10: 'se não tem skill baixe, não quero desculpas quero resultados'. HyperFrames fixo em hyperframes@0.8.181, pasta isolada, telemetria/skills/update desligados por variável (regras do ORIGEM.md da hyperframes-core). Skills lidas em quarentena antes de instalar: storytelling-narrative (sammcj/agentic-coding, Apache-2.0), video-editing e content-engine (affaan-m/ECC, MIT), só texto.",
   "criado": "2026-10-24T13:46:54.772145",
   "depende_de": [],
