@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Pedido do Adrian em 24/10: 'se não tem skill baixe, não quero desculpas quero resultados'. HyperFrames fixo em hyperframes@0.8.181, pasta isolada, telemetria/skills/update desligados por variável (regras do ORIGEM.md da hyperframes-core). Skills lidas em quarentena antes de instalar: storytelling-narrative (sammcj/agentic-coding, Apache-2.0), video-editing e content-engine (affaan-m/ECC, MIT), só texto.",
+  "criado": "2026-10-24T13:46:54.772145",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "respondida pelo orquestrador: o Adrian mandou baixar o que faltasse (24/10)",
+      "em": "2026-10-24T13:47:06",
+      "opcao": "instalar",
+      "origem": "cli"
+    }
+  ],
+  "id": "serie-videos-ferramentas",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "CLI 0.8.181 em E:\\tmp_pytest\\hyperframes_serie com HYPERFRAMES_NO_TELEMETRY/SKIP_SKILLS/NO_UPDATE_CHECK; as 3 skills em .claude/skills com ORIGEM.md",
+      "id": "instalar",
+      "pede_comentario": false,
+      "rotulo": "Instalar fixo e isolado (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "sem instalar nada",
+      "id": "ffmpeg",
+      "pede_comentario": false,
+      "rotulo": "Seguir só com ffmpeg"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Instalar o CLI do HyperFrames e skills de storytelling/edição para montar a série sobre a criação do simulador?",
+  "projeto": "blue-lock",
+  "situacao": "decidida",
+  "titulo": "Série de vídeos: instalar o HyperFrames e skills de roteiro/edição",
+  "vigente": {
+    "comentario": "respondida pelo orquestrador: o Adrian mandou baixar o que faltasse (24/10)",
+    "em": "2026-10-24T13:47:06",
+    "opcao": "instalar"
+  }
+}
