@@ -242,6 +242,14 @@ class Bot:
         if saiu:
             self._apurar()
 
+    def _pos_entrega(self, chat, texto: str, resposta: dict) -> None:
+        """Entrega pela metade: o resto vai para a fila (quem chama), entao a
+        memoria do Telegram acaba; parte pulada e dita no log."""
+        if resposta.get("resto"):
+            self.tg.assumir_resto(chat, texto)
+        if resposta.get("parcial"):
+            self.log(f"[remoto] entrega parcial para {chat}: {resposta.get('description')}.")
+
     def _mandar_alerta(self, texto: str, chave: str, *, markdown: bool = True) -> bool:
         """Passa pelo porteiro e manda; sem entrega, vai para a fila. True = saiu."""
         if not avisos.liberar(texto, chave=chave, origem="bot.alerta"):
@@ -253,6 +261,7 @@ class Bot:
                 if api.chegou_algo(resposta):
                     entregues += 1
                     restos.append(resposta.get("resto"))
+                    self._pos_entrega(chat, texto, resposta)
             except Exception:                                  # noqa: BLE001
                 pass
         if entregues:
@@ -347,6 +356,7 @@ class Bot:
                 if api.chegou_algo(resposta):
                     entregues += 1
                     restos.append(resposta.get("resto"))
+                    self._pos_entrega(chat, texto, resposta)
             except Exception:                                  # noqa: BLE001
                 pass
         if entregues:
@@ -416,6 +426,7 @@ class Bot:
                     if api.chegou_algo(resposta):
                         entregues += 1
                         restos.append(resposta.get("resto"))
+                        self._pos_entrega(chat, texto, resposta)
                 except Exception:                              # noqa: BLE001
                     pass
             if entregues:

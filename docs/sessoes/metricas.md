@@ -839,7 +839,7 @@ novos do `remoto`; e `remoto/test_envio_em_partes.py`, 10, da 2ª volta):
    chat e texto, até onde chegou e retoma dali; recusa definitiva (4xx que
    não é 429) conta tentativa e, na 3ª (`TETO_DE_TENTATIVAS`), a parte é
    **pulada**, o resto segue e a resposta diz `parcial` (o bot põe no log);
-   falta de rede não conta. Quem tem fila (alerta, aviso, pendentes,
+   falta de rede não conta. A memória vale **30 min desde a primeira falha** (sem renovar) e acaba na hora quando quem chamou enfileirou o `resto` (`assumir_resto`): reenviar de propósito o mesmo texto (o `/semana` das 21:05, o alerta que o porteiro libera no dia seguinte) manda **todas** as partes (conferente, 24/10: antes mandava 2 de 3 e respondia ok). Quem tem fila (alerta, aviso, pendentes,
    `remoto --avisar`) conta a entrega pela metade como entregue e enfileira
    **só** o `resto`. Medido no `partes_bot.py`: parte 1 chega **1 vez** com
    a parte 2 falhando uma vez (antes 2) e falhando sempre (antes 10). O

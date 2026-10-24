@@ -53,7 +53,7 @@ LIMITE_DA_MENSAGEM = 4000
 TETO_DE_TENTATIVAS = 3
 # Entregas pela metade lembradas (por chat e texto), e por quanto tempo.
 MEMORIA_MAXIMA = 50
-MEMORIA_S = 24 * 3600
+MEMORIA_S = 30 * 60
 
 
 def unidades(texto: str) -> int:
@@ -199,7 +199,10 @@ class Telegram:
         self._esquecer_velhas(agora)
         estado = self._pela_metade.get(chave) or {"feitas": 0, "falhas": 0,
                                                   "puladas": [], "em": agora}
-        estado["em"] = agora
+        # `em` NAO e renovado: a memoria vale MEMORIA_S desde a PRIMEIRA falha.
+        # Renovar fazia o mesmo texto reenviado de proposito (o /semana das
+        # 21:05, o alerta que o porteiro libera um dia depois) pular as
+        # primeiras partes e responder ok (conferente, 24/10).
         resposta: dict = {}
         while estado["feitas"] < len(partes):
             i = estado["feitas"]
@@ -234,6 +237,11 @@ class Telegram:
             resposta = self.chamar("sendMessage", chat_id=chat_id, text=corpo,
                                    disable_web_page_preview="true")
         return resposta
+
+    def assumir_resto(self, chat_id, texto: str) -> None:
+        """Quem chamou ja enfileirou o `resto`: a memoria desta entrega pela
+        metade acaba AGORA (um envio novo do mesmo texto manda tudo)."""
+        self._pela_metade.pop((str(chat_id), str(texto)), None)
 
     def _esquecer_velhas(self, agora: float) -> None:
         for chave in [k for k, v in self._pela_metade.items() if agora - v["em"] > MEMORIA_S]:

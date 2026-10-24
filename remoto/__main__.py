@@ -230,6 +230,10 @@ def avisar(texto: str, *, chave: str | None = None) -> bool:
             if chegou_algo(resposta):
                 entregues += 1
                 restos.append(resposta.get("resto"))
+                if resposta.get("resto"):
+                    tg.assumir_resto(chat, texto)
+                if resposta.get("parcial"):
+                    print(f"[remoto] entrega parcial para {chat}: {resposta.get('description')}.")
         except Exception as exc:                               # noqa: BLE001
             print(f"[remoto] nao consegui avisar {chat}: {exc}")
     if entregues:

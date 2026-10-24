@@ -188,5 +188,47 @@ class FilaSoComOResto(_Ambiente):
         self.assertEqual([], avisos.pendentes())
 
 
+class ReenvioProposital(_Ambiente):
+    """Conferente 24/10 (conf_t.py): rede cai na parte 2 de N; o MESMO texto
+    mandado de proposito depois (o /semana das 21:05, o alerta liberado pelo
+    porteiro um dia depois) mandava so o que faltava e respondia ok."""
+
+    def _meia(self, tg_abrir):
+        tg = api.Telegram("t", abrir=tg_abrir)
+        return tg
+
+    def test_alerta_que_enfileirou_o_resto_nao_deixa_memoria(self):
+        abrir = _Abrir(lambda c: {} if c["text"] == self.partes[1] else {"ok": True})
+        falso = types.SimpleNamespace(tg=api.Telegram("t", abrir=abrir), log=self.logs.append)
+        falso._pos_entrega = lambda *a: bot.Bot._pos_entrega(falso, *a)
+        self.assertTrue(bot.Bot._mandar_alerta(falso, self.texto, "k", markdown=False))
+        self.assertEqual({}, falso.tg._pela_metade)
+        abrir.regra = lambda c: {"ok": True}
+        abrir.chegou.clear()
+        self.assertTrue(falso.tg.mensagem(111, self.texto).get("ok"))
+        self.assertEqual(self.texto, chr(10).join(abrir.chegou), "envio novo manda TODAS as partes")
+
+    def test_memoria_expira_sem_renovar(self):
+        abrir = _Abrir(lambda c: {} if c["text"] == self.partes[1] else {"ok": True})
+        tg = api.Telegram("t", abrir=abrir)
+        self.assertFalse(tg.mensagem(111, self.texto).get("ok"))
+        chave = (str(111), self.texto)
+        antes = tg._pela_metade[chave]["em"]
+        tg.mensagem(111, self.texto)                  # tentativa dentro da memoria
+        self.assertEqual(antes, tg._pela_metade[chave]["em"], "`em` nao e renovado")
+        tg._pela_metade[chave]["em"] -= api.MEMORIA_S + 1      # passou o prazo
+        abrir.regra = lambda c: {"ok": True}
+        abrir.chegou.clear()
+        self.assertTrue(tg.mensagem(111, self.texto).get("ok"))
+        self.assertEqual(self.texto, chr(10).join(abrir.chegou))
+
+    def test_parcial_vai_para_o_log_do_alerta(self):
+        falso = types.SimpleNamespace(tg=api.Telegram("t", abrir=_Abrir(lambda c: {"ok": True})),
+                                      log=self.logs.append)
+        bot.Bot._pos_entrega(falso, 111, "t", {"ok": True, "parcial": True,
+                                               "description": "partes [2] puladas"})
+        self.assertTrue(any("parcial" in str(x) and "[2]" in str(x) for x in self.logs))
+
+
 if __name__ == "__main__":
     unittest.main()
