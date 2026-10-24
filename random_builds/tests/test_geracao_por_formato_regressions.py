@@ -250,12 +250,11 @@ class OConsumoEDaPublicacao(unittest.TestCase):
     def test_metas_do_lote_de_segunda(self):
         """Segunda 26/10 07:02 -> 02/11 07:00 (a segunda ja na grade de
         oito): 26/10 tem 3 (09:37, 17:57, 21:37), de 27/10 a 01/11 sao 6 dias
-        x 8 = 48 e 02/11 ainda tem o 06:37 = 52 duelos, + o piso 12 (4 dias x
-        3, o consumo de HOJE; a geracao que olha a grade a frente pede 32) =
-        64 (em 19/10 eram 69/35/8)."""
+        x 8 = 48 e 02/11 ainda tem o 06:37 = 52 duelos, + o piso 32 (4 dias x
+        8: a geracao olha a grade a frente) = 84 (em 19/10 eram 69/35/8)."""
         config = noite.carregar()
         metas = noite.metas_do_plano(config, _as(SEG2, 7, 2), "lote", PUB)
-        self.assertEqual({"duelo": 64, "build": 0, "estreia": 0}, metas)
+        self.assertEqual({"duelo": 84, "build": 0, "estreia": 0}, metas)
 
     def test_oito_duelos_por_dia_desde_27_10(self):
         """YouTube 8 horarios x 8/8 = 8 duelos por dia; o piso de 4 dias (a

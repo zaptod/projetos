@@ -22,8 +22,10 @@ from builds.pipeline import noite
 
 PUB = {"grade": {"mistura": {"duelo": 4, "build": 3, "estreia": 1,
                              "torneio": 0}}}
-OITO = (6, 9, 12, 15, 17, 20, 21, 22)
-COM_8 = grade.HORAS_POR_CANAL_DESDE + (
+OITO = (6, 9, 12, 15, 17, 21, 22, 23)
+# a tabela de 3 por dia: sem nenhuma troca por data
+SEM_TROCA = ()
+COM_8 = SEM_TROCA + (
     (date(2026, 10, 27), {"builds": {"youtube": OITO, "tiktok": (21,)}}),)
 
 
@@ -72,9 +74,10 @@ class PisoOlhaAFrente(unittest.TestCase):
         self.assertEqual(32, piso)
 
     def test_caso_zero_sem_troca_nada_muda(self):
-        # a grade de hoje no repositorio (3 por dia): o piso e o de sempre
-        self.assertEqual(12, noite.piso_do_formato(
-            "duelo", self.config, PUB, _as(date(2026, 10, 24), 8, 2)))
+        # a tabela de 3 por dia, fixada aqui: o piso e o de sempre
+        with mock.patch.object(grade, "HORAS_POR_CANAL_DESDE", SEM_TROCA):
+            self.assertEqual(12, noite.piso_do_formato(
+                "duelo", self.config, PUB, _as(date(2026, 10, 24), 8, 2)))
 
     def test_o_estoque_de_24_10_passa_a_faltar_na_reposicao(self):
         """26 duelos prontos, sabado 08:02: com a grade de 8 a partir de 27/10
@@ -84,7 +87,8 @@ class PisoOlhaAFrente(unittest.TestCase):
             metas = noite.metas_do_plano(self.config, agora, "reposicao", PUB)
         self.assertEqual(32, metas["duelo"])
         self.assertEqual(6, max(0, metas["duelo"] - 26))
-        sem = noite.metas_do_plano(self.config, agora, "reposicao", PUB)
+        with mock.patch.object(grade, "HORAS_POR_CANAL_DESDE", SEM_TROCA):
+            sem = noite.metas_do_plano(self.config, agora, "reposicao", PUB)
         self.assertEqual(12, sem["duelo"])
 
     def test_lote_de_segunda_26_10_cobre_a_semana_de_8(self):
