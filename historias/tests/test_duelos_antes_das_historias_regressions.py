@@ -68,12 +68,27 @@ class OrdemPelaGradeTests(unittest.TestCase):
                 self.assertEqual(("historias", "builds"),
                                  self.m._ordem_dos_canais(quando))
 
-    def test_a_tabela_de_01_11_tambem_vale(self):
-        """Desde 01/11 os duelos saem 12:07, 20:37 e 22:37."""
-        self.assertEqual(("builds", "historias"),
-                         self.m._ordem_dos_canais(datetime(2026, 11, 2, 12, 10)))
-        self.assertEqual(("historias", "builds"),
-                         self.m._ordem_dos_canais(datetime(2026, 11, 2, 9, 40)))
+    def test_a_tabela_de_27_10_tambem_vale_em_novembro(self):
+        """Desde 27/10 os duelos saem em oito horarios (06:37 09:37 12:07
+        15:37 17:57 21:37 22:37 23:37) e a tabela de 01/11 (12:07, 20:37,
+        22:37) foi substituida: nos horarios dos duelos os builds vao
+        primeiro; no 20:37 e no 00:37, so as historias abrem."""
+        for dia, hora, minuto, ordem in (
+                (27, 6, 40, ("builds", "historias")),
+                (27, 15, 40, ("builds", "historias")),
+                (27, 20, 40, ("historias", "builds")),
+                (27, 23, 40, ("builds", "historias")),
+                (28, 0, 40, ("historias", "builds"))):
+            with self.subTest(dia=dia, hora=hora):
+                self.assertEqual(ordem, self.m._ordem_dos_canais(
+                    datetime(2026, 10, dia, hora, minuto)))
+        for hora, minuto, ordem in ((9, 40, ("builds", "historias")),
+                                    (12, 10, ("builds", "historias")),
+                                    (20, 40, ("historias", "builds")),
+                                    (22, 40, ("builds", "historias"))):
+            with self.subTest(novembro=hora):
+                self.assertEqual(ordem, self.m._ordem_dos_canais(
+                    datetime(2026, 11, 2, hora, minuto)))
 
 
 class RodadaTests(unittest.TestCase):

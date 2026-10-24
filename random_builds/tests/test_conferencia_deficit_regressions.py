@@ -365,5 +365,52 @@ class UmAvisoPorDiaDeGrade(unittest.TestCase):
         self.assertEqual([], avisos)
 
 
+class OitoDuelosPorDiaDesde27DeOutubro(unittest.TestCase):
+    """O dia de grade de 27/10/2026 (conferido as 05:20 de 28/10) promete OITO
+    duelos no YouTube dos builds (`semana-2-volume`): 06:37 09:37 12:07 15:37
+    17:57 21:37 22:37 23:37. Conta de mao: dia cheio 8/8 = deficit 0; so os
+    tres horarios antigos (09:37, 17:57, 21:37) = 3/8, deficit 5; dia ZERO =
+    deficit 8 (e nao 10 nem 3), e o 00:37 de 28/10 nao e cobrado."""
+
+    AGORA = datetime(2026, 10, 28, 5, 20)
+    DIA = date(2026, 10, 27)
+
+    def _instantes(self, horas):
+        return [datetime(2026, 10, 27, h, grade.minuto(h)) for h in horas]
+
+    def test_dia_cheio_8_de_8(self):
+        publicados, no_canal = _dia(self._instantes(
+            grade.horas_do_canal("builds", "youtube", self.DIA)))
+        ficha = _conferir(publicados, no_canal, agora=self.AGORA)
+        self.assertEqual("2026-10-27", ficha["dia_de_grade"])
+        self.assertEqual(8, ficha["slots_da_grade"])
+        self.assertEqual(8, ficha["horarios_cumpridos"])
+        self.assertEqual(0, ficha["deficit"])
+        self.assertEqual("cumprida", ficha["grade"])
+
+    def test_dia_zero_deve_oito(self):
+        ficha = _conferir([], [], agora=self.AGORA)
+        self.assertEqual(8, ficha["slots_da_grade"])
+        self.assertEqual(8, ficha["deficit"])
+        self.assertEqual(["06:37", "09:37", "12:07", "15:37", "17:57",
+                          "21:37", "22:37", "23:37"],
+                         ficha["horarios_em_falta"])
+        self.assertEqual("em falta", ficha["grade"])
+
+    def test_so_os_tres_antigos_deixam_cinco_em_falta(self):
+        publicados, no_canal = _dia(self._instantes((9, 17, 21)))
+        ficha = _conferir(publicados, no_canal, agora=self.AGORA)
+        self.assertEqual(3, ficha["horarios_cumpridos"])
+        self.assertEqual(5, ficha["deficit"])
+        self.assertEqual(["06:37", "12:07", "15:37", "22:37", "23:37"],
+                         ficha["horarios_em_falta"])
+
+    def test_o_dia_anterior_ainda_deve_tres(self):
+        """26/10 e a grade de tres: o deficit do dia vazio e 3, nao 8."""
+        ficha = _conferir([], [], agora=datetime(2026, 10, 27, 5, 20))
+        self.assertEqual("2026-10-26", ficha["dia_de_grade"])
+        self.assertEqual(3, ficha["deficit"])
+
+
 if __name__ == "__main__":
     unittest.main()

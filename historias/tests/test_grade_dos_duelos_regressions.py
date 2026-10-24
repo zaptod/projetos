@@ -12,14 +12,23 @@ depois de uma pausa). As historias nao mudam: dez no YouTube, seis no TikTok.
 
 A grade que sai (conta de mao, `python -m builds.grade AAAA-MM-DD`):
 
-    horario  ate 31/10 (builds)     desde 01/11 (builds)
-    09:37    youtube                -
+    horario  ate 26/10 (builds)     desde 27/10 (builds)
+    06:37    -                      youtube
+    09:37    youtube                youtube
     12:07    -                      youtube
-    17:57    youtube                -
-    20:37    -                      youtube + tiktok
-    21:37    youtube + tiktok       -
+    15:37    -                      youtube
+    17:57    youtube                youtube
+    20:37    -                      -
+    21:37    youtube + tiktok       youtube + tiktok
     22:37    -                      youtube
+    23:37    -                      youtube
     (historias: youtube nos dez; tiktok 09:37 a 21:37)
+
+OITO DUELOS POR DIA DESDE 27/10/2026 (decisao `publicacao/semana-2-volume`,
+24/10): a tabela de 27/10 SUBSTITUI a de 01/11 (12:07, 20:37, 22:37; TikTok
+20:37), que nunca valeu. O TikTok segue em UM por dia, 21:37, tambem depois de
+01/11. Tirados 00:37 e 20:37, os dois piores da razao views / mediana do dia
+(0,75 e 0,68; os outros 0,82 a 1,40).
 
 Caso ZERO: canal sem grade propria (historias, ou nome desconhecido) = a da
 plataforma inteira; fora da grade o canal de builds NAO le ledger nem
@@ -64,7 +73,21 @@ def _duelo(n: int, classes=("Mago (Arcano)", "Ninja (Velocidade)"),
 
 
 OUTUBRO = date(2026, 10, 21)
+VESPERA = date(2026, 10, 26)
+OITO = date(2026, 10, 27)
 NOVEMBRO = date(2026, 11, 1)
+OS_OITO = (6, 9, 12, 15, 17, 21, 22, 23)
+
+
+def _relogio_em(caso, dia):
+    """Os testes de CONSUMO leem o relogio da grade (`tabela_do_canal(None)`).
+    Sem fixar, o que dava 3 por dia em 24/10 daria 8 em 27/10 e o teste
+    quebrava sozinho, sem ninguem ter mexido em nada."""
+    from builds import grade
+    original = grade.tabela_do_canal
+    caso.addCleanup(setattr, grade, "tabela_do_canal", original)
+    grade.tabela_do_canal = lambda quando=None: original(
+        dia if quando is None else quando)
 
 
 class GradeDoCanalTests(unittest.TestCase):
@@ -76,31 +99,58 @@ class GradeDoCanalTests(unittest.TestCase):
                                                      OUTUBRO))
         self.assertEqual(["09:37", "17:57", "21:37"],
                          grade.horarios("youtube", "builds", OUTUBRO))
-        for dia in (OUTUBRO, NOVEMBRO):
+        for dia in (OUTUBRO, VESPERA):
             self.assertEqual(3, grade.meta_diaria("builds", "youtube", dia))
             self.assertEqual(1, grade.meta_diaria("builds", "tiktok", dia))
 
-    def test_de_01_11_em_diante_uma_hora_mais_tarde(self):
-        """Fim do horario de verao nos EUA: ~11h, ~20h, ~23h -> 12:07, 20:37,
-        22:37; o TikTok, ~20h -> 20:37 (a grade dele acaba as 21:37). A troca
-        e pela data, sozinha: 31/10 ainda e a de outubro."""
+    def test_de_27_10_em_diante_oito_duelos_e_o_tiktok_segue_um(self):
+        """Decisao `publicacao/semana-2-volume`: 8 no YouTube a partir de
+        27/10 e o TikTok em UM por dia, 21:37. A tabela substitui a de 01/11
+        (12:07, 20:37, 22:37; TikTok 20:37), que nunca valeu: 01/11 e depois
+        dele ficam nos mesmos oito e no TikTok das 21:37. A troca e pela data,
+        sozinha: 26/10 ainda e a de tres."""
         from builds import grade
-        self.assertEqual((12, 20, 22), grade.horas_do_canal(
-            "builds", "youtube", NOVEMBRO))
-        self.assertEqual((20,), grade.horas_do_canal("builds", "tiktok",
-                                                     NOVEMBRO))
         self.assertEqual((9, 17, 21), grade.horas_do_canal(
-            "builds", "youtube", date(2026, 10, 31)))
-        self.assertEqual((12, 20, 22), grade.horas_do_canal(
+            "builds", "youtube", VESPERA))
+        self.assertEqual(OS_OITO, grade.horas_do_canal(
+            "builds", "youtube", OITO))
+        self.assertEqual(OS_OITO, grade.horas_do_canal(
+            "builds", "youtube", NOVEMBRO))
+        self.assertEqual(OS_OITO, grade.horas_do_canal(
             "builds", "youtube", datetime(2026, 12, 25, 12, 10)))
+        for dia in (OITO, NOVEMBRO, date(2026, 12, 25)):
+            self.assertEqual((21,), grade.horas_do_canal("builds", "tiktok",
+                                                         dia))
+            self.assertEqual(8, grade.meta_diaria("builds", "youtube", dia))
+            self.assertEqual(1, grade.meta_diaria("builds", "tiktok", dia))
+        self.assertNotIn(20, grade.horas_do_canal("builds", "youtube",
+                                                  NOVEMBRO))
+        self.assertEqual(["06:37", "09:37", "12:07", "15:37", "17:57",
+                          "21:37", "22:37", "23:37"],
+                         grade.horarios("youtube", "builds", OITO))
         # o TikTok dos builds e sempre um horario do YouTube dos builds
-        for dia in (OUTUBRO, NOVEMBRO):
+        for dia in (OUTUBRO, OITO, NOVEMBRO):
             self.assertTrue(set(grade.horas_do_canal("builds", "tiktok", dia))
                             <= set(grade.horas_do_canal("builds", "youtube",
                                                         dia)))
-        # historias nao mudam em novembro
-        self.assertEqual(grade.HORAS, grade.horas_do_canal(
-            "historias", "youtube", NOVEMBRO))
+        # historias nao mudam
+        for dia in (OUTUBRO, OITO, NOVEMBRO):
+            self.assertEqual(grade.HORAS, grade.horas_do_canal(
+                "historias", "youtube", dia))
+            self.assertEqual(grade.HORAS_DO_TIKTOK, grade.horas_do_canal(
+                "historias", "tiktok", dia))
+
+    def test_os_oito_sao_espalhados_e_sem_os_dois_piores(self):
+        """Conta de mao: dos dez da grade saem 00:37 e 20:37 (0,75 e 0,68 da
+        mediana do dia, builds no YouTube, 15/09 a 24/10). Nenhum buraco de
+        mais de 4 h entre 06:37 e 23:37."""
+        from builds import grade
+        horas = grade.horas_do_canal("builds", "youtube", OITO)
+        self.assertEqual({0, 20}, set(grade.HORAS) - set(horas))
+        minutos = [h * 60 + grade.minuto(h) for h in horas]
+        buracos = [b - a for a, b in zip(minutos, minutos[1:])]
+        self.assertLessEqual(max(buracos), 4 * 60, buracos)
+        self.assertEqual(8, len(horas))
 
     def test_antes_de_20_10_os_builds_tinham_os_dez(self):
         """O passado conta pela grade que valia: um dia de setembro com 10
@@ -155,12 +205,18 @@ class GradeDoCanalTests(unittest.TestCase):
         builds = {l["horario"]: l["builds"] for l in dia if l["builds"]}
         self.assertEqual({"09:37": ["youtube"], "17:57": ["youtube"],
                           "21:37": ["youtube", "tiktok"]}, builds)
-        builds = {l["horario"]: l["builds"]
-                  for l in grade.grade_do_dia(NOVEMBRO) if l["builds"]}
-        self.assertEqual({"12:07": ["youtube"], "20:37": ["youtube", "tiktok"],
-                          "22:37": ["youtube"]}, builds)
+        for dia in (OITO, NOVEMBRO):
+            builds = {l["horario"]: l["builds"]
+                      for l in grade.grade_do_dia(dia) if l["builds"]}
+            self.assertEqual(
+                {"06:37": ["youtube"], "09:37": ["youtube"],
+                 "12:07": ["youtube"], "15:37": ["youtube"],
+                 "17:57": ["youtube"], "21:37": ["youtube", "tiktok"],
+                 "22:37": ["youtube"], "23:37": ["youtube"]}, builds)
         self.assertIn("builds youtube 3, tiktok 1",
                       grade.texto_da_grade_do_dia(OUTUBRO))
+        self.assertIn("builds youtube 8, tiktok 1",
+                      grade.texto_da_grade_do_dia(OITO))
 
     def test_vencidos_do_canal(self):
         from builds import grade
@@ -195,11 +251,20 @@ class ForaDaGradeDoCanalTests(unittest.TestCase):
             datetime(2026, 10, 20, 22, 2): (True, True),
             datetime(2026, 10, 20, 22, 40): (False, False),
             datetime(2026, 10, 21, 0, 40): (False, False),
-            # 01/11 em diante: 12:07, 20:37 (+ TikTok), 22:37
-            datetime(2026, 11, 1, 9, 40): (False, False),
-            datetime(2026, 11, 1, 12, 10): (True, False),
-            datetime(2026, 11, 1, 20, 40): (True, True),
-            datetime(2026, 11, 1, 21, 40): (False, False),
+            # 26/10 ainda e a de tres; 27/10 em diante, os oito (TikTok 21:37)
+            datetime(2026, 10, 26, 12, 10): (False, False),
+            datetime(2026, 10, 27, 6, 40): (True, False),
+            datetime(2026, 10, 27, 9, 40): (True, False),
+            datetime(2026, 10, 27, 12, 10): (True, False),
+            datetime(2026, 10, 27, 15, 40): (True, False),
+            datetime(2026, 10, 27, 18, 3): (True, False),
+            datetime(2026, 10, 27, 20, 40): (False, False),
+            datetime(2026, 10, 27, 21, 40): (True, True),
+            datetime(2026, 10, 27, 22, 40): (True, False),
+            datetime(2026, 10, 27, 23, 40): (True, False),
+            datetime(2026, 10, 28, 0, 40): (False, False),
+            datetime(2026, 11, 1, 20, 40): (False, False),
+            datetime(2026, 11, 1, 21, 40): (True, True),
             datetime(2026, 11, 1, 22, 40): (True, False),
         }
         for quando, (yt, tk) in casos.items():
@@ -342,13 +407,41 @@ class MisturaSoDeDueloTests(unittest.TestCase):
     def test_consumo_duelo_tres_por_dia(self):
         """YouTube 3 horarios x 8/8 = 3; o TikTok (1 por dia) leva o que o
         YouTube ja subiu: o ritmo do formato e o maior, 3. O resto, 0."""
+        _relogio_em(self, OUTUBRO)
         m = _postar()
         ritmo = m.consumo_por_formato({"duelo": 4, "build": 3, "estreia": 1})
         self.assertAlmostEqual(3.0, ritmo["duelo"])
         self.assertNotIn("build", ritmo)
         self.assertNotIn("estreia", ritmo)
 
+    def test_consumo_duelo_oito_por_dia_desde_27_10(self):
+        """YouTube 8 horarios x 8/8 = 8 duelos por dia (o TikTok, 1, leva um
+        deles); build e estreia seguem em zero. 8 x 7 = 56 por semana. A
+        mistura do YouTube continua toda de duelo: os 8 horarios do dia saem
+        de 8 duelos diferentes, nenhum build, nenhuma estreia."""
+        _relogio_em(self, OITO)
+        m = _postar()
+        ritmo = m.consumo_por_formato({"duelo": 4, "build": 3, "estreia": 1})
+        self.assertAlmostEqual(8.0, ritmo["duelo"])
+        self.assertNotIn("build", ritmo)
+        self.assertNotIn("estreia", ritmo)
+        cota = m.cota_da_plataforma({"duelo": 4, "build": 3, "estreia": 1},
+                                    "youtube")
+        self.assertEqual(8, cota["duelo"])
+        self.assertEqual(0, cota.get("build", 0) + cota.get("estreia", 0))
+        build = SimpleNamespace(id="g1:build:celular", origem="build",
+                                quando=0.5)
+        pool = [build] + [_duelo(n, quando=float(n)) for n in range(1, 17)]
+        saidos = []
+        for _ in range(8):
+            alvo = m.escolher_por_cota(pool, {}, cota)
+            saidos.append(alvo.id)
+            pool = [v for v in pool if v.id != alvo.id]
+        self.assertEqual(8, len(set(saidos)))
+        self.assertTrue(all(i.split(":")[1] == "duelo" for i in saidos))
+
     def test_a_geracao_conta_igual(self):
+        _relogio_em(self, OUTUBRO)
         from builds.pipeline import noite
         m = _postar()
         self.assertEqual(m.TROCAS_NA_COTA, noite.TROCAS_NA_COTA)
@@ -449,6 +542,65 @@ class ConfrontosDiferentesTests(unittest.TestCase):
         self.assertEqual({"Mago x Ninja"}, dia)
         self.assertEqual((set(), set()), m.confrontos_no_ar(
             [], "youtube", datetime(2026, 10, 20, 15, 40)))
+
+
+class OitoPorDiaNaoSeTravaNasGuardasTests(unittest.TestCase):
+    """8 duelos por dia contra o estoque de 24/10 (17 sobrando em 27/10, 26
+    antes dos 9 de 24 a 26; 18 com confronto livre na semana, 23 confrontos
+    distintos). As guardas de repeticao NAO barram duelo bom: a de confronto
+    so ordena (semana, depois dia) e nunca troca um duelo por build.
+
+    Conta de mao com 17 duelos de 12 confrontos (n % 12), do mais antigo:
+    dia 1 sai n0..n7 (k0..k7, nenhum repete); dia 2 sai n8..n11 (k8..k11, os
+    unicos livres da semana) e depois n12..n15 (k0..k3, ja no ar na semana mas
+    nao hoje) = 8, 4 deles repetindo o confronto da semana, ZERO no mesmo dia,
+    ZERO build; sobra n16."""
+
+    def test_dois_dias_de_oito_sem_build_e_sem_repetir_no_dia(self):
+        m = _postar()
+        confronto = {}
+        pool = []
+        for n in range(17):
+            v = _duelo(n, quando=float(n))
+            confronto[v.id] = f"k{n % 12}"
+            pool.append(v)
+        build = SimpleNamespace(id="g1:build:celular", origem="build",
+                                quando=-1.0)
+        pool.append(build)
+        m._confronto_do_video = lambda v: confronto.get(v.id, "")
+        cota = m.cota_da_plataforma({"duelo": 4, "build": 3, "estreia": 1},
+                                    "youtube")
+        semana, saiu, repete_semana, repete_dia = set(), [], 0, 0
+        for _dia_n in range(2):
+            hoje = set()
+            for _horario in range(8):
+                fila = m.com_confrontos_diferentes(pool, semana, hoje)
+                alvo = m.escolher_por_cota(list(fila), {}, cota)
+                self.assertEqual("duelo", alvo.origem)
+                k = confronto[alvo.id]
+                repete_semana += k in semana
+                repete_dia += k in hoje
+                semana.add(k)
+                hoje.add(k)
+                saiu.append(alvo.id)
+                pool = [v for v in pool if v.id != alvo.id]
+        self.assertEqual(16, len(saiu))
+        self.assertEqual(4, repete_semana)
+        self.assertEqual(0, repete_dia)
+        self.assertEqual(["duelo_00016:duelo:celular", "g1:build:celular"],
+                         sorted(v.id for v in pool))
+
+    def test_caso_zero_sem_duelo_o_horario_nao_fica_vazio_nem_repete(self):
+        """Estoque de duelo ZERO: sai o build (cota zero = so quando ninguem
+        mais quer), nao um duelo repetido nem horario em branco."""
+        m = _postar()
+        build = SimpleNamespace(id="g1:build:celular", origem="build",
+                                quando=1.0)
+        cota = m.cota_da_plataforma({"duelo": 4, "build": 3, "estreia": 1},
+                                    "youtube")
+        fila = m.com_confrontos_diferentes([build], set(), set())
+        self.assertIs(build, m.escolher_por_cota(fila, {}, cota))
+        self.assertIsNone(m.escolher_por_cota([], {}, cota))
 
 
 class TiktokDosBuildsLevaOMaisNovoTests(unittest.TestCase):

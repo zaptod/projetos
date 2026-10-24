@@ -59,7 +59,11 @@ def main(argv=None) -> int:
     for dia in dias:
         print(f"\n== dia de grade {dia}")
         for plat in grade.PLATAFORMAS:
-            horas = grade.horas_da_plataforma(plat)
+            # Os horarios DO CANAL naquele dia (builds: 3 ate 26/10 e 8 desde
+            # 27/10, `grade.horas_do_canal`); com a grade da plataforma o
+            # retrato acusaria 2 "vazios" por dia que sao decisao, nao falha.
+            horas = grade.horas_do_canal(a.canal, plat,
+                                         datetime.fromisoformat(dia).date())
             abre = conferencia.abertura_e_fechamento(plat)[0]
             cheios, vazios, por_vir = [], [], []
             for h in horas:

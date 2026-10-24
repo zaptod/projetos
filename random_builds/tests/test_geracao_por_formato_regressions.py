@@ -65,6 +65,18 @@ def _as(dia, h, m):
     return dia.replace(hour=h, minute=m, second=0, microsecond=0)
 
 
+def _fixar_a_grade(caso, dia):
+    """Fixa o DIA que `grade.tabela_do_canal(None)` (o relogio) enxerga: o
+    consumo e o piso leem a tabela de hoje, que mudou em 27/10/2026 (3 -> 8
+    duelos por dia). Sem isto o teste que e sobre OUTRA coisa quebra sozinho
+    no dia da troca."""
+    from builds import grade
+    original = grade.tabela_do_canal
+    caso.addCleanup(setattr, grade, "tabela_do_canal", original)
+    grade.tabela_do_canal = lambda quando=None: original(
+        dia if quando is None else quando)
+
+
 def _contagem(duelo=0, build=0, estreia=0):
     return {"total": duelo + build + estreia, "duelo": duelo, "build": build,
             "estreia": estreia, "torneio": 0, "fonte": "duble"}
@@ -165,6 +177,7 @@ class EstoqueDeDuelosZerado(_Base):
         self.assertEqual("duelo", self.ordem[0])
 
     def test_caso_zero_o_total_antigo_nao_criava(self):
+        _fixar_a_grade(self, QUI)                    # 22/10: a grade de tres
         # A conta antiga (o total contra o piso de 20) com o mesmo estoque:
         # 0 + 10 + 52 = 62 >= 20 -> "so o worker". A nova cria.
         contagem = _contagem(duelo=0, build=10, estreia=52)
@@ -198,6 +211,18 @@ class OConsumoEDaPublicacao(unittest.TestCase):
     # Desde 20/10/2026 (docs/PLANO.md, canal de duelos): YouTube dos builds
     # 3 horarios, TikTok 1, as duas misturas so com duelo (8/8). Em 19/10
     # eram duelo 6,25, build 3,75, estreia 0,75 e pisos 25, 8, 2.
+    # DESDE 27/10/2026 (`publicacao/semana-2-volume`) sao 8 horarios no
+    # YouTube: duelo 8, piso 4 x 8 = 32 (ver os testes `_oito_` abaixo).
+    # Os testes sem data leem `grade.tabela_do_canal(None)`, o RELOGIO: sem
+    # fixar o dia eles davam 3 em 24/10 e 8 em 27/10, sozinhos.
+    def setUp(self):
+        from builds import grade
+        original = grade.tabela_do_canal
+        self.addCleanup(setattr, grade, "tabela_do_canal", original)
+        self.dia = SEG2 - timedelta(days=5)          # 21/10, a grade de tres
+        grade.tabela_do_canal = lambda quando=None: original(
+            self.dia if quando is None else quando)
+
     def test_consumo_por_dia(self):
         consumo = noite.consumo_por_dia(PUB)
         self.assertEqual(3.0, consumo["duelo"])      # 3 x 8/8 (YouTube)
@@ -223,20 +248,37 @@ class OConsumoEDaPublicacao(unittest.TestCase):
                              noite.cota_da_plataforma(COTA, plataforma))
 
     def test_metas_do_lote_de_segunda(self):
-        """Segunda 26/10 07:02 -> 02/11 07:00: 7 dias x 3 = 21 duelos + o
-        piso 12 = 33 (em 19/10 eram 69/35/8). Os horarios de 01/11 sao
-        outros (1 h mais tarde), o numero por dia e o mesmo."""
+        """Segunda 26/10 07:02 -> 02/11 07:00 (a segunda ja na grade de
+        oito): 26/10 tem 3 (09:37, 17:57, 21:37), de 27/10 a 01/11 sao 6 dias
+        x 8 = 48 e 02/11 ainda tem o 06:37 = 52 duelos, + o piso 12 (4 dias x
+        3, o consumo de HOJE; a geracao que olha a grade a frente pede 32) =
+        64 (em 19/10 eram 69/35/8)."""
         config = noite.carregar()
         metas = noite.metas_do_plano(config, _as(SEG2, 7, 2), "lote", PUB)
-        self.assertEqual({"duelo": 33, "build": 0, "estreia": 0}, metas)
+        self.assertEqual({"duelo": 64, "build": 0, "estreia": 0}, metas)
+
+    def test_oito_duelos_por_dia_desde_27_10(self):
+        """YouTube 8 horarios x 8/8 = 8 duelos por dia; o piso de 4 dias (a
+        decisao do lote) e 32. Fixado em 28/10 e em 01/11 (o fim do horario
+        de verao nao muda a conta)."""
+        for dia in (SEG2 + timedelta(days=2), SEG2 + timedelta(days=6)):
+            self.dia = dia
+            config = noite.carregar()
+            self.assertEqual(8.0, noite.consumo_por_dia(PUB)["duelo"])
+            self.assertEqual(0.0, noite.consumo_por_dia(PUB)["build"])
+            self.assertEqual(
+                (32, 0, 0),
+                tuple(noite.piso_do_formato(f, config, PUB)
+                      for f in ("duelo", "build", "estreia")))
 
     def test_horarios_do_tiktok(self):
         # segunda 07:02 -> segunda seguinte 07:00, na grade DOS BUILDS: 1 por
-        # dia no TikTok, 3 no YouTube (antes de 20/10: 6 e 10, os da
-        # plataforma).
+        # dia no TikTok (o mesmo antes e depois de 27/10), no YouTube 3 por
+        # dia ate 26/10 e 8 desde 27/10 (antes de 20/10: 6 e 10, os da
+        # plataforma). Segunda 26/10: 3 + 6 x 8 + o 06:37 de 02/11 = 52.
         self.assertEqual(7, noite.postagens_da_plataforma(
             _as(SEG2, 7, 2), _as(SEG2 + timedelta(days=7), 7, 0), "tiktok"))
-        self.assertEqual(21, noite.postagens_da_plataforma(
+        self.assertEqual(52, noite.postagens_da_plataforma(
             _as(SEG2, 7, 2), _as(SEG2 + timedelta(days=7), 7, 0), "youtube"))
         self.assertEqual(42, noite.postagens_da_plataforma(
             _as(SEG - timedelta(days=7), 7, 2), _as(SEG, 7, 0), "tiktok"))

@@ -124,8 +124,8 @@ Uma rodada (`postar.py` sem argumentos, disparada pelo Agendador):
    `serie.registrar` → **a vez do TikTok** (`_vez_do_tiktok_historias`, só em
    horário da grade dele) → `_tiktok_das_historias` → `serie.registrar`.
 3. **Builds** — **desde 20/10/2026 só nos horários do canal** (`grade.HORAS_POR_CANAL`:
-   YouTube 09:37, 17:57 e 21:37 e TikTok 21:37 até 31/10; 12:07, 20:37,
-   22:37 e TikTok 20:37 desde 01/11; ver §2). Fora deles
+   YouTube 09:37, 17:57 e 21:37 até 26/10; **desde 27/10 oito**: 06:37, 09:37,
+   12:07, 15:37, 17:57, 21:37, 22:37 e 23:37; TikTok sempre só 21:37; ver §2). Fora deles
    `postar_build` devolve `fora_da_grade` sem ler ledger nem catálogo, e a
    rodada tira essa ficha do Telegram e do código de saída.
    `proximo_build()` (fila e mistura **do YouTube**, só duelo, confrontos diferentes) →
@@ -296,9 +296,9 @@ nos quatro horários só dele o TikTok não é tentado).
 sempre dentro da da plataforma — `grade.HORAS_POR_CANAL`, lida por
 `grade.horas_do_canal(canal, plataforma, quando)` / `publica_no_canal` /
 `meta_diaria`, **por data** (`tabela_do_canal`, `HORAS_POR_CANAL_DESDE`):
-**até 31/10 YouTube 09:37, 17:57, 21:37 e TikTok 21:37; desde 01/11 YouTube
-12:07, 20:37, 22:37 e TikTok 20:37** (3 + 1 por dia). As histórias seguem
-10 + 6. `python -m builds.grade [AAAA-MM-DD]` imprime o dia inteiro (quem
+**até 26/10 YouTube 09:37, 17:57, 21:37 e TikTok 21:37 (3 + 1 por dia);
+desde 27/10 YouTube 06:37, 09:37, 12:07, 15:37, 17:57, 21:37, 22:37, 23:37
+e TikTok 21:37 (8 + 1 por dia)**. As histórias seguem 10 + 6. `python -m builds.grade [AAAA-MM-DD]` imprime o dia inteiro (quem
 posta o quê em cada horário). Por quê: o canal passou a falar inglês com os
 EUA; `docs/pesquisa/som-ganchos-e-musica.md` (recomendação 7) pede ~10h,
 ~19h e ~22h de Brasília até 31/10 e 1 h mais tarde desde 01/11 (fim do
@@ -307,7 +307,27 @@ grade — o mais perto de cada alvo entre os dez horários que já têm tarefa n
 Agendador (horário novo pediria `postar.py --instalar`, que não se roda sem o
 Adrian). Os de outubro coincidem com os três melhores do público brasileiro
 (views ÷ mediana do dia de grade, 23 dias de 15/09 a 17/10): 09:37 1,41,
-17:57 1,23, 21:37 1,19 (12:07 0,97). A Análise da semana 1 mede. Os
+17:57 1,23, 21:37 1,19 (12:07 0,97). A Análise da semana 1 mede. **Semana 2 (decisão
+`semana-2-volume`, 24/10, valendo desde 27/10): 8 duelos por dia no YouTube,
+TikTok segue 1/dia (21:37), vídeo ~29 s.** Motivo medido: views/dia caiu de
+~760 para ~310 quando o volume foi de ~10 para 3 por dia, com as mesmas
+~90-100 views por vídeo. Os oito saem dos dez da grade tirando **00:37 e
+20:37**, os dois piores na razão views ÷ mediana do dia de grade (builds no
+YouTube, 15/09 a 24/10, vídeos com 3+ dias: 20:37 0,68 em 24 vídeos, 00:37
+0,75 em 25; os demais 0,82 a 1,40: 09:37 1,40, 21:37 1,24, 06:37 1,08); ficam
+o dia todo de 06:37 a 17:57 (cinco horários) e a noite dos EUA (21:37 a 23:37
+= 19:37 a 21:37 ET). **Esta tabela SUBSTITUI a de 01/11** (12:07, 20:37,
+22:37; TikTok 20:37), que nunca chegou a valer: com oito horários o "1 h mais
+tarde" do fim do horário de verão dos EUA não muda nada que importe, e o
+TikTok não muda (decisão dele). Código: `grade.HORAS_DOS_BUILDS_OITO` /
+`INICIO_DOS_OITO_DUELOS` em `HORAS_POR_CANAL_DESDE`; a conferência
+(`deficit`), o placar, o alvo do lote, o piso da geração e o "horário vazio"
+leem `horas_do_canal` por data e passam a cobrar 8. A mistura não muda:
+`TROCAS_NA_COTA` já dá duelo 8/8 no YouTube. Estoque (medido em 24/10, 26
+duelos prontos): em 27/10 sobram ~17 e, a 8/dia, acabam no 1º horário de
+29/10 (17 ÷ 8 = 2,1 dias) se a geração não repuser; 18 dos 26 têm confronto
+livre na semana, e os últimos ~5 repetem confronto já no ar (o título nunca
+repete, a guarda de confronto só relaxa quando não há outro duelo). Os
 duelos dividem a rodada com as histórias. **Desde 21/10 os builds rodam
 primeiro nos horários deles** (`postar._ordem_dos_canais`, que pergunta a
 `_fora_da_grade_do_canal`, YouTube ou TikTok): as histórias passaram a esperar
@@ -421,7 +441,7 @@ TikTok não muda de legenda (o teste dele é outro).
 | Upload avulso (`--so-youtube`) que atravessa uma rodada | `postar._horario_que_a_linha_tomaria`: recusa se uma rodada da grade **começa** dentro dos `DURACAO_DE_UM_UPLOAD_MIN = 20` min do upload (22:20 → "22:37"; 22:04 → livre) |
 | TikTok: seis por dia, um por horário, "a conferir", ordem da série **no TikTok** (19/10) | `postar._recusa_do_tiktok` + `_recusar_no_tiktok`, chamados **dentro** de `_tiktok_das_historias` e `_tiktok_dos_builds` (os funis de todo caminho: rodada, recuperação, reserva, escoar). Ledger ou lista ilegível recusa. A recusa leva `falha["recusa"]` e não conta tentativa na recuperação nem na reserva. As duas perguntas que dependem do RELÓGIO e do LEDGER de verdade (grade do TikTok e horário já pago) moram numa função só, `_vaga_do_tiktok`, usada pela porta e pela recuperação: teste que não é sobre o horário a fixa (`m._vaga_do_tiktok = lambda *a, **k: ""`). Aplicado às 16:0x de 19/10 com o 15:37 já pago no ledger real, o be9c70ae deixou 10 testes antigos vermelhos por isso (revertido em f2a64886) Testes `historias/tests/test_tiktok_seis_por_dia_regressions.py` |
 | Fila própria do TikTok (19/10) | `postar._vez_do_tiktok_historias` / `_vez_do_tiktok_builds` sobre `atrasados_no_tiktok(extra=)`; a semana simulada dos testes: 70 no YouTube, 42 no TikTok (6/dia), nenhuma fora de ordem, nenhuma repetida |
-| Grade do canal (builds 3 + 1, 20/10) | `grade.HORAS_POR_CANAL`/`horas_do_canal`; relógio lido só em `postar._fora_da_grade_do_canal` (rodada, porta do TikTok, reserva, recuperação do YouTube). Testes `historias/tests/test_grade_dos_duelos_regressions.py` |
+| Grade do canal (builds 3 + 1 em 20/10; 8 + 1 desde 27/10) | `grade.HORAS_POR_CANAL`/`horas_do_canal`; relógio lido só em `postar._fora_da_grade_do_canal` (rodada, porta do TikTok, reserva, recuperação do YouTube). Testes `historias/tests/test_grade_dos_duelos_regressions.py` |
 | Confrontos diferentes (20/10) | `postar._sem_confronto_repetido` → `com_confrontos_diferentes` (pura) em `proximo_build` e `_vez_do_tiktok_builds`; 7 dias por destino, nunca no mesmo dia se houver outro vídeo |
 | Teto por fonte | desde 19/10 cada fila confere o do SEU destino: `_sem_fonte_cheia(..., plataformas=("youtube",))` nas filas do YouTube, `_fila_do_tiktok` no TikTok. O valor (2) não mudou |
 | Título já publicado (fecha a fila) | `postar._sem_titulo_repetido`/`titulo_repetido`; regra em `titulos.chave/repetido` |
@@ -478,8 +498,8 @@ passar — "não sei" nunca barra vídeo, mas vira erro no diário.
 - **YouTube de builds sem estreia** (19/10, `duelo-no-lugar-da-estreia`).
   **Desde 20/10 (`docs/PLANO.md`, `geral/objetivo-unico-neural-fights`) o
   canal é de duelos nos dois destinos**: YouTube 3/dia (09:37, 17:57,
-  21:37; desde 01/11 12:07, 20:37, 22:37), TikTok 1/dia (21:37; desde 01/11
-  20:37), só duelo, confrontos diferentes, em inglês
+  21:37) até 26/10 e **8/dia desde 27/10** (06:37, 09:37, 12:07, 15:37,
+  17:57, 21:37, 22:37, 23:37; `semana-2-volume`), TikTok 1/dia (21:37), só duelo, confrontos diferentes, em inglês
   (`geral/canal-em-ingles`). Horários e TikTok 1/dia: orquestrador, 20/10.
 - **Histórias: a noite com o melhor pronto e a parte seguinte ligada** (19/10,
   `historias-21h-e-parte-seguinte`; a ligação é TESTE de 20 a 26/10).

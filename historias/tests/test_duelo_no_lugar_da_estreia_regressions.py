@@ -70,6 +70,14 @@ class CotaPorDestinoTests(unittest.TestCase):
         self.assertFalse(m._trocado_no_youtube(""))
 
     def test_ritmo_de_cada_formato(self):
+        # O consumo le o RELOGIO da grade (3 duelos/dia ate 26/10, 8 desde
+        # 27/10): fixa 21/10 para o teste nao quebrar sozinho no dia da troca.
+        from datetime import date
+        from builds import grade
+        original = grade.tabela_do_canal
+        self.addCleanup(setattr, grade, "tabela_do_canal", original)
+        grade.tabela_do_canal = lambda quando=None: original(
+            date(2026, 10, 21) if quando is None else quando)
         m = _postar()
         ritmo = m.consumo_por_formato(m.cota_da_grade(MISTURA))
         # 20/10/2026: 3 horarios dos builds no YouTube x 8/8 = 3 (era 6,25);

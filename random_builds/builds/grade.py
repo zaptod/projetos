@@ -20,9 +20,11 @@ seis deles, so de dia (`HORAS_DO_TIKTOK`), com fila propria.
 Desde 20/10/2026 um canal pode ter grade PROPRIA dentro da da plataforma
 (`HORAS_POR_CANAL`, `horas_do_canal`): o de builds posta 3 por dia no
 YouTube e 1 no TikTok — 09:37, 17:57, 21:37 / TikTok 21:37 ate 31/10/2026;
-12:07, 20:37, 22:37 / TikTok 20:37 desde 01/11 (`HORAS_POR_CANAL_DESDE`, o
-fim do horario de verao nos EUA). `python -m builds.grade [AAAA-MM-DD]`
-imprime quem posta o que em cada horario.
+e, desde 27/10/2026 (`HORAS_POR_CANAL_DESDE`, decisao `publicacao/semana-2-
+volume`), OITO por dia no YouTube (06:37 09:37 12:07 15:37 17:57 21:37 22:37
+23:37) e o TikTok seguindo em 21:37; essa tabela SUBSTITUI a de 01/11 (12:07,
+20:37, 22:37 / TikTok 20:37), que nao chegou a valer. `python -m builds.grade
+[AAAA-MM-DD]` imprime quem posta o que em cada horario.
 """
 from __future__ import annotations
 
@@ -95,8 +97,9 @@ HORAS_POR_PLATAFORMA = {
 #               21:37 (~22h = 20:37 ET)
 #   desde 01/11 12:07 (~11h = 10:07 ET)  20:37 (~20h = 18:37 ET)
 #               22:37 (~23h = 20:37 ET)
+# (A troca de 01/11 foi SUBSTITUIDA em 24/10 pela de oito duelos por dia, abaixo.)
 # A troca e POR DATA, no proprio codigo (`HORAS_POR_CANAL_DESDE`): ninguem
-# precisa lembrar de mexer em 01/11. Coincidem com o dado do publico
+# precisa lembrar de mexer. Coincidem com o dado do publico
 # BRASILEIRO ate 31/10 (ledger + `_metricas` do YouTube de builds, 15/09 a
 # 17/10, views de cada video / mediana do dia de grade dele, 23 dias): 09:37
 # 1,41, 17:57 1,23, 21:37 1,19 eram os tres melhores (12:07 0,97). A Analise
@@ -114,6 +117,25 @@ HORAS_POR_PLATAFORMA = {
 # de um canal e sempre um SUBCONJUNTO da da plataforma (`horas_do_canal`):
 # um horario que o TikTok nao tem nao vira TikTok so porque o canal o pede.
 HORAS_DOS_BUILDS = (9, 17, 21)
+
+# OITO DUELOS POR DIA NO YOUTUBE DESDE 27/10/2026 (decisao `publicacao/semana-2-
+# volume`, 24/10: views/dia caiu de ~760 para ~310 quando o volume foi de ~10
+# para 3 por dia, com as mesmas ~90-100 views por video; a conta que limita e
+# videos x views). O TikTok SEGUE UM POR DIA, 21:37 (a comparacao dele: mediana
+# de 1 para 175 views com 1 post/dia). Esta tabela SUBSTITUI a de 01/11 (12:07,
+# 20:37, 22:37; TikTok 20:37), que nunca chegou a valer: com oito horarios
+# espalhados o dia inteiro o "1 h mais tarde" do fim do horario de verao dos
+# EUA nao muda nada que importe, e o TikTok nao muda (decisao dele).
+# Os oito sao dos dez da grade, tirando 00:37 e 20:37, os dois piores no dado
+# (views de cada video / mediana do dia de grade, builds no YouTube, 15/09 a
+# 24/10, videos com 3+ dias: 20:37 0,68 (24 videos), 00:37 0,75 (25); os outros
+# 0,82 a 1,40, com 09:37 1,40, 21:37 1,24 e 06:37 1,08). Ficam 06:37 09:37
+# 12:07 15:37 17:57 21:37 22:37 23:37: o dia todo de 06:37 a 17:57 (4 em 11 h)
+# e a noite dos EUA (21:37 a 23:37 = 19:37 a 21:37 ET). O 21:37 fica por ser
+# o do TikTok (o canal e subconjunto da plataforma e o TikTok leva o duelo que
+# o YouTube acabou de subir).
+INICIO_DOS_OITO_DUELOS = date(2026, 10, 27)
+HORAS_DOS_BUILDS_OITO = (6, 9, 12, 15, 17, 21, 22, 23)
 HORAS_DO_TIKTOK_DOS_BUILDS = (21,)
 HORAS_POR_CANAL = {
     "builds": {"youtube": HORAS_DOS_BUILDS,
@@ -127,8 +149,8 @@ INICIO_DA_GRADE_DO_CANAL = date(2026, 10, 20)
 # A partir de cada data (do calendario de Brasilia), a tabela que vale. Em
 # ordem; a ultima cuja data ja chegou ganha.
 HORAS_POR_CANAL_DESDE = (
-    (date(2026, 11, 1), {"builds": {"youtube": (12, 20, 22),
-                                    "tiktok": (20,)}}),
+    (INICIO_DOS_OITO_DUELOS, {"builds": {"youtube": HORAS_DOS_BUILDS_OITO,
+                                         "tiktok": HORAS_DO_TIKTOK_DOS_BUILDS}}),
 )
 
 
@@ -228,8 +250,8 @@ def horas_do_canal(canal: str | None, plataforma: str = "youtube",
     `quando` (`tabela_do_canal`; `None` = hoje).
 
     A tabela quando o canal tem grade propria (builds: YouTube 09:37, 17:57
-    e 21:37 e TikTok 21:37 ate 31/10/2026; YouTube 12:07, 20:37 e 22:37 e
-    TikTok 20:37 desde 01/11), sempre DENTRO da grade da plataforma; senao a
+    e 21:37 e TikTok 21:37 ate 26/10/2026; YouTube 06:37, 09:37, 12:07,
+    15:37, 17:57, 21:37, 22:37 e 23:37 e TikTok 21:37 desde 27/10), sempre DENTRO da grade da plataforma; senao a
     da plataforma inteira (historias). `canal` vazio ou desconhecido = a da
     plataforma.
     """
@@ -251,7 +273,7 @@ def publica_no_canal(canal: str | None, plataforma: str, hora: int,
 def meta_diaria(canal: str | None, plataforma: str = "youtube",
                 quando=None) -> int:
     """Quantos videos ESSE canal deve por no ar por dia NESSA plataforma
-    (um por horario de `horas_do_canal`): historias 10 e 6, builds 3 e 1."""
+    (um por horario de `horas_do_canal`): historias 10 e 6, builds 3 e 1 (8 e 1 desde 27/10/2026)."""
     return len(horas_do_canal(canal, plataforma, quando))
 
 
@@ -369,14 +391,15 @@ def proximo_em(agora: datetime | None = None) -> datetime:
 
 
 # A conta cheia do dia: cada canal, cada plataforma, com a grade de cada um
-# (historias 10 + 6, builds 3 + 3 = 22 desde 20/10/2026; eram 32).
+# (hoje: historias 10 + 6, builds 3 + 1; 8 + 1 desde 27/10/2026).
 META_DIARIA_TOTAL = _meta_total()
 
 
 __all__ = ["GRADE", "HORAS", "MINUTOS", "MINUTO", "META_DIARIA_POR_CANAL",
            "META_DIARIA_TOTAL", "META_DIARIA_POR_PLATAFORMA",
            "HORAS_POR_PLATAFORMA", "HORAS_DO_TIKTOK", "HORAS_DOS_BUILDS",
-           "HORAS_DO_TIKTOK_DOS_BUILDS", "HORAS_POR_CANAL",
+           "HORAS_DO_TIKTOK_DOS_BUILDS", "HORAS_DOS_BUILDS_OITO",
+           "INICIO_DOS_OITO_DUELOS", "HORAS_POR_CANAL",
            "HORAS_POR_CANAL_DESDE", "tabela_do_canal", "CANAIS",
            "PLATAFORMAS",
            "teste", "teste_do_tiktok", "minuto",
