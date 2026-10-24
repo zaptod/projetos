@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-24T03:11:22",
+      "evento": "2026-10-24T03:11:21",
+      "linha": 213,
+      "nota": "resposta sem pedido de origem: builds/dinamismo-cauda-rara = Aceitar a cauda rara e seguir para o conferente e o merge (recomendado)",
+      "opcao": "aceitar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Lote de 60: pulos secos > 8 s caíram de 15 (antes) para 6; colado -65,6%; golpes/s iguais; classes dentro de 10 pp. Limitar a duração muda quem vence nessas lutas.",
   "criado": "2026-10-24T03:11:18.836528",
   "depende_de": [],
