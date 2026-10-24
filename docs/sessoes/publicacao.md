@@ -83,6 +83,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Repetir o envio quando a tela de detalhes do YouTube não aparece** — Não repetir; o duelo volta à fila e sai no próximo horário (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `repetir-quando-detalhes-nao-vem`
 - ✅ **Segurar o navegador até o envio do YouTube terminar** — Até 10 min; se não terminar, fica sem confirmação e vai para 'a conferir', sem [POSTADO] (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `esperar-envio-terminar`
 - ✅ **Apagar do canal os vídeos que ficaram vazios** — Apagar e não reenviar; acertar o ledger (recomendado) (21/10/2026) `videos-presos-no-canal`
+- ⏳ **Semana 2: mais duelos por dia no YouTube** — A análise de 24/10 mostra que o canal caiu de ~760/dia para ~310/dia porque passou de ~10 para 3 vídeos/dia no YouTube, com as mesmas ~90-100 views por vídeo (formato novo não mudou views por vídeo, incerto). Qual é a mudança da semana 2 (a partir de 27/10)? `semana-2-volume`
 
 <!-- decisoes:fim -->
 

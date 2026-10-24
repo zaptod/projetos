@@ -1,0 +1,40 @@
+{
+  "comentario": true,
+  "contexto": "Meta 3.000 views/dia; 3 vídeos x 90 views nunca fecha. Público sai entre 3 e 9 s em qualquer duração (~10 s assistidos), então vídeo de 45-58 s tende a piorar o %. TikTok com 1 post/dia foi de mediana 1 para 175 views: manter 1/dia lá para não perder essa comparação.",
+  "criado": "2026-10-24T08:35:47.810005",
+  "depende_de": [],
+  "historico": [],
+  "id": "semana-2-volume",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Ataca a conta que limita (vídeos x views). Depende de estoque: conferir a geração antes de 27/10.",
+      "id": "volume",
+      "pede_comentario": false,
+      "rotulo": "Subir o YouTube para 8 duelos/dia, TikTok segue 1/dia, vídeo segue ~29 s (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "É o plano original da semana 2; não mexe no volume.",
+      "id": "som",
+      "pede_comentario": false,
+      "rotulo": "Manter 3/dia e mudar o som (silêncio antes do golpe, K.O. alto)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Os dados indicam que o % assistido piora.",
+      "id": "longo",
+      "pede_comentario": false,
+      "rotulo": "Manter 3/dia e alongar para 45-58 s"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "A análise de 24/10 mostra que o canal caiu de ~760/dia para ~310/dia porque passou de ~10 para 3 vídeos/dia no YouTube, com as mesmas ~90-100 views por vídeo (formato novo não mudou views por vídeo, incerto). Qual é a mudança da semana 2 (a partir de 27/10)?",
+  "projeto": "publicacao",
+  "situacao": "pendente",
+  "titulo": "Semana 2: mais duelos por dia no YouTube",
+  "vigente": null
+}
