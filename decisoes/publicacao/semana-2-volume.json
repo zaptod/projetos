@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-24T08:35:54",
+      "evento": "2026-10-24T08:35:51",
+      "linha": 214,
+      "nota": "resposta sem pedido de origem: publicacao/semana-2-volume = Subir o YouTube para 8 duelos/dia, TikTok segue 1/dia, vídeo segue ~29 s (recomendado)",
+      "opcao": "volume",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Meta 3.000 views/dia; 3 vídeos x 90 views nunca fecha. Público sai entre 3 e 9 s em qualquer duração (~10 s assistidos), então vídeo de 45-58 s tende a piorar o %. TikTok com 1 post/dia foi de mediana 1 para 175 views: manter 1/dia lá para não perder essa comparação.",
   "criado": "2026-10-24T08:35:47.810005",
   "depende_de": [],
