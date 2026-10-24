@@ -165,6 +165,7 @@ Fonte: `decisoes/builds/` e `decisoes/geral/`. **Decisão vigente do Adrian mand
 - ✅ **Lutas sem colar ficam mais longas** — Aceitar (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `dinamismo-lutas-mais-longas`
 - ✅ **Ligar o dinamismo em toda luta nova** — Ligar nas novas, fila intacta (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `dinamismo-ligado-nas-novas`
 - ✅ **Lutas sem colar: afrouxar a meta ou mexer na IA** — Atacar a causa na IA: golpe de perto sai na borda, sem colar (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `dinamismo-caminho`
+- ⏳ **Lutas sem colar: aceitar a cauda rara** — Com o dinamismo, 1 luta em 1.200 passa de 90 s (95 s) e lutas muito densas (ex.: 62 golpes em 41 s) ainda têm um corte seco de 16,5 s no vídeo. Aceitar ou limitar a duração? `dinamismo-cauda-rara`
 
 <!-- decisoes:fim -->
 

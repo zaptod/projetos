@@ -1,0 +1,33 @@
+{
+  "comentario": true,
+  "contexto": "Lote de 60: pulos secos > 8 s caíram de 15 (antes) para 6; colado -65,6%; golpes/s iguais; classes dentro de 10 pp. Limitar a duração muda quem vence nessas lutas.",
+  "criado": "2026-10-24T03:11:18.836528",
+  "depende_de": [],
+  "historico": [],
+  "id": "dinamismo-cauda-rara",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "O conjunto já está melhor que antes em tudo que se mede.",
+      "id": "aceitar",
+      "pede_comentario": false,
+      "rotulo": "Aceitar a cauda rara e seguir para o conferente e o merge (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Mais uma rodada no motor; muda vencedores das lutas longas.",
+      "id": "limitar",
+      "pede_comentario": false,
+      "rotulo": "Limitar a duração das lutas"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Com o dinamismo, 1 luta em 1.200 passa de 90 s (95 s) e lutas muito densas (ex.: 62 golpes em 41 s) ainda têm um corte seco de 16,5 s no vídeo. Aceitar ou limitar a duração?",
+  "projeto": "builds",
+  "situacao": "pendente",
+  "titulo": "Lutas sem colar: aceitar a cauda rara",
+  "vigente": null
+}
