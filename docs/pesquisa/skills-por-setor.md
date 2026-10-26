@@ -87,3 +87,44 @@ então não foram duplicadas em `.claude/skills/`:
   (`urllib`, ver `pyproject.toml`). Mesmo caminho: skill nossa a partir de `docs/sessoes/metricas.md`.
 - **TikTok Studio / publicação por navegador:** nada de fora. E a memória "Contas de IA sem
   disfarce" proíbe construir evasão; nenhuma skill de "automação furtiva" entra.
+
+## Redes (26/10)
+
+Pedido do Adrian: skills de análise e de postagem para YouTube (Shorts), TikTok e Instagram (Reels).
+Quarentena em `E:\tmp_pytest\skills_quarentena\redes\` (commits fixados em `SHAS.txt`). Nada foi executado.
+Regras comuns: nunca agir em página pública pela conta pessoal do Adrian, nada de engajamento
+automático, evasão ou multicontas disfarçadas, e nenhum dado vai a serviço de terceiros sem decisão
+dele. A biblioteca `social-media-skills/skills` (200 estrelas, MIT, push 15/10) liga toda a publicação
+ao **WoopSocial** (agendador pago de terceiros): só o texto entrou, com um "AVISO DA CASA" no topo.
+
+| Rede | Análise | Postagem |
+|---|---|---|
+| YouTube (Shorts) | `youtube-shorts`, `youtube-analise-referencias` | `youtube-publishing-and-metadata` |
+| TikTok | `tiktok-growth` | `tiktok-video-publishing` |
+| Instagram (Reels) | `instagram-growth` | `instagram-reels-publishing`, `instagram-seo` |
+
+### Aprovadas com cautela (instaladas em `.claude/skills/`, cada uma com `ORIGEM.md`)
+- `youtube-shorts` (social-media-skills, MIT): Viewed vs Swiped Away, Escada de Retenção, Content ID e aviso de IA; a parte WoopSocial é ignorada.
+- `youtube-publishing-and-metadata` (idem): título, descrição, hashtags, "feito para crianças" como marcação legal; escrita para vídeo longo, aproveitar título e hashtags.
+- `youtube-analise-referencias` (AgriciDaniel/claude-youtube, MIT; SKILL.md escrito pela casa): 3 references com benchmark e fonte; sem a integração DataForSEO; ignorar CPM/RPM.
+- `tiktok-growth` (social-media-skills): diagnóstico sintoma -> etapa quebrada (conclusão, loop, busca, série).
+- `tiktok-video-publishing` (idem): legenda como busca, capa, dueto/costura, rótulo de IA; campos são do WoopSocial, valem os equivalentes do TikTok Studio.
+- `instagram-growth` (idem): envios por alcance e tempo de exibição; marca d'água do TikTok derruba o Reel.
+- `instagram-reels-publishing` (idem): 1080x1920, zona segura (topo ~250 px, rodapé ~350 px, recorte 3:4 da grade), capa escolhida antes de publicar.
+- `instagram-seo` (idem): palavra-chave nos ~125 primeiros caracteres, hashtags como 3-5 rótulos, texto e imagem combinando.
+
+Todos os benchmarks ("~70% assistido", "envios 3-5x curtidas") vêm sem link ou de relatórios de agências:
+são hipóteses a confrontar com `metricas-*`, não metas.
+
+### Recusadas (com o motivo)
+- `msitarzewski/agency-agents` (tiktok-strategist, instagram-curator, video-optimization-specialist, social-media-strategist, short-video-editing-coach, support-analytics-reporter): personas genéricas de marca, com metas sem fonte (CTR 8%, engajamento 8%) e foco em anúncios, influenciadores e Shopping; sem nada específico de Shorts ou Reels.
+- `sickn33/agentic-awesome-skills` `instagram`: kit de scripts em Python (OAuth da Meta, token e segredo em texto puro no disco, painel local, envio de mídia ao Imgur), marcado `risk: critical`; a casa posta pelo navegador e não usa API de postagem.
+- `sickn33` `youtube-seo-optimizer`: pesquisa por palavra-chave na web, voltada a vídeo longo e podcast, e sobreposta à `youtube-publishing-and-metadata`.
+- `sickn33` `social-content`: manda raspar posts em escala (Apify) e é genérica.
+- `coreyhaines31/marketingskills` `social`, `video`, `analytics`: foco LinkedIn/X, avatares pagos (HeyGen) e GA4 de site; `video` repete o `hyperframes-core`.
+- `social-media-skills` `analytics-and-reporting` e `platform-specs-and-validation`: a fonte de dados e a validação são o WoopSocial (serviço pago de terceiros), sem uso fora dele.
+- `ECC` `social-publisher` e `wshobson/agents` `social-publishing`: publicam via SocialClaw com chave de API, serviço pago de terceiros.
+- `ECC` `crosspost`: X, LinkedIn, Threads e Bluesky, fora das nossas redes.
+- `ravsau/youtuber-skills` `youtube-retention` (6 estrelas): leitor de curva pequeno, benchmarks sem fonte e sobreposto a `youtube-shorts`.
+- Registros e listas (`awesome-agent-skills`, `agentic-awesome-skills`) trazem também `taisly`, `upload-post`, `publora`, `postiz`, `ScrapeCreators`, `last30days`, `apify-*`, `*-automation` (Composio): **só registradas**, todas postam por intermediário, raspam ou automatizam conta de terceiros.
+- Não avaliadas por fugirem do pedido: `hook-writer`, `hashtag-strategy`, `reels-script`, `tiktok-script`, `thumbnail-design` do mesmo repositório (candidatas a uma 2ª rodada se faltar roteiro por rede).
