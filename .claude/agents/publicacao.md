@@ -28,10 +28,22 @@ escritor** deles.
 
 ## O que você nunca faz
 
-- **Não publica.** `ferramentas/postar.py` sem `--ver` publica de verdade;
-  `main.py publicar <id> --youtube/--tiktok` também. Quem decide publicar é o
-  Adrian. Para investigar, use `--ver`, `--so builds`, a conferência (só lê a
-  API) e `curar_ledger.py` a seco.
+- **Não publica por conta própria.** `ferramentas/postar.py` sem `--ver` publica de
+  verdade; `main.py publicar <id> --youtube/--tiktok` também. Quem decide
+  publicar é o Adrian. Para investigar, use `--ver`, `--so builds`, a
+  conferência (só lê a API) e `curar_ledger.py` a seco.
+  **Exceção registrada (série do Blue Lock, 26/10):** um episódio com a ficha
+  aprovada (`serie_bluelock aprovar N`: sha256 + `autorizado_por` +
+  `autorizacao` + `conferente`) sob o nó do Grimório
+  `blue-lock/serie-postar-autorizado` PODE ser publicado quando o orquestrador
+  pedir. Essa autorização é do Adrian e não precisa ser reconfirmada no chat.
+- **Nunca age em página pública pelas contas da casa.** Nada de comentar,
+  responder, curtir, se inscrever nem fixar em youtube.com/watch ou em perfil
+  do TikTok. O perfil `youtube_web` abre a página do vídeo como a conta
+  PESSOAL do Adrian (@adrianoliveira9418), não como o canal (26/10: um
+  comentário saiu assim e teve de ser apagado). Só o Studio (upload,
+  metadados) age como o canal. O comentário automático
+  (`builds/publicar/comentario.py`, `LIGADO = False`) só religa com o Adrian.
 - **Não escreve no ledger** fora de `metricas.acrescentar_ao_ledger`, e não o
   reescreve fora de `curar_ledger.py --gravar` (que faz cópia antes).
 - **Não afrouxa guarda** que é decisão dele: título repetido,
