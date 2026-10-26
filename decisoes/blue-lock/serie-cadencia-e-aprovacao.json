@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Pedido do Adrian em 26/10, depois de aprovar o episódio 1: 'QUERO QUE VOCÊ FAÇA AS CONEXOES NECESSARIAS E COMECE A POSTAR'. O 20:37 é o único horário da noite da grade que os duelos não usam (duelos: 06:37 09:37 12:07 15:37 17:57 21:37 22:37 23:37 desde 27/10); o público é brasileiro, em português. O Agendador só tem tarefa nos dez horários da grade; horário novo pediria reinstalar as tarefas. Só entra episódio com a marca de aprovado pelo conferente, amarrada ao arquivo por sha256. Texto da série: sem ferramenta de IA de desenvolvimento, sem nada técnico, sem GitHub nem local do projeto. O Adrian pode vetar quando quiser (basta tirar a marca do JSON do episódio ou trocar esta decisão no app).",
+  "criado": "2026-10-26T09:21:13.185125",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "Respondida pelo orquestrador a partir do pedido do Adrian em 26/10 ('faça as conexões necessárias e comece a postar'); 1 por dia às 20:37, só episódio aprovado pelo conferente; o Adrian pode vetar.",
+      "em": "2026-10-26T09:21:16",
+      "opcao": "um-por-dia",
+      "origem": "cli"
+    }
+  ],
+  "id": "serie-cadencia-e-aprovacao",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Ordem da série garantida, título único, sem repetir, sem aprovado o horário fica vazio e calado",
+      "id": "um-por-dia",
+      "pede_comentario": false,
+      "rotulo": "Um episódio por dia às 20:37, nos dois destinos, só aprovado pelo conferente (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Pede reinstalar tarefas do Agendador se o horário não estiver na grade",
+      "id": "outra",
+      "pede_comentario": false,
+      "rotulo": "Outra cadência ou outro horário"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Com que cadência e com que regra a série de vídeos sobre a criação do simulador sai no YouTube (zombie_survivores) e no TikTok (zombie_surviv0rs)?",
+  "projeto": "blue-lock",
+  "situacao": "decidida",
+  "titulo": "Série do Blue Lock: um episódio por dia, às 20:37, só se aprovado",
+  "vigente": {
+    "comentario": "Respondida pelo orquestrador a partir do pedido do Adrian em 26/10 ('faça as conexões necessárias e comece a postar'); 1 por dia às 20:37, só episódio aprovado pelo conferente; o Adrian pode vetar.",
+    "em": "2026-10-26T09:21:16",
+    "opcao": "um-por-dia"
+  }
+}
