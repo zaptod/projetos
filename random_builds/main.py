@@ -325,6 +325,9 @@ def main() -> None:
     due.add_argument("--seed", type=int, default=None, help="seed deterministica")
     due.add_argument("--arena", default=None,
                      help="cenario (padrao: sorteado entre as arenas de video)")
+    due.add_argument("--forcar", action="store_true",
+                     help="renderiza mesmo dentro da janela das postagens "
+                          "(post-12 a post+18 min)")
     due.add_argument("--preview", action="store_true", help="render rapido")
     due.add_argument("--rerender", metavar="DUELO_ID", default=None,
                      help="re-renderiza um duelo existente (duelo_00001) "
@@ -648,6 +651,15 @@ def main() -> None:
         # Antes do PipelineController: instalar/listar nao precisam dele, e a
         # rodada cria o seu so quando ha duelo a gerar.
         raise SystemExit(_noite(args))
+    if args.command == "duelo" and not args.forcar:
+        # Render manual de duelo e pesado: a trava central (builds.janela)
+        # recusa dentro da janela das postagens. A geracao da madrugada
+        # (`noite`) e agendada e passa antes, acima.
+        from builds import janela as _janela
+        _recusa = _janela.recusa("duelo", antes=30)
+        if _recusa:
+            print(_recusa)
+            raise SystemExit(4)
     if args.command == "duelo" and args.palco:
         from builds.palco.cli import duelo_no_palco
         raise SystemExit(duelo_no_palco(p1=args.p1, p2=args.p2, seed=args.seed,

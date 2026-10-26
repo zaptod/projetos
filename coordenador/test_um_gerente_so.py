@@ -244,7 +244,7 @@ def test_cli_ok_quando_reiniciou():
 
 
 def test_main_devolve_o_codigo_do_reiniciar(monkeypatch):
-    monkeypatch.setattr(cli, "reiniciar_pela_linha_de_comando", lambda servico: 2)
+    monkeypatch.setattr(cli, "reiniciar_pela_linha_de_comando", lambda servico, **kw: 2)
     assert cli.main(["reiniciar", "app"]) == 2
 
 

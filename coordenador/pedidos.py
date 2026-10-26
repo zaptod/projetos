@@ -766,15 +766,10 @@ def _grade():
 
 
 def na_janela_das_postagens(agora: datetime) -> bool:
-    """De 12 min antes a 18 min depois de um post, nada pesado comeca."""
-    for dia in (-1, 0, 1):
-        base = (agora + timedelta(days=dia)).replace(second=0, microsecond=0)
-        for hora, minuto in _grade():
-            post = base.replace(hour=hora, minute=minuto)
-            if (post - timedelta(minutes=JANELA_ANTES_MIN) <= agora
-                    <= post + timedelta(minutes=JANELA_DEPOIS_MIN)):
-                return True
-    return False
+    """De 12 min antes a 18 min depois de um post, nada pesado comeca
+    (a trava central, `builds.janela`)."""
+    from builds import janela
+    return janela.em_janela(agora, olhar_voo=False)[0]
 
 
 def _publica(argv) -> str:

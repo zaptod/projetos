@@ -398,7 +398,9 @@ def montar(nome: str, args: dict) -> tuple:
         return (f"vídeo de {args['historia']}",
                 py + ["main.py", "video", args["historia"]], HISTORIAS)
     if nome == "duelo":
-        comando = py + ["main.py", "duelo"]
+        # --forcar: o clique e deliberado do Adrian (a trava central da janela
+        # das postagens barra o render manual de linha de comando)
+        comando = py + ["main.py", "duelo", "--forcar"]
         for campo, bandeira in (("p1", "--p1"), ("p2", "--p2")):
             if args.get(campo):
                 comando += [bandeira, args[campo]]

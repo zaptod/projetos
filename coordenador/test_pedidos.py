@@ -1058,10 +1058,10 @@ def test_executar_espera_a_janela_da_postagem(mesa, acao_duble):
 
 def test_janela_das_postagens():
     j = pedidos.na_janela_das_postagens
-    assert j(datetime(2026, 10, 5, 17, 45)) and j(datetime(2026, 10, 5, 18, 15))
-    assert not j(datetime(2026, 10, 5, 17, 44)) and not j(datetime(2026, 10, 5, 18, 16))
-    assert j(datetime(2026, 10, 5, 0, 25)) and j(datetime(2026, 10, 5, 0, 55))
-    assert j(datetime(2026, 10, 5, 23, 55)) and not j(datetime(2026, 10, 5, 23, 59))
+    assert j(datetime(2026, 10, 5, 17, 45)) and j(datetime(2026, 10, 5, 18, 14))
+    assert not j(datetime(2026, 10, 5, 17, 44)) and not j(datetime(2026, 10, 5, 18, 15))
+    assert j(datetime(2026, 10, 5, 0, 25)) and j(datetime(2026, 10, 5, 0, 54))
+    assert j(datetime(2026, 10, 5, 23, 54)) and not j(datetime(2026, 10, 5, 23, 59))
     assert not j(datetime(2026, 10, 5, 10, 20))
 
 

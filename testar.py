@@ -247,6 +247,22 @@ def arquitetura() -> dict:
             "saida": saida}
 
 
+# A suite inteira leva ~15-25 min: comecar a 12 min do post (a margem da lei)
+# a faria cruzar a janela. Margem maior ANTES do post, so aqui.
+ANTES_MIN = 30
+
+
+def _recusa_da_janela(esperar_s: float = 0):
+    """Texto de recusa se a suite nao pode comecar agora, senao `None`."""
+    try:
+        from builds import janela
+    except Exception:                                          # noqa: BLE001
+        return None            # sem a trava a suite roda: nao a derruba
+    if esperar_s and janela.esperar_fora_da_janela(esperar_s, antes=ANTES_MIN):
+        return None
+    return janela.recusa("testar", antes=ANTES_MIN)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="testar", description="roda todos os testes do projeto")
@@ -256,7 +272,16 @@ def main(argv=None) -> int:
                         help="mostra o que seria rodado e sai")
     parser.add_argument("--verboso", action="store_true",
                         help="despeja a saída de quem falhou")
+    parser.add_argument("--forcar", action="store_true",
+                        help="roda mesmo dentro da janela das postagens")
+    parser.add_argument("--esperar", type=float, metavar="SEGUNDOS", default=0,
+                        help="se estiver em janela, espera ate SEGUNDOS por ela passar")
     args = parser.parse_args(argv)
+    if not args.lista and not args.forcar:
+        sair = _recusa_da_janela(args.esperar)
+        if sair:
+            print(sair)
+            return 4
 
     etapas = [("suite", nome, pasta, cmd) for nome, pasta, cmd in SUITES]
     if not args.rapido:

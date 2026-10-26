@@ -68,8 +68,10 @@ def league_aberto(rodar=subprocess.run) -> bool:
 
 def janela_das_postagens(agora: datetime) -> tuple[bool, str]:
     """(dentro, texto) para a janela larga, de `post-18` a `post+18` min."""
-    from coordenador.supervisor import janela_das_postagens as janela
-    return janela(agora, antes_min=ANTES_MIN, depois_min=DEPOIS_MIN)
+    from builds import janela
+    dentro, texto, _ate = janela.em_janela(agora, antes=ANTES_MIN, depois=DEPOIS_MIN,
+                                           olhar_voo=False)
+    return dentro, texto
 
 
 def pode_pesado(agora: datetime | None = None, *, league=league_aberto,
@@ -82,6 +84,12 @@ def pode_pesado(agora: datetime | None = None, *, league=league_aberto,
         return False, f"não consegui ler a grade ({type(exc).__name__}: {exc})"
     if dentro:
         return False, texto
+    try:                                  # publicacao em voo tambem barra
+        from builds import janela as central
+        if central.publicacao_em_voo():
+            return False, "publicação em andamento (postar.py vivo)"
+    except Exception:                                          # noqa: BLE001
+        pass
     if league():
         return False, "League of Legends aberto"
     return True, ""

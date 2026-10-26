@@ -166,3 +166,38 @@ supervisor nem o carteiro.
 O gerente roda no pulso do coordenador, no maximo uma vez por minuto. Nasce
 desligado (`gerente_ligado: false`); o Adrian o liga pelo app. Ele tira itens
 da fila, contrata uma sessao em worktree e pede conferencia depois da entrega.
+
+## A trava central das postagens (26/10/2026): `random_builds/builds/janela.py`
+
+UMA fonte da verdade para "agora pode fazer coisa pesada?". Antes cada
+ferramenta tinha de lembrar da regra (`post-12` a `post+18` min) e havia tres
+copias da conta, duas lendo a grade da PLATAFORMA e nao a de cada canal; no dia
+26/10 tres agentes rodaram suites e renders dentro das janelas.
+
+- **Quem publica:** a grade REAL de cada canal por data (`builds.grade.
+  horas_do_canal(canal, plataforma, dia)`: duelos 8/dia e historias 3+1 desde
+  27/10; antes disso historias nos dez horarios) mais a serie do Blue Lock
+  (`horas_da_serie`, 20:37). Vale a virada da meia-noite (o 23:37 vai ate 23:55).
+- **API:** `em_janela(agora, antes=12, depois=18, olhar_voo=True)` ->
+  `(bool, motivo, ate_quando)` (fim exclusivo; janelas que se tocam se emendam;
+  `ate_quando=None` quando o motivo e publicacao em voo, que e o `postar.py`/
+  `publicar` vivo); `proxima_janela()`; `esperar_fora_da_janela(max_s)` (nao
+  dorme a toa se a janela termina depois do prazo); `recusa(ferramenta)` (a
+  frase padrao, com o `--forcar`).
+- **CLI:** `python -m builds.janela agora | proxima | esperar --max 1800`
+  (sai 0 livre, 2 em janela).
+- **Ligado em:** `testar.py` (recusa com saida 4; `--forcar`, `--esperar N`;
+  margem de 30 min ANTES do post, porque a suite leva 15-25 min);
+  `python -m coordenador reiniciar <svc> --forcar` (ignora so a janela;
+  publicacao em voo e carteiro entregando continuam barrando);
+  `main.py duelo [--forcar]` (render manual, margem 30); `bluelock.comum.
+  pode_pesado` (margem 18, mais publicacao em voo); e os antigos
+  `supervisor.janela_das_postagens` e `pedidos.na_janela_das_postagens`
+  agora so delegam (um relogio, nao tres).
+- **Fica de fora, de proposito:** o `postar.py` e as tarefas do Agendador (sao
+  a propria postagem); a geracao da madrugada `main.py noite` (01h-06h,
+  agendada); SUBIR um servico que caiu (`seguro(janela=False)`); o botao
+  "gravar duelo" do app (clique do Adrian, passa `--forcar`). A fabrica da
+  serie ja usava `pode_pesado`.
+- **Ao criar uma ferramenta pesada nova:** chame `janela.recusa("nome")` no
+  comeco e ofereca `--forcar`. Nao copie a conta.

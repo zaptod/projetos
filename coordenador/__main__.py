@@ -163,13 +163,16 @@ def resumo_dos_servicos(estado: dict) -> str:
     return "serviços: " + "; ".join(partes)
 
 
-def reiniciar_pela_linha_de_comando(servico, supervisor=None, pendente=None, saida=print):
+def reiniciar_pela_linha_de_comando(servico, supervisor=None, pendente=None, saida=print,
+                                    forcar=False):
     """`python -m coordenador reiniciar <svc>`: recusado pelo momento (janela
     das postagens, publicacao em voo, carteiro entregando) NAO imprime "ok":
     diz o motivo, deixa o pedido em disco para o coordenador residente e sai
     com 2. Ate 13/10/2026 imprimia "ok" e saia 0 sem reiniciar nada."""
     try:
-        s = supervisor or Supervisor()
+        # `--forcar` ignora SO a janela das postagens (o relogio): a publicacao
+        # em voo e o carteiro entregando continuam barrando.
+        s = supervisor or Supervisor(janela=(lambda _agora: (False, "")) if forcar else None)
         feito = s.reiniciar_servico(servico)
     except Exception as exc:                  # noqa: BLE001 - a CLI conta, nao estoura
         saida(f"não reiniciei o {servico}: {type(exc).__name__}: {exc}")
@@ -189,6 +192,8 @@ def reiniciar_pela_linha_de_comando(servico, supervisor=None, pendente=None, sai
         resto = "ficou pendente; o coordenador reinicia quando for seguro"
     except OSError as exc:
         resto = f"e nem consegui deixar pendente ({exc})"
+    if "janela" in str(motivo):
+        resto += " (de propósito, dentro da janela: --forcar)"
     saida(f"não reiniciei o {servico}: {motivo}; {resto}")
     return 2 if recusa.get("tipo", "momento") == "momento" else 3
 
@@ -211,6 +216,9 @@ def main(argv=None):
                        default=None, help="do Codex; padrao medium, high nas dificeis")
     reiniciar = sub.add_parser("reiniciar")
     reiniciar.add_argument("servico", choices=("app", "bot", "carteiro", "vila"))
+    reiniciar.add_argument("--forcar", action="store_true",
+                           help="reinicia mesmo dentro da janela das postagens "
+                                "(publicacao em voo continua barrando)")
     sub.add_parser("instalar-tarefa")
     sub.add_parser("remover-tarefa")
     sub.add_parser("desligar-tarefas-antigas")
@@ -290,7 +298,7 @@ def main(argv=None):
             import json
             print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))
     elif args.acao == "reiniciar":
-        return reiniciar_pela_linha_de_comando(args.servico)
+        return reiniciar_pela_linha_de_comando(args.servico, forcar=args.forcar)
     elif args.acao == "instalar-tarefa":
         instalar()
     elif args.acao == "remover-tarefa":

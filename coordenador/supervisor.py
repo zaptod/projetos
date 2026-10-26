@@ -33,18 +33,13 @@ MORTE_PASSO_S = 0.5
 
 def janela_das_postagens(agora, antes_min=JANELA_ANTES_MIN, depois_min=JANELA_DEPOIS_MIN):
     """(dentro, texto): `agora` esta entre `post-antes` e `post+depois` de
-    algum horario da grade (`random_builds/builds/grade.py`)?"""
-    from random_builds.builds import grade
-    proximo = grade.proximo_em(agora)
-    if proximo - agora <= timedelta(minutes=antes_min):
-        return True, f"janela das postagens ({proximo:%H:%M}, em {int((proximo - agora).total_seconds() // 60)} min)"
-    hora = grade.slot(agora)
-    ultimo = agora.replace(hour=hora, minute=grade.minuto(hora), second=0, microsecond=0)
-    if ultimo > agora:                      # antes do 1o horario do dia: o ultimo foi ontem
-        ultimo -= timedelta(days=1)
-    if agora - ultimo < timedelta(minutes=depois_min):
-        return True, f"janela das postagens ({ultimo:%H:%M}, há {int((agora - ultimo).total_seconds() // 60)} min)"
-    return False, ""
+    alguma postagem? Delega a trava central (`builds.janela`), que le as
+    grades REAIS de cada canal; so o relogio (a publicacao em voo e a
+    `publicacao_rodando` do `seguro`)."""
+    from builds import janela
+    dentro, texto, _ate = janela.em_janela(agora, antes=antes_min, depois=depois_min,
+                                           olhar_voo=False)
+    return dentro, texto
 
 
 def agora_iso(agora=None):
