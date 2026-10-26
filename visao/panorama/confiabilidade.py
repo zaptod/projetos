@@ -46,7 +46,9 @@ METRICA_VELHA_H = 30
 ROTULO_DA_PARTE = {"builds": "do YouTube de builds",
                    "historias": "do YouTube de historias",
                    "builds_tiktok": "do TikTok de builds",
-                   "historias_tiktok": "do TikTok de historias"}
+                   "historias_tiktok": "do TikTok de historias",
+                   "bluelock": "do YouTube da serie Blue Lock",
+                   "bluelock_tiktok": "do TikTok da serie Blue Lock"}
 
 
 def _ledger(modulo_nome: str) -> list | None:

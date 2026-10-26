@@ -82,7 +82,7 @@ class ZeroNaoEMetricaEmDiaTests(_Coleta):
         self.vazio = True
         self._rodar("dia-2026-10-14")
         ficha, alertas = self._alertas_de_metrica()
-        self.assertEqual(4, len(alertas), alertas)
+        self.assertEqual(6, len(alertas), alertas)
         self.assertTrue(all("falhou" in a and "ColetaVazia" in a
                             for a in alertas), alertas)
         self.assertNotEqual("ok", ficha["veredito"])
@@ -91,7 +91,7 @@ class ZeroNaoEMetricaEmDiaTests(_Coleta):
         self.vazio = True
         self._rodar("dia-2026-10-14")
         _ficha, alertas = self._alertas_de_metrica()
-        self.assertEqual(4, sum("nenhuma coleta boa" in a for a in alertas),
+        self.assertEqual(6, sum("nenhuma coleta boa" in a for a in alertas),
                          alertas)
 
     def test_noite_boa_de_verdade_nao_acende(self):

@@ -48,9 +48,24 @@ MARCA_DE_12_10 = {
                              "chave": "dia-2026-10-12",
                              "ultimo_ok": "2026-10-12T07:45:21",
                              "videos_no_ultimo_ok": 276},
+        # A SERIE do Blue Lock virou parte da coleta em 26/10/2026 (a marca
+        # de 12/10 e hipotetica para ela: as duas partes entram aqui com a
+        # mesma hora das outras, para o fixture continuar sendo "a ultima
+        # noite boa" de TODAS as partes de hoje).
+        "bluelock": {"estado": "ok", "videos": 3,
+                     "quando": "2026-10-12T07:30:00", "chave": "dia-2026-10-12",
+                     "ultimo_ok": "2026-10-12T07:30:00",
+                     "videos_no_ultimo_ok": 3},
+        "bluelock_tiktok": {"estado": "ok", "videos": 3,
+                            "quando": "2026-10-12T07:31:00",
+                            "chave": "dia-2026-10-12",
+                            "ultimo_ok": "2026-10-12T07:31:00",
+                            "videos_no_ultimo_ok": 3},
     },
 }
-QUATRO = ["builds", "builds_tiktok", "historias", "historias_tiktok"]
+# Todas as partes da coleta (o nome ficou de quando eram quatro).
+QUATRO = ["builds", "builds_tiktok", "historias", "historias_tiktok",
+          "bluelock", "bluelock_tiktok"]
 
 
 def _copia(marca):
@@ -119,7 +134,8 @@ class ColetaAtrasadaTests(_Hermetico):
 
     def test_so_a_parte_que_sumiu_aparece(self):
         marca = _copia(MARCA_DE_12_10)
-        for nome in ("builds", "historias", "historias_tiktok"):
+        for nome in ("builds", "historias", "historias_tiktok", "bluelock",
+                     "bluelock_tiktok"):
             marca["partes"][nome]["quando"] = "2026-10-13T07:20:00"
             marca["partes"][nome]["ultimo_ok"] = "2026-10-13T07:20:00"
         atraso = metricas.coleta_atrasada(marca,

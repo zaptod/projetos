@@ -210,6 +210,7 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
     serie conta dias de grade. Pedido a meia-noite e meia, "hoje" ainda e o
     dia de grade que esta fechando — e e ele que a recuperacao das 23:37 paga.
     """
+    agora_pedido = agora
     agora = agora or datetime.now()
     hoje, _ = _dia_de_grade(agora)
     # O dia de grade que ainda nao fechou fica "em andamento" na serie, e nao
@@ -320,7 +321,35 @@ def metas(agora: datetime | None = None, *, dias: int = 7) -> str:
     # A SECAO SEMPRE APARECE. Antes, sem conseguir contar, ela sumia — e um
     # relatorio sem a linha do estoque parece um estoque sem problema.
     linhas += [""] + lote.linhas(_lote(agora))
+    # --- a serie do Blue Lock (26/10/2026): uma linha por episodio e
+    # plataforma. O relatorio de verdade (sem `agora`) le o YouTube antes.
+    # Os comentarios novos vao JUNTO (pedido do Adrian: 1x por dia, no mesmo
+    # relatorio): so o relatorio de verdade os marca como avisados.
+    linhas += [""] + _serie(agora_dado=agora_pedido)
+    linhas += [""] + _comentarios_da_serie(agora_dado=agora_pedido)
     return "\n".join(linhas)
+
+
+def _serie(agora_dado=None) -> list[str]:
+    """O bloco da serie. Nunca levanta: o relatorio de metas nao cai por ela."""
+    try:
+        from builds.publicar import serie_metricas
+        return serie_metricas.linhas_do_relatorio(
+            agora_dado, atualizar=agora_dado is None)
+    except Exception as exc:                                   # noqa: BLE001
+        return ["📺 *Série Blue Lock*",
+                f"  ⚠ o bloco da série falhou: {type(exc).__name__}: {exc}"]
+
+
+def _comentarios_da_serie(agora_dado=None) -> list[str]:
+    """Os comentarios novos da serie (SO LEITURA). Nunca levanta."""
+    try:
+        from builds.publicar import serie_comentarios
+        return serie_comentarios.resumo(
+            agora_dado, marcar=agora_dado is None).splitlines()
+    except Exception as exc:                                   # noqa: BLE001
+        return ["💬 *Comentários da série*",
+                f"  ⚠ NÃO consegui montar: {type(exc).__name__}: {exc}"]
 
 
 # ---------------------------------------------------------- funcionamento
@@ -799,9 +828,25 @@ def semana(agora: datetime | None = None) -> str:
     return "📏 *Medida da semana*\n" + analise.texto_da_semana(agora)
 
 
+def comentarios(agora: datetime | None = None) -> str:
+    """Os comentarios NOVOS da serie "Como eu criei um Blue Lock" (26/10/2026),
+    sob demanda (`/comentarios`). O envio de TODO DIA vai dentro do `metas`
+    das 21:00 (pedido: "1x por dia, junto do relatorio"; relatorio automatico
+    novo e decisao do Adrian, e o teste dos horarios o trava). SO LEITURA: nao
+    responde nada. Sem `agora` (o pedido de verdade) le o YouTube antes."""
+    from builds.publicar import serie_comentarios, serie_metricas
+    recado = ""
+    if agora is None:
+        motivo = serie_metricas.atualizar_agora()
+        if motivo:
+            recado = (f"⚠ não consegui atualizar os comentários agora ({motivo}); "
+                      "vai o que já estava no disco.\n")
+    return recado + serie_comentarios.resumo(agora, marcar=True)
+
+
 RELATORIOS = {"metas": metas, "funcionamento": funcionamento,
               "auditoria": auditoria, "confiabilidade": confiabilidade,
-              "semana": semana}
+              "semana": semana, "comentarios": comentarios}
 
 
 def montar(nome: str, agora: datetime | None = None) -> str:

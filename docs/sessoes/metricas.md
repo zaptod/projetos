@@ -99,6 +99,7 @@ nunca preenchido por suposição.
 | a coleta de hoje nem rodou? | linha de erro `metricas` com `[coleta parada AAAA-MM-DD]` no diário | MEDIDO (desde 14/10) |
 | noite sem conferência, canal parado, `youtube_id` | `builds.publicar.sinais` (a conta), gravado na ficha da conferência | MEDIDO |
 | "dias de estoque" | `ferramentas/postar.py: estoque()` | **SUPOSTO** (divisão; ver §5) |
+| a série Blue Lock (views, % assistido, comentários, histórico de leituras) | `random_builds/outputs/_serie_bluelock/` — ver "A série Blue Lock" no §3 | MEDIDO desde 26/10/2026; "24 h" e "ficou para ver" são derivados |
 
 Dois canais, dois mundos de arquivo: builds em
 `E:\projetos\random_builds\outputs\`, histórias em
@@ -893,6 +894,92 @@ novos do `remoto`; e `remoto/test_envio_em_partes.py`, 10, da 2ª volta):
    página tirava o recuo e o YouTube e o TikTok viravam uma lista só no
    celular; agora cada plataforma tem o seu cartão com título, e a linha de
    vídeo tem recuo próprio.
+
+### A série "Como eu criei um Blue Lock" (canal `bluelock`), medida desde 26/10/2026
+
+Até a manhã de 26/10 **ninguém lia um número do canal da série**
+(Egoistsoccer no YouTube, `zombie_survivores`; TikTok `zombie_surviv0rs`): a
+coleta só conhecia `builds` e `historias`. Desde 26/10 11:28 (1ª coleta) o canal é a 5ª e
+a 6ª **parte** da coleta (`metricas.CANAIS_DA_COLETA`, partes `bluelock` e
+`bluelock_tiktok` na marca, no alarme de coleta parada e na tela de
+confiabilidade). Fica **fora** de `metricas.CANAIS`, que é o que a análise
+dos duelos compara; a série tem o bloco dela.
+
+**O token alcança o canal Egoistsoccer? Sim** (medido 26/10 11:3x):
+`channels?mine=true` com a credencial `youtube_credentials_zombie_survivores`
+devolve `UCzQkLt06RV6SydW5vztBnmA`, "Egoistsoccer". Escopos: `readonly`,
+`upload` e `yt-analytics.readonly` (**sem** `youtube.force-ssl`).
+
+| O quê | De onde | Onde fica | Medido/derivado |
+| --- | --- | --- | --- |
+| views, curtidas, nº de comentários (YouTube) | Data API (token do canal) | `outputs/_serie_bluelock/_metricas/<id>.json` | MEDIDO |
+| % médio assistido, curva, `engagedViews` (YouTube) | Analytics | mesmo arquivo | MEDIDO, **só chega 2–3 dias depois** |
+| inscritos ganhos/perdidos, compartilhamentos, minutos (YouTube) | Analytics (`contagens_do_video`) | mesmo arquivo | MEDIDO, mesmo atraso |
+| "ficou para ver" (YouTube) | `engaged_views / views_analytics` | `ficou_para_ver` | **DERIVADO** — não é o "viewed vs swiped away" da Studio |
+| views, curtidas, comentários, compartilhamentos, salvos, % assistido, conclusão, origem, seguidores ganhos (TikTok) | Studio (como os outros canais) | `outputs/_serie_bluelock/_metricas_tiktok/<id>.json` | MEDIDO |
+| as chaves cruas do insight do TikTok | Studio | `insight_bruto` no arquivo do post | MEDIDO cru (só a série guarda) |
+| histórico de cada leitura | `serie_metricas.registrar_leitura` | `outputs/_serie_bluelock/_leituras.jsonl` | MEDIDO |
+| "views 24 h" por episódio | a leitura mais perto de 24 h ±5 h do post | calculado na hora | derivado; sem leitura lá = "ainda não", nunca 0 |
+| comentários novos | ver abaixo | `outputs/_serie_bluelock/_comentarios.json` | MEDIDO (só leitura) |
+
+(`outputs/_serie_bluelock/comentarios.json`, **sem** sublinhado, é de outro
+agente — o estado do comentário fixado que o canal posta. Não confundir.)
+
+**Medido em 26/10, ep. 1** (YouTube 8RFvQp9VogE, postado 10:22; TikTok
+7700976063421238546, postado 11:00): YouTube **428 views, 13 curtidas, 0
+comentários às 12:00** (415 às ~11:45 pelo Studio; 240 às 11:28); sem % assistido
+(a Analytics da casa só tem dado até 22/10 e o próprio Studio diz "ainda não
+há dados de retenção… até dois dias"). TikTok **28 views, 2 curtidas, 0
+comentários, 0 compartilhamentos, 3% assistido (2,02 s de 69,5 s), conclusão
+0%, 100% "For You"** às 11:29, com o post tendo meia hora.
+
+**Comentários (só leitura; não publica nada).**
+
+- O texto pela API (`commentThreads.list`) dá **403 `ACCESS_TOKEN_SCOPE_INSUFFICIENT`**
+  com o token da casa (pede `youtube.force-ssl`, que também permitiria
+  escrever; não pedimos). O que se lê é o **contador** (`commentCount`, Data
+  API) — se subiu, abre a **página pública** do vídeo num Chrome **sem login**
+  (`outputs/_serie_bluelock/.perfil_sem_login`) e lê os comentários. Esse
+  caminho foi provado num vídeo público com comentários (40 lidos); no ep. 1
+  ainda não houve comentário real, então o parser **não viu comentário nosso**.
+- Limite medido: o contador do YouTube chegou a dizer 1 enquanto a página
+  pública mostrava 0 (era do próprio canal / retido). Quando `lidos < total` o
+  resumo diz "o contador diz N e eu li M" e **não** "nenhum comentário novo".
+  A página mostra a ordem "mais votados"; com muitos comentários o novo pode
+  ficar de fora (o resumo diz quanto leu do contador).
+- TikTok: a pasta de comentários do Studio chama `POST
+  /tiktokstudio/api/web/commentsV2` (corpo medido hoje:
+  `{"hasMore":false,"comments":[],"cursor":""}`); a coleta do TikTok da série
+  abre `/tiktokstudio/comment`, guarda o que veio e **o formato de um comentário
+  real não foi medido** (parser tolerante; sem `id`+texto descarta). Resposta que
+  não chega = erro, não "zero comentários".
+
+**No Telegram**: o relatório `metas` (21:00) ganhou duas seções — "Série Blue
+Lock" (uma linha por plataforma de cada episódio: views, `24 h`, % assistido,
+inscritos, curtidas/comentários) e "Comentários da série" (os novos, com link
+no YouTube). O relatório de verdade (sem `agora`) lê o YouTube antes
+(`serie_metricas.atualizar_agora`, só API, no máximo uma leitura a cada 30
+min); se falhar, diz "não atualizei" e usa o disco. Comentário novo aparece até
+o fim do dia em que foi avisado e some no seguinte. `/comentarios` (sob
+demanda). **Não** virou relatório automático novo: o teste dos horários
+(`test_os_automaticos_sao_exatamente_estes`) trava isso como decisão do
+Adrian. A página "Análise dos vídeos" ganhou o cartão "Série Blue Lock".
+
+**O que ficou de fora (dito, não preenchido):**
+
+- **"Viewed vs swiped away" / "stayed to watch" do YouTube**: a Analytics API
+  recusa `viewedVsSwipedAway`/`swipedAway`/`stayedToWatch` (400, medido); o que
+  existe é o derivado `ficou_para_ver`. O número da Studio **não** foi lido
+  (a Studio abre logada no perfil `youtube_web`, mas a aba Engajamento não foi
+  decifrada). Do TikTok, o insight cru (41 chaves) está guardado em
+  `insight_bruto` para achar o nome, se existir.
+- **% assistido e inscritos do YouTube no 1º dia**: não existem em lugar
+  nenhum antes de ~2 dias; "views 24 h" do ep. 1 só existe a partir da leitura
+  de 27/10 ~07:02 (20,7 h depois do post, dentro de ±5 h).
+- A coleta do TikTok da série ocorre **uma vez por dia** (serviço das 07:02);
+  as views de 24 h do TikTok dependem dela (idade ~20 h).
+- Os comentários do TikTok não têm exemplo real; os do YouTube só têm o
+  caminho provado em vídeo de terceiros.
 
 ## 4. As conferências que faltam, e o número que deveria acender
 

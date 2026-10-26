@@ -44,6 +44,9 @@ from pathlib import Path
 URL_CONTEUDO = "https://www.tiktok.com/tiktokstudio/content"
 URL_ANALISE = "https://www.tiktok.com/tiktokstudio/analytics/{item_id}"
 LISTA = "creator/manage/item_list"
+COMENTARIOS = "tiktokstudio/api/web/commentsV2"
+URL_COMENTARIOS = "https://www.tiktok.com/tiktokstudio/comment"
+ESPERA_COMENTARIOS_S = 15.0
 INSIGHT = "aweme/v2/data/insight"
 
 # Diferenca maxima entre o `quando` do ledger e o `post_time` do Studio.
@@ -96,7 +99,7 @@ ROLAR_TUDO_JS = """() => {
 CAMPOS_DA_ANALISE = ("media_segundos", "media_percentual",
                      "taxa_de_conclusao", "espectadores_unicos",
                      "seguidores_ganhos", "fracao_de_novos", "curva",
-                     "origem_do_trafego", "analisado_em")
+                     "origem_do_trafego", "analisado_em", "insight_bruto")
 
 # A situacao de cada post no `item_list` (21/10/2026): crua, como veio.
 CAMPOS_DA_SITUACAO = ("status", "visibility", "in_review", "permissions")
@@ -578,14 +581,25 @@ def analise_anterior(anterior: dict | None) -> dict:
     return saida
 
 
-def analise_do_insight(respostas: list, duracao_ms: int | None) -> dict:
-    """Junta as respostas de `data/insight` de UM video num dicionario so."""
+def analise_do_insight(respostas: list, duracao_ms: int | None,
+                       guardar_bruto: bool = False) -> dict:
+    """Junta as respostas de `data/insight` de UM video num dicionario so.
+
+    `guardar_bruto` (a serie do Blue Lock, 26/10/2026): guarda TAMBEM todas as
+    chaves cruas que o Studio mandou (`insight_bruto`, cortado em 12.000
+    caracteres), para achar o nome do "viewed vs swiped away" / "stayed to
+    watch" — que nenhuma coleta guardava e cujo nome nao foi medido."""
     campos = {}
     for corpo in respostas or []:
         for chave, valor in (corpo or {}).items():
             if valor is not None:
                 campos.setdefault(chave, valor)
     saida = {}
+    if guardar_bruto and campos:
+        bruto = json.dumps(campos, ensure_ascii=False, default=str)
+        saida["insight_bruto"] = {"chaves": sorted(campos),
+                                  "corpo": bruto[:12000],
+                                  "cortado": len(bruto) > 12000}
     media = _valor(campos.get("video_per_duration_realtime"))
     if media is not None:
         saida["media_segundos"] = round(float(media), 2)
@@ -781,8 +795,16 @@ def coletar(canal: str = "builds", *, log=print,
     punicoes, qualidades, insights_da_conta = [], [], []
     pedidos_da_conta = []           # pedidos_da_conta[i] trouxe insights_da_conta[i]
 
+    comentarios_do_studio: list = []
+
     def ouvir(resp):
         url = resp.url
+        if COMENTARIOS in url:
+            try:
+                comentarios_do_studio.append(resp.json())
+            except Exception:                                  # noqa: BLE001
+                pass
+            return
         if PUNICAO in url or QUALIDADE in url:
             try:
                 corpo = resp.json()
@@ -882,8 +904,9 @@ def coletar(canal: str = "builds", *, log=print,
                         page.wait_for_timeout(3000)
                     except Exception:                          # noqa: BLE001
                         pass
-                nova = analise_do_insight(list(insights),
-                                          item.get("duracao_ms"))
+                nova = analise_do_insight(
+                    list(insights), item.get("duracao_ms"),
+                    guardar_bruto=canal in metricas.CANAIS_DA_SERIE)
                 if nova:
                     nova["analisado_em"] = datetime.now().isoformat(
                         timespec="seconds")
@@ -893,6 +916,8 @@ def coletar(canal: str = "builds", *, log=print,
                       encoding="utf-8") as fh:
                 json.dump(dado, fh, ensure_ascii=False, indent=2)
             salvos.append(dado)
+        if canal in metricas.CANAIS_DA_SERIE:
+            _comentarios_da_serie(page, comentarios_do_studio, log=log)
         # Por ultimo, com tudo o que a sessao ouviu (a punicao pode chegar
         # numa pagina de analise).
         if not por_que_sem_punicao and not (punicoes and qualidades):
@@ -907,7 +932,42 @@ def coletar(canal: str = "builds", *, log=print,
                         por_que_sem_punicao=por_que_sem_punicao)
     log(f"[tiktok-metricas] {canal}: {len(salvos)} video(s) gravados em "
         f"{pasta}")
+    if canal in metricas.CANAIS_DA_SERIE:
+        try:
+            from . import serie_metricas
+            serie_metricas.registrar_leitura("tiktok", salvos)
+        except Exception as exc:                               # noqa: BLE001
+            log(f"[tiktok-metricas] {canal}: historico da serie nao gravou: {exc}")
     return salvos
+
+
+def _comentarios_da_serie(page, respostas: list, *, log=print) -> None:
+    """Abre a pagina de comentarios do Studio e guarda o que ela trouxe (SO
+    LEITURA: nenhum clique em responder). Nunca levanta; o que nao leu vira
+    linha de erro `metricas` no diario."""
+    from . import serie_comentarios
+    erro = ""
+    try:
+        respostas.clear()
+        page.goto(URL_COMENTARIOS, wait_until="domcontentloaded", timeout=90_000)
+        limite = time.time() + ESPERA_COMENTARIOS_S
+        while not respostas and time.time() < limite:
+            page.wait_for_timeout(1000)
+    except Exception as exc:                                   # noqa: BLE001
+        erro = f"{type(exc).__name__}: {str(exc)[:160]}"
+    guardado = serie_comentarios.guardar_do_tiktok(list(respostas), erro=erro)
+    log(f"[tiktok-metricas] comentarios da serie: {len(respostas)} resposta(s) "
+        f"do Studio, {guardado['novos']} novo(s)"
+        + (f", FALHAS: {guardado['falhas']}" if guardado["falhas"] else "") + ".")
+    if guardado["falhas"]:
+        try:
+            from .. import atividade
+            atividade.registrar("metricas", atividade.ERRO,
+                                "[serie bluelock] comentarios do TikTok: "
+                                + " | ".join(guardado["falhas"])[:240],
+                                canal="bluelock", etapa="metricas.serie")
+        except Exception:                                      # noqa: BLE001
+            pass
 
 
 def garantir_uma_analise(escolhidos: set, pares: list, *, analisar: bool,

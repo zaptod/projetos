@@ -212,7 +212,8 @@ class AvisoDeVerdadeNoDiarioTests(_Dia13):
                    "ultimo_ok": "2026-10-12T07:45:21",
                    "videos_no_ultimo_ok": 5}
             for nome in ("builds", "builds_tiktok", "historias",
-                         "historias_tiktok")}}), encoding="utf-8")
+                         "historias_tiktok", "bluelock",
+                         "bluelock_tiktok")}}), encoding="utf-8")
         self._trocar(metricas, "MARCA_DO_DIA", marca)
         self.diario = []
         self._trocar(atividade, "registrar",

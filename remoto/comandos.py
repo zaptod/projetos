@@ -279,6 +279,12 @@ def semana(_args: str = "") -> str:
     return relatorios.montar("semana")
 
 
+def comentarios(_args: str = "") -> str:
+    """Os comentarios novos da serie do Blue Lock. SO LEITURA: nao responde."""
+    from . import relatorios
+    return relatorios.montar("comentarios")
+
+
 def auditoria(_args: str = "") -> str:
     """Os quatro controles, e o que a grade vai barrar no proximo horario.
 
@@ -346,6 +352,7 @@ TABELA = {
     "confiabilidade": confiabilidade,
     "prova": confiabilidade,
     "semana": semana,
+    "comentarios": comentarios,
     "testar_conserto": testar_conserto,
     "auditoria": auditoria,
     "auditar": auditoria,

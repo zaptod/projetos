@@ -57,9 +57,13 @@ API_CANAIS = "https://www.googleapis.com/youtube/v3/channels"
 
 # A SERIE DO BLUE LOCK (canal `bluelock`, 26/10/2026) tem ledger PROPRIO, ao
 # lado do de builds e fora do de historias: `outputs/_serie_bluelock/`. Fica
-# FORA de `CANAIS` de proposito — a coleta de metricas (`atualizar_tudo`)
-# itera `CANAIS` e ainda nao sabe medir a serie.
+# FORA de `CANAIS` de proposito: `CANAIS` e o que a ANALISE dos duelos/historias
+# compara (a serie e um produto a parte, com a pagina dela). Mas a COLETA mede
+# a serie desde 26/10/2026 (`CANAIS_DA_COLETA`): sem isso o canal da serie
+# publicava um episodio por dia sem que ninguem lesse um numero dele.
 PASTA_DA_SERIE = "_serie_bluelock"
+CANAIS_DA_SERIE = ("bluelock",)
+CANAIS_DA_COLETA = CANAIS + CANAIS_DA_SERIE
 
 
 def registro_do_canal(canal: str = "builds") -> Path:
@@ -1120,6 +1124,64 @@ def retencao(youtube_id: str, token: str, desde: str) -> dict:
     return saida
 
 
+METRICAS_DA_SERIE = ("views,engagedViews,likes,comments,shares,subscribersGained,"
+                     "subscribersLost,estimatedMinutesWatched")
+
+
+def contagens_do_video(youtube_id: str, token: str, desde: str) -> dict:
+    """O que a Analytics conta POR VIDEO alem da retencao: inscritos ganhos e
+    perdidos, compartilhamentos, curtidas e comentarios (todos da Analytics,
+    na janela `desde`..hoje) e minutos assistidos. Nunca levanta.
+
+    SEM LINHA NAO E ZERO (a lei desta parte): sem linha, o dicionario traz so
+    `extras_erro`, e nenhum campo numerico. Cada campo so entra se a coluna
+    VEIO (pelo `columnHeaders`), nunca como 0 por padrao.
+    """
+    hoje = date.today().isoformat()
+    try:
+        resposta = _get("analytics", API_ANALYTICS, timeout=30,
+                        headers={"Authorization": f"Bearer {token}"},
+                        params={"ids": "channel==MINE", "startDate": desde,
+                                "endDate": hoje,
+                                "filters": f"video=={youtube_id}",
+                                "metrics": METRICAS_DA_SERIE})
+    except Exception as exc:                                   # noqa: BLE001
+        return {"extras_erro": f"{type(exc).__name__}: {exc}"[:160]}
+    if not resposta.ok:
+        return {"extras_erro": f"Analytics API {resposta.status_code}: "
+                               f"{resposta.text[:160]}"}
+    corpo = resposta.json() or {}
+    linhas = corpo.get("rows") or []
+    if not linhas or not linhas[0]:
+        return {"extras_erro": "a Analytics nao devolveu linha para este "
+                               "video (ainda sem dado, ou outro canal)."}
+    nomes = {"inscritos_ganhos": "subscribersGained",
+             "inscritos_perdidos": "subscribersLost",
+             "compartilhamentos": "shares",
+             "curtidas_analytics": "likes",
+             "comentarios_analytics": "comments",
+             "minutos_assistidos": "estimatedMinutesWatched"}
+    saida = {}
+    for campo, coluna in nomes.items():
+        valor = _coluna(corpo, linhas[0], coluna, None)
+        if valor is not None:
+            saida[campo] = valor
+    if not saida:
+        return {"extras_erro": "a Analytics respondeu sem as colunas pedidas."}
+    saida["extras_medidos_em"] = datetime.now().isoformat(timespec="seconds")
+    return saida
+
+
+def ficou_para_ver(dado: dict) -> float | None:
+    """Fracao dos inicios que ficou para ver = `engagedViews / views` da
+    Analytics. DERIVADO, nao o numero "viewed vs swiped away" da Studio (esse
+    nao sai pela API: `viewedVsSwipedAway` e recusado). `None` = nao medi."""
+    engajadas, vistas = dado.get("engaged_views"), dado.get("views_analytics")
+    if not isinstance(engajadas, (int, float)) or not vistas:
+        return None
+    return round(engajadas / vistas, 4)
+
+
 def atualizar(log=print, canal: str = "builds") -> list[dict]:
     """Consulta a API para cada video registrado e grava o resultado."""
     registros = [r for r in publicados(canal) if r.get("youtube_id")]
@@ -1137,6 +1199,11 @@ def atualizar(log=print, canal: str = "builds") -> list[dict]:
         dado = {**registro, **stats.get(yid, {}), "atualizado": datetime.now().isoformat(timespec="seconds")}
         desde = (dado.get("publicado_em") or registro["quando"])[:10]
         dado.update(retencao(yid, token, desde))
+        if canal in CANAIS_DA_SERIE:
+            dado.update(contagens_do_video(yid, token, desde))
+            derivado = ficou_para_ver(dado)
+            if derivado is not None:
+                dado["ficou_para_ver"] = derivado
         # Gravados junto para o relatorio nao depender de recalcular a idade
         # a cada leitura — e para o arquivo guardar a foto do dia.
         dado["dias_no_ar"] = idade_em_dias(dado)
@@ -1146,7 +1213,40 @@ def atualizar(log=print, canal: str = "builds") -> list[dict]:
             json.dump(dado, fh, ensure_ascii=False, indent=2)
         salvos.append(dado)
     log(f"{len(salvos)} video(s) atualizados em {pasta}")
+    if canal in CANAIS_DA_SERIE:
+        _depois_da_coleta_da_serie(salvos, log)
     return salvos
+
+
+def _depois_da_coleta_da_serie(salvos: list, log=print) -> None:
+    """A serie guarda o HISTORICO da leitura (para o "views 24 h") e le os
+    comentarios novos (so leitura). Nada daqui derruba a coleta, mas NADA
+    falha em silencio: o que nao leu vira linha de erro `metricas`."""
+    problemas = []
+    try:
+        from . import serie_metricas
+        serie_metricas.registrar_leitura("youtube", salvos)
+    except Exception as exc:                                   # noqa: BLE001
+        problemas.append(f"historico da serie nao gravou: "
+                         f"{type(exc).__name__}: {str(exc)[:120]}")
+    try:
+        from . import serie_comentarios
+        lido = serie_comentarios.ler_youtube(log=log)
+        problemas.extend(f"comentarios do YouTube: {f}" for f in lido["falhas"])
+        log(f"[bluelock] comentarios do YouTube: {len(lido['lidos'])} video(s) "
+            f"lido(s), {lido['novos']} novo(s).")
+    except Exception as exc:                                   # noqa: BLE001
+        problemas.append(f"comentarios do YouTube: {type(exc).__name__}: "
+                         f"{str(exc)[:120]}")
+    if problemas:
+        log("[bluelock] " + " | ".join(problemas))
+        try:
+            from .. import atividade
+            atividade.registrar("metricas", atividade.ERRO,
+                                "[serie bluelock] " + " | ".join(problemas)[:280],
+                                canal="bluelock", etapa="metricas.serie")
+        except Exception:                                      # noqa: BLE001
+            pass
 
 
 # A marca do dia. Mora ao lado das metricas, e nao em quem chama, porque quem
@@ -1157,7 +1257,7 @@ MARCA_DO_DIA = OUTPUTS / "_metricas" / "_atualizado_em.json"
 
 def partes() -> list:
     """As PARTES da coleta: cada canal, cada plataforma, cada uma por si."""
-    return [(canal, plataforma) for canal in CANAIS
+    return [(canal, plataforma) for canal in CANAIS_DA_COLETA
             for plataforma in ("youtube", "tiktok")]
 
 

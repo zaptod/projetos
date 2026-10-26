@@ -1821,6 +1821,7 @@ def do_dia(log=print, agora: datetime | None = None, rede: bool = True,
     cob = cobertura(entrada)
     analise = analisar(regs, cob, agora, entrada["series"], entrada["historico"],
                        entrada["falhas"], **_extras(entrada))
+    analise["serie_bluelock"] = _bloco_da_serie(agora)
     caminho = gravar(analise, regs, agora, entrada["series"])
     if biblioteca:
         try:
@@ -2235,6 +2236,35 @@ def _conta_html(conta: dict) -> str:
     return "<h2>Conta do TikTok</h2><div class='cartao'>" + "".join(blocos) + "</div>"
 
 
+def _bloco_da_serie(agora: datetime) -> dict:
+    """A serie "Como eu criei um Blue Lock" (26/10/2026): as mesmas linhas do
+    relatorio do Telegram e o resumo dos comentarios (sem marcar nada como
+    avisado). Nunca levanta; falha vira `erro`, que a pagina mostra."""
+    try:
+        from . import serie_comentarios, serie_metricas
+        return {"linhas": serie_metricas.linhas_do_relatorio(agora),
+                "comentarios": serie_comentarios.resumo(agora, marcar=False)}
+    except Exception as exc:                                   # noqa: BLE001
+        return {"erro": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+
+def _serie_html(bloco: dict) -> str:
+    if not bloco:
+        return ""
+    if bloco.get("erro"):
+        return ("<h2>Série Blue Lock</h2><div class='cartao ruim'><p>NÃO consegui "
+                f"montar a série: {_e(bloco['erro'])}</p></div>")
+    linhas = "".join(f"<p>{_e(l.strip().replace('*', ''))}</p>"
+                     for l in bloco.get("linhas") or [])
+    comentarios = "".join(f"<p>{_e(l.replace('*', ''))}</p>"
+                          for l in str(bloco.get("comentarios") or "").splitlines())
+    return ("<h2>Série Blue Lock</h2><div class='cartao'>" + linhas
+            + "<p class='sub'>Cada plataforma por si, nunca somadas. “24 h: ainda não” "
+              "quer dizer que não houve leitura perto das 24 h — não é zero. O YouTube "
+              "só entrega o % assistido uns 2–3 dias depois do episódio.</p></div>"
+            "<div class='cartao'>" + comentarios + "</div>")
+
+
 def pagina(analise: dict) -> str:
     estado = analise.get("estado")
     faixa = {"sem_dados": ("ruim", "Sem dados: a coleta não trouxe nenhum vídeo. Nada aqui "
@@ -2277,6 +2307,7 @@ def pagina(analise: dict) -> str:
 {_testes_html(analise.get('testes') or {})}
 {_semana_html(analise.get('mesma_idade') or {})}
 {_conta_html(analise.get('conta_tiktok') or {})}
+{_serie_html(analise.get('serie_bluelock') or {})}
 {''.join(secoes)}
 <h2>Ainda não dá para dizer</h2>
 {f'<ul>{nao_da}</ul>' if nao_da else '<p class="sub">Nada pendente.</p>'}

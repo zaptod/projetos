@@ -228,7 +228,8 @@ class AtualizacaoDiariaTests(unittest.TestCase):
         metricas.atualizar = lambda log=print, canal="builds": []
         T.coletar = lambda canal, log=print, **_k: chamados.append(canal) or []
         metricas.atualizar_tudo(log=lambda *_a: None)
-        self.assertEqual(sorted(metricas.CANAIS), sorted(chamados))
+        # Os dois canais de sempre e, desde 26/10/2026, a serie do Blue Lock.
+        self.assertEqual(sorted(metricas.CANAIS_DA_COLETA), sorted(chamados))
 
     def test_coletar_abre_navegador_e_por_isso_avisa(self):
         """Quem ler a funcao precisa saber que teste nenhum pode chama-la crua."""

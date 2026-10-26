@@ -72,7 +72,8 @@ class MarcaDaNoite(unittest.TestCase):
         marca = self._marca()
         self.assertTrue(marca["completa"])
         self.assertEqual({"builds": 2, "builds_tiktok": 3, "historias": 2,
-                          "historias_tiktok": 3}, marca["videos"])
+                          "historias_tiktok": 3, "bluelock": 2,
+                          "bluelock_tiktok": 3}, marca["videos"])
         self.assertEqual(3, marca["partes"]["builds_tiktok"]["casados"])
         self.chamados.clear()
         self.assertFalse(self._rodar())
@@ -137,7 +138,8 @@ class MarcaDaNoite(unittest.TestCase):
         metricas.MARCA_DO_DIA.write_text(json.dumps({
             "dia": NOITE, "quando": "2026-09-28T01:20:06",
             "videos": {"builds": 0, "builds_tiktok": 60, "historias": 156,
-                       "historias_tiktok": 50}}), encoding="utf-8")
+                       "historias_tiktok": 50, "bluelock": 1,
+                       "bluelock_tiktok": 1}}), encoding="utf-8")
         self.assertTrue(self._rodar())
         self.assertEqual(["builds"], self.chamados)
 

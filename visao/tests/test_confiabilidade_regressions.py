@@ -54,12 +54,13 @@ def _limpo():
 
 
 def _marca_boa(quando=f"{DIA}T01:20:00"):
-    """A marca de uma noite em que as quatro partes da coleta deram certo."""
+    """A marca de uma noite em que todas as partes da coleta (as quatro dos
+    canais e as duas da serie do Blue Lock, desde 26/10/2026) deram certo."""
     partes = {nome: {"chave": "noite", "estado": "ok", "videos": 5,
                      "quando": quando, "ultimo_ok": quando,
                      "videos_no_ultimo_ok": 5}
               for nome in ("builds", "builds_tiktok", "historias",
-                           "historias_tiktok")}
+                           "historias_tiktok", "bluelock", "bluelock_tiktok")}
     return {"dia": "noite", "completa": True, "partes": partes}
 
 
@@ -445,7 +446,7 @@ class AMetricaVelha(unittest.TestCase):
     def test_nunca_coletou_e_alerta_e_nao_silencio(self):
         # CASO ZERO: sem marca nenhuma no disco.
         ficha = _retrato(marca={})
-        self.assertEqual(4, sum("nenhuma coleta boa" in a
+        self.assertEqual(6, sum("nenhuma coleta boa" in a
                                 for a in ficha["alertas"]))
 
     def test_marca_ilegivel_aparece(self):
