@@ -36,6 +36,8 @@ from builds import grade
 from builds.publicar import desfecho, metricas
 from builds.publicar import serie_bluelock as serie
 
+GRADE_DAS_HISTORIAS_REAL = True   # ver o conftest.py da raiz
+
 POSTAR = Path(__file__).resolve().parents[2] / "ferramentas" / "postar.py"
 
 TITULO = "Esse jogador parou. Ninguém mandou. 🤔 | Como eu criei um Blue Lock #1"
@@ -82,8 +84,11 @@ class GradeDaSerieTests(unittest.TestCase):
                          (6, 9, 12, 15, 17, 21, 22, 23))
         self.assertEqual(grade.horas_do_canal("builds", "tiktok",
                                               date(2026, 10, 27)), (21,))
-        self.assertEqual(len(grade.horas_do_canal("historias", "youtube")), 10)
-        self.assertEqual(len(grade.horas_do_canal("historias", "tiktok")), 6)
+        # historias: dez e seis ate 26/10; tres e um desde 27/10
+        self.assertEqual(len(grade.horas_do_canal(
+            "historias", "youtube", date(2026, 10, 26))), 10)
+        self.assertEqual(len(grade.horas_do_canal(
+            "historias", "tiktok", date(2026, 10, 26))), 6)
         self.assertEqual(grade.CANAIS, ("historias", "builds"))
 
 

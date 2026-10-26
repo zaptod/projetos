@@ -134,6 +134,17 @@ HORAS_DOS_BUILDS = (9, 17, 21)
 # e a noite dos EUA (21:37 a 23:37 = 19:37 a 21:37 ET). O 21:37 fica por ser
 # o do TikTok (o canal e subconjunto da plataforma e o TikTok leva o duelo que
 # o YouTube acabou de subir).
+# HISTORIAS: 3 NO YOUTUBE E 1 NO TIKTOK DESDE 27/10/2026 (pedido do Adrian,
+# 26/10: "quero diminuir a frequencia das historias, esta comendo muito tempo e
+# eu vejo que nao da tantas views por quantidade"; decisao `publicacao/
+# historias-frequencia`). Medido (historias, 01/10 a 26/10, videos com 3+ dias):
+# YouTube, views por horario: 21:37 = 8907 de 10605 (84%, media 524 por video),
+# 23:37 610 (5,8%), 06:37 601 (5,7%), e os outros sete horarios 55 a 101 views em
+# TRES SEMANAS (media 3 a 7 por video; 12:07 52 views em 17 videos). Os tres
+# que sobram sao os unicos com tracao. TikTok: com 1 a 6 posts no dia 45 a 189
+# views por video; com 9 a 11, ~1,2 — e 21:37 e o horario dos duelos tambem.
+HORAS_DAS_HISTORIAS = (6, 21, 23)
+HORAS_DO_TIKTOK_DAS_HISTORIAS = (21,)
 INICIO_DOS_OITO_DUELOS = date(2026, 10, 27)
 HORAS_DOS_BUILDS_OITO = (6, 9, 12, 15, 17, 21, 22, 23)
 HORAS_DO_TIKTOK_DOS_BUILDS = (21,)
@@ -150,7 +161,9 @@ INICIO_DA_GRADE_DO_CANAL = date(2026, 10, 20)
 # ordem; a ultima cuja data ja chegou ganha.
 HORAS_POR_CANAL_DESDE = (
     (INICIO_DOS_OITO_DUELOS, {"builds": {"youtube": HORAS_DOS_BUILDS_OITO,
-                                         "tiktok": HORAS_DO_TIKTOK_DOS_BUILDS}}),
+                                         "tiktok": HORAS_DO_TIKTOK_DOS_BUILDS},
+                              "historias": {"youtube": HORAS_DAS_HISTORIAS,
+                                            "tiktok": HORAS_DO_TIKTOK_DAS_HISTORIAS}}),
 )
 
 

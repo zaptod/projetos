@@ -8,7 +8,7 @@
     "dias_de_lote": [0, 1, 2],
     "lote_a_partir_de": "2026-10-05",
     "alvo_do_lote": {"cobrir_ate_o_dia": 0, "cobrir_ate_a_hora": 7, "mais_o_piso": true},
-    "piso_de_reposicao": 20,
+    "piso_de_reposicao": 6,
     "estoque_zero_libera_a_noite": true,
     "folga_da_grade": {"antes": 15, "depois": 15},
     "passos_por_rodada": 12,

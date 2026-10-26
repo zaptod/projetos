@@ -176,7 +176,8 @@ def horarios_restantes(agora) -> int:
     from builds import grade
 
     minuto = agora.hour * 60 + agora.minute
-    return len([h for h in grade.HORAS if h * 60 + grade.minuto(h) > minuto])
+    return len([h for h in grade.horas_do_canal("historias", "youtube", agora)
+                if h * 60 + grade.minuto(h) > minuto])
 
 
 def falta_video(aprovados: int, agora, piso: int = 1) -> bool:
@@ -231,8 +232,12 @@ def postagens_entre(inicio, fim) -> int:
 
     total, dia = 0, inicio.date()
     while dia <= fim.date():
-        for hora, minuto in grade.GRADE:
-            momento = datetime(dia.year, dia.month, dia.day, hora, minuto)
+        # SO OS HORARIOS DAS HISTORIAS NAQUELE DIA (27/10/2026: 3 por dia
+        # desde essa data; antes, os dez): o alvo do lote cobre o que o canal
+        # de fato posta, e nao a grade da plataforma inteira.
+        for hora in grade.horas_do_canal("historias", "youtube", dia):
+            momento = datetime(dia.year, dia.month, dia.day, hora,
+                               grade.minuto(hora))
             if inicio < momento <= fim:
                 total += 1
         dia += timedelta(days=1)
@@ -860,7 +865,7 @@ def teto_de_estoque(config: dict | None = None) -> int:
     # lista ate 13/09/2026; com a criacao so de madrugada (7 disparos), contar
     # os disparos daria teto 7 para uma grade que consome 8 por dia.
     from builds import grade
-    return (len(grade.HORAS) or 8) * dias_de_gordura(config)
+    return (len(grade.horas_do_canal("historias", "youtube")) or 8)         * dias_de_gordura(config)
 
 
 def dias_de_gordura(config: dict | None = None) -> int:
@@ -2215,7 +2220,8 @@ def series_minimas(config: dict | None = None) -> int:
     """Quantas SERIES distintas a grade precisa por dia: horarios / teto."""
     import math
     from builds import grade
-    return math.ceil((len(grade.HORAS) or 8) / teto_por_historia(config))
+    return math.ceil((len(grade.horas_do_canal("historias", "youtube")) or 8)
+                     / teto_por_historia(config))
 
 
 _PARTE_NO_ID = re.compile(r":p(\d+)$")
@@ -2340,7 +2346,7 @@ def falta_serie(config: dict, aprovados: list,
     horarios = minimo * por_dia
     try:
         from builds import grade
-        horarios = len(grade.HORAS) or horarios
+        horarios = len(grade.horas_do_canal("historias", "youtube")) or horarios
     except Exception:                                          # noqa: BLE001
         pass
     if conta["capacidade"] >= horarios:

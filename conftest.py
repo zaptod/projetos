@@ -27,3 +27,36 @@ _PADRAO = Path(tempfile.gettempdir()) / "neural-fights-pytest"
 if not os.environ.get("NEURAL_FIGHTS_RUNTIME_DIR"):
     _PADRAO.mkdir(parents=True, exist_ok=True)
     os.environ["NEURAL_FIGHTS_RUNTIME_DIR"] = str(_PADRAO)
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _historias_na_grade_da_plataforma(request):
+    """A GRADE REDUZIDA DAS HISTORIAS (3 por dia desde 27/10/2026) NAO PODE
+    DEPENDER DA DATA EM QUE O TESTE RODA (26/10/2026, pedido do Adrian).
+
+    Medido: com a tabela das historias valendo, ~60 testes antigos (lote, teto
+    de estoque, rodadas do postar, volta final...) leem o relogio e a grade do
+    DIA — e passavam hoje e quebrariam amanha, conforme a hora. Aqui a tabela
+    `builds.grade.HORAS_POR_CANAL_DESDE` perde a chave `historias` (a grade da
+    plataforma inteira, como era), salvo o modulo de teste que declara
+    `GRADE_DAS_HISTORIAS_REAL = True` e testa justamente a tabela nova.
+    """
+    if getattr(request.module, "GRADE_DAS_HISTORIAS_REAL", False):
+        yield
+        return
+    try:
+        from builds import grade
+    except Exception:                                          # noqa: BLE001
+        yield
+        return
+    original = grade.HORAS_POR_CANAL_DESDE
+    grade.HORAS_POR_CANAL_DESDE = tuple(
+        (desde, {c: h for c, h in tabela.items() if c != "historias"})
+        for desde, tabela in original)
+    try:
+        yield
+    finally:
+        grade.HORAS_POR_CANAL_DESDE = original

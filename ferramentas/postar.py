@@ -1844,6 +1844,22 @@ def _historias_pausadas() -> str:
         return ""
 
 
+def postar_historia_na_grade(*, so_ver: bool = False, agora=None) -> dict:
+    """`postar_historia` so nos horarios do canal (27/10/2026, `grade.HORAS_DAS_
+    HISTORIAS`: 3 no YouTube e 1 no TikTok). Fora deles nao ha o que ler no
+    ledger nem na fila, e a ficha calada (`fora_da_grade`) nao vai ao Telegram
+    nem ao codigo de saida. Antes de 27/10 `_fora_da_grade_do_canal` devolve ""
+    (a grade da plataforma inteira) e nada muda. Os horarios do TikTok das
+    historias sao subconjunto dos do YouTube, entao fora do YouTube nao ha
+    TikTok a levar. UMA porta, na rodada: quem chama `postar_historia` direto
+    (testes, o escoar) nao le o relogio."""
+    fora = _fora_da_grade_do_canal("historias", "youtube", agora)
+    if fora:
+        return {"canal": "historias", "feito": False, "fora_da_grade": True,
+                "motivo": fora}
+    return postar_historia(so_ver=so_ver)
+
+
 def postar_historia(*, so_ver: bool = False) -> dict:
     from contos.publicar import serie
 
@@ -3325,10 +3341,10 @@ def _fora_da_grade_do_canal(canal: str, plataforma: str, agora=None) -> str:
     Nunca levanta.
     """
     from datetime import datetime
-    if str(canal or "").lower() not in grade.HORAS_POR_CANAL:
+    agora = agora or datetime.now()
+    if str(canal or "").lower() not in grade.tabela_do_canal(agora):
         return ""
     try:
-        agora = agora or datetime.now()
         hora = grade.slot(agora)
         # A tabela do DIA (`grade.tabela_do_canal`: a de 01/11 em diante e 1 h
         # mais tarde, o fim do horario de verao nos EUA).
@@ -7094,7 +7110,7 @@ def _main(args) -> int:
         _linha(f"[postar] historias: {pausa}; nada sai no YouTube nem no "
                "TikTok (inclusive a recuperacao).")
     import functools
-    funcoes = {"historias": postar_historia, "builds": postar_build,
+    funcoes = {"historias": postar_historia_na_grade, "builds": postar_build,
                "bluelock": functools.partial(postar_bluelock,
                                              agora=args.agora)}
     # A SERIE DO BLUE LOCK RODA POR ULTIMO e nunca muda a ordem dos outros dois

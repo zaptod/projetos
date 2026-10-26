@@ -484,6 +484,24 @@ um por horário (ledger ilegível ⇒ o canal não publica no horário, desde
 **repetição**, e repetir é pior que não postar. As outras, em dúvida, deixam
 passar — "não sei" nunca barra vídeo, mas vira erro no diário.
 
+**Histórias: 3 por dia no YouTube e 1 no TikTok desde 27/10/2026** (decisão
+`publicacao/historias-frequencia`, pedido do Adrian: "diminuir a frequência,
+está comendo muito tempo e não dá tantas views por quantidade"). Medido (01/10 a
+26/10, vídeos com 3+ dias): YouTube 21:37 = 84% das views (média 524 por vídeo),
+23:37 e 06:37 5,8% e 5,7%, os outros sete horários 3 a 7 de média; TikTok com
+1 a 6 posts/dia 45 a 189 views por vídeo, com 9 a 11, ~1,2. Ficam 06:37, 21:37 e
+23:37 (`grade.HORAS_DAS_HISTORIAS`, na tabela por data de 27/10) e TikTok 21:37.
+A rodada passa por `postar_historia_na_grade` (ficha calada fora dos três;
+`postar_historia` direto não lê o relógio); `_fora_da_grade_do_canal` agora olha
+`grade.tabela_do_canal(agora)`, então a porta do TikTok das histórias (recuperação)
+também só abre às 21:37. O alvo do lote (`agenda.postagens_entre`), o teto de
+estoque e `series_minimas` contam só os horários das histórias, e
+`piso_de_reposicao` caiu de 20 para 6 (2 dias x 3). **Os testes antigos não
+dependem da data**: o `conftest.py` da raiz tira `historias` da tabela por data
+(só o módulo com `GRADE_DAS_HISTORIAS_REAL = True` a vê). O TikTok das histórias
+fica 2 por dia atrás do YouTube (a fila em ordem, decisão `tiktok-atraso-depois-
+do-teste`); o 06:37/23:37 só YouTube.
+
 **A série do Blue Lock (canal `bluelock`, 26/10/2026, decisão
 `blue-lock/serie-cadencia-e-aprovacao`)**: um episódio por dia, às **20:37**, no
 YouTube e no TikTok, nas contas herdadas do zombie (`contas.CANAIS_ANTIGOS`:

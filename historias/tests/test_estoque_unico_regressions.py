@@ -60,7 +60,9 @@ class _Base(unittest.TestCase):
         self._trocar(agenda, "_livre_gb", lambda _c: 100.0)
         from contos.imagens import cota
         self._trocar(cota, "motivo", lambda *a, **k: None)
-        self.config = {**agenda.carregar(), "avisar_telegram": False}
+        # piso FIXO em 20: o config vivo mudou para 6 em 26/10 (historias 3/dia)
+        self.config = {**agenda.carregar(), "avisar_telegram": False,
+                       "piso_de_reposicao": 20}
 
     def _trocar(self, alvo, nome, valor):
         self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))

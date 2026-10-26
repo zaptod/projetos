@@ -249,6 +249,11 @@ class EstoqueDoLoteTests(unittest.TestCase):
     def setUp(self):
         self.m = _postar()
         self.m.piso_de_alerta = lambda canal: 20
+        # piso FIXO em 20: o config vivo mudou para 6 em 26/10 (historias 3/dia)
+        from contos.pipeline import agenda as _agenda
+        original = _agenda.carregar
+        self.addCleanup(setattr, _agenda, "carregar", original)
+        _agenda.carregar = lambda: {**original(), "piso_de_reposicao": 20}
 
     def test_quarta_22h_o_alvo_e_o_da_agenda(self):
         """44 horarios ate seg 12/10 07h + 20 = 64 (conta da agenda)."""

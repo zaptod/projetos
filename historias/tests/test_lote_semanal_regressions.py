@@ -96,7 +96,10 @@ class _Mundo(unittest.TestCase):
         self._trocar(agenda, "_trabalhar", self._passo)
         # O config REAL, para o teste conferir tambem o que esta no arquivo.
         # `avisar_telegram: False`: a suite nao toca o telefone de ninguem.
-        self.config = {**agenda.carregar(), "avisar_telegram": False}
+        # piso FIXO em 20 (decisao lote-piso-de-reposicao): o config vivo mudou para 6
+        # em 26/10 (historias 3 por dia) e estes numeros sao da conta de 20.
+        self.config = {**agenda.carregar(), "avisar_telegram": False,
+                       "piso_de_reposicao": 20}
 
     def _trocar(self, alvo, nome, valor):
         self.addCleanup(setattr, alvo, nome, getattr(alvo, nome))
