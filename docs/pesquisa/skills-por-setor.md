@@ -153,3 +153,30 @@ Pedido do Adrian: o ep. 2 da série "Como eu criei um Blue Lock" foi reprovado (
 
 ### Lacuna (nenhuma skill de fora serve): pronúncia de nomes japoneses em TTS pt-BR
 Não existe skill séria para respelling pt-BR/japonês em TTS. O edge-tts rejeita SSML (`phoneme`, `sub`), então a alavanca é o **respelling no texto** (ex.: escrever o nome como o português o lê) numa tabela única de nomes, aplicada antes de sintetizar, conferida pelo ouvido do Adrian (som só ele julga). Padrões tirados das fontes lidas: léxico com precedência (base + exceções do projeto, `bitwize` `SKILL.md`), léxico por arquivo que cresce a cada erro achado (`hve-core` `SKILL.md`; `BBuf` PR 106) e "leia em voz alta, anote a pronúncia" (`ai-voiceover` `references/script-for-the-ear-and-recipes.md`). Fica como skill da casa a escrever, se o Adrian quiser.
+
+## Visual e retenção (26/10)
+
+Pedido do Adrian: "o que mais prende são as representações visuais, sejam do próprio jogo ou de diagramas; use e abuse". Quarentena em `E:\tmp_pytest\skills_quarentena\visual\` (commits em cada `ORIGEM.md`). Nada foi executado. O `iart-ai` (19 pacotes, 56 skills, MIT) foi a melhor fonte; quase tudo nele usa Remotion e `scripts/`, então só o texto entrou, com um aviso de que no HyperFrames o código de exemplo (rAF, CSS transition, `useCurrentFrame`) mostra a técnica e deve ser reescrito em GSAP numa timeline pausada.
+
+### Instaladas (todas MIT, só texto, cada uma com `ORIGEM.md` e AVISO DA CASA)
+- `visual-retencao-vertical` (iart `short-form-video`): arco de retenção, gramática do gancho, interrupção a cada 2-4 s, laço, zonas seguras. Benchmarks sem fonte: hipótese.
+- `visual-diagramas-animados` (iart `diagram-animation`): nós -> arestas -> rótulos, ativo aceso e resto apagado, ponto que viaja, barras, linha, contador.
+- `visual-explicador-roteiro-tela` (iart `explainer-video`): uma ideia, uma analogia, voz como espinha, imagem ilustra a frase, ritmo por batida.
+- `visual-svg-desenho-e-trajetoria` (iart `svg-animation`): seta que se desenha (`pathLength`), `MotionPath`, morph.
+- `visual-gsap-plugins` (oficial GreenSock `gsap-plugins` + `gsap-timeline`): DrawSVG, MotionPath, MorphSVG, SplitText, Flip, CustomEase/Wiggle/Bounce; plugins hoje grátis.
+- `visual-principios-de-movimento` (iart `animation-principles`): easing por intenção, antecipação, overshoot, stagger.
+- `visual-graficos-animados` (iart `chart-animation`): dado -> pixel, contador, ranking, anotação.
+- `visual-serie-bluelock` (**da casa**, escrita por nós): as 10 técnicas aplicadas à série, regra "render pula para qualquer quadro", tempo por tipo de elemento, storyboard frase -> imagem -> tempo.
+
+### Recusadas (com o motivo)
+- `iart-ai` `talking-head-b-roll`: exige whisper/ElevenLabs e scripts Node; é para vídeo de pessoa falando. Só a ideia de tempo por elemento (contexto 6 quadros antes, fato na palavra, piada depois) foi para a `visual-serie-bluelock`.
+- `iart-ai` `remotion-video`, `after-effects`, `logo-animation`, `motion-background`, `color-motion`, `isometric-animation`, `whiteboard-animation`, `wrapped-video`, `lower-thirds`, `countdown-video`, `caption-animation`, `beat-sync-editing`, `map-animation`, `kinetic-typography`: Remotion/After Effects ou assunto fora da série; legenda e música já têm dono (`hyperframes-direcao`).
+- `iart-ai` `web-animation-skills` (as outras 8: 60fps, acessibilidade, glassmorphism, lottie, micro-interação...): página web, não vídeo.
+- `heygen-com/hyperframes` `skills/*` (hyperframes-cli, registry, media-use, slideshow, figma): já temos `hyperframes-core`/`keyframes`; CLI e registro dependem de pacote npm e rede.
+- `greensock/gsap-skills` `gsap-scrolltrigger`, `gsap-react`, `gsap-frameworks`, `gsap-performance`, `gsap-utils`, `gsap-core`: página web; o núcleo já está na `hyperframes-keyframes`.
+- `postplusai/hook-skills` `visual-hook` (+ routing, qa): conselho de gancho genérico para anúncio/produto, e manda anexar propaganda do PostPlus em toda resposta. Os mecanismos úteis (evidência visual no 1º quadro, ação em curso, pergunta concreta) já estão na `roteiro-hook-writer` e na `visual-serie-bluelock`.
+- `josiahsiegel/claude-plugin-marketplace` `viral-video-hook-templates`: receitas de ffmpeg (`drawtext`, `zoompan`, `rgbashift`); o render é o HyperFrames, e o texto-base é "ganhos de 2-3x" sem fonte.
+- `notedit/happy-skills` `gsap-animation`: GSAP + Remotion, repetido pelo pacote oficial. `dylantarre/animation-principles` (144 skills): volume sem curadoria. `ncklrs/motion-designer`: especificação para Remotion. `ravsau`/diretórios (`skillselion`, `vibeindex`, `claudemarket`): só espelhos, não abertos.
+
+### Lacuna
+Não existe skill séria de análise tática de futebol em vídeo (telestration). As técnicas de cone, trajetória e linha do tempo da `visual-serie-bluelock` vêm de DrawSVG/MotionPath/diagramas. Manim e Remotion ficam de fora: o render da casa é o HyperFrames.
