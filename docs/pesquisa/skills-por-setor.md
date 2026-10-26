@@ -128,3 +128,28 @@ são hipóteses a confrontar com `metricas-*`, não metas.
 - `ravsau/youtuber-skills` `youtube-retention` (6 estrelas): leitor de curva pequeno, benchmarks sem fonte e sobreposto a `youtube-shorts`.
 - Registros e listas (`awesome-agent-skills`, `agentic-awesome-skills`) trazem também `taisly`, `upload-post`, `publora`, `postiz`, `ScrapeCreators`, `last30days`, `apify-*`, `*-automation` (Composio): **só registradas**, todas postam por intermediário, raspam ou automatizam conta de terceiros.
 - Não avaliadas por fugirem do pedido: `hook-writer`, `hashtag-strategy`, `reels-script`, `tiktok-script`, `thumbnail-design` do mesmo repositório (candidatas a uma 2ª rodada se faltar roteiro por rede).
+
+## Roteiro, humor e voz (26/10)
+
+Pedido do Adrian: o ep. 2 da série "Como eu criei um Blue Lock" foi reprovado (roteiro, piadas e pronúncia dos nomes). Quarentena em `E:\tmp_pytest\skills_quarentena\roteiro\` (commits em `SHAS.txt`). Nada foi executado. A 2ª rodada das `redes` (hook-writer, reels-script, tiktok-script, thumbnail-design) está resolvida aqui.
+
+### Aprovadas com cautela (instaladas em `.claude/skills/`, cada uma com `ORIGEM.md`)
+- `humor-sitcom-comedy` (jtydhr88/screenwriting-skills `sw-sitcom-comedy`, MIT, 1819 estrelas): mecânica de piada (setup em dois tempos, soco no fim, topper, callback, graça por personagem, contagem por página, diagnóstico). Está em chinês e responde em português se perguntada em português; ler só as seções de piada; aviso e resumo da casa no topo.
+- `roteiro-hook-writer` (social-media-skills `hook-writer`, MIT): gerar 5 a 10 ganchos de mecanismos diferentes e pontuar; o gancho sai do elemento mais forte do próprio vídeo.
+- `storytelling-falado` (artemnovitckii/content-skills `storytelling`, MIT): "mas/portanto" no lugar de "e então", última frase primeiro, ritmo, tom de falar com uma pessoa, ~2 palavras por segundo.
+
+### Recusadas (com o motivo)
+- `social-media-skills` `reels-script`, `tiktok-script`, `short-form-video-script`: sobrepostas a `youtube-shorts`, `tiktok-growth`, `instagram-reels-publishing`, `hyperframes-direcao` e à `roteiro-hook-writer`; metade é publicação pelo WoopSocial e prompts do Veo.
+- `thumbnail-design`: capa do YouTube; Short não usa miniatura e o assunto não é roteiro.
+- `scripting-and-storyboarding`, `story-writer`, `storytelling-and-narrative`, `meme-and-culture` (mesmo repositório): storyboard longo, Stories do Instagram, sobreposta à `storytelling-narrative` e meme de marca; todas ligadas ao WoopSocial.
+- `vkorost/claude-standup-skills` (1 estrela): imita a voz de sete humoristas reais, em inglês, com palavrão e política; a mecânica geral que cabe ao canal já está na `humor-sitcom-comedy`.
+- `talsraviv/comedy-writers-room`: sem licença no repositório.
+- `artemnovitckii` `anti-ai-writing`, `dumbify`, `viral-hooks`: lista de vocabulário em inglês e sobreposta à `roteiro-hook-writer`; só a `storytelling` entrou.
+- `ai-voiceover` (social-media-skills): ElevenLabs e WoopSocial; o motor da casa é o edge-tts, que não aceita audio tags. Só rende a regra "escreva para o ouvido, leia em voz alta, anote a pronúncia".
+- `openai/skills` `speech`: exige chave e API paga da OpenAI e roda um script; só tem um modelo de "direção de voz" curto (afeto, tom, ritmo, pausas, ênfase).
+- `microsoft/hve-core` `tts-voiceover`: Azure Speech com credencial, 400 KB de scripts; a ideia (léxico `sub alias`) está anotada abaixo.
+- `bitwize-music-studio/claude-ai-music-skills` `pronunciation-specialist` (CC0): para letra de música no Suno, inglês, depende de servidor MCP próprio.
+- `BBuf/AI-Infra-Auto-Driven-SKILLS` `sglang-explainer-video`: 1064 estrelas, mas sem licença no repositório; só a ideia (léxico `pronunciation.json` que cresce a cada erro, mais conferência por transcrição) foi anotada.
+
+### Lacuna (nenhuma skill de fora serve): pronúncia de nomes japoneses em TTS pt-BR
+Não existe skill séria para respelling pt-BR/japonês em TTS. O edge-tts rejeita SSML (`phoneme`, `sub`), então a alavanca é o **respelling no texto** (ex.: escrever o nome como o português o lê) numa tabela única de nomes, aplicada antes de sintetizar, conferida pelo ouvido do Adrian (som só ele julga). Padrões tirados das fontes lidas: léxico com precedência (base + exceções do projeto, `bitwize` `SKILL.md`), léxico por arquivo que cresce a cada erro achado (`hve-core` `SKILL.md`; `BBuf` PR 106) e "leia em voz alta, anote a pronúncia" (`ai-voiceover` `references/script-for-the-ear-and-recipes.md`). Fica como skill da casa a escrever, se o Adrian quiser.
