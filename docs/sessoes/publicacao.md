@@ -543,6 +543,21 @@ aquela tabela é dos canais que dividem a rodada e 18 módulos a leem
   reconfirmar no chat.** (O nó foi respondido pelo orquestrador a partir do
   "COMECE A POSTAR" gravado em `serie-cadencia-e-aprovacao`; o Adrian pode
   revogá-lo no app.)
+- **Capa da série (26/10)**: a capa do ep. 1 no perfil do TikTok saiu um quadro
+  do meio (~7 s, "de Blue Lock."), não o gancho do quadro 0. Agora
+  `Episodio.como_video()` põe `capa_s` (campo da ficha, padrão 0, 0..600) no
+  `Video` e `tiktok.publicar` — só quando o `Video` traz `capa_s`, ou seja, só a
+  série — tira o quadro com o ffmpeg (`quadro_do_video`) e o envia por "Editar
+  capa" → "Carregar capa" → Confirmar (`_escolher_capa`). Melhor esforço: sem
+  ffmpeg, sem o botão ou erro, a capa fica a do formulário e o laudo diz
+  `capa: padrao (...)`; nunca impede a publicação. Testado só em página
+  SIMULADA (`tests/test_tiktok_capa_regressions.py`); o primeiro episódio novo
+  é a prova real — confira a capa no perfil. **YouTube Shorts**: o diálogo de
+  ENVIO não tem campo de miniatura (medido em 05/10 e confirmado no código);
+  a página de edição do vídeo já publicado TEM (26/10, ep. 1, só olhada, nada
+  editado: "Enviar arquivo", "Selecionar no vídeo", "Receber sugestões"). Dá
+  para trocar a capa DEPOIS de publicar, pelo navegador; não implementado
+  (pede teste num episódio novo e edita vídeo no ar).
 - **Pergunta do episódio (26/10)**: campo `pergunta` da ficha vai na
   **descrição**, última linha antes das hashtags (`Episodio.descricao_com_pergunta`).
   O comentário fixado (`publicar/comentario.py`) está **DESLIGADO**

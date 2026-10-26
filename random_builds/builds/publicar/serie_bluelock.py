@@ -105,6 +105,7 @@ class Episodio:
     sha256: str = ""
     ficha: Path | None = None
     pergunta: str = ""
+    capa_s: float = 0.0
 
     @property
     def id(self) -> str:
@@ -122,7 +123,7 @@ class Episodio:
     def como_video(self):
         """O item que os publicadores esperam (`catalogo.Video`)."""
         from .catalogo import Video
-        return Video(
+        video = Video(
             id=self.id, origem="serie_bluelock", perfil="celular",
             caminho=self.arquivo, titulo=self.titulo,
             descricao=self.descricao_com_pergunta(),
@@ -130,6 +131,10 @@ class Episodio:
             rotulo=f"Blue Lock #{self.numero}",
             bytes=self.arquivo.stat().st_size,
             quando=self.arquivo.stat().st_mtime)
+        # O TikTok escolhe a CAPA no upload (so a serie passa isto): o quadro
+        # `capa_s` da ficha, padrao 0 = o gancho.
+        video.capa_s = self.capa_s
+        return video
 
 
 def sha256_de(caminho: Path) -> str:
@@ -167,6 +172,12 @@ def _ler_ficha(arquivo: Path) -> tuple:
     pergunta = str(dados.get("pergunta") or "").strip()
     if len(pergunta) > 500:
         return None, f"{nome}: pergunta com {len(pergunta)} caracteres (maximo 500)"
+    try:
+        capa_s = float(dados.get("capa_s", 0) or 0)
+    except (TypeError, ValueError):
+        return None, f"{nome}: capa_s invalido"
+    if not 0 <= capa_s <= 600:
+        return None, f"{nome}: capa_s fora de 0..600 s"
     proibida = texto_proibido(titulo, descricao, pergunta, *tags)
     if proibida:
         return None, (f"{nome}: o texto fala de '{proibida}' (regra do "
@@ -191,7 +202,8 @@ def _ler_ficha(arquivo: Path) -> tuple:
                       f"(sha256 {real[:12]} em vez de {esperado[:12]})")
     return Episodio(numero=numero, arquivo=caminho, titulo=titulo,
                     descricao=descricao, tags=tags, idioma="pt",
-                    sha256=real, ficha=arquivo, pergunta=pergunta), ""
+                    sha256=real, ficha=arquivo, pergunta=pergunta,
+                    capa_s=capa_s), ""
 
 
 def episodios(origem: Path | None = None) -> tuple:

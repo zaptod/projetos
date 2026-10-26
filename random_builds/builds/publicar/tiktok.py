@@ -379,6 +379,85 @@ _PORCENTAGEM = re.compile(r"(?<![\d.,])(\d{1,3})(?:[.,]\d+)?\s*%")
 ESPERA_DO_ENVIO_S = 120.0
 
 
+# ---------------------------------------------------------------- a capa
+# So a SERIE do Blue Lock escolhe a capa (26/10/2026): a capa do ep. 1 no
+# perfil saiu um quadro do MEIO (~7 s, legenda "de Blue Lock."), e nao o gancho
+# "POR QUE ELE PAROU?" do quadro 0. Os duelos e as historias nao passam
+# `capa_s` e seguem com a capa que o TikTok escolhe. Melhor esforco: falha de
+# capa NUNCA impede a publicacao (o quadro 0 e o padrao do formulario).
+BOTAO_EDITAR_CAPA = ("text=/^(Editar capa|Edit cover)$/i",
+                     "[data-e2e='edit-cover']")
+ABA_CARREGAR_CAPA = ("text=/^(Carregar capa|Upload cover)$/i",
+                     "[role='tab']:has-text('Carregar')",
+                     "[role='tab']:has-text('Upload')")
+BOTAO_CONFIRMAR_CAPA = ("button:has-text('Confirmar')",
+                        "button:has-text('Confirm')",
+                        "button:has-text('Salvar')",
+                        "button:has-text('Save')")
+BOTAO_CANCELAR_CAPA = ("button:has-text('Cancelar')",
+                       "button:has-text('Cancel')")
+
+
+def quadro_do_video(caminho, segundos: float = 0.0) -> Path | None:
+    """O quadro de `segundos` do mp4, em PNG numa pasta temporaria; `None` se
+    nao deu (sem ffmpeg, arquivo ruim). Nunca levanta."""
+    import shutil
+    import subprocess
+    import tempfile
+    exe = shutil.which("ffmpeg")
+    if not exe:
+        return None
+    destino = Path(tempfile.mkdtemp(prefix="capa_tiktok_")) / "capa.png"
+    try:
+        subprocess.run(
+            [exe, "-y", "-loglevel", "error", "-ss", f"{max(0.0, segundos):.2f}",
+             "-i", str(caminho), "-frames:v", "1", str(destino)],
+            capture_output=True, timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:                                          # noqa: BLE001
+        return None
+    return destino if destino.is_file() and destino.stat().st_size > 0 else None
+
+
+def _escolher_capa(page, quadro, passo, laudo: dict) -> bool:
+    """Em "Editar capa": envia o `quadro` (PNG) como capa e confirma. Nunca
+    levanta; o laudo diz o que houve (`laudo["capa"]`)."""
+    def sair(motivo: str) -> bool:
+        laudo["capa"] = f"padrao ({motivo})"
+        passo(f"capa: ficou a do formulario ({motivo}).")
+        cancelar = _primeiro(page, BOTAO_CANCELAR_CAPA, timeout=1.5)
+        try:
+            if cancelar is not None:
+                cancelar.click(timeout=3000)
+        except Exception:                                      # noqa: BLE001
+            pass
+        return False
+    try:
+        botao = _primeiro(page, BOTAO_EDITAR_CAPA, timeout=8.0)
+        if botao is None:
+            return sair("sem o botao Editar capa")
+        botao.click(timeout=5000)
+        aba = _primeiro(page, ABA_CARREGAR_CAPA, timeout=6.0)
+        if aba is None:
+            return sair("sem a aba Carregar capa")
+        aba.click(timeout=5000)
+        page.wait_for_timeout(800)
+        entrada = page.locator("input[type='file']").last
+        entrada.set_input_files(str(quadro), timeout=10000)
+        page.wait_for_timeout(2500)
+        confirmar = _primeiro(page, BOTAO_CONFIRMAR_CAPA, timeout=6.0)
+        if confirmar is None:
+            return sair("sem o botao Confirmar")
+        confirmar.click(timeout=5000)
+        page.wait_for_timeout(2000)
+        laudo["capa"] = "enviada"
+        passo("capa: quadro escolhido enviado e confirmado.")
+        return True
+    except Exception as exc:                                   # noqa: BLE001
+        return sair(f"{type(exc).__name__}")
+
+
+
 def _envio_concluido(page) -> bool | None:
     """O arquivo terminou de subir? True, False, ou None quando a tela nao diz.
 
@@ -779,6 +858,14 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
         texto_legenda = video.descricao_completa[:2000]
         laudo["envio_concluido"] = _esperar_envio(page, passo)
         _escrever_legenda(page, texto_legenda, passo, laudo)
+        capa_s = getattr(video, "capa_s", None)
+        if capa_s is not None:
+            quadro = quadro_do_video(caminho, float(capa_s))
+            if quadro is None:
+                laudo["capa"] = "padrao (sem o quadro)"
+                passo("capa: nao tirei o quadro do video; fica a do formulario.")
+            else:
+                _escolher_capa(page, quadro, passo, laudo)
 
         if _deve_barrar(postar, texto_legenda, laudo):
             # "VOLTA NA FILA DE ATRASADOS" so e verdade porque, desde
