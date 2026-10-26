@@ -294,6 +294,11 @@ def main(argv=None):
                 print(f"{p['id']} | {p.get('titulo', '')[:55]} | {p.get('situacao')} | {quem} | "
                       f"{p.get('motivo') or ''}")
             print(resumo_dos_servicos(ler_estado()))
+            try:      # PC am (26/10/2026): o ultimo da sonda, sem tocar na rede
+                from builds.pc_am import sonda
+                print(sonda.texto(sonda.ultima()))
+            except Exception:                                  # noqa: BLE001
+                pass
         else:
             import json
             print(json.dumps(ler_estado(), ensure_ascii=False, indent=2))

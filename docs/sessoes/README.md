@@ -32,6 +32,7 @@ houver nenhuma viva, assuma a parte e diga isso no commit).
 | Painel e Vila | [painel-e-vila.md](painel-e-vila.md) | `painel-e-vila` | O painel, a janela flutuante e a arte da Vila |
 | Jogo zombie | [jogo-zombie.md](jogo-zombie.md) | `jogo-zombie` | `E:\jogo_ZOMBIE`, o gravador e o canal que ainda não publicou |
 | Métricas e conferências | [metricas.md](metricas.md) | `metricas` | Audiência, relatórios do bot, o que deveria disparar alarme |
+| PC am (trabalhador remoto) | [pc-am.md](pc-am.md) | `builds` | O segundo PC que roda o trabalho pesado (testes, duelo, gravação do Blue Lock), com chave por trabalho e queda segura para este PC |
 
 ## As sessões, e como chamá-las
 

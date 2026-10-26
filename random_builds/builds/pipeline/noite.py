@@ -1017,6 +1017,15 @@ def _registrar(status: str, detalhe: str, **extra) -> None:
 
 
 # ------------------------------------------------------------------ rodada
+def _duelos_no_am() -> bool:
+    """A fila do PC am esta cuidando dos duelos? Qualquer erro = nao."""
+    try:
+        from ..pc_am import fila
+        return fila.cuida_dos_duelos()
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
 def _duelo_de_verdade():
     """O gerador real: um `PipelineController` para a rodada inteira."""
     from .controller import PipelineController
@@ -1024,6 +1033,18 @@ def _duelo_de_verdade():
 
     def gerar() -> Path:
         # p1 e p2 ficam para o rodizio de `controller.duelo`.
+        # PC am (19/10/2026): com `config/pc_am.json -> trabalhos.duelo` ligado,
+        # o par e a semente saem daqui e o am grava e renderiza; am fora,
+        # ocupado ou falhando = este mesmo `controlador.duelo` aqui, com o
+        # mesmo par e semente. Chave desligada (o padrao) = como sempre.
+        try:
+            from ..pc_am import maquina as pc_am
+            no_am = pc_am.ligado("duelo")
+        except Exception:                                      # noqa: BLE001
+            no_am = False
+        if no_am:
+            from ..pc_am import trabalhos
+            return trabalhos.duelo(controlador)
         return controlador.duelo()
     return gerar
 
@@ -1553,6 +1574,13 @@ def _trabalhar(*, config, ensaio, duelos, sem_worker, relogio, gerar_duelo,
         formato = plano["formato"]
         minutos = minutos_do_passo(plano, config)
         destino = feitos if formato == "duelo" else roletas
+        if formato == "duelo" and gerar_duelo is None and not ensaio and _duelos_no_am():
+            # PC am (20/10/2026): com a fila sem descanso viva e a chave do
+            # duelo ligada, quem repoe os duelos e o am. Fila parada ou am
+            # fora = segue aqui, como sempre.
+            print("[noite] duelos: o PC am repoe o estoque (fila sem descanso); nada aqui.")
+            vivos[formato] = False
+            continue
         if not cabe(relogio(), minutos, config, limite_geracao):
             parou = "janela"
             print(f"[noite] outro {formato} ({minutos:.0f} min) nao cabe "

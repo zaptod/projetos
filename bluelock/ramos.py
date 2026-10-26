@@ -197,6 +197,19 @@ def link_de_pr(ramo: str) -> str:
     return f"https://github.com/{REPO_GH}/compare/main...{ramo}?expand=1"
 
 
+def _pode_pesado_aqui(agora=None):
+    """O npm test dos ramos NESTE PC. Com a fila sem descanso do PC am viva
+    (20/10/2026), quem testa os ramos e o am (`builds.pc_am.fila`, fonte
+    `ramos`): aqui a olhada so analisa. Fila parada ou am fora = como antes."""
+    try:
+        from builds.pc_am import fila
+        if fila.viva():
+            return False, "o PC am testa os ramos (fila sem descanso)"
+    except Exception:                                          # noqa: BLE001
+        pass
+    return comum.pode_pesado(agora)
+
+
 # ---------------------------------------------------------------- vigia
 class VigiaDeRamos:
     def __init__(self, versoes: Versoes | None = None, *, gh=None, avisar=None, pode_pesado=None,
@@ -205,7 +218,7 @@ class VigiaDeRamos:
         self.versoes = versoes or Versoes()
         self.gh = gh or gh_real
         self.avisar = avisar or avisar_real
-        self.pode_pesado = pode_pesado or comum.pode_pesado
+        self.pode_pesado = pode_pesado or _pode_pesado_aqui
         self.testar = testar or self._testar_real
         self.relogio = relogio
         self.arquivo = Path(estado) if estado else comum.pasta() / "ramos.json"

@@ -130,6 +130,10 @@ def _servicos() -> list[str]:
         linhas.append(f"  - {nome}: {s.get('situacao')}{velho}")
     claude = _rodar(PY + ["-m", "remoto.orquestrador", "claude", "status"])
     linhas.append(f"- Claude: {claude.splitlines()[0][:140] if claude else '?'}")
+    # PC am (ponto 9, 26/10/2026): a sonda barata (SSH curto, cache de 45-90 s)
+    am = _rodar(PY + ["-m", "builds.pc_am", "sonda"], timeout=30)
+    if am.startswith("PC am:"):
+        linhas.append(f"- {am.splitlines()[0][:220]}")
     try:
         from random_builds.builds.grade import GRADE
         agora = datetime.now()
