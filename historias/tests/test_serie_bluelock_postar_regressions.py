@@ -122,7 +122,7 @@ class RodadaDaSerieTests(unittest.TestCase):
             "episodio": numero, "arquivo": str(mp4),
             "sha256": serie.sha256_de(mp4),
             "titulo": TITULO if numero == 1 else
-            f"Gancho {numero} | Como eu criei um Blue Lock #{numero}",
+            TITULO.replace("#1", f"#{numero}"),
             "descricao": DESCRICAO, "tags": TAGS, "idioma": "pt",
             "aprovado_por_conferente": True}, ensure_ascii=False),
             encoding="utf-8")

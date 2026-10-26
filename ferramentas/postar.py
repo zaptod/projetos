@@ -5199,7 +5199,8 @@ def postar_bluelock(*, so_ver: bool = False, agora: bool = False) -> dict:
                      **({"youtube_id": laudo["youtube_id"]}
                         if laudo.get("youtube_id") else {})})
                 ficha.update({"feito": True, "url": estado,
-                              "visibilidade": "public"})
+                              "visibilidade": "public",
+                              "youtube_id": laudo.get("youtube_id") or ""})
             else:
                 # O CLIQUE SAIU E O YOUTUBE NAO DISSE "PUBLICO": pode ser
                 # rascunho ou privado. Nao e "publicado" para o ledger, e o
@@ -5238,7 +5239,27 @@ def postar_bluelock(*, so_ver: bool = False, agora: bool = False) -> dict:
         ficha["tiktok_fora_da_grade"] = True
     if "youtube" not in escolhas and not ficha.get("youtube_falhou"):
         ficha["so_tiktok"] = True
+    _comentarios_da_serie(ficha, escolhas)
     return ficha
+
+
+def _comentarios_da_serie(ficha: dict, escolhas: dict) -> None:
+    """Depois dos dois destinos: o comentario com a `pergunta` da ficha,
+    FIXADO (26/10/2026). Melhor esforco — NUNCA levanta nem muda a ficha da
+    rodada; sem `pergunta` na ficha nao abre navegador. Quem falhou roda a mao:
+    `python -m builds.publicar.comentario N youtube|tiktok`."""
+    try:
+        from builds.publicar import comentario
+        yt = escolhas.get("youtube")
+        if yt is not None and ficha.get("youtube_id"):
+            comentario.aplicar_se_tiver(yt.numero, "youtube",
+                                        video_id=ficha["youtube_id"],
+                                        passo=_linha)
+        tk = escolhas.get("tiktok")
+        if tk is not None and _tiktok_confirmado(ficha.get("tiktok")):
+            comentario.aplicar_se_tiver(tk.numero, "tiktok", passo=_linha)
+    except Exception as exc:                                   # noqa: BLE001
+        _linha(f"[postar] bluelock: comentario fixado nao feito ({exc})"[:200])
 
 
 def _youtube_confirmado(estado) -> bool:

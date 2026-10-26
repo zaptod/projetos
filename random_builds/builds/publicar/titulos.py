@@ -50,6 +50,14 @@ PARTE = re.compile(r"\(?\s*parte\s*(\d+)\s*[/de]{1,2}\s*(\d+)\s*\)?\s*$",
 CORTE = re.compile(r"\(\s*(\d+)\s+de\s+(\d+)\s*\)\s*$", re.IGNORECASE)
 
 
+# O "#1" do fim do titulo da SERIE ("... | Como eu criei um Blue Lock #1"): e a
+# unica coisa que distingue o episodio 1 do 2 quando o corpo e igual. Medido
+# em 26/10/2026: com o corte em 60, "...blue lock 1" tem 62 letras e o numero
+# caia fora, entao #1 e #2 davam a MESMA chave. Em todos os ledgers so os 2
+# titulos do ep. 1 terminam em "#N": nenhum outro canal muda de chave.
+NUMERO = re.compile(r"#\s*(\d+)\s*$")
+
+
 def corte(texto: str) -> tuple | None:
     """`(indice, total)` quando o titulo e de um PEDACO; `None` quando nao.
 
@@ -104,6 +112,11 @@ def chave(texto: str) -> str:
     if achado:
         limpo = limpo[:achado.start()].strip()
         sufixo = f" parte {achado.group(1)} de {achado.group(2)}"
+    else:
+        numero = NUMERO.search(limpo)
+        if numero:
+            limpo = limpo[:numero.start()].strip()
+            sufixo = f" numero {int(numero.group(1))}"
     limpo = "".join(c for c in limpo if c.isalnum() or c.isspace())
     limpo = re.sub(r"\s+", " ", limpo).strip()
     return (limpo[:max(0, TAMANHO - len(sufixo))] + sufixo).strip()

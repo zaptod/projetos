@@ -104,17 +104,28 @@ class Episodio:
     idioma: str = "pt"
     sha256: str = ""
     ficha: Path | None = None
+    pergunta: str = ""
 
     @property
     def id(self) -> str:
         return f"bluelock_ep{self.numero:02d}"
+
+    def descricao_com_pergunta(self) -> str:
+        """A descricao com a `pergunta` da ficha como ULTIMA linha do texto,
+        antes das hashtags (`Video.descricao_completa` poe as tags depois).
+        Decisao do Adrian (26/10): a pergunta vai na descricao, nao em
+        comentario. Sem `pergunta`, ou ja dentro do texto: nada muda."""
+        if not self.pergunta or self.pergunta in self.descricao:
+            return self.descricao
+        return self.descricao + "\n\n" + self.pergunta
 
     def como_video(self):
         """O item que os publicadores esperam (`catalogo.Video`)."""
         from .catalogo import Video
         return Video(
             id=self.id, origem="serie_bluelock", perfil="celular",
-            caminho=self.arquivo, titulo=self.titulo, descricao=self.descricao,
+            caminho=self.arquivo, titulo=self.titulo,
+            descricao=self.descricao_com_pergunta(),
             hashtags=list(self.tags), fonte_id=self.id,
             rotulo=f"Blue Lock #{self.numero}",
             bytes=self.arquivo.stat().st_size,
@@ -153,7 +164,10 @@ def _ler_ficha(arquivo: Path) -> tuple:
         return None, f"{nome}: sem titulo ou sem descricao"
     if len(titulo) > 100:
         return None, f"{nome}: titulo com {len(titulo)} caracteres (maximo 100)"
-    proibida = texto_proibido(titulo, descricao, *tags)
+    pergunta = str(dados.get("pergunta") or "").strip()
+    if len(pergunta) > 500:
+        return None, f"{nome}: pergunta com {len(pergunta)} caracteres (maximo 500)"
+    proibida = texto_proibido(titulo, descricao, pergunta, *tags)
     if proibida:
         return None, (f"{nome}: o texto fala de '{proibida}' (regra do "
                       "Adrian: nada tecnico, de IA de desenvolvimento nem do "
@@ -177,7 +191,7 @@ def _ler_ficha(arquivo: Path) -> tuple:
                       f"(sha256 {real[:12]} em vez de {esperado[:12]})")
     return Episodio(numero=numero, arquivo=caminho, titulo=titulo,
                     descricao=descricao, tags=tags, idioma="pt",
-                    sha256=real, ficha=arquivo), ""
+                    sha256=real, ficha=arquivo, pergunta=pergunta), ""
 
 
 def episodios(origem: Path | None = None) -> tuple:
@@ -203,6 +217,18 @@ def episodios(origem: Path | None = None) -> tuple:
         validos.pop(numero, None)
         fora.append(f"ep{numero:02d}: dois JSON com o mesmo numero")
     return [validos[n] for n in sorted(validos)], fora
+
+
+def pergunta_de(numero: int, origem: Path | None = None) -> str:
+    """A `pergunta` da ficha do episodio (comentario fixado), ou `""`. So de
+    episodio aprovado e valido; nunca levanta."""
+    try:
+        for ep in episodios(origem)[0]:
+            if ep.numero == int(numero):
+                return ep.pergunta
+    except Exception:                                          # noqa: BLE001
+        pass
+    return ""
 
 
 def _destino(linha: dict) -> str:
@@ -280,11 +306,53 @@ def registrar(video, url: str, plataforma: str, extra: dict | None = None
     return linha
 
 
-def aprovar(numero: int, origem: Path | None = None) -> str:
+QUEM_AUTORIZA = ("Adrian", "orquestrador", "conferente")
+PASTA_DAS_DECISOES = Path(__file__).resolve().parents[3] / "decisoes"
+
+
+def _autorizacao_confere(referencia: str) -> str:
+    """`""` se a referencia serve; senao o motivo. Duas formas validas:
+    `no:<projeto>/<id>` (um no do Grimorio JA DECIDIDO, lido do disco) ou uma
+    citacao literal com a data (`"..." (26/10)`), de pelo menos 20 letras."""
+    referencia = str(referencia or "").strip()
+    achado = re.fullmatch(r"no:([\w-]+)/([\w-]+)", referencia)
+    if achado:
+        arquivo = PASTA_DAS_DECISOES / achado.group(1) / f"{achado.group(2)}.json"
+        try:
+            no = json.loads(arquivo.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return f"o no {referencia[3:]} do Grimorio nao existe ou nao abre"
+        if no.get("situacao") != "decidida" or not (no.get("vigente") or {}):
+            return f"o no {referencia[3:]} nao esta decidido"
+        return ""
+    if len(referencia) < 20 or not re.search(r"\d{1,2}/\d{1,2}", referencia):
+        return ("a autorizacao e um no do Grimorio (`no:projeto/id`, ja "
+                "decidido) ou uma citacao literal com a data (dd/mm)")
+    return ""
+
+
+def aprovar(numero: int, origem: Path | None = None, *, por: str = "",
+            autorizacao: str = "", conferente: str = "") -> str:
     """Poe a marca de aprovado no JSON do episodio `numero`, CONFERINDO antes
     que o `sha256` dele e o do arquivo de hoje sao o mesmo (a marca e amarrada
     ao que alguem viu). Devolve o caminho da ficha. Levanta `ValueError` se
-    nao da. QUEM CHAMA e o orquestrador/Adrian: ela e a decisao de publicar."""
+    nao da.
+
+    A autorizacao fica REGISTRADA na ficha (26/10/2026: duas recusas por falta
+    de prova de que o Adrian tinha mandado): `autorizado_por` (Adrian,
+    orquestrador ou conferente), `autorizacao` (no do Grimorio ja decidido ou
+    citacao literal com data), `conferente` (veredito + caminho da prova) e
+    `autorizado_em`. Sem os tres, nao aprova: a marca sem rastro e o que
+    fez o agente de publicacao desconfiar de uma ordem legitima.
+    """
+    por = str(por or "").strip()
+    if por.lower() not in {q.lower() for q in QUEM_AUTORIZA}:
+        raise ValueError(f"`por` e um de {QUEM_AUTORIZA}, nao {por!r}")
+    motivo = _autorizacao_confere(autorizacao)
+    if motivo:
+        raise ValueError(motivo)
+    if len(str(conferente or "").strip()) < 10:
+        raise ValueError("`conferente`: o veredito e o caminho da prova")
     base = Path(origem) if origem is not None else pasta()
     for arquivo in sorted(base.glob("*.json")):
         try:
@@ -303,8 +371,13 @@ def aprovar(numero: int, origem: Path | None = None) -> str:
             raise ValueError(
                 f"o arquivo mudou (sha256 {real[:12]}): confira de novo antes "
                 "de aprovar")
+        agora = datetime.now().isoformat(timespec="seconds")
         dados["aprovado_por_conferente"] = True
-        dados["aprovado_em"] = datetime.now().isoformat(timespec="seconds")
+        dados["aprovado_em"] = agora
+        dados["autorizado_por"] = por
+        dados["autorizacao"] = str(autorizacao).strip()
+        dados["conferente"] = str(conferente).strip()
+        dados["autorizado_em"] = agora
         arquivo.write_text(json.dumps(dados, ensure_ascii=False, indent=2)
                            + "\n", encoding="utf-8")
         _, motivo = _ler_ficha(arquivo)
@@ -320,10 +393,22 @@ def main(argv=None) -> int:
     import sys
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["aprovar"]:
+        import argparse
+        ap = argparse.ArgumentParser(prog="serie_bluelock aprovar")
+        ap.add_argument("numero", type=int)
+        ap.add_argument("--por", required=True, choices=list(QUEM_AUTORIZA))
+        ap.add_argument("--autorizacao", required=True,
+                        help="no:projeto/id do Grimorio ja decidido, ou "
+                             "citacao literal com a data")
+        ap.add_argument("--conferente", required=True,
+                        help="veredito + caminho da prova")
+        ns = ap.parse_args(argv[1:])
         try:
-            print("aprovado:", aprovar(int(argv[1])))
+            print("aprovado:", aprovar(ns.numero, por=ns.por,
+                                       autorizacao=ns.autorizacao,
+                                       conferente=ns.conferente))
             return 0
-        except (IndexError, ValueError) as exc:
+        except ValueError as exc:
             print("nao aprovei:", exc)
             return 1
     from . import metricas
@@ -343,8 +428,8 @@ def main(argv=None) -> int:
     return 0
 
 
-__all__ = ["CANAL", "DESTINOS", "TETO_POR_DIA", "Episodio", "aprovar",
-           "episodios", "escolher", "pasta", "registrar", "sha256_de",
+__all__ = ["QUEM_AUTORIZA", "CANAL", "DESTINOS", "TETO_POR_DIA", "Episodio", "aprovar",
+           "episodios", "escolher", "pasta", "pergunta_de", "registrar", "sha256_de",
            "texto_proibido"]
 
 

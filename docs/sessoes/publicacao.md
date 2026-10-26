@@ -528,8 +528,29 @@ aquela tabela é dos canais que dividem a rodada e 18 módulos a leem
   ilegível = não publica), um por horário (`publicou_neste_horario`) e as regras
   do Adrian para o texto (`texto_proibido`: nada de ferramenta de IA de
   desenvolvimento, nada técnico, nada de GitHub nem do local do projeto).
-  Medido: `titulos.chave` corta o título em 60 letras e **não enxerga o `#N`** —
-  o gancho do episódio tem de mudar, senão a guarda de título barra o seguinte.
+  **Número do episódio na chave (26/10)**: `titulos.chave` cortava em 60 letras e
+  o `#N` do fim caía fora — "...Blue Lock #1" e "#2" davam a MESMA chave
+  (medido: `True`, 60 letras). Agora o `#N` final é sufixo da chave, como o
+  "(Parte N/M)" (`titulos.NUMERO`): #1 ≠ #2 (`False`), o mesmo #1 duas vezes
+  continua barrado. Em todos os ledgers só os 2 títulos do ep. 1 terminam em
+  `#N`: nenhum outro canal mudou de chave.
+- **Autorização registrada (26/10)**: `serie_bluelock aprovar N --por
+  Adrian|orquestrador|conferente --autorizacao <no:projeto/id | "citação" (dd/mm)>
+  --conferente "<veredito + caminho da prova>"` grava na ficha `autorizado_por`,
+  `autorizacao`, `conferente`, `autorizado_em` (sem os três, não aprova; o nó
+  citado tem de existir e estar decidido). **Episódio com ficha aprovada (sha256)
+  + nó `blue-lock/serie-postar-autorizado` = pode publicar; não é preciso
+  reconfirmar no chat.** (O nó foi respondido pelo orquestrador a partir do
+  "COMECE A POSTAR" gravado em `serie-cadencia-e-aprovacao`; o Adrian pode
+  revogá-lo no app.)
+- **Pergunta do episódio (26/10)**: campo `pergunta` da ficha vai na
+  **descrição**, última linha antes das hashtags (`Episodio.descricao_com_pergunta`).
+  O comentário fixado (`publicar/comentario.py`) está **DESLIGADO**
+  (`LIGADO = False`): o teste de 26/10 comentou com a conta PESSOAL do Adrian
+  (o perfil `youtube_web` abre a página do vídeo como `@adrianoliveira9418`, não
+  como o canal Egoistsoccer); o comentário foi apagado. Religar só com ordem
+  dele e depois de trocar para o canal na página do vídeo. A descrição do canal
+  e a bio do TikTok não foram mexidas.
 - **Rodada**: `postar.postar_bluelock` roda **depois** de histórias e builds
   (`_ordem_dos_canais` não mudou). Fora das 20:37 ou sem episódio aprovado a
   ficha é calada (`fora_da_grade`: sem Telegram, sem código de saída 1, sem ler

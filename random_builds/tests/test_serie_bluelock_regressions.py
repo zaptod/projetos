@@ -30,12 +30,10 @@ DESCRICAO = ("Ninguém controla os jogadores do meu simulador de Blue Lock: "
 
 
 def _titulo(numero: int) -> str:
-    """Cada episodio tem o SEU gancho: `titulos.chave` corta o titulo em 60
-    letras e nao enxerga o `#N` do fim (medido: o gancho do ep1 com `#2` da a
-    MESMA chave) — titulo que so troca o numero e repeticao, e barra."""
-    if numero == 1:
-        return TITULO
-    return f"Gancho do episodio {numero} | Como eu criei um Blue Lock #{numero}"
+    """O MESMO gancho com o `#N` trocado (26/10: a chave cortava em 60 letras
+    e o `#N` caia fora, entao #1 e #2 colidiam; agora o numero faz parte da
+    chave da serie)."""
+    return TITULO.replace("#1", f"#{numero}")
 
 
 TAGS = ["#bluelock", "#futebol", "#simulador", "#anime", "#isagi", "#bachira"]
@@ -192,6 +190,128 @@ class EscolherTests(unittest.TestCase):
         ep, _ = S.escolher("youtube", self.aprovados, [apagado], set(),
                            self.hoje)
         self.assertEqual(ep.numero, 2)
+
+
+class NumeroNaChaveTests(unittest.TestCase):
+    """Ponto 5 (26/10/2026). Medido: "esse jogador parou ninguem mandou como
+    eu criei um blue lock 1" tem 62 letras; o corte em 60 comia o numero e
+    #1 e #2 davam a MESMA chave (antes do conserto). Agora #1 != #2 e o mesmo
+    #1 duas vezes continua barrado. Em todos os ledgers so os 2 titulos do
+    ep. 1 terminam em "#N": nenhum outro canal muda de chave."""
+
+    def test_o_mesmo_gancho_com_numero_diferente_nao_colide(self):
+        from builds.publicar import titulos
+        self.assertNotEqual(titulos.chave(_titulo(1)), titulos.chave(_titulo(2)))
+        self.assertLessEqual(len(titulos.chave(_titulo(12))), titulos.TAMANHO)
+
+    def test_o_mesmo_numero_duas_vezes_e_barrado(self):
+        from builds.publicar import titulos
+        self.assertEqual(titulos.chave(_titulo(1)),
+                         titulos.chave(_titulo(1).upper() + " "))
+        self.assertTrue(titulos.repetido(_titulo(1), {titulos.chave(_titulo(1))}))
+        self.assertFalse(titulos.repetido(_titulo(2), {titulos.chave(_titulo(1))}))
+
+    def test_a_guarda_da_serie_deixa_o_2_depois_do_1_e_barra_o_1_de_novo(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1)
+            _ficha(Path(d), 2)
+            aprovados, _ = S.episodios(Path(d))
+            no_ar = [_linha(1, "youtube", "2026-10-26T20:41:00")]
+            ep, _ = S.escolher("youtube", aprovados, no_ar, set(),
+                               date(2026, 10, 27))
+            self.assertEqual(ep.numero, 2)
+            # o 2 com o titulo do 1 (so o numero igual): barra
+            _ficha(Path(d), 2, titulo=_titulo(1))
+            aprovados, _ = S.episodios(Path(d))
+            ep, motivo = S.escolher("youtube", aprovados, no_ar, set(),
+                                    date(2026, 10, 27))
+            self.assertIsNone(ep)
+            self.assertIn("ja esta no ar", motivo)
+
+    def test_titulos_dos_outros_canais_mantem_a_chave(self):
+        from builds.publicar import titulos
+        self.assertEqual(titulos.chave("Sword vs Dagger #shorts"),
+                         "sword vs dagger shorts")
+        self.assertEqual(titulos.chave("Historia (Parte 3/6)"),
+                         "historia parte 3 de 6")
+
+
+class PerguntaNaDescricaoTests(unittest.TestCase):
+    """26/10/2026: a pergunta do episodio vai na DESCRICAO, ultima linha antes
+    das hashtags (descricao_completa = texto + 2 quebras + tags)."""
+
+    def test_pergunta_vira_a_ultima_linha_antes_das_hashtags(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1, pergunta="Qual personagem você colocaria no seu time? 👇")
+            ep = S.episodios(Path(d))[0][0]
+            completa = ep.como_video().descricao_completa
+            linhas = completa.split(chr(10))
+            self.assertEqual(linhas[-1], " ".join(TAGS))
+            self.assertEqual(linhas[-3], ep.pergunta)
+            self.assertEqual(completa.count(ep.pergunta), 1)
+
+    def test_sem_pergunta_a_descricao_nao_muda(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1)
+            ep = S.episodios(Path(d))[0][0]
+            self.assertEqual(ep.como_video().descricao, DESCRICAO)
+
+    def test_pergunta_proibida_tira_o_episodio_da_fila(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1, pergunta="Viu o código no GitHub?")
+            aprovados, fora = S.episodios(Path(d))
+            self.assertEqual(aprovados, [])
+            self.assertTrue(fora)
+
+
+class AutorizacaoRegistradaTests(unittest.TestCase):
+    """Ponto 6 (26/10/2026): `aprovar` grava QUEM autorizou, em que base e o
+    veredito do conferente — sem os tres nao aprova."""
+
+    NO = "no:blue-lock/serie-cadencia-e-aprovacao"
+
+    def _aprovar(self, pasta, **kw):
+        base = dict(por="orquestrador", autorizacao=self.NO,
+                    conferente="aprovado; E:/prova/ep01.png")
+        base.update(kw)
+        return S.aprovar(1, Path(pasta), **base)
+
+    def test_grava_os_quatro_campos(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1, aprovado_por_conferente=False)
+            self._aprovar(d)
+            ficha = json.loads((Path(d) / "ep01.json").read_text("utf-8"))
+            self.assertIs(ficha["aprovado_por_conferente"], True)
+            self.assertEqual(ficha["autorizado_por"], "orquestrador")
+            self.assertEqual(ficha["autorizacao"], self.NO)
+            self.assertEqual(ficha["conferente"], "aprovado; E:/prova/ep01.png")
+            self.assertTrue(ficha["autorizado_em"])
+            self.assertEqual([e.numero for e in S.episodios(Path(d))[0]], [1])
+
+    def test_sem_quem_sem_base_ou_sem_veredito_nao_aprova(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1, aprovado_por_conferente=False)
+            for ruim in ({"por": ""}, {"por": "alguem"}, {"autorizacao": ""},
+                         {"autorizacao": "pode postar"},
+                         {"autorizacao": "no:blue-lock/nao-existe"},
+                         {"conferente": ""}):
+                with self.assertRaises(ValueError, msg=str(ruim)):
+                    self._aprovar(d, **ruim)
+            ficha = json.loads((Path(d) / "ep01.json").read_text("utf-8"))
+            self.assertIs(ficha["aprovado_por_conferente"], False)
+
+    def test_citacao_literal_com_data_vale(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1, aprovado_por_conferente=False)
+            self._aprovar(d, por="Adrian",
+                          autorizacao='"COMECE A POSTAR" (26/10, chat)')
+
+    def test_arquivo_trocado_depois_da_conferencia_nao_aprova(self):
+        with TemporaryDirectory() as d:
+            _ficha(Path(d), 1, aprovado_por_conferente=False)
+            (Path(d) / "EP01.mp4").write_bytes(b"outro render")
+            with self.assertRaises(ValueError):
+                self._aprovar(d)
 
 
 if __name__ == "__main__":
