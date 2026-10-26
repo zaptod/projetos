@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-26T11:56:16",
+      "evento": "2026-10-26T11:56:11",
+      "linha": 219,
+      "nota": "resposta sem pedido de origem: blue-lock/main-avanca-0c200a0 = Avançar até a mais nova (recomendado)",
+      "opcao": "avancar",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "3063/3063 testes e build ok em checkout completo (relatório E:\\BLUE-Lock-serie-capturas\\integracao_main\\RELATORIO.md). CI do GitHub: job browser vermelho por scripts/check-locomotion-ui.py desatualizado (seletor #graphics, anterior à interface responsiva 0062cd3). Adrian escolheu na pergunta do orquestrador em 26/10.",
   "criado": "2026-10-26T11:56:08.790839",
   "depende_de": [],
