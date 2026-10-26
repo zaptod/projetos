@@ -1,20 +1,24 @@
 # -*- coding: utf-8 -*-
-"""A janela "Blue Lock — versoes": escolher a versao do jogo e abrir.
+"""A janela "Blue Lock — versoes": escolher a versao do jogo e jogar.
 
 O que o atalho da Area de Trabalho abre (pythonw, sem console). Lista a main,
 os ramos do GitHub dele (com o veredito do vigia de ramos, a data e o CI) e
-as versoes ja preparadas; aceita um commit colado. "Rodar" prepara a versao
+as versoes ja preparadas; aceita um commit colado. "Jogar" prepara a versao
 (pasta + npm ci se o lock for novo + build) mostrando o progresso e abre o
 jogo numa janela VISIVEL do Chrome (perfil proprio do lancador).
 
-A cara e a das janelas de trabalho do painel (`painel.estilo.OFICINA`):
-sobria e densa, borda em vez de bloco de cor, acento so no que e clicavel.
+A CARA (26/10): identidade do jogo — verde-campo com acento lima, o do "BL"
+(`bluelock/estilo.py`) — e nao mais a tabela de 7 colunas. Cada versao e um
+cartao com nome amigavel ("Bachira · roulette choreography"), data relativa
+e selos (VERSAO PRINCIPAL, NOVA, PREPARADA, FIXADA); a da direita mostra a
+escolhida com o botao grande "Jogar". Veredito do vigia, comando de merge e
+commits ficam em "Detalhes tecnicos" (recolhido), o log tecnico na gaveta do
+rodape. O que sobra de jargao e o hash curto, discreto.
 
 A TELA DELE (medida pelo conferente, 19/10): 1920x1080 a 150% = 1280x720
 logicos, ~680 uteis com a barra de tarefas. Tudo aqui cabe nisso: a lista
-ROLA (barra empacotada antes da tabela), o veredito da lista e CURTO (a frase
-inteira fica no detalhe) e o comando de merge tem linha propria logo abaixo
-do veredito — antes ele era a ultima linha de um texto de 4 linhas e sumia.
+ROLA (quadro com barra propria), o painel da direita rola nos detalhes e o
+rodape e empacotado ANTES do corpo, senao o `pack` corta em silencio.
 
 O trabalho pesado roda numa thread e fala com a tela por uma FILA lida pelo
 `after` da thread da interface — `after()` chamado de outra thread quebra o
@@ -27,23 +31,24 @@ import queue
 import re
 import threading
 import tkinter as tk
-import tkinter.font as tkfont
 from contextlib import ExitStack
 from datetime import datetime
-from tkinter import messagebox, ttk
+from tkinter import messagebox
 
+from . import estilo
+from .estilo import CORES, Barra, ESPACO, Logo, Pilula, Rolagem, data_relativa, e_de_hoje, letra, nome_amigavel, selo
 from .ramos import VigiaDeRamos, link_de_pr
 from .versoes import MANTER, ErroDeVersao, Versoes, matar_arvore
 
 ICONE_DO_TIPO = {"vale": "✅", "espere": "⏳", "nao_vale": "❌", "olho": "⚠", "na_main": "✔"}
-# (id, titulo, exemplo que tem de caber). A "versao" e a unica que estica:
-# ela absorve a sobra e encolhe quando falta, sem empurrar a barra de rolagem
-# para fora (19/10: 1115 px de colunas num quadro de 1106 deixavam a barra com 0).
-COLUNAS = [("versao", "Versão", "fix/bachira-air-contact"), ("commit", "Commit", "face59dc"),
-           ("data", "Data", "19/10 21:57"), ("veredito", "Veredito", "⏳ espere (contido no isagi-off-ba…)"),
-           ("ci", "CI", "vermelho"), ("testes", "Testes aqui", "falhou 1770/1770"), ("pronta", "Pronta", "★ servidor")]
-VEREDITO_MAX = 36           # caracteres do veredito da lista
+VEREDITO_MAX = 36           # caracteres do veredito curto (o da linha do vigia)
 ALTURA_UTIL = 680           # a tela dele, em pixels logicos uteis
+LARGURA_PAINEL = 368        # o painel da direita (a escolhida + Jogar)
+BUSCA_DICA = "Buscar por nome, personagem ou commit…"
+FILTROS = [("todas", "Todas"), ("novas", "Novas"), ("preparadas", "Preparadas"), ("fixadas", "Fixadas")]
+# tipo do veredito -> (frase de gente, cor). So o que pede acao aparece no cartao.
+ETIQUETA_DO_TIPO = {"vale": ("pronta para juntar", "ok"), "nao_vale": ("com problema", "erro"),
+                    "olho": ("precisa de olho", "aviso"), "na_main": ("já na principal", "texto_apagado")}
 
 
 def _hora(iso: str | None) -> str:
@@ -212,16 +217,47 @@ def detalhe(linha: dict | None) -> str:
         partes += [f"  • {c.get('hash')} {c.get('assunto', '')[:100]}" for c in a["commits"][:30]]
     return "\n".join(partes)
 
+# --- o que a TELA mostra (puro: o teste chama sem Tk) -----------------
+def preparada(linha: dict) -> bool:
+    return bool(linha["valores"][6].replace("★", "").strip())
+
+
+def fixada(linha: dict) -> bool:
+    return "★" in linha["valores"][6]
+
+
+def e_nova(linha: dict, iso: dict, agora: datetime | None = None) -> bool:
+    return linha["tipo"] not in ("main", "commit", "na_main") and e_de_hoje(iso.get(linha["sha"]), agora)
+
+
+def filtrar(todas: list[dict], filtro: str = "todas", busca: str = "", iso: dict | None = None,
+            agora: datetime | None = None) -> list[dict]:
+    """As linhas que o filtro (chip) e a busca deixam passar. A busca acha pelo
+    nome amigavel, pelo ramo, pelo commit e pelo assunto."""
+    iso = iso or {}
+    palavras = busca.lower().split()
+    saida = []
+    for linha in todas:
+        if filtro == "novas" and not e_nova(linha, iso, agora):
+            continue
+        if filtro == "preparadas" and not preparada(linha):
+            continue
+        if filtro == "fixadas" and not fixada(linha):
+            continue
+        palheiro = " ".join([nome_amigavel(linha["ref"])[0], linha["ref"], linha["sha"], linha.get("assunto", "")]).lower()
+        if all(p in palheiro for p in palavras):
+            saida.append(linha)
+    return saida
+
+
+def curto(texto: str, limite: int) -> str:
+    return texto if len(texto) <= limite else texto[:limite - 1].rstrip() + "…"
+
 
 class Janela:
     def __init__(self, raiz, *, versoes: Versoes | None = None, vigia: VigiaDeRamos | None = None,
                  atualizar_ao_abrir: bool = True):
-        from painel.estilo import ESPACO, OFICINA
-        from painel.widgets import Oficina
         self.raiz = raiz
-        self.tema = OFICINA
-        self.o = Oficina(OFICINA)
-        self.E = ESPACO
         self.fila: queue.Queue = queue.Queue()
         self.versoes = versoes or Versoes(log=lambda texto: self.fila.put(("log", texto)))
         if versoes is not None:
@@ -231,8 +267,17 @@ class Janela:
         self.abertas: set[str] = set()          # shas abertos nesta janela: a limpeza nao toca
         self._seguras = ExitStack()             # e a trava de cada um, contra o vigia de outro processo
         self._ultima: dict | None = None        # a ultima analise dos ramos (Atualizar)
-        self.linhas: list[dict] = []
+        self.linhas: list[dict] = []            # todas
+        self.visiveis: list[dict] = []          # as que o filtro e a busca deixam
+        self._iso: dict[str, str] = {}          # sha -> data ISO (a coluna "Data" virou "ha 2 h")
+        self._registro: dict = {}
+        self._tabela: dict = {}
+        self._cartoes: dict[str, dict] = {}
+        self._sel: str | None = None
+        self._filtro = "todas"
+        self._dica_ligada = False
         self.ocupado = False
+        self._op = ""
         self._montar()
         self._mostrar(self.versoes.ramos() if self.versoes.tem_clone() else [], self.vigia.ler())
         self.raiz.after(100, self._drenar)
@@ -241,15 +286,15 @@ class Janela:
 
     # --- montagem ---------------------------------------------------
     def _montar(self):
-        r, t, o, E = self.raiz, self.tema, self.o, self.E
+        r, c, E = self.raiz, CORES, ESPACO
         r.title("Blue Lock — versões")
-        r.configure(bg=t.fundo)
+        r.configure(bg=c["fundo"])
         largura = min(1180, r.winfo_screenwidth() - 40)
         # ALTURA_UTIL menos a barra de titulo do Windows (~32) e uma folga.
         altura = min(ALTURA_UTIL - 50, r.winfo_screenheight() - 90)
         r.geometry(f"{largura}x{altura}+20+4")
-        r.minsize(900, 480)
-        o.aplicar_ttk(r)
+        r.minsize(820, 480)
+        estilo.aplicar_ttk(r)
         r.protocol("WM_DELETE_WINDOW", self.fechar)
         try:
             from .versoes import caminho_do_icone
@@ -257,152 +302,452 @@ class Janela:
                 r.iconbitmap(default=str(caminho_do_icone()))
         except (tk.TclError, OSError):
             pass
-        self.letra = tkfont.Font(root=r, font=t.letra("corpo"))
+        self.letra = tk_font(r, "corpo")
 
-        topo = tk.Frame(r, bg=t.fundo)
-        topo.pack(fill="x")
-        titulo = o.rotulo(topo, "Blue Lock — versões", papel="titulo", peso="bold")
-        titulo.pack(anchor="w", padx=E["secao"], pady=(E["normal"], 0))
-        self.resumo = o.legenda(topo, "")
-        self.resumo.pack(anchor="w", padx=E["secao"], pady=(0, E["meio"]))
+        # ---- cabecalho
+        topo = tk.Frame(r, bg=c["fundo"])
+        topo.pack(fill="x", padx=E["secao"], pady=(E["muito"], E["normal"]))
+        Logo(topo, 44).pack(side="left")
+        nome = tk.Frame(topo, bg=c["fundo"])
+        nome.pack(side="left", padx=(E["normal"], 0))
+        tk.Label(nome, text="Blue Lock", bg=c["fundo"], fg=c["texto"], font=letra("titulo")).pack(anchor="w")
+        self.resumo = tk.Label(nome, text="", bg=c["fundo"], fg=c["texto_fraco"], font=letra("legenda"))
+        self.resumo.pack(anchor="w")
+        self.b_atualizar = Pilula(topo, "↻  Atualizar", self.atualizar, bg=c["fundo"])
+        self.b_atualizar.pack(side="right")
 
-        # O RODAPE SE EMPACOTA ANTES DA TABELA, por baixo: empacotado depois,
-        # o cartao com `expand` comia a altura e os botoes sumiam.
-        rodape = tk.Frame(r, bg=t.fundo)
+        # ---- aviso (vazio = altura 0): sem rede, erro...
+        self.zona_aviso = tk.Frame(r, bg=c["fundo"])
+        self.zona_aviso.pack(fill="x", padx=E["secao"])
+
+        # ---- rodape: EMPACOTADO ANTES do corpo, por baixo (o corpo expande)
+        rodape = tk.Frame(r, bg=c["fundo"])
         rodape.pack(side="bottom", fill="x", padx=E["secao"], pady=(0, E["normal"]))
-        self.estado = o.rotulo(rodape, "pronto", cor="texto_fraco")
-        self.estado.pack(anchor="w")
-        self.barra = ttk.Progressbar(rodape, mode="determinate", maximum=5)
-        self.barra.pack(fill="x", pady=(E["pouco"], E["pouco"]))
-        self.console = tk.Text(rodape, height=2, bg=t.console_fundo, fg=t.console_texto, relief="flat",
-                               font=t.letra("mono"), wrap="none", highlightthickness=0, bd=0)
-        self.console.pack(fill="x")
-
-        botoes = tk.Frame(r, bg=t.fundo)
-        botoes.pack(side="bottom", fill="x", padx=E["secao"], pady=(0, E["meio"]))
-        self.b_rodar = o.botao(botoes, "▶  Rodar", self.rodar, tipo="primario")
-        self.b_rodar.pack(side="left")
-        self.b_atualizar = o.botao(botoes, "Atualizar lista", self.atualizar)
-        self.b_atualizar.pack(side="left", padx=(E["meio"], 0))
-        self.b_fixar = o.botao(botoes, "Fixar / soltar", self.fixar)
-        self.b_fixar.pack(side="left", padx=(E["meio"], 0))
-        moldura, self.commit = o.campo(botoes, "Colar um commit ou ramo:", largura=24)
-        moldura.pack(side="left", padx=(E["muito"], 0))
-        o.botao(botoes, "Rodar este", self.rodar_colado).pack(side="left", padx=(E["meio"], 0))
-        self.b_limpar = o.botao(botoes, "Apagar versões velhas", self.limpar, tipo="perigo")
+        self.gaveta = tk.Frame(rodape, bg=c["fundo"])           # o log tecnico, recolhido
+        self.console = tk.Text(self.gaveta, height=5, bg=c["superficie"], fg=c["texto_fraco"], relief="flat",
+                               font=letra("mono"), wrap="none", highlightthickness=1,
+                               highlightbackground=c["borda"], bd=0)
+        self.console.pack(fill="x", pady=(0, E["meio"]))
+        self._gaveta_aberta = False
+        self.barra = _barra(rodape)
+        self.barra.pack(side="bottom", fill="x", pady=(E["meio"], 0))
+        linha_baixo = tk.Frame(rodape, bg=c["fundo"])
+        linha_baixo.pack(side="bottom", fill="x")
+        self.estado = tk.Label(linha_baixo, text="pronto", bg=c["fundo"], fg=c["texto_fraco"], font=letra("corpo"),
+                               anchor="w")
+        self.estado.pack(side="left")
+        self.b_limpar = Pilula(linha_baixo, "Apagar versões velhas", self.limpar, tipo="perigo", papel="legenda",
+                               padx=12, pady=4)
         self.b_limpar.pack(side="right")
-        o.botao(botoes, "Abrir pasta", self.abrir_pasta).pack(side="right", padx=(0, E["meio"]))
+        Pilula(linha_baixo, "Abrir pasta", self.abrir_pasta, tipo="fantasma", papel="legenda", padx=12,
+               pady=4).pack(side="right", padx=(0, E["meio"]))
+        self.b_log = Pilula(linha_baixo, "Log técnico ▸", self.alternar_console, tipo="fantasma", papel="legenda",
+                            padx=12, pady=4)
+        self.b_log.pack(side="right", padx=(0, E["meio"]))
+        self._linha_baixo = linha_baixo
 
-        # O detalhe (tambem por baixo, antes da lista).
-        cartao_det = o.cartao(r)
-        cartao_det.pack(side="bottom", fill="x", padx=E["secao"], pady=(0, E["meio"]))
-        corpo = cartao_det.corpo
-        fundo = t.superficie
-        self.det_topo = o.rotulo(corpo, "", cor="texto", bg=fundo, peso="bold")
-        self.det_topo.pack(fill="x")
-        self.det_veredito = o.rotulo(corpo, "", cor="texto", bg=fundo, justify="left", wraplength=1080)
-        self.det_veredito.pack(fill="x", pady=(E["pouco"], 0))
-        linha_merge = tk.Frame(corpo, bg=fundo)
-        linha_merge.pack(fill="x", pady=(E["meio"], E["meio"]))
-        o.rotulo(linha_merge, "Merge:", cor="texto_fraco", bg=fundo).pack(side="left", padx=(0, E["meio"]))
-        self.b_comando = o.botao(linha_merge, "Copiar comando", self.copiar_comando, compacto=True)
-        self.b_comando.pack(side="right")
-        self.merge = tk.StringVar()
-        self.campo_merge = tk.Entry(linha_merge, textvariable=self.merge, state="readonly",
-                                    readonlybackground=t.console_fundo, fg=t.acento_forte,
-                                    font=t.letra("mono", "bold"), relief="flat", highlightthickness=1,
-                                    highlightbackground=t.borda)
-        self.campo_merge.pack(side="left", fill="x", expand=True, ipady=3, padx=(0, E["meio"]))
-        quadro_texto = tk.Frame(corpo, bg=fundo)
-        quadro_texto.pack(fill="x")
-        barra_texto = ttk.Scrollbar(quadro_texto, orient="vertical")
-        barra_texto.pack(side="right", fill="y")
-        self.texto = tk.Text(quadro_texto, height=3, bg=fundo, fg=t.texto_fraco, relief="flat",
-                             font=t.letra("legenda"), wrap="word", highlightthickness=0, bd=0,
-                             yscrollcommand=barra_texto.set)
-        barra_texto.configure(command=self.texto.yview)
-        self.texto.pack(side="left", fill="x", expand=True)
+        # ---- barra de busca e filtros
+        ferramentas = tk.Frame(r, bg=c["fundo"])
+        ferramentas.pack(fill="x", padx=E["secao"], pady=(0, E["meio"]))
+        moldura = tk.Frame(ferramentas, bg=c["superficie"], highlightthickness=1, highlightbackground=c["borda_forte"],
+                           highlightcolor=c["acento"])
+        moldura.pack(side="left")
+        self.busca = tk.StringVar()
+        self.campo_busca = tk.Entry(moldura, textvariable=self.busca, width=36, bg=c["superficie"], fg=c["texto"],
+                                    insertbackground=c["acento"], relief="flat", font=letra("corpo"),
+                                    highlightthickness=0)
+        self.campo_busca.pack(padx=E["meio"], pady=E["meio"])
+        self.campo_busca.bind("<FocusIn>", lambda _e: self._dica(False))
+        self.campo_busca.bind("<FocusOut>", lambda _e: self._dica(True))
+        self.busca.trace_add("write", lambda *_a: hasattr(self, "lista") and self._redesenhar())
+        self._dica(True)
+        self.chips = {}
+        for chave, texto in FILTROS:
+            chip = Pilula(ferramentas, texto, lambda k=chave: self.filtrar_por(k), tipo="chip", papel="legenda",
+                          padx=12, pady=6)
+            chip.pack(side="left", padx=(E["meio"], 0))
+            self.chips[chave] = chip
+        self.chips["todas"].marcar(True)
+        self.contagem = tk.Label(ferramentas, text="", bg=c["fundo"], fg=c["texto_apagado"], font=letra("legenda"))
+        self.contagem.pack(side="right")
 
-        cartao = o.cartao(r)
-        cartao.pack(fill="both", expand=True, padx=E["secao"], pady=(0, E["meio"]))
-        quadro = tk.Frame(cartao.corpo, bg=t.superficie)
-        quadro.pack(fill="both", expand=True)
-        ttk.Style(r).configure("Treeview", rowheight=self.letra.metrics("linespace") + 6)
-        # A BARRA PRIMEIRO, a direita: empacotada depois da tabela, ela ficava
-        # com 0 px quando as colunas pediam mais que o quadro.
-        self.rolagem = ttk.Scrollbar(quadro, orient="vertical")
-        self.rolagem.pack(side="right", fill="y")
-        colunas = [(c, titulo_, self.letra.measure(exemplo) + 18 if c != "versao" else 160, "w")
-                   for c, titulo_, exemplo in COLUNAS]
-        self.tabela = o.tabela(quadro, colunas, altura=8, estica="versao")
-        self.tabela.column("versao", minwidth=120)
-        self.tabela.configure(yscrollcommand=self.rolagem.set)
-        self.rolagem.configure(command=self.tabela.yview)
-        self.tabela.pack(side="left", fill="both", expand=True)
-        self.tabela.tag_configure("na_main", foreground=t.texto_apagado)
-        self.tabela.tag_configure("vale", foreground=t.ok)
-        self.tabela.tag_configure("nao_vale", foreground=t.erro)
-        self.tabela.tag_configure("olho", foreground=t.aviso)
-        self.tabela.tag_configure("main", foreground=t.acento_forte)
-        self.tabela.bind("<<TreeviewSelect>>", lambda _e: self._escolheu())
-        self.tabela.bind("<Double-1>", lambda _e: self.rodar())
+        # ---- corpo: a lista (rola) e o painel da escolhida
+        corpo = tk.Frame(r, bg=c["fundo"])
+        corpo.pack(fill="both", expand=True, padx=E["secao"], pady=(0, E["normal"]))
+        self._montar_painel(corpo)
+        self.lista = Rolagem(corpo, c["fundo"])
+        self.lista.pack(side="left", fill="both", expand=True)
         self._escrever_detalhe(None)
 
-    # --- tabela -----------------------------------------------------
+    def _montar_painel(self, pai):
+        c, E = CORES, ESPACO
+        painel = tk.Frame(pai, bg=c["superficie"], width=LARGURA_PAINEL, highlightthickness=1,
+                          highlightbackground=c["borda"])
+        painel.pack(side="right", fill="y", padx=(E["muito"], 0))
+        painel.pack_propagate(False)
+        # O painel INTEIRO rola: com os detalhes e o log abertos ele nao cabe e o
+        # `pack` cortaria em silencio o que viesse por ultimo (Fixar, Detalhes).
+        self.rolagem_painel = Rolagem(painel, c["superficie"])
+        self.rolagem_painel.pack(fill="both", expand=True)
+        p = tk.Frame(self.rolagem_painel.corpo, bg=c["superficie"])
+        p.pack(fill="both", expand=True, padx=E["muito"], pady=E["muito"])
+        fundo = c["superficie"]
+        self._painel = p
+        self._largura_texto = LARGURA_PAINEL - 2 * E["muito"] - 24
+
+        # em cima: quem e a escolhida
+        self.det_selos = tk.Frame(p, bg=fundo)
+        self.det_selos.pack(fill="x", anchor="w", pady=(0, E["meio"]))
+        self.det_topo = tk.Label(p, text="", bg=fundo, fg=c["texto"], font=letra("destaque"), anchor="w",
+                                 justify="left", wraplength=self._largura_texto)
+        self.det_topo.pack(fill="x")
+        self.det_meta = tk.Label(p, text="", bg=fundo, fg=c["texto_fraco"], font=letra("legenda"), anchor="w")
+        self.det_meta.pack(fill="x", pady=(E["pouco"], 0))
+        self.det_assunto = tk.Label(p, text="", bg=fundo, fg=c["texto_fraco"], font=letra("corpo"), anchor="w",
+                                    justify="left", wraplength=self._largura_texto)
+        self.det_assunto.pack(fill="x", pady=(E["meio"], E["normal"]))
+        self.b_rodar = Pilula(p, "▶  Jogar", self.rodar, tipo="primario", papel="secao", bg=fundo, pady=12)
+        self.b_rodar.pack(fill="x")
+        self.det_estado = tk.Label(p, text="", bg=fundo, fg=c["texto_fraco"], font=letra("legenda"), anchor="w",
+                                   justify="left", wraplength=self._largura_texto)
+        self.det_estado.pack(fill="x", pady=(E["meio"], E["meio"]))
+        self.b_fixar = Pilula(p, "☆  Fixar esta versão", self.fixar, tipo="fantasma", papel="legenda", bg=fundo,
+                              pady=6)
+        self.b_fixar.pack(fill="x")
+
+        # os detalhes tecnicos: recolhidos (o merge, o veredito do vigia, os commits)
+        self.b_detalhes = tk.Label(p, text="Detalhes técnicos ▸", bg=fundo, fg=c["acento"], font=letra("legenda"),
+                                   anchor="w", cursor="hand2")
+        self.b_detalhes.pack(fill="x", pady=(E["normal"], 0))
+        self.b_detalhes.bind("<Button-1>", lambda _e: self.alternar_detalhes())
+        self.zona_det = tk.Frame(p, bg=fundo)
+        d = self.zona_det
+        self.det_veredito = tk.Label(d, text="", bg=fundo, fg=c["texto"], font=letra("corpo"), anchor="w",
+                                     justify="left", wraplength=self._largura_texto)
+        self.det_veredito.pack(fill="x", pady=(E["meio"], 0))
+        linha_merge = tk.Frame(d, bg=fundo)
+        linha_merge.pack(fill="x", pady=(E["meio"], E["meio"]))
+        tk.Label(linha_merge, text="Merge", bg=fundo, fg=c["texto_apagado"], font=letra("legenda")).pack(anchor="w")
+        self.merge = tk.StringVar()
+        self.campo_merge = tk.Entry(linha_merge, textvariable=self.merge, state="readonly", width=10,
+                                    readonlybackground=c["fundo"], fg=c["acento"], font=letra("mono", "bold"),
+                                    relief="flat", highlightthickness=1, highlightbackground=c["borda"])
+        self.campo_merge.pack(fill="x", ipady=3, pady=(E["pouco"], E["pouco"]))
+        self.b_comando = Pilula(linha_merge, "Copiar comando", self.copiar_comando, bg=fundo, papel="legenda",
+                                padx=12, pady=5)
+        self.b_comando.pack(anchor="e")
+        self.texto = tk.Text(d, height=3, bg=fundo, fg=c["texto_fraco"], relief="flat", font=letra("legenda"),
+                             wrap="word", highlightthickness=0, bd=0, width=10)
+        self.texto.pack(fill="x")
+        self._detalhes_abertos = False
+
+        # o commit colado, por ultimo
+        colar = tk.Frame(p, bg=fundo)
+        colar.pack(fill="x", pady=(E["muito"], 0))
+        tk.Label(colar, text="Outro commit ou ramo", bg=fundo, fg=c["texto_fraco"], font=letra("legenda")
+                 ).pack(anchor="w", pady=(0, E["pouco"]))
+        linha_colar = tk.Frame(colar, bg=fundo)
+        linha_colar.pack(fill="x")
+        moldura = tk.Frame(linha_colar, bg=c["fundo"], highlightthickness=1, highlightbackground=c["borda_forte"],
+                           highlightcolor=c["acento"])
+        moldura.pack(side="left", fill="x", expand=True)
+        self.commit = tk.Entry(moldura, width=12, bg=c["fundo"], fg=c["texto"], insertbackground=c["acento"],
+                               relief="flat", font=letra("mono"), highlightthickness=0)
+        self.commit.pack(fill="x", padx=E["meio"], pady=E["meio"])
+        self.b_colado = Pilula(linha_colar, "Jogar este", self.rodar_colado, bg=fundo, papel="legenda", padx=12,
+                               pady=7)
+        self.b_colado.pack(side="right", padx=(E["meio"], 0))
+
+    # --- pequenos ---------------------------------------------------
+    def _dica(self, ligar: bool):
+        """O texto-dica da busca (some ao focar; volta se ficar vazia)."""
+        if ligar and not self.busca.get():
+            self._dica_ligada = True
+            self.busca.set(BUSCA_DICA)
+            self.campo_busca.configure(fg=CORES["texto_apagado"])
+        elif not ligar and self._dica_ligada:
+            self._dica_ligada = False
+            self.busca.set("")
+            self.campo_busca.configure(fg=CORES["texto"])
+
+    def _termo(self) -> str:
+        return "" if self._dica_ligada else self.busca.get().strip()
+
+    def alternar_console(self):
+        self._gaveta_aberta = not self._gaveta_aberta
+        if self._gaveta_aberta:
+            self.gaveta.pack(side="bottom", fill="x", after=self._linha_baixo)
+        else:
+            self.gaveta.pack_forget()
+        self.b_log.configure(text="Log técnico ▾" if self._gaveta_aberta else "Log técnico ▸")
+
+    def alternar_detalhes(self, abrir: bool | None = None):
+        self._detalhes_abertos = (not self._detalhes_abertos) if abrir is None else abrir
+        if self._detalhes_abertos:
+            self.zona_det.pack(fill="x", pady=(ESPACO["meio"], 0), after=self.b_detalhes)
+        else:
+            self.zona_det.pack_forget()
+        self.b_detalhes.configure(text="Detalhes técnicos ▾" if self._detalhes_abertos else "Detalhes técnicos ▸")
+
+    def filtrar_por(self, chave: str):
+        self._filtro = chave
+        for k, chip in self.chips.items():
+            chip.marcar(k == chave)
+        self._redesenhar()
+
+    # --- aviso (sem rede, erro) -------------------------------------
+    def _aviso(self, texto: str, nivel: str = "aviso"):
+        c, E = CORES, ESPACO
+        self._sem_aviso()
+        fundo = c["erro_fundo"] if nivel == "erro" else c["aviso_fundo"]
+        cor = c["erro"] if nivel == "erro" else c["aviso"]
+        faixa = tk.Frame(self.zona_aviso, bg=fundo, highlightthickness=1, highlightbackground=cor)
+        faixa.pack(fill="x", pady=(0, E["meio"]))
+        self.aviso_texto = tk.Label(faixa, text=texto, bg=fundo, fg=cor, font=letra("corpo"), anchor="w",
+                                    justify="left", wraplength=900)
+        self.aviso_texto.pack(side="left", padx=E["normal"], pady=E["meio"])
+        ver = tk.Label(faixa, text="ver o log", bg=fundo, fg=cor, font=letra("legenda", "bold"), cursor="hand2")
+        ver.pack(side="right", padx=E["normal"])
+        ver.bind("<Button-1>", lambda _e: self._abrir_log())
+
+    def _sem_aviso(self):
+        for w in self.zona_aviso.winfo_children():
+            w.destroy()
+
+    def _abrir_log(self):
+        if not self._gaveta_aberta:
+            self.alternar_console()
+
+    # --- lista ------------------------------------------------------
     def _mostrar(self, ramos_clone, tabela):
         escolhido = self._linha_escolhida()
-        self.linhas = linhas(ramos_clone, tabela, self.versoes.ler())
-        self.tabela.delete(*self.tabela.get_children())
-        for linha in self.linhas:
-            self.tabela.insert("", "end", iid=linha["id"], values=linha["valores"], tags=(linha["tipo"],))
-        if escolhido and self.tabela.exists(escolhido["id"]):
-            self.tabela.selection_set(escolhido["id"])
-        elif self.linhas:
-            self.tabela.selection_set(self.linhas[0]["id"])
-        self._escrever_detalhe(self._linha_escolhida())
-        main = (tabela or {}).get("main") or {}
-        abertos = [r for r in (tabela or {}).get("ramos") or [] if r.get("a_frente")]
-        texto = (f"{len(self.linhas)} versões · {len(abertos)} ramo(s) fora da main · "
-                 f"vigia olhou {_hora((tabela or {}).get('olhado_em')) or 'nunca'}")
+        self._registro = self.versoes.ler()
+        self._tabela = tabela or {}
+        self.linhas = linhas(ramos_clone, tabela, self._registro)
+        self._iso = {f["sha"]: f.get("data") for f in (self._registro.get("versoes") or {}).values() if f.get("data")}
+        self._iso.update({r["sha"]: r.get("data") for r in ramos_clone if r.get("data")})
+        if escolhido and any(linha["id"] == escolhido["id"] for linha in self.linhas):
+            self._sel = escolhido["id"]
+        else:
+            self._sel = self.linhas[0]["id"] if self.linhas else None
+        main = self._tabela.get("main") or {}
+        novas = sum(1 for linha in self.linhas if e_nova(linha, self._iso))
+        partes = []
         if main.get("sha"):
-            texto = f"main {main['sha'][:7]} · " + texto
-        self.resumo.configure(text=texto)
+            partes.append(f"principal {main['sha'][:7]}")
+        partes.append(f"{novas} nova{'s' if novas != 1 else ''} hoje" if novas else "nada novo hoje")
+        olhado = data_relativa(self._tabela.get("olhado_em"))
+        partes.append(f"ramos conferidos {olhado}" if olhado else "ramos ainda não conferidos")
+        self.resumo.configure(text=" · ".join(partes))
+        self._redesenhar()
+
+    def _redesenhar(self):
+        self.visiveis = filtrar(self.linhas, self._filtro, self._termo(), self._iso)
+        corpo = self.lista.corpo
+        for w in corpo.winfo_children():
+            w.destroy()
+        self._cartoes = {}
+        if not self.visiveis:
+            self._vazio(corpo)
+        for linha in self.visiveis:
+            self._cartao(corpo, linha)
+        n, total = len(self.visiveis), len(self.linhas)
+        self.contagem.configure(text=f"{n} de {total} versões" if n != total else f"{total} versões")
+        if self.visiveis and (self._sel not in self._cartoes):
+            self._sel = self.visiveis[0]["id"]
+        self._pintar()
+        self._escrever_detalhe(self._linha_escolhida())
+        self.lista.canvas.yview_moveto(0)
+        if self._sel in self._cartoes:
+            self.raiz.after(60, self._ver_escolhida)
+
+    def _ver_escolhida(self):
+        try:
+            if self._sel in self._cartoes:
+                self.lista.ver(self._cartoes[self._sel]["quadro"])
+        except tk.TclError:
+            pass
+
+    def _vazio(self, pai):
+        """Lista vazia: sem o jogo baixado, ou o filtro nao achou nada."""
+        c, E = CORES, ESPACO
+        caixa = tk.Frame(pai, bg=c["fundo"])
+        caixa.pack(fill="x", pady=E["pagina"])
+        sem_clone = not self.linhas
+        tk.Label(caixa, text="Ainda não tenho as versões do jogo" if sem_clone else "Nenhuma versão encontrada",
+                 bg=c["fundo"], fg=c["texto"], font=letra("secao")).pack()
+        tk.Label(caixa, text=("Clique em Atualizar para buscar as versões no GitHub." if sem_clone else
+                              "Tente outra palavra, ou mostre todas."),
+                 bg=c["fundo"], fg=c["texto_fraco"], font=letra("corpo")).pack(pady=(E["pouco"], E["muito"]))
+        if sem_clone:
+            Pilula(caixa, "↻  Atualizar", self.atualizar, tipo="primario", bg=c["fundo"]).pack()
+        else:
+            Pilula(caixa, "Limpar busca e filtros", self._limpar_busca, bg=c["fundo"]).pack()
+
+    def _limpar_busca(self):
+        self._dica_ligada = False
+        self.busca.set("")
+        self._dica(True)
+        self.filtrar_por("todas")
+
+    def _cartao(self, pai, linha: dict):
+        c, E = CORES, ESPACO
+        iid = linha["id"]
+        nome, tipo_ramo = nome_amigavel(linha["ref"])
+        quadro = tk.Frame(pai, bg=c["superficie"], highlightthickness=1, highlightbackground=c["borda"], cursor="hand2")
+        quadro.pack(fill="x", pady=(0, E["pouco"]), padx=(0, E["meio"]))
+        marca = tk.Frame(quadro, bg=c["superficie"], width=4)
+        marca.pack(side="left", fill="y")
+        miolo = tk.Frame(quadro, bg=c["superficie"])
+        miolo.pack(side="left", fill="both", expand=True, padx=E["normal"], pady=E["meio"])
+        miolo.columnconfigure(0, weight=1)
+        apagada = linha["tipo"] == "na_main"
+        n = tk.Label(miolo, text=curto(nome, 38), bg=c["superficie"], fg=c["texto_apagado"] if apagada else c["texto"],
+                     font=letra("nome"), anchor="w")
+        n.grid(row=0, column=0, sticky="w")
+        selos = tk.Frame(miolo, bg=c["superficie"])
+        selos.grid(row=0, column=1, sticky="e", padx=(E["meio"], 0))
+        for texto, tipo in self._selos(linha):
+            selo(selos, texto, tipo).pack(side="left", padx=(E["pouco"], 0))
+        detalhe_ = tk.Frame(miolo, bg=c["superficie"])
+        detalhe_.grid(row=1, column=0, sticky="w")
+        quando = data_relativa(self._iso.get(linha["sha"]))
+        extra = tipo_ramo
+        if linha["tipo"] == "commit":
+            extra = "colado · " + curto(re.sub(r" \(era .*\)$", "", linha.get("assunto", "")), 34)
+        meta = " · ".join(p for p in (quando, extra) if p)
+        m = tk.Label(detalhe_, text=meta, bg=c["superficie"], fg=c["texto_fraco"], font=letra("legenda"))
+        m.pack(side="left")
+        tag = ETIQUETA_DO_TIPO.get(linha["tipo"])
+        if tag and linha["tipo"] != "na_main":
+            t = tk.Label(detalhe_, text="·  " + tag[0], bg=c["superficie"], fg=c[tag[1]], font=letra("legenda"))
+            t.pack(side="left", padx=(E["meio"], 0))
+        elif tag:
+            tk.Label(detalhe_, text="·  " + tag[0], bg=c["superficie"], fg=c["texto_apagado"],
+                     font=letra("legenda")).pack(side="left", padx=(E["meio"], 0))
+        if preparada(linha):
+            tk.Label(miolo, text="✓ preparada", bg=c["superficie"], fg=c["ok"], font=letra("legenda")
+                     ).grid(row=1, column=1, sticky="e", padx=(E["meio"], 0))
+        self._cartoes[iid] = {"quadro": quadro, "fundo": [quadro, marca, miolo, n, selos, detalhe_, m,
+                                                           *[w for w in detalhe_.winfo_children() if w is not m],
+                                                           *[w for w in miolo.grid_slaves(row=1, column=1)]],
+                              "marca": marca}
+        self._ligar(quadro, iid)
+        return quadro
+
+    def _selos(self, linha: dict) -> list[tuple[str, str]]:
+        saida = []
+        if linha["tipo"] == "main":
+            saida.append(("versão principal", "destaque"))
+        elif e_nova(linha, self._iso):
+            saida.append(("nova", "destaque"))
+        if fixada(linha):
+            saida.append(("fixada", "aviso"))
+        return saida
+
+    def _ligar(self, widget, iid):
+        widget.bind("<Button-1>", lambda _e: self.selecionar(iid), add="+")
+        widget.bind("<Double-1>", lambda _e: self.rodar(), add="+")
+        widget.bind("<Enter>", lambda _e: self._pintar(iid), add="+")
+        widget.bind("<Leave>", lambda _e: self._pintar(), add="+")
+        for filho in widget.winfo_children():
+            self._ligar(filho, iid)
+
+    def _pintar(self, sobre: str | None = None):
+        """Cor de cada cartao: escolhido (lima) > com o mouse em cima > normal."""
+        c = CORES
+        for iid, cartao in self._cartoes.items():
+            escolhido = iid == self._sel
+            fundo = c["acento_fundo"] if escolhido else (c["superficie_alta"] if iid == sobre else c["superficie"])
+            for w in cartao["fundo"]:
+                try:
+                    w.configure(bg=fundo)
+                except tk.TclError:
+                    pass
+            cartao["marca"].configure(bg=c["acento"] if escolhido else fundo)
+            cartao["quadro"].configure(highlightbackground=c["acento"] if escolhido else c["borda"])
+
+    def selecionar(self, iid: str):
+        if iid not in self._cartoes:
+            return
+        self._sel = iid
+        self._pintar()
+        self._escolheu()
 
     def _linha_escolhida(self):
-        escolha = self.tabela.selection()
-        if not escolha:
-            return None
-        return next((linha for linha in self.linhas if linha["id"] == escolha[0]), None)
+        return next((linha for linha in self.linhas if linha["id"] == self._sel), None)
 
     def _escolheu(self):
         self._escrever_detalhe(self._linha_escolhida())
 
     def _escrever_detalhe(self, linha):
-        topo, veredito = titulo_do_detalhe(linha)
-        self.det_topo.configure(text=topo)
-        self.det_veredito.configure(text=veredito)
+        c, E = CORES, ESPACO
+        for w in self.det_selos.winfo_children():
+            w.destroy()
         merge = acao_de_merge(linha)
         self.merge.set(merge["texto"])
         self.b_comando.configure(text=merge["rotulo"], state="normal" if merge["copiar"] else "disabled")
         # So o que se COLA tem cara de comando; a dica ("de o merge do X") e apagada.
-        t = self.tema
-        self.campo_merge.configure(fg=t.acento_forte if merge["copiar"] else t.texto_fraco,
-                                   font=t.letra("mono", "bold") if merge["copiar"] else t.letra("corpo"))
+        self.campo_merge.configure(fg=c["acento"] if merge["copiar"] else c["texto_fraco"],
+                                   font=letra("mono", "bold") if merge["copiar"] else letra("corpo", "normal"))
         self.texto.configure(state="normal")
         self.texto.delete("1.0", "end")
-        self.texto.insert("1.0", detalhe(linha))
-        self.texto.configure(state="disabled")
+        corpo = detalhe(linha)
+        self.texto.insert("1.0", corpo)
+        self.texto.configure(state="disabled", height=min(40, max(2, corpo.count("\n") + 1)))
+        if not linha:
+            self.det_topo.configure(text="Escolha uma versão")
+            self.det_meta.configure(text="")
+            self.det_assunto.configure(text="Clique num cartão da lista (ou cole um commit) e depois em Jogar.")
+            self.det_estado.configure(text="")
+            self.det_veredito.configure(text="")
+            self.b_fixar.configure(state="disabled")
+            self.b_rodar.configure(state="disabled")
+            return
+        nome, tipo_ramo = nome_amigavel(linha["ref"])
+        self.det_topo.configure(text=nome)
+        quando = data_relativa(self._iso.get(linha["sha"]))
+        self.det_meta.configure(text="  ·  ".join(p for p in (quando, tipo_ramo, linha["sha"][:7]) if p))
+        self.det_assunto.configure(text=curto(linha.get("assunto", ""), 160))
+        self.det_estado.configure(
+            text="Preparada: abre em poucos segundos." if preparada(linha)
+            else "Ainda não preparada: a primeira vez leva alguns minutos.",
+            fg=c["ok"] if preparada(linha) else c["texto_fraco"])
+        for texto, tipo in self._selos(linha):
+            selo(self.det_selos, texto, tipo).pack(side="left", padx=(0, E["pouco"]))
+        if preparada(linha):
+            selo(self.det_selos, "preparada", "ok").pack(side="left", padx=(0, E["pouco"]))
+        tag = ETIQUETA_DO_TIPO.get(linha["tipo"])
+        if tag:
+            selo(self.det_selos, tag[0], {"ok": "ok", "erro": "erro", "aviso": "aviso"}.get(tag[1], "neutro")
+                 ).pack(side="left")
+        _topo, veredito = titulo_do_detalhe(linha)
+        self.det_veredito.configure(text=veredito)
+        fixa = fixada(linha)
+        self.b_fixar.configure(text="★  Fixada — clique para soltar" if fixa else "☆  Fixar esta versão",
+                               state="disabled" if self.ocupado else "normal")
+        self.b_rodar.configure(state="disabled" if self.ocupado else "normal")
 
     # --- trabalho em thread -----------------------------------------
-    def _em_thread(self, rotulo: str, trabalho):
+    def _botoes(self, ligados: bool):
+        estado = "normal" if ligados else "disabled"
+        for b in (self.b_rodar, self.b_atualizar, self.b_limpar, self.b_fixar, self.b_colado):
+            b.configure(state=estado)
+
+    def _em_thread(self, rotulo: str, trabalho, op: str = ""):
         if self.ocupado:
             messagebox.showinfo("Espere", "Ainda estou terminando a tarefa anterior.")
             return
         self.ocupado = True
-        for b in (self.b_rodar, self.b_atualizar, self.b_limpar, self.b_fixar):
-            b.configure(state="disabled")
-        self.estado.configure(text=rotulo, fg=self.tema.texto)
-        self.barra.configure(value=0)
+        self._op = op
+        self._sem_aviso()
+        self._botoes(False)
+        self.b_rodar.configure(text="Preparando…" if op == "jogar" else "▶  Jogar")
+        self.estado.configure(text=rotulo, fg=CORES["texto"])
+        self.barra.configure(value=0, mode="determinate")
+        if op != "jogar":
+            self.barra.configure(mode="indeterminate")
+            self.barra.start(14)
 
         def correr():
             try:
@@ -422,7 +767,7 @@ class Janela:
                 elif tipo == "progresso":
                     n, total, texto = resto
                     self.barra.configure(maximum=total, value=n)
-                    self.estado.configure(text=f"[{n}/{total}] {texto}")
+                    self.estado.configure(text=f"Passo {n} de {total} · {curto(str(texto), 70)}")
                 elif tipo in ("fim", "erro"):
                     self._terminou(tipo, resto[0])
         except queue.Empty:
@@ -433,27 +778,43 @@ class Janela:
             pass
 
     def _terminou(self, tipo, carga):
+        c = CORES
+        op, self._op = self._op, ""
         self.ocupado = False
-        for b in (self.b_rodar, self.b_atualizar, self.b_limpar, self.b_fixar):
-            b.configure(state="normal")
+        self.barra.stop()
+        self.barra.configure(mode="determinate")
+        self.b_rodar.configure(text="▶  Jogar")
+        self._botoes(True)
+        self._escolheu()                                    # religa Jogar/Fixar conforme a escolha
         if tipo == "erro":
-            self.estado.configure(text=f"erro: {carga}", fg=self.tema.erro)
+            self.barra.configure(value=0)
             self._log(f"erro: {carga}")
+            if op == "atualizar":
+                self.estado.configure(text="sem conexão com o GitHub", fg=c["aviso"])
+                self._aviso("Não consegui falar com o GitHub (sem internet?). Mostro a última lista que guardei.",
+                            "aviso")
+            else:
+                self.estado.configure(text="não deu certo", fg=c["erro"])
+                self._aviso(("Não consegui preparar esta versão. " if op == "jogar" else "Algo deu errado. ")
+                            + curto(str(carga).splitlines()[0] if str(carga) else "", 160), "erro")
             return
         acao, dados = carga
         if acao == "lista":
             self._mostrar(*dados)
-            self.estado.configure(text="lista atualizada", fg=self.tema.texto_fraco)
+            self.barra.configure(value=0)
+            self.estado.configure(text="lista atualizada", fg=c["texto_fraco"])
         elif acao == "rodou":
             self.barra.configure(value=self.barra.cget("maximum"))
             if dados.get("servidor"):
                 self.servidores.append(dados["servidor"])
             self._proteger(dados.get("sha"))
-            self.estado.configure(text=f"aberto: {dados['url']}", fg=self.tema.ok)
+            self.estado.configure(text="Jogo aberto no Chrome. Bom jogo!", fg=c["ok"])
+            self._log(f"aberto: {dados.get('url')}")
             self._mostrar(self.versoes.ramos(), self._ultima or self.vigia.ler())
         elif acao == "limpou":
+            self.barra.configure(value=0)
             self.estado.configure(text=f"apaguei {len(dados['apagadas'])} versão(ões) velha(s)",
-                                  fg=self.tema.texto_fraco)
+                                  fg=c["texto_fraco"])
             self._mostrar(self.versoes.ramos(), self._ultima or self.vigia.ler())
 
     def _proteger(self, sha: str | None) -> None:
@@ -489,7 +850,7 @@ class Janela:
                     raise ErroDeVersao(resultado.get("erro") or resultado.get("motivo") or "sem rede?")
             self._ultima = tabela
             return "lista", (self.versoes.ramos(), tabela)
-        self._em_thread("buscando os ramos no GitHub…", trabalho)
+        self._em_thread("Buscando as versões no GitHub…", trabalho, "atualizar")
 
     def _preparar_e_abrir(self, ref: str, rotulo: str):
         def passo(n, total, texto):
@@ -500,12 +861,12 @@ class Janela:
             self.fila.put(("log", f"abrindo {ficha['sha'][:7]} ({ficha.get('modo')})…"))
             aberto = self.versoes.abrir(ficha["sha"])
             return "rodou", dict(aberto, sha=ficha["sha"])
-        self._em_thread(f"preparando {rotulo}…", trabalho)
+        self._em_thread(f"Preparando {nome_amigavel(ref)[0]}…", trabalho, "jogar")
 
     def rodar(self):
         linha = self._linha_escolhida()
         if not linha:
-            messagebox.showinfo("Escolha uma versão", "Escolha uma linha da lista (ou cole um commit).")
+            messagebox.showinfo("Escolha uma versão", "Escolha uma versão da lista (ou cole um commit).")
             return
         self._preparar_e_abrir(linha["ref"], linha["valores"][0] if linha["tipo"] != "commit" else linha["ref"])
 
@@ -527,11 +888,11 @@ class Janela:
     def copiar_comando(self):
         merge = acao_de_merge(self._linha_escolhida())
         if not merge["copiar"]:
-            self.estado.configure(text=merge["texto"], fg=self.tema.texto_fraco)
+            self.estado.configure(text=merge["texto"], fg=CORES["texto_fraco"])
             return
         self.raiz.clipboard_clear()
         self.raiz.clipboard_append(merge["copiar"])
-        self.estado.configure(text=f"copiado: {merge['copiar']}", fg=self.tema.texto_fraco)
+        self.estado.configure(text=f"copiado: {merge['copiar']}", fg=CORES["texto_fraco"])
 
     def limpar(self):
         fixadas = sum(1 for f in self.versoes.ler()["versoes"].values() if f.get("fixada"))
@@ -541,8 +902,8 @@ class Janela:
                                    "dono e HTML) sai do disco. Nada no GitHub muda. Continuar?"):
             return
         protegidos = set(self.abertas)
-        self._em_thread("apagando versões velhas…",
-                        lambda: ("limpou", self.versoes.limpar(MANTER, protegidos=protegidos)))
+        self._em_thread("Apagando versões velhas…",
+                        lambda: ("limpou", self.versoes.limpar(MANTER, protegidos=protegidos)), "limpar")
 
     def abrir_pasta(self):
         self.versoes.raiz.mkdir(parents=True, exist_ok=True)
@@ -554,6 +915,15 @@ class Janela:
                 matar_arvore(servidor.pid)
         self._seguras.close()
         self.raiz.destroy()
+
+
+def tk_font(raiz, papel):
+    import tkinter.font as tkfont
+    return tkfont.Font(root=raiz, font=letra(papel))
+
+
+def _barra(pai):
+    return Barra(pai, CORES["fundo"])
 
 
 def abrir_janela() -> int:

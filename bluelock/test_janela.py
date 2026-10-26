@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import json
 import tkinter as tk
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
-from bluelock import janela
+from bluelock import estilo, janela
 
 OFF = "fix/isagi-off-ball-20261020"
 RAMOS = [{"ramo": "main", "sha": "a" * 40, "data": "2026-10-19T20:18:00+00:00", "assunto": "Merge"},
@@ -98,6 +99,41 @@ def test_detalhe_tem_commits_e_veredito_por_extenso():
     assert "c000011" in janela.detalhe(linhas[2])
 
 
+def test_nome_amigavel_tira_o_slug_cru():
+    assert estilo.nome_amigavel("main") == ("Versão principal", "")
+    assert estilo.nome_amigavel("fix/bachira-roulette-choreography-20261024") == (
+        "Bachira · roulette choreography", "correção")
+    assert estilo.nome_amigavel("docs/biblia-auditoria-personagens-20261026") == (
+        "Biblia auditoria personagens", "documentação")
+    assert estilo.nome_amigavel("a" * 40) == ("Commit aaaaaaa", "")
+
+
+def test_data_relativa_e_de_hoje():
+    agora = datetime(2026, 10, 26, 14, 0).astimezone()
+    def iso(**delta):
+        return (agora - timedelta(**delta)).isoformat()
+    assert estilo.data_relativa(iso(minutes=1), agora) == "agora há pouco"
+    assert estilo.data_relativa(iso(minutes=20), agora) == "há 20 min"
+    assert estilo.data_relativa(iso(hours=2), agora) == "há 2 h"
+    assert estilo.data_relativa(iso(days=1), agora) == "ontem"
+    assert estilo.data_relativa(iso(days=3), agora) == "há 3 dias"
+    assert estilo.data_relativa(iso(days=20), agora) == (agora - timedelta(days=20)).strftime("%d/%m")
+    assert estilo.data_relativa(None) == "" and estilo.data_relativa("lixo") == ""
+    assert estilo.e_de_hoje(iso(minutes=5), agora) and not estilo.e_de_hoje(iso(days=1), agora)
+
+
+def test_filtrar_por_chip_e_busca():
+    todas = janela.linhas(RAMOS, TABELA, REGISTRO)
+    assert len(janela.filtrar(todas)) == len(todas)
+    assert [linha["ref"] for linha in janela.filtrar(todas, "preparadas")] == ["main", "e" * 40]
+    assert [linha["ref"] for linha in janela.filtrar(todas, "fixadas")] == ["main"]
+    iso = {"c" * 40: "2026-10-26T08:00:00+00:00"}
+    agora = datetime(2026, 10, 26, 15, 0, tzinfo=timezone.utc)
+    assert [linha["ref"] for linha in janela.filtrar(todas, "novas", iso=iso, agora=agora)] == [OFF]
+    assert [linha["ref"] for linha in janela.filtrar(todas, busca="ISAGI off")] == [OFF]
+    assert janela.filtrar(todas, busca="zzz") == []
+
+
 class VersoesDeMentira:
     def __init__(self, ramos):
         self.raiz = Path(".")
@@ -153,30 +189,33 @@ def _montar(raiz, n_extras=15):
 
 def test_tela_cabe_em_1280x680_lista_rola_e_comando_aparece(tela):
     j = _montar(tela)
-    assert len(j.tabela.get_children()) >= 19
+    assert len(j.visiveis) >= 19 and len(j._cartoes) == len(j.visiveis)
     # a janela cabe na tela dele (1280x680 uteis, com ~32 px de barra de titulo)
     assert tela.winfo_width() <= 1280 and tela.winfo_height() + 32 <= janela.ALTURA_UTIL
     fundo = tela.winfo_rooty() + tela.winfo_height()
-    for widget in (j.b_rodar, j.b_limpar, j.console, j.campo_merge, j.texto):
+    j.alternar_console()                    # o log tecnico e uma gaveta: recolhido por padrao
+    tela.update()
+    for widget in (j.b_rodar, j.b_limpar, j.b_atualizar, j.console, j.estado):
         assert widget.winfo_ismapped(), widget
         assert widget.winfo_rooty() + widget.winfo_height() <= fundo + 1, widget
-    # a barra de rolagem existe e a lista rola
-    assert j.rolagem.winfo_ismapped() and j.rolagem.winfo_width() >= 8
-    assert j.tabela.yview()[1] < 1.0
-    j.tabela.yview_moveto(1.0)
+    j.alternar_console()
     tela.update()
-    assert j.tabela.yview()[1] == 1.0
-    # nenhum veredito da lista maior que a coluna dele
-    largura = int(j.tabela.column("veredito", "width"))
-    for iid in j.tabela.get_children():
-        texto = j.tabela.item(iid, "values")[3]
-        assert j.letra.measure(texto) <= largura, (texto, j.letra.measure(texto), largura)
-    # a tabela nao pede mais que o quadro (era o que comia a barra)
-    soma = sum(int(j.tabela.column(c[0], "width")) for c in janela.COLUNAS)
-    assert soma <= j.tabela.winfo_width() + 2
-    # o comando de merge visivel SEM rolar, logo abaixo do veredito
-    j.tabela.selection_set(f"ramo:{OFF}")
-    j._escolheu()
+    assert not j.console.winfo_ismapped()
+    # o Jogar fica a vista, sem rolar, e dentro da janela
+    assert j.b_rodar.winfo_rooty() + j.b_rodar.winfo_height() <= fundo
+    # a lista rola: a barra existe e o ultimo cartao chega ao fim
+    assert j.lista.barra.winfo_ismapped() and j.lista.barra.winfo_width() >= 8
+    assert j.lista.canvas.yview()[1] < 1.0
+    j.lista.canvas.yview_moveto(1.0)
+    tela.update()
+    assert j.lista.canvas.yview()[1] == 1.0
+    # nenhum cartao maior que a area da lista
+    for cartao in j._cartoes.values():
+        assert cartao["quadro"].winfo_width() <= j.lista.canvas.winfo_width()
+    # o comando de merge, nos detalhes (recolhidos por padrao), logo abaixo do veredito
+    assert not j.campo_merge.winfo_ismapped()
+    j.selecionar(f"ramo:{OFF}")
+    j.alternar_detalhes(True)
     tela.update()
     assert j.merge.get() == COMANDO and str(j.b_comando.cget("state")) == "normal"
     assert j.campo_merge.winfo_rooty() > j.det_veredito.winfo_rooty()
@@ -184,12 +223,67 @@ def test_tela_cabe_em_1280x680_lista_rola_e_comando_aparece(tela):
     assert tela.clipboard_get() == COMANDO
 
 
+def test_tela_cabe_em_900x600(tela):
+    j = _montar(tela)
+    tela.geometry("900x600+0+0")
+    tela.update()
+    fundo = tela.winfo_rooty() + tela.winfo_height()
+    for widget in (j.b_rodar, j.b_limpar, j.estado, j.campo_busca):
+        assert widget.winfo_ismapped() and widget.winfo_rooty() + widget.winfo_height() <= fundo + 1, widget
+    # o selo e o nome do cartao nao passam do cartao
+    for cartao in j._cartoes.values():
+        assert cartao["quadro"].winfo_reqwidth() <= j.lista.canvas.winfo_width() + 2
+
+
 def test_tela_espere_desliga_o_botao_de_merge(tela):
     j = _montar(tela, n_extras=0)
-    j.tabela.selection_set("ramo:fix/bachira-air-contact-20261019")
-    j._escolheu()
+    j.selecionar("ramo:fix/bachira-air-contact-20261019")
     assert str(j.b_comando.cget("state")) == "disabled"
     assert f"dê o merge do {OFF}" in j.merge.get()
+
+
+def test_tela_cartao_tem_nome_amigavel_e_selos(tela):
+    j = _montar(tela, n_extras=0)
+    main = j._cartoes["ramo:main"]["quadro"]
+    textos = []
+
+    def varrer(w):
+        if isinstance(w, tk.Label):
+            textos.append(w.cget("text"))
+        for filho in w.winfo_children():
+            varrer(filho)
+    varrer(main)
+    assert "Versão principal" in textos and "VERSÃO PRINCIPAL" in textos
+    varrer(j._cartoes[f"ramo:{OFF}"]["quadro"])
+    assert "Isagi · off ball" in textos
+
+
+def test_tela_busca_filtra_e_vazio_tem_saida(tela):
+    j = _montar(tela, n_extras=0)
+    assert j._termo() == ""                                     # a dica nao conta como busca
+    j.campo_busca.focus_force()
+    j._dica(False)
+    j.busca.set("bachira")
+    tela.update()
+    assert [linha["ref"] for linha in j.visiveis] == ["fix/bachira-air-contact-20261019"]
+    j.busca.set("nada disso existe")
+    tela.update()
+    assert j.visiveis == [] and j._linha_escolhida() is not None   # a escolha nao some, so a lista
+    j._limpar_busca()
+    tela.update()
+    assert len(j.visiveis) == len(j.linhas)
+
+
+def test_tela_jogar_desligado_enquanto_prepara_e_aviso_no_erro(tela):
+    j = _montar(tela, n_extras=0)
+    j.ocupado, j._op = True, "jogar"
+    j._terminou("erro", "ErroDeVersao: npm ci falhou\nresto")
+    assert j.ocupado is False and str(j.b_rodar.cget("state")) == "normal"
+    assert any("Não consegui preparar" in w.cget("text") for f in j.zona_aviso.winfo_children()
+               for w in f.winfo_children() if isinstance(w, tk.Label))
+    j.ocupado, j._op = True, "atualizar"
+    j._terminou("erro", "sem rede")
+    assert "sem conexão" in j.estado.cget("text")
 
 
 def test_tela_versao_aberta_e_protegida_na_limpeza(tela, monkeypatch):
