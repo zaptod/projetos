@@ -29,7 +29,8 @@ Um chat longo piora: esquece decisões, repete erro e deixa entrega parada.
 
 ## 4. Leis (quebrar já custou caro)
 - **Decisão do Adrian vira nó no Grimório** (`python -m remoto.decisoes adicionar ... --commit`), nunca pergunta solta. Resposta dele se lê NA HORA (`python -m remoto.decisoes leitor`).
-- **Janela das postagens:** nada de reiniciar app/carteiro nem aplicar entrega de `post-12` a `post+18` min (a grade está em `random_builds/builds/grade.py`).
+- **Janela das postagens:** nada de reiniciar app/carteiro nem aplicar entrega de `post-12` a `post+18` min. A conta mora num lugar só, `builds.janela` (grade em `random_builds/builds/grade.py`). Toda ferramenta pesada (suíte, render manual, reinício) a consulta sozinha e recusa dentro da janela ou com publicação em voo; só `--forcar` explícito passa. Antes de algo pesado à mão, rode `python -m builds.janela agora`. Ferramenta nova chama `janela.recusa()` e nunca copia a conta.
+- **Nunca agir em página pública pelas contas da casa** (comentar, curtir, inscrever): o perfil do YouTube age como a conta PESSOAL do Adrian. Só o Studio age como o canal.
 - **Commit SEMPRE por caminho.** Nunca `git commit` sem caminho, que leva tudo o que estiver no índice. Não commite os arquivos do Adrian (`palco/biblioteca/LICENCAS.md`, `.../projetil/fogo.tscn`, `.../efeitos/folhas/**`), nem arquivo que só mudou o fim de linha.
 - **Teste verde ANTES do commit.** Testes com `TEMP=E:\tmp_pytest` e `PYTEST_ADDOPTS=-p no:cacheprovider` (o C: vive cheio).
 - **Edite Python com Write/Edit, nunca com heredoc:** o shell come a barra invertida.
