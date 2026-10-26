@@ -175,8 +175,10 @@ def veredito(r: dict) -> dict:
     if not testes.get("ok"):
         contas = testes.get("testes") or {}
         nomes = "; ".join(testes.get("falhas") or [])[:160]
+        arquivos = (testes.get("arquivos") or {}).get("falhou", 0)
+        extra = f", {arquivos} arquivo(s) de teste falham/não carregam" if arquivos else ""
         return {"codigo": "teste_vermelho", "tipo": "nao_vale", "final": True,
-                "texto": f"não vale: {contas.get('falhou', '?')} teste(s) quebram aqui ({nomes or 'ver o log'})"}
+                "texto": f"não vale: {contas.get('falhou', 0)} teste(s) quebram aqui{extra} ({nomes or 'ver o log'})"}
     contas = testes.get("testes") or {}
     sem_ci = "" if ci.get("conclusao") == "success" else " (o CI dele não rodou neste commit)"
     vermelhos = r.get("contido_por_vermelho") or []
@@ -500,11 +502,13 @@ class VigiaDeRamos:
         texto = saida + "\n" + erro
         resultado = {"rodou": True, "ok": codigo == 0, "em": self.relogio().isoformat(timespec="seconds")}
         resultado.update(vigia.resumo_de_testes(texto))
+        if resultado.get("vermelho"):
+            resultado["ok"] = False
         resultado.setdefault("duracao_s", round((datetime.now() - inicio).total_seconds(), 1))
         estouros = texto.count("Test timed out")
         if estouros:
             resultado["por_tempo"] = estouros
-        if codigo != 0:
+        if not resultado["ok"]:
             resultado["falhas"] = [linha.strip() for linha in vigia._ANSI.sub("", texto).splitlines()
                                    if linha.strip().startswith(("FAIL", "×"))][:8]
         return resultado

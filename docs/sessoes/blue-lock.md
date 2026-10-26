@@ -220,10 +220,9 @@ python -m bluelock.vigia instalar       # cria a tarefa (30 min, oculta, endurec
 python -m bluelock.vigia remover
 ```
 
-**Estado da main conferido:** `face59d` (19/10/2026, 17:18 — revisão de `c6f2c87..face59d`: 8 commits; mudou `package.json`, `src/main.ts`, `src/replay.ts`
-e `src/simulation.ts`; `npm test` 1684/1684 em 288,1 s, informado pelo vigia). A interface só mostra aprendizado de chute de primeira/vantagem de drible,
-o replay valida esses campos novos e a simulação corrigiu recepção/rebotes; não houve quebra de contrato com `Field`, `Simulation`, personagens ou
-`visual-state`, portanto `bluelock/gravar.py` não precisou mudar. Quem atender um pedido "Blue Lock main mudou" atualiza esta linha.
+**Estado da main conferido:** `0c200a0` (26/10/2026 11:11; o Adrian avançou a main de `face59d` por fast-forward, 72 commits, nó `blue-lock/main-avanca-0c200a0`). Medido na pasta de versão com checkout completo: `npm test` 3063/3063 em 126 arquivos (suíte lenta com a máquina ocupada: 272 s a 740 s; `pass-diagnostics` sozinho 254 s) e build ok em ~1 min. CI dele: job `core` verde; job `browser` **vermelho** porque `scripts/check-locomotion-ui.py` (linha 21, seletor `#graphics`) é anterior à interface responsiva (`0062cd3`, 23/10), que põe os controles em abas. É tarefa do repositório do Adrian, não nossa; como o passo para no primeiro erro, os checks de navegador seguintes não rodam no CI. Relatório: `E:\BLUE-Lock-serie-capturas\integracao_main\RELATORIO.md`. Ainda **não provei** o `bluelock.gravar` nesta versão (`field.ts` e `simulation.ts` mudaram). Quem atender um pedido "Blue Lock main mudou" atualiza esta linha.
+
+**Teste vermelho de verdade (26/10).** `vigia.resumo_de_testes` agora marca `vermelho` quando `Test Files` tem falha ou um arquivo nem carrega (`FAIL x.test.ts [ x.test.ts ]`), mesmo com `Tests N passed (N)` verde e código de saída 0; `ok` do vigia e do vigia de ramos exigem `not vermelho`. Os `2856/2856` de 26/10 no `ramos.json` vieram da pasta sem `artifacts/` (a suíte tem 3063).
 
 ## 5b. O vigia dos ramos (vale o merge?)
 
@@ -278,19 +277,19 @@ Pedido do Adrian (19/10): "crie um executável no meu PC que puxa isso, onde pos
 ```
 E:\BLUE-Lock-versoes\
   repo\             clone PRÓPRIO do GitHub (--no-checkout; 106 MB de .git; clonar levou 48 s)
-  v\<sha12>\        git worktree de cada versão, SEM artifacts/ (sparse-checkout): ~7 MB em vez de ~500
+  v\<sha12>\        git worktree de cada versão, sem `artifacts/`, menos os arquivos que o código cita (sparse-checkout): ~9 MB a mais no `0c200a0`, em vez de ~1,5 GB
   modulos\<lock16>\ o node_modules de cada package-lock diferente; cada versão aponta o seu por JUNCTION
   jogos\<sha12>.html o jogo num arquivo só (o dist/ do build com JS e CSS embutidos, o mesmo que o scripts/bundle.mjs dele faz)
   navegador\        o perfil do Chrome do lançador (separado do Chrome do Adrian)
   versoes.json      o registro: quando preparou, quando usou, fixada
 ```
 
-- **Preparar** = `worktree add` + `sparse-checkout` sem `artifacts/` + `checkout` do commit; `npm ci` só se aquele `package-lock.json` ainda não tem
+- **Preparar** = `worktree add` + `sparse-checkout` sem `artifacts/`, **menos os `artifacts/*` que `src/` e `scripts/` citam** (`arquivos_de_artifacts`, via `git grep`) + `checkout` do commit; `npm ci` só se aquele `package-lock.json` ainda não tem
   `modulos\` (senão é só a junction); `npm run build` (se só o `tsc` reclamar, constrói pelo `vite build` direto e avisa); o `dist/` vira um HTML único.
   O build do Vite sai num JS e num CSS, sem imagem nem pedaço dinâmico, então **o jogo abre direto do arquivo, sem servidor**. Se um dia o build tiver
   mais pedaços, a versão cai no modo servidor: `vite preview` numa porta livre, encerrado quando a janela fecha.
 - **Medido em 19/10** no `face59d`: `npm ci` 21 s; `npm run build` 9 s; `npm test -- --testTimeout=60000` **pela junction, na pasta esparsa**: 1684/1684
-  em 143 s (o mesmo total do espelho). Nenhum teste nem o jogo lê `artifacts/` (403 MB de JSON versionado). Pela janela, de verdade (21:55–22:00):
+  em 143 s (o mesmo total do espelho). Em 19/10 nenhum teste lia `artifacts/`; **a frase deixou de valer em 23/10**: no `0c200a0` 10 arquivos de teste importam `../artifacts/*.replay.json?raw` (16 arquivos, 9 MB) e, sem eles, nem carregam. Por isso a pasta leva só esses. Pela janela, de verdade (21:55–22:00):
   a main do zero (`npm ci` 18 s + build) até o Chrome aberto; o `fix/bachira-gesture-exit-20261019` do zero em **10,4 s** (lock igual: só a junction, sem
   `npm ci`); versão já pronta abre em **1,2 s**. Nas duas, "Iniciar partida" rodou a 60/60 FPS, relógio 02:00 → 01:52 em 8 s, nenhum erro na página.
   Disco depois de três versões: clone 114 MB, `modulos` 97 MB, `v` 24 MB, `jogos` 2 MB, perfil do Chrome 43 MB.

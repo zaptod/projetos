@@ -145,6 +145,16 @@ def resumo_de_testes(saida: str) -> dict:
         ficha[chave] = {"passou": contas.get("passed", 0), "falhou": contas.get("failed", 0),
                         "pulou": contas.get("skipped", 0) + contas.get("todo", 0),
                         "total": int(total.group(1)) if total else None}
+    # Arquivo que nem CARREGA (import quebrado, arquivo faltando) aparece como
+    # `FAIL x.test.ts [ x.test.ts ]` e conta 0 teste: o rodape de "Tests" fica
+    # verde (2879/2879) com `Test Files  10 failed`. Isso e VERMELHO, nunca verde.
+    sem_carregar = sorted(set(re.findall(r"^\s*FAIL\s+(\S+)\s+\[\s*\1\s*\]", texto, re.MULTILINE)))
+    arquivos_vermelhos = (ficha.get("arquivos") or {}).get("falhou", 0)
+    testes_vermelhos = (ficha.get("testes") or {}).get("falhou", 0)
+    if sem_carregar:
+        ficha["sem_carregar"] = sem_carregar[:20]
+    if arquivos_vermelhos or testes_vermelhos or sem_carregar:
+        ficha["vermelho"] = True
     duracao = re.search(r"^\s*Duration\s+([\d.]+)\s*(ms|s)\b", texto, re.MULTILINE)
     if duracao:
         valor = float(duracao.group(1))
@@ -384,8 +394,8 @@ class Vigia:
         if estouros:
             ficha["por_tempo"] = estouros
         ficha.setdefault("duracao_s", round((datetime.now() - inicio).total_seconds(), 1))
-        ficha["ok"] = codigo == 0
-        if codigo != 0:
+        ficha["ok"] = codigo == 0 and not ficha.get("vermelho")
+        if not ficha["ok"]:
             linhas = [linha for linha in _ANSI.sub("", saida + "\n" + erro).splitlines()
                       if "FAIL" in linha or "×" in linha or "Error" in linha]
             ficha["falhas"] = linhas[:8]

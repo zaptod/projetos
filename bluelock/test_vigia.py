@@ -311,3 +311,31 @@ def test_instalar_cria_tarefa_de_30_min(monkeypatch, tmp_path):
     assert argumentos[:3] == ["schtasks", "/Create", "/TN"] and vigia.TAREFA in argumentos
     assert argumentos[argumentos.index("/MO") + 1] == "30"
     assert ficha["ok"] and ficha["limite"]["limite"] == vigia.LIMITE_DA_TAREFA
+
+
+RODAPE_ARQUIVO_NAO_CARREGOU = (
+    " FAIL  src/contact-effects.test.ts [ src/contact-effects.test.ts ]\n"
+    "Error: ENOENT: no such file or directory, open 'artifacts/x.replay.json'\n"
+    " Test Files  1 failed | 125 passed (126)\n"
+    "      Tests  2879 passed (2879)\n"
+    "   Duration  272.20s\n")
+
+
+def test_resumo_arquivo_que_nao_carregou_e_vermelho_mesmo_com_testes_verdes():
+    """26/10, 0c200a0: `Tests 2879 passed (2879)` com 10 arquivos sem carregar."""
+    ficha = vigia.resumo_de_testes(RODAPE_ARQUIVO_NAO_CARREGOU)
+    assert ficha["testes"]["falhou"] == 0 and ficha["testes"]["passou"] == 2879
+    assert ficha["arquivos"]["falhou"] == 1
+    assert ficha["vermelho"] is True
+    assert ficha["sem_carregar"] == ["src/contact-effects.test.ts"]
+    assert "vermelho" not in vigia.resumo_de_testes(
+        " Test Files  126 passed (126)\n      Tests  3063 passed (3063)\n")
+
+
+def test_arquivo_sem_carregar_com_codigo_zero_nao_vira_verde(mundo):
+    mundo.npm_saida = (0, RODAPE_ARQUIVO_NAO_CARREGOU, "")
+    mundo.empurrar("src/c.ts", "x\n", "fix: c")
+    mundo.vigia().olhar()
+    ultimo = mundo.vigia().status()["ultimo"]["testes"]
+    assert ultimo["ok"] is False and ultimo["vermelho"] is True
+    assert "❌" in mundo.avisos[0]

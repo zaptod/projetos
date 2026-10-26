@@ -66,8 +66,14 @@ RAIZ = Path(__file__).resolve().parent.parent
 MANTER = 8
 # O que nao entra na pasta da versao. `artifacts/` sao relatorios, PNG e o
 # HTML antigo, versionados: 493 MB no espelho de 19/10 (403 MB so de JSON).
-# Nenhum teste (`src/**/*.test.ts`, `scripts/*.test.mjs`) nem o jogo le de la.
+# Desde 23/10/2026 ALGUNS testes (`src/*.test.ts`) importam replays de la
+# (`import x from '../artifacts/y.replay.json?raw'`): sem eles o arquivo de teste
+# nem carrega. Por isso a pasta sai INTEIRA, menos os arquivos que o codigo
+# da propria versao cita (`arquivos_de_artifacts`): ~16 arquivos, ~9 MB no
+# `0c200a0`, em vez dos 1,5 GB.
 FORA_DA_PASTA = ("!/artifacts/",)
+CITA_ARTIFACTS = r"artifacts/[A-Za-z0-9_./-]*[A-Za-z0-9_]"
+LIMITE_DE_CITADOS = 400
 GIT_PRAZO_S = 300
 NPM_CI_PRAZO_S = 900
 BUILD_PRAZO_S = 600
@@ -78,7 +84,7 @@ NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # clone nosso, sem ramo nem arquivo — e o que diz "conflitaria".)
 GIT_PERMITIDOS = frozenset({"clone", "fetch", "rev-parse", "worktree", "sparse-checkout", "checkout",
                             "log", "show", "for-each-ref", "cat-file", "rev-list", "merge-base",
-                            "merge-tree", "diff"})
+                            "merge-tree", "diff", "grep"})
 GIT_PROIBIDOS = frozenset({"push", "merge", "commit", "reset", "rebase", "pull", "stash", "clean",
                            "tag", "branch", "am", "cherry-pick", "revert", "remote", "config"})
 _HEX = re.compile(r"^[0-9a-fA-F]{7,40}$")
@@ -426,11 +432,31 @@ class Versoes:
             return self._anotar(sha, modo="servidor", html=None, construida_em=self._agora(),
                                 aviso_do_build=aviso)
 
+    def arquivos_de_artifacts(self, sha: str) -> list[str]:
+        """Os arquivos de `artifacts/` que o codigo desta versao cita (testes e jogo).
+
+        Sai como padroes do sparse-checkout (`/artifacts/x.json`). Citar so a
+        pasta (`artifacts/`) nao conta: seria voltar aos 1,5 GB."""
+        achados: set[str] = set()
+        for pasta in ("src", "scripts"):
+            codigo, saida = self._git("grep", "-h", "-o", "-E", CITA_ARTIFACTS, sha, "--", pasta,
+                                      cwd=self.clone)
+            if codigo not in (0, 1):
+                continue
+            for linha in saida.splitlines():
+                linha = linha.strip()
+                if linha and "." in linha.rsplit("/", 1)[-1]:
+                    achados.add("/" + linha)
+        return sorted(achados)[:LIMITE_DE_CITADOS]
+
     def _garantir_pasta(self, sha: str) -> None:
         pasta = self.pasta(sha)
         if (pasta / ".git").exists():
             atual = self._git_ok("rev-parse", "HEAD", cwd=pasta)
             if atual == sha:
+                # Pasta antiga (de antes dos artifacts citados): completa so o que falta.
+                self._git("sparse-checkout", "set", "--no-cone", "/*", *FORA_DA_PASTA,
+                          *self.arquivos_de_artifacts(sha), cwd=pasta)
                 return
             self._remover_pasta(pasta)
         elif pasta.exists():
@@ -441,7 +467,8 @@ class Versoes:
                                   cwd=self.clone)
         if codigo != 0:
             raise ErroDeVersao(f"não consegui separar a pasta de {sha[:7]}: {saida.strip()[-300:]}")
-        self._git("sparse-checkout", "set", "--no-cone", "/*", *FORA_DA_PASTA, cwd=pasta)
+        self._git("sparse-checkout", "set", "--no-cone", "/*", *FORA_DA_PASTA,
+                  *self.arquivos_de_artifacts(sha), cwd=pasta)
         codigo, saida = self._git("checkout", "--quiet", "--detach", sha, cwd=pasta)
         if codigo != 0:
             raise ErroDeVersao(f"não consegui tirar os arquivos de {sha[:7]}: {saida.strip()[-300:]}")

@@ -223,3 +223,31 @@ def test_matar_arvore_e_so_para_pid_nosso_e_navegador_tem_perfil_proprio(versoes
     assert perfil.parent == versoes.raiz                       # nunca o perfil do Adrian
     if os.name == "nt":
         assert versoes.pids_do_nosso_navegador() == []          # nada aberto com o perfil de teste
+
+
+def test_teste_que_importa_replay_de_artifacts_leva_so_esse_arquivo(versoes, github, npm):
+    """26/10: 10 arquivos de teste do 0c200a0 importam `../artifacts/*.replay.json?raw`
+    e nem carregavam na pasta sem `artifacts/`. Leva so o que o codigo cita."""
+    github.commit("artifacts/lance.replay.json", '{"replay": 1}\n', "docs: replay")
+    github.commit("artifacts/outro.json", '{"nao": "citado"}\n', "docs: outro")
+    github.commit("src/lance.test.ts",
+                  "import lance from '../artifacts/lance.replay.json?raw';\n"
+                  "// pasta solta: ../artifacts/ nao conta\n", "test: lance")
+    github.empurrar("main")
+    ficha = versoes.preparar("main")
+    pasta = versoes.pasta(ficha["sha"])
+    assert (pasta / "artifacts" / "lance.replay.json").is_file()
+    assert not (pasta / "artifacts" / "outro.json").exists()
+    assert not (pasta / "artifacts" / "relatorio.json").exists()
+    assert versoes.arquivos_de_artifacts(ficha["sha"]) == ["/artifacts/lance.replay.json"]
+
+
+def test_pasta_antiga_ja_pronta_ganha_o_artifact_que_faltava(versoes, github, npm):
+    sha = versoes.preparar("main")["sha"]
+    pasta = versoes.pasta(sha)
+    assert not (pasta / "artifacts").exists()
+    novo = github.commit("src/x.test.ts", "import r from '../artifacts/relatorio.json';\n", "test: x")
+    github.empurrar("main")
+    # a mesma pasta (mesmo sha) preparada de novo completa o que o codigo cita
+    mod_sha = versoes.preparar(novo)["sha"]
+    assert (versoes.pasta(mod_sha) / "artifacts" / "relatorio.json").is_file()
