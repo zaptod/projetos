@@ -207,17 +207,30 @@ BOTOES_PROIBIDOS = ("ativar", "ligar", "turn on", "enable", "aceitar",
                     "accept", "permitir", "allow", "publicar", "post",
                     "postar", "continuar", "continue", "confirmar", "salvar",
                     "save", "experimentar", "try", "criar", "create")
-_JS_AVISO = r"""([dispensa, proibidos]) => {
+# `trabalho` (opcional, 3o argumento; o Instagram usa — 26/10/2026): o que marca
+# uma caixa como a JANELA DE TRABALHO, que NUNCA se fecha (no Instagram o proprio
+# "Criar nova publicacao" e um role=dialog): {seletor, botoes}. Caixa que
+# contem o seletor (ex.: input de arquivo) ou um botao com esses rotulos
+# (ex.: "avancar") e de trabalho. Sem o 3o argumento nada muda (TikTok).
+_JS_AVISO = r"""([dispensa, proibidos, trabalho]) => {
+  trabalho = trabalho || {};
   const norm = t => (t || '').normalize('NFKD').replace(/[̀-ͯ]/g, '')
       .trim().toLowerCase();
   const visivel = e => { const r = e.getBoundingClientRect();
       const c = getComputedStyle(e);
       return r.width > 0 && r.height > 0 && c.visibility !== 'hidden'
           && c.display !== 'none'; };
+  const detrabalho = e => {
+    if (trabalho.seletor && e.querySelector(trabalho.seletor)) return true;
+    const rotulos = trabalho.botoes || [];
+    if (!rotulos.length) return false;
+    return [...e.querySelectorAll('button,[role=button],a,div')].some(b =>
+        b.children.length <= 1 && rotulos.includes(norm(b.innerText || '')));
+  };
   const caixas = [...document.querySelectorAll(
       '[role=dialog],[aria-modal=true],[class*=modal i],[class*=Modal],' +
       '[class*=mask i],[class*=overlay i],[class*=popup i],[class*=guide i]')]
-      .filter(visivel);
+      .filter(visivel).filter(e => !detrabalho(e));
   const fixos = caixas.filter(e => {
       const c = getComputedStyle(e); const r = e.getBoundingClientRect();
       return c.position === 'fixed' || e.getAttribute('role') === 'dialog'
@@ -253,19 +266,26 @@ _JS_AVISO = r"""([dispensa, proibidos]) => {
 }"""
 
 
-def _fechar_aviso(page, passo, laudo: dict | None = None) -> str:
+def _fechar_aviso(page, passo, laudo: dict | None = None, *,
+                  prefixo: str = "tiktok", trabalho: dict | None = None,
+                  proibidos: tuple = BOTOES_PROIBIDOS) -> str:
     """Fecha o que cobre o formulario. Devolve o que fez ("" = nada). Nunca
-    levanta."""
+    levanta.
+
+    GENERICA, e por isso o Instagram usa a mesma (`prefixo` da captura,
+    `trabalho` = o que NAO se fecha, `proibidos` = botoes que nunca se clicam).
+    """
     feitos = []
     for rodada in range(1, RODADAS_DE_AVISO + 1):
         try:
             r = page.evaluate(_JS_AVISO, [list(BOTOES_DE_DISPENSA),
-                                          list(BOTOES_PROIBIDOS)])
+                                          list(proibidos),
+                                          trabalho or {}])
         except Exception:                                      # noqa: BLE001
             break
         if not isinstance(r, dict) or not r.get("sobreposicao"):
             break
-        foto = escrita.fotografar(page, f"tiktok_aviso_{rodada}")
+        foto = escrita.fotografar(page, f"{prefixo}_aviso_{rodada}")
         if r.get("clicou"):
             feitos.append(r["clicou"])
             passo(f"aviso {rodada} fechado pelo botao '{r['clicou']}' "
@@ -286,7 +306,8 @@ def _fechar_aviso(page, passo, laudo: dict | None = None) -> str:
     return ", ".join(feitos)
 
 
-def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
+def _escrever_legenda(page, texto: str, passo, laudo: dict, *,
+                     campos=None, prefixo: str = "tiktok") -> bool:
     """Escreve a legenda, confere que ficou, e tenta DUAS vezes.
 
     Existe como funcao propria (e nao como um trecho dentro de `publicar`)
@@ -309,7 +330,7 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
     ultima = len(MODOS_DA_LEGENDA)
     for tentativa, (modo, ajustes) in enumerate(MODOS_DA_LEGENDA, start=1):
         de_novo = "; tentando de novo." if tentativa < ultima else "."
-        campo = _primeiro(page, CAMPO_LEGENDA, timeout=10.0)
+        campo = _primeiro(page, campos or CAMPO_LEGENDA, timeout=10.0)
         if campo is None:
             laudo["legenda"] = "campo não encontrado"
             passo(f"campo de legenda não encontrado{de_novo}")
@@ -335,7 +356,7 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
             escrita.escrever(page, campo, texto, colar=colar, **ajustes)
         except Exception as exc:                               # noqa: BLE001
             laudo["legenda"] = f"falhou: {type(exc).__name__}"
-            laudo["tela"] = escrita.fotografar(page, "tiktok_legenda")
+            laudo["tela"] = escrita.fotografar(page, f"{prefixo}_legenda")
             passo(f"não consegui escrever a legenda "
                   f"({type(exc).__name__}){de_novo}")
             continue
@@ -344,7 +365,7 @@ def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
         estado = _estado_da_legenda(campo, texto)
         if estado != "escrita":
             laudo["legenda"] = estado
-            laudo["tela"] = escrita.fotografar(page, "tiktok_legenda")
+            laudo["tela"] = escrita.fotografar(page, f"{prefixo}_legenda")
             passo(f"escrevi a legenda mas ela {estado}{de_novo}")
             continue
         laudo["legenda"] = "escrita"

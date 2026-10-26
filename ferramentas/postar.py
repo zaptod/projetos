@@ -113,6 +113,12 @@ class _SaidaDatada:
         return getattr(self.saida, nome)
 
 
+# Os destinos que podem estar EM VOO na ficha da trava. O Instagram entrou em
+# 26/10/2026 (serie do Blue Lock): sem ele aqui a ficha com voo no Instagram
+# seria "em_voo invalido" e a rodada seguinte nao publicaria nada.
+DESTINOS_COM_VOO = ("youtube", "tiktok", "instagram")
+
+
 def _voando(canal: str, destino: str):
     """Decora um FUNIL de publicacao: enquanto ele roda, a ficha da trava diz
     o que esta no ar (`_em_voo`, la embaixo, perto da trava da rodada). Os
@@ -1628,7 +1634,7 @@ def _marcas_so_na_memoria() -> list:
         from builds.publicar import desfecho
         return [m for m in desfecho.sem_marca_no_disco()
                 if m.get("canal") in CANAIS_DA_FICHA
-                and m.get("destino") in ("youtube", "tiktok") and m.get("alvo")]
+                and m.get("destino") in DESTINOS_COM_VOO and m.get("alvo")]
     except Exception:                                          # noqa: BLE001
         return []
 
@@ -5108,10 +5114,14 @@ def postar_bluelock(*, so_ver: bool = False, agora: bool = False) -> dict:
     from builds.publicar import serie_bluelock as serie
 
     hora = grade.slot(datetime.now())
+    # O INSTAGRAM SO EXISTE PARA QUEM TEM CONTA COM LOGIN CONFERIDO: sem ela o
+    # destino nem entra na lista (calado, sem ficha, sem alarme).
+    possiveis = list(serie.DESTINOS) + (
+        ["instagram"] if _instagram_ligado("bluelock") else [])
     if agora:
-        destinos = list(serie.DESTINOS)
+        destinos = possiveis
     else:
-        destinos = [d for d in serie.DESTINOS if grade.publica_a_serie(d, hora)]
+        destinos = [d for d in possiveis if grade.publica_a_serie(d, hora)]
         if not destinos:
             return _quieta_da_serie(
                 f"o horario das {grade.horario(hora)} nao e da serie "
@@ -5239,8 +5249,43 @@ def postar_bluelock(*, so_ver: bool = False, agora: bool = False) -> dict:
         ficha["tiktok_fora_da_grade"] = True
     if "youtube" not in escolhas and not ficha.get("youtube_falhou"):
         ficha["so_tiktok"] = True
+    if "instagram" in escolhas:
+        # POR ULTIMO: o Instagram e o mais lento e o mais novo; nada que ele
+        # faca atrasa nem impede o YouTube e o TikTok do mesmo horario.
+        ep = escolhas["instagram"]
+        video = ep.como_video()
+        ficha.setdefault("alvo", ep.id)
+        ficha.setdefault("titulo", ep.titulo)
+        falha_ig: dict = {}
+        ficha["instagram"] = _instagram_da_serie(video, falha_ig)
+        if falha_ig:
+            ficha["instagram_falha"] = (f"{falha_ig.get('tipo', '')}: "
+                                        f"{falha_ig.get('mensagem', '')}")[:300]
+            if falha_ig.get("clicou"):
+                ficha["instagram_clicou"] = True
+        if _instagram_confirmado(ficha["instagram"]):
+            ficha["feito"] = True
     _comentarios_da_serie(ficha, escolhas)
     return ficha
+
+
+def _instagram_ligado(canal: str) -> bool:
+    """O Instagram deste canal esta LIGADO (conta propria + login conferido na
+    tela)? Qualquer duvida e "nao": desligado e calado. Nunca levanta."""
+    try:
+        from builds.publicar import instagram
+        return bool(instagram.ligado(canal))
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+def _instagram_confirmado(estado) -> bool:
+    """O Instagram CONFIRMOU o Reel? (a mesma regra de `_tiktok_confirmado`)"""
+    try:
+        from builds.publicar import instagram
+        return bool(instagram.confirmado(estado))
+    except Exception:                                          # noqa: BLE001
+        return False
 
 
 def _comentarios_da_serie(ficha: dict, escolhas: dict) -> None:
@@ -5319,6 +5364,46 @@ def _tiktok_da_serie(alvo, falha: dict | None = None) -> str:
                          "episodio": int(alvo.id.rsplit("ep", 1)[-1]),
                          "prova": [laudo] if laudo else [],
                          "prova_ok": _prova_ok(laudo)})
+    return estado
+
+
+@_voando("bluelock", "instagram")
+def _instagram_da_serie(alvo, falha: dict | None = None) -> str:
+    """O Instagram (Reels) da serie. Registra no ledger PROPRIO depois da
+    confirmacao. A identidade da conta e conferida na TELA dentro do
+    `instagram.publicar` (e o funil: recusa conta errada e destino desligado)."""
+    from builds.publicar import instagram as _ig
+    from builds.publicar import serie_bluelock as serie
+    laudo: dict = {}
+    try:
+        estado = _ig.publicar(alvo, postar=True, canal="bluelock",
+                              progresso=lambda t: _linha(f"   {t}"),
+                              prova=laudo)
+    except Exception as exc:                                   # noqa: BLE001
+        if falha is not None:
+            falha["tipo"] = type(exc).__name__
+            falha["mensagem"] = str(exc)[:300]
+            if laudo.get("clicou"):
+                falha["clicou"] = True
+        _linha(f"   instagram: NAO subiu ({type(exc).__name__}: {exc})"[:200])
+        if laudo.get("clicou"):
+            _garantir_marca("bluelock", alvo.id, "instagram",
+                            f"cliquei em publicar no Instagram e algo falhou "
+                            f"depois ({type(exc).__name__}): o Reel pode "
+                            f"estar no ar - confira no perfil.",
+                            etapa="publicar.instagram.clique")
+        return ""
+    if _ig.confirmado(estado):
+        extra = {"por": "postar.py", "visibilidade": "public",
+                 "publicado": True, "estado": "publicado",
+                 "episodio": int(alvo.id.rsplit("ep", 1)[-1]),
+                 "conta": laudo.get("conta") or "",
+                 "arroba": laudo.get("arroba") or "",
+                 "prova": [laudo] if laudo else [],
+                 "prova_ok": _prova_ok(laudo)}
+        if laudo.get("url"):
+            extra["url"] = laudo["url"]
+        serie.registrar(alvo, estado, "instagram", extra)
     return estado
 
 
@@ -5853,6 +5938,14 @@ def avisar(resultados: list) -> None:
             linhas.append("    ▸ TikTok    "
                           f"{_estado_da_plataforma(r.get('tiktok'))}"
                           f" · {_conta_do_destino('tiktok', canal)}{outra}")
+        if "instagram" in r:
+            linhas.append("    ▸ Instagram "
+                          + ("✅ publicado" if _instagram_confirmado(
+                                 r.get("instagram")) else
+                             "⚠ clicou e não confirmou — confira o perfil"
+                             if r.get("instagram") else
+                             "❌ não saiu: "
+                             f"{str(r.get('instagram_falha') or '?')[:100]}"))
         linhas.append(f"    `{r.get('alvo', '')}`")
         if r.get("veto_vencido"):
             # Uma passada so desde 15/09/2026: "as 3 rodadas" mentia.
@@ -6496,7 +6589,7 @@ def _ficha_valida(dados) -> tuple:
     if voo is not None and not (
             isinstance(voo, dict) and voo.get("canal") in CANAIS_DA_FICHA
             and isinstance(voo.get("alvo"), str) and voo.get("alvo")
-            and voo.get("destino") in ("youtube", "tiktok")
+            and voo.get("destino") in DESTINOS_COM_VOO
             and isinstance(voo.get("etapa"), str)
             and voo["etapa"] in _ORDEM_DA_ETAPA):
         return None, f"em_voo invalido ({voo!r})"[:160]
@@ -6600,7 +6693,7 @@ def _voo_da_ficha_invalida(caminho=None) -> tuple:
     inteiro = (isinstance(voo, dict)
                and voo.get("canal") in CANAIS_DA_FICHA
                and isinstance(voo.get("alvo"), str) and voo.get("alvo")
-               and voo.get("destino") in ("youtube", "tiktok")
+               and voo.get("destino") in DESTINOS_COM_VOO
                and isinstance(voo.get("etapa"), str)
                and voo["etapa"] in _ORDEM_DA_ETAPA)
     if not inteiro:
@@ -6873,7 +6966,7 @@ def _pousar_sem_marca(anterior: dict | None) -> bool:
     for item in pendentes:
         if not (isinstance(item, dict)
                 and item.get("canal") in CANAIS_DA_FICHA
-                and item.get("destino") in ("youtube", "tiktok")
+                and item.get("destino") in DESTINOS_COM_VOO
                 and isinstance(item.get("alvo"), str) and item.get("alvo")):
             _linha(f"[postar] marca pendente torta na ficha anterior, "
                    f"ignorada: {item!r}"[:200])

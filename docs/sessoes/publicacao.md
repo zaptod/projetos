@@ -104,6 +104,7 @@ Esta parte **escolhe** qual vídeo sai, **publica** nos dois destinos e
 | Ledger, `publicado()`, `prova_ok()`, reconciliação, métricas | `...\publicar\metricas.py` |
 | Catálogo dos mp4 de builds; corte em pedaços ≤180 s | `...\publicar\catalogo.py`, `cortes.py` |
 | Publicadores | `youtube.py` (API), `youtube_web.py` (navegador — é o caminho usado), `tiktok.py` (navegador) |
+| Instagram (Reels, 26/10/2026; só a série do Blue Lock; sem conta = desligado e calado) | `instagram.py` — ver `docs/sessoes/instagram.md`; funil `postar._instagram_da_serie`; `DESTINOS_COM_VOO` aceita `instagram` na ficha da trava |
 | Escrever título/descrição/legenda no campo e conferir | `...\publicar\escrita.py` (os dois publicadores passam por ele) |
 | "O que aconteceu no clique" + lista "a conferir" | `...\publicar\desfecho.py` |
 | Ledger × canal de verdade / privado que deve voltar | `conferencia.py`, `recuperar.py` |

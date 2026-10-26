@@ -95,6 +95,18 @@ SERVICOS = {
     "tiktok": {"rotulo": "TikTok", "tipo": "perfil", "publica": True,
                "legado": RAIZ / ".browser_profile" / "tiktok",
                "ajuda": "Login no navegador; o perfil guarda a sessao."},
+    # O INSTAGRAM (Reels) ENTROU EM 26/10/2026, pedido do Adrian: uma conta por
+    # canal, criada por ele e logada numa janela que NOS abrimos (a senha nunca
+    # passa por aqui). `opcional`: canal SEM conta propria = destino DESLIGADO
+    # e calado (nao e a "queda padrao" dos outros servicos, que e alerta em
+    # `conformidade`); so liga com a conta escolhida E o login conferido na
+    # tela (`conta_propria`, `builds.publicar.instagram.ligado`). Sem `legado`:
+    # o perfil nasce em `browser_profiles/instagram__<conta>`.
+    "instagram": {"rotulo": "Instagram (Reels)", "tipo": "perfil",
+                  "publica": True, "opcional": True,
+                  "ajuda": "Reels pelo instagram.com no navegador. Uma conta "
+                           "por canal; login manual UMA vez "
+                           "(`python -m builds.publicar.instagram --login`)."},
     "chatgpt": {"rotulo": "ChatGPT", "tipo": "perfil", "publica": False,
                 "ajuda": "Usado para escrever os roteiros das historias."},
     "gemini": {"rotulo": "Gemini", "tipo": "perfil", "publica": False,
@@ -400,6 +412,10 @@ def conformidade() -> list[dict]:
                                f"{identificador}"})
         for canal in CANAIS_PUBLICANDO:
             nome = ativa(servico, canal)
+            # servico OPCIONAL (Instagram): sem conta propria o destino esta
+            # desligado, e isso NAO e alerta ("sem conta = calado")
+            if ficha.get("opcional") and conta_propria(servico, canal) is None:
+                continue
             # 3. canal que publica caindo na queda padrao
             if not explicita(servico, canal):
                 achados.append({
@@ -529,6 +545,23 @@ def explicita(servico: str, canal: str) -> bool:
     """
     ativa_do_canal = (estado()["servicos"].get(servico, {}) or {}).get("ativa") or {}
     return bool(_escolha(ativa_do_canal, canal))
+
+
+def conta_propria(servico: str, canal: str) -> str | None:
+    """A conta que ESTE canal escolheu de proposito, ou `None`.
+
+    `None` = nao escolheu (ou so cai em `geral`/`principal`). E a pergunta dos
+    destinos OPCIONAIS: so existem para o canal que tem conta dele. Nunca herda
+    a conta de outro canal — publicar a serie no Instagram dos duelos nao tem
+    desfazer.
+    """
+    try:
+        if not explicita(servico, canal):
+            return None
+        nome = ativa(servico, canal)
+    except Exception:                                          # noqa: BLE001
+        return None
+    return None if nome == PADRAO else nome
 
 
 def destino(servico: str, canal: str) -> dict:
@@ -734,7 +767,8 @@ def resumo() -> list:
     return saida
 
 
-__all__ = ["CANAIS", "PADRAO", "SERVICOS", "adicionar", "ativa", "contas",
+__all__ = ["CANAIS", "PADRAO", "SERVICOS", "adicionar", "ativa", "conta_propria",
+           "contas",
            "credencial_youtube", "escolher", "escopo_youtube", "estado",
            "perfil", "pode_editar_youtube", "remover", "resumo",
            "runtime_dir", "tem_escopo", "tem_login"]

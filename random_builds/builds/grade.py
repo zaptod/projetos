@@ -415,7 +415,7 @@ def proximo_em(agora: datetime | None = None) -> datetime:
 # PARTE, e nao uma linha de `HORAS_POR_CANAL`: aquela tabela e a dos canais
 # que dividem a rodada (historias, builds) e 18 modulos a leem; a serie so
 # precisa responder "este horario e meu?" (`publica_a_serie`).
-HORAS_DA_SERIE = {"youtube": (20,), "tiktok": (20,)}
+HORAS_DA_SERIE = {"youtube": (20,), "tiktok": (20,), "instagram": (20,)}
 
 
 def horas_da_serie(plataforma: str = "youtube") -> tuple:
@@ -430,6 +430,37 @@ def horas_da_serie(plataforma: str = "youtube") -> tuple:
 def publica_a_serie(plataforma: str, hora: int) -> bool:
     """A serie do Blue Lock posta nessa plataforma no horario `hora`?"""
     return int(hora) in horas_da_serie(plataforma)
+
+
+# O INSTAGRAM (Reels, 26/10/2026) NAO TEM GRADE DE PLATAFORMA: `horas_da_
+# plataforma("instagram")` cai nos dez horarios (como o YouTube), so para que
+# "qual e o horario de um post?" (`slot`, `chave_do_horario`) tenha resposta.
+# O que manda sao os horarios de CADA CANAL, e so valem se o canal TEM conta
+# propria no Instagram (`builds.publicar.instagram.ligado`): sem conta o destino
+# esta desligado e calado. Ele NAO entra em `META_DIARIA_*` nem em `_meta_total`
+# (a conferencia nao pode cobrar horario de um destino que ainda nao existe).
+#   bluelock   20:37, junto do YouTube e do TikTok da serie (`HORAS_DA_SERIE`)
+#   builds     21:37, o horario do TikTok dos duelos          (PRONTO, DESLIGADO)
+#   historias  21:37, o horario do TikTok das historias       (PRONTO, DESLIGADO)
+# Os de duelos e historias sao um PONTO DE PARTIDA a confirmar quando a conta
+# existir: nenhum dos dois canais publica no Instagram ainda.
+HORAS_DO_INSTAGRAM_DOS_OUTROS_CANAIS = {"builds": (21,), "historias": (21,)}
+
+
+def horas_do_instagram(canal: str | None) -> tuple:
+    """Os horarios em que ESSE canal posta no Instagram (sempre dentro da
+    grade). Canal desconhecido = nenhum. NAO diz se o destino esta ligado."""
+    canal = str(canal or "").lower()
+    if canal == "bluelock":
+        return horas_da_serie("instagram")
+    proprias = HORAS_DO_INSTAGRAM_DOS_OUTROS_CANAIS.get(canal, ())
+    return tuple(h for h in horas_da_plataforma("instagram")
+                 if h in set(proprias))
+
+
+def publica_no_instagram(canal: str | None, hora: int) -> bool:
+    """Esse canal posta no Instagram no horario `hora`?"""
+    return int(hora) in horas_do_instagram(canal)
 
 
 # A conta cheia do dia: cada canal, cada plataforma, com a grade de cada um
@@ -448,6 +479,8 @@ __all__ = ["GRADE", "HORAS", "MINUTOS", "MINUTO", "META_DIARIA_POR_CANAL",
            "horario", "horarios", "horas_da_plataforma", "publica_em",
            "horas_do_canal", "publica_no_canal", "meta_diaria",
            "HORAS_DA_SERIE", "horas_da_serie", "publica_a_serie",
+           "HORAS_DO_INSTAGRAM_DOS_OUTROS_CANAIS", "horas_do_instagram",
+           "publica_no_instagram",
            "grade_do_dia", "texto_da_grade_do_dia",
            "vencidos", "proximo", "proximo_em", "slot"]
 

@@ -69,7 +69,7 @@ def _confirmado(estado) -> bool:
     texto = str(estado or "")
     if texto.startswith("http"):
         return True
-    for modulo in ("tiktok", "youtube_web"):
+    for modulo in ("tiktok", "youtube_web", "instagram"):
         try:
             mod = __import__(f"builds.publicar.{modulo}", fromlist=["SUCESSO"])
             if texto.startswith(getattr(mod, "SUCESSO", "\0")):
