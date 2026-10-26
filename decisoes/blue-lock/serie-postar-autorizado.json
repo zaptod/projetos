@@ -1,5 +1,17 @@
 {
   "comentario": true,
+  "consequencias": [
+    {
+      "alvo": "",
+      "em": "2026-10-26T11:18:01",
+      "evento": "2026-10-26T11:17:46",
+      "linha": 218,
+      "nota": "resposta sem pedido de origem: blue-lock/serie-postar-autorizado = Sim: episódio com ficha aprovada (sha256) + este nó = pode publicar, sem reconfirmar (recomendado)",
+      "opcao": "permanente",
+      "origem": "leitor",
+      "tipo": "nada"
+    }
+  ],
   "contexto": "Em 26/10 o agente de publicação recusou duas vezes aprovar/publicar o ep. 1 porque a ordem chegou pelo orquestrador. Fonte verificável: o nó blue-lock/serie-cadencia-e-aprovacao (26/10 09:21) registra o pedido do Adrian: 'QUERO QUE VOCÊ FAÇA AS CONEXOES NECESSARIAS E COMECE A POSTAR'. O orquestrador relata mais uma fala dele, 'pode postar!!' (relato do orquestrador, sem registro próprio no disco). Vale só para: ficha com aprovado_por_conferente + sha256 batendo com o arquivo + autorizado_por/autorizacao/conferente gravados por 'serie_bluelock aprovar'; 1 episódio por dia por destino às 20:37; texto sem IA de desenvolvimento, nada técnico, nada de GitHub. Não vale para outro canal, para texto fora dessas regras, nem para trocar conta, nome ou foto. O Adrian pode revogar tirando a marca da ficha ou trocando este nó no app.",
   "criado": "2026-10-26T11:17:36.702612",
   "depende_de": [
