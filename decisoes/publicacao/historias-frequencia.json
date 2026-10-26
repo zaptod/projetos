@@ -1,0 +1,44 @@
+{
+  "comentario": true,
+  "contexto": "Pedido do Adrian em 26/10: 'quero diminuir a frequência das histórias, está comendo muito tempo e eu vejo que não dá tantas views assim por quantidade'. Medido (histórias, 01/10 a 26/10, vídeos com 3+ dias no ar, 150 no YouTube e 169 no TikTok): YouTube 21:37 = 8907 de 10605 views (84%, média 524 por vídeo); 23:37 = 610 (5,8%); 06:37 = 601 (5,7%); os outros sete horários somam 55 a 101 views cada em três semanas (média 3 a 7 por vídeo). TikTok: dias com 1 a 6 posts rendem 45 a 189 views por vídeo; dias com 9 a 11 posts, 1,1 a 1,4. Cortar os sete horários perde ~4,6% das views do YouTube e poupa 70% dos vídeos. Vale desde 27/10: grade.HORAS_DAS_HISTORIAS (06:37, 21:37, 23:37) e TikTok 21:37; o piso de reposição cai de 20 para 6 (2 dias x 3) e o alvo do lote passa a contar só os horários das histórias.",
+  "criado": "2026-10-26T10:45:49.570365",
+  "depende_de": [],
+  "historico": [
+    {
+      "comentario": "Pedido do Adrian em 26/10 (via orquestrador); escolhida a recomendada pelos números medidos; o Adrian pode trocar no app.",
+      "em": "2026-10-26T10:45:50",
+      "opcao": "tres-e-um",
+      "origem": "cli"
+    }
+  ],
+  "id": "historias-frequencia",
+  "midias": [],
+  "opcoes": [
+    {
+      "desbloqueia": [],
+      "descricao": "Os três horários com tração medida; o piso e o alvo do lote caem na mesma proporção",
+      "id": "tres-e-um",
+      "pede_comentario": false,
+      "rotulo": "3/dia no YouTube (06:37, 21:37, 23:37) e 1/dia no TikTok (21:37), piso de estoque 6 (recomendado)"
+    },
+    {
+      "desbloqueia": [],
+      "descricao": "Como era",
+      "id": "dez-e-seis",
+      "pede_comentario": false,
+      "rotulo": "Manter 10 no YouTube e 6 no TikTok"
+    }
+  ],
+  "origem": {
+    "tipo": "manual"
+  },
+  "pergunta": "Com que frequência as histórias saem, já que o Adrian acha que comem muito tempo do PC e não rendem views por quantidade?",
+  "projeto": "publicacao",
+  "situacao": "decidida",
+  "titulo": "Histórias: de 10 para 3 por dia no YouTube e 1 no TikTok",
+  "vigente": {
+    "comentario": "Pedido do Adrian em 26/10 (via orquestrador); escolhida a recomendada pelos números medidos; o Adrian pode trocar no app.",
+    "em": "2026-10-26T10:45:50",
+    "opcao": "tres-e-um"
+  }
+}

@@ -84,6 +84,7 @@ Fonte: `decisoes/publicacao/` e `decisoes/geral/`. **Decisão vigente do Adrian 
 - ✅ **Segurar o navegador até o envio do YouTube terminar** — Até 10 min; se não terminar, fica sem confirmação e vai para 'a conferir', sem [POSTADO] (recomendado) (21/10/2026) · “Orquestrador escolheu a recomendada (Adrian não quer decidir, 14/10).” `esperar-envio-terminar`
 - ✅ **Apagar do canal os vídeos que ficaram vazios** — Apagar e não reenviar; acertar o ledger (recomendado) (21/10/2026) `videos-presos-no-canal`
 - ✅ **Semana 2: mais duelos por dia no YouTube** — Subir o YouTube para 8 duelos/dia, TikTok segue 1/dia, vídeo segue ~29 s (recomendado) (24/10/2026) · “Orquestrador escolheu a recomendada pela análise de 24/10 (Adrian não quer decidir, 14/10). Pode trocar no app até 27/10.” `semana-2-volume`
+- ✅ **Histórias: de 10 para 3 por dia no YouTube e 1 no TikTok** — 3/dia no YouTube (06:37, 21:37, 23:37) e 1/dia no TikTok (21:37), piso de estoque 6 (recomendado) (26/10/2026) · “Pedido do Adrian em 26/10 (via orquestrador); escolhida a recomendada pelos números medidos; o Adrian pode trocar no app.” `historias-frequencia`
 
 <!-- decisoes:fim -->
 
