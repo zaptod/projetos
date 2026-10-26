@@ -189,6 +189,45 @@ def _publicou(page, url_antes: str) -> bool:
     return any(sinal in texto for sinal in SINAIS_DE_SUCESSO)
 
 
+# O AVISO DO PRIMEIRO UPLOAD DE UMA CONTA (26/10/2026, tela
+# `20261026_102335_tiktok_legenda.png`): o TikTok abre o dialogo "Ativar
+# verificacoes automaticas de conteudo?" por cima do formulario e o campo da
+# legenda fica coberto — a conta `zombie_surviv0rs` fez o 1o upload e a legenda
+# estourou TimeoutError 3x. Fecha-se com CANCELAR (nao liga nada na conta) ou,
+# se o botao mudar, pelo X. Nunca levanta; devolve o que fez ("" = nada).
+AVISOS_DO_TIKTOK = ("verificacoes automaticas de conteudo",)
+BOTOES_DO_AVISO = (
+    'div[role="dialog"] button:has-text("Cancelar")',
+    'div[role="dialog"] button:has-text("Cancel")',
+    '[role="dialog"] button[aria-label="Close"]',
+    '[role="dialog"] button[aria-label="Fechar"]',
+)
+
+
+def _fechar_aviso(page, passo) -> str:
+    try:
+        texto = _sem_acento(page.evaluate(
+            "() => document.body ? document.body.innerText : ''"))
+    except Exception:                                          # noqa: BLE001
+        return ""
+    aviso = next((a for a in AVISOS_DO_TIKTOK if a in texto), "")
+    if not aviso:
+        return ""
+    botao = _primeiro(page, BOTOES_DO_AVISO, timeout=3.0)
+    if botao is None:
+        passo(f"aviso '{aviso}' na tela e nenhum botao para fechar.")
+        return ""
+    try:
+        botao.click(timeout=5000)
+    except Exception:                                          # noqa: BLE001
+        passo(f"aviso '{aviso}' na tela e o clique para fechar falhou.")
+        return ""
+    passo(f"aviso '{aviso}' fechado.")
+    import time as _t
+    _t.sleep(1.0)
+    return aviso
+
+
 def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
     """Escreve a legenda, confere que ficou, e tenta DUAS vezes.
 
@@ -678,6 +717,7 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
               "o botão de publicar não habilitou no tempo, mas o vídeo está "
               "na tela — tentando publicar mesmo assim.")
 
+        _fechar_aviso(page, passo)
         texto_legenda = video.descricao_completa[:2000]
         laudo["envio_concluido"] = _esperar_envio(page, passo)
         _escrever_legenda(page, texto_legenda, passo, laudo)
