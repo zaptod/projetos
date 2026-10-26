@@ -483,6 +483,51 @@ um por horário (ledger ilegível ⇒ o canal não publica no horário, desde
 **repetição**, e repetir é pior que não postar. As outras, em dúvida, deixam
 passar — "não sei" nunca barra vídeo, mas vira erro no diário.
 
+**A série do Blue Lock (canal `bluelock`, 26/10/2026, decisão
+`blue-lock/serie-cadencia-e-aprovacao`)**: um episódio por dia, às **20:37**, no
+YouTube e no TikTok, nas contas herdadas do zombie (`contas.CANAIS_ANTIGOS`:
+YouTube `zombie_survivores`, que hoje se chama **Egoistsoccer** (@Egoistsoccer);
+TikTok `zombie_surviv0rs`, nome "Zombie Survivors"; as duas sessões vivas em
+26/10, o canal do YouTube já tinha 1 vídeo e o TikTok 0). Por que 20:37: dos
+dez horários da grade (o Agendador só tem tarefa neles; horário novo pediria
+`postar.py --instalar`) é o único da noite que os duelos não usam; o TikTok tem
+20:37 na grade dele. Constante a parte (`grade.HORAS_DA_SERIE`,
+`horas_da_serie`, `publica_a_serie`), **não** linha de `HORAS_POR_CANAL`:
+aquela tabela é dos canais que dividem a rodada e 18 módulos a leem
+(`grade.CANAIS` segue `("historias", "builds")`).
+
+- **Fonte**: pasta `NF_SERIE_BLUELOCK` ou `E:\BLUE-Lock-serie-capturas\publicar`,
+  um JSON por episódio (`episodio`, `arquivo`, `sha256`, `titulo`, `descricao`,
+  `tags`, `idioma: "pt"`, `aprovado_por_conferente`). **Só entra o aprovado, e a
+  marca é amarrada ao arquivo pelo sha256**: re-render com o mesmo nome tira o
+  episódio da fila. `python -m builds.publicar.serie_bluelock` mostra a fila (só
+  lê); `... aprovar N` põe a marca (confere o sha256) — é a decisão de publicar.
+- **Guardas** (`builds/publicar/serie_bluelock.py`, todas falham fechadas):
+  ordem (o N só depois do N-1 *naquele destino*; sem o próximo aprovado o
+  horário fica vazio — nunca pula), título único por `titulos.chave`, um por
+  dia por destino (`TETO_POR_DIA`), lista "a conferir" (`desfecho.marcas`
+  ilegível = não publica), um por horário (`publicou_neste_horario`) e as regras
+  do Adrian para o texto (`texto_proibido`: nada de ferramenta de IA de
+  desenvolvimento, nada técnico, nada de GitHub nem do local do projeto).
+  Medido: `titulos.chave` corta o título em 60 letras e **não enxerga o `#N`** —
+  o gancho do episódio tem de mudar, senão a guarda de título barra o seguinte.
+- **Rodada**: `postar.postar_bluelock` roda **depois** de histórias e builds
+  (`_ordem_dos_canais` não mudou). Fora das 20:37 ou sem episódio aprovado a
+  ficha é calada (`fora_da_grade`: sem Telegram, sem código de saída 1, sem ler
+  ledger no primeiro caso). `--so bluelock --agora` leva o próximo episódio fora
+  de hora (todas as outras guardas valem). Funis `_youtube_da_serie` (sempre
+  `public`) e `_tiktok_da_serie`, ambos `_voando` (`CANAIS_DA_FICHA` agora
+  inclui `bluelock`). O YouTube só vira "publicado" no ledger com a
+  confirmação **e** `visibilidade == "public"`; clicou sem isso vai para "a
+  conferir" (rascunho/privado nunca conta).
+- **Ledger próprio** (`metricas.registro_do_canal("bluelock")` =
+  `random_builds/outputs/_serie_bluelock/publicados.jsonl`, mesma trava
+  `ledger__bluelock`); a lista "a conferir" fica ao lado dele. `metricas.CANAIS`
+  **não** inclui `bluelock`: a coleta de métricas da série **não existe ainda**.
+- Pendente: métricas da série (YouTube/TikTok), o nome/@ do TikTok
+  (decisão do Adrian) e `conferencia`/relatórios que ainda só conhecem
+  histórias e builds.
+
 ## 3. As leis (decisões do dono)
 
 - **Não ficar sem vídeo** (13/09) — mas **repetir é pior que não postar**
@@ -1288,6 +1333,7 @@ decodifica mp4 e vários caminhos escrevem no `atividade.jsonl`.
 | Arquivo / recurso | Quem manda | Quem mais usa |
 | --- | --- | --- |
 | `random_builds/outputs/_publicar/publicados.jsonl` | **publicação**, só por `metricas.acrescentar_ao_ledger` | conferência, métricas, auditoria, relatórios do bot, app |
+| `random_builds/outputs/_serie_bluelock/publicados.jsonl` e `_{youtube,tiktok}_a_conferir.json` ao lado (série do Blue Lock) | **publicação**, só por `metricas.acrescentar_ao_ledger` / `serie_bluelock.registrar` | — (a fonte dos episódios, `E:\BLUE-Lock-serie-capturas\publicar`, é da série; aqui só se lê) |
 | `historias/outputs/_publicar/publicados.jsonl` | **publicação**, via `contos.publicar.serie.registrar` | idem |
 | `builds/grade.py` | **publicação** | agenda de histórias, painel flutuante, `remoto/relatorios.py`, auditoria, `youtube_web` |
 | `builds/publicar/conferencia.py` (`chave_do_horario`, `dia_de_grade_fechado`, `abertura_e_fechamento`) | **publicação** | `remoto/relatorios.py` (metas por dia de grade); há teste de contrato dos nomes em `test_conferencia_deficit_regressions` |

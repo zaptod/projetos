@@ -63,9 +63,10 @@ CANAIS_ANTIGOS = {"zombie": "bluelock"}
 # Os canais que PUBLICAM hoje: so deles `conformidade()` cobra conta propria
 # (PUB-6, 14/10/2026). O `bluelock` (antes `zombie`) ainda nao publica e
 # gerava 3 alertas que nunca apagavam — o "TUDO DENTRO DO PADRAO" da
-# auditoria de contas nunca aparecia. Ele entra aqui quando estrear; `CANAIS`
-# fica igual, para o app poder escolher conta para ele antes disso.
-CANAIS_PUBLICANDO = ("builds", "historias")
+# auditoria de contas nunca aparecia. ELE ENTROU EM 26/10/2026 (a serie de
+# videos do Blue Lock, 1 episodio por dia as 20:37: `postar.postar_bluelock`,
+# `grade.HORAS_DA_SERIE`), com as contas herdadas do zombie.
+CANAIS_PUBLICANDO = ("builds", "historias", "bluelock")
 
 
 def canal_atual(canal: str) -> str:

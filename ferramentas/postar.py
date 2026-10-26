@@ -1304,6 +1304,8 @@ def _publicados_do_canal(canal: str) -> list:
             from contos.publicar import serie
             return serie.publicados()
         from builds.publicar import metricas
+        if canal == "bluelock":
+            return metricas.publicados("bluelock")
         return metricas.publicados()
     except Exception as exc:                                   # noqa: BLE001
         raise LedgerIlegivel(
@@ -1613,12 +1615,19 @@ def _garantir_marca(canal: str, alvo_id: str, destino: str, estado: str, *,
         return False
 
 
+# OS CANAIS QUE PODEM TER UM VOO NA FICHA DA TRAVA, UMA MARCA "A CONFERIR" SEM
+# DISCO E UM LEDGER PROPRIO: o `bluelock` entrou em 26/10/2026 (a serie de
+# videos do Blue Lock). Um lugar so — quatro checagens liam a tupla escrita
+# a mao, e um canal fora dela perderia o clique na queda de energia.
+CANAIS_DA_FICHA = ("historias", "builds", "bluelock")
+
+
 def _marcas_so_na_memoria() -> list:
     """As marcas "a conferir" que o disco recusou nesta execucao. Nunca levanta."""
     try:
         from builds.publicar import desfecho
         return [m for m in desfecho.sem_marca_no_disco()
-                if m.get("canal") in ("historias", "builds")
+                if m.get("canal") in CANAIS_DA_FICHA
                 and m.get("destino") in ("youtube", "tiktok") and m.get("alvo")]
     except Exception:                                          # noqa: BLE001
         return []
@@ -5049,6 +5058,233 @@ def _tiktok_dos_builds(alvo, falha: dict | None = None) -> str:
     return estado
 
 
+# ------------------------------------------------ a serie do Blue Lock
+# UM EPISODIO POR DIA, as 20:37, nos dois destinos (26/10/2026, pedido do
+# Adrian; `grade.HORAS_DA_SERIE`). A fonte, a ORDEM, o titulo unico, o teto de
+# um por dia e as regras de texto moram em `builds.publicar.serie_bluelock`;
+# aqui ficam a leitura do relogio (a UNICA: `grade.slot`), a falha fechada do
+# ledger e da lista "a conferir", os dois funis (`_voando`) e o registro.
+#
+# OS CAMINHOS que levam um episodio ao ar, contados: a rodada da grade e o
+# `--so bluelock --agora` (o episodio pedido fora de hora). Os dois passam por
+# `postar_bluelock`, e so por ela chegam aos funis abaixo; o `main.py publicar`
+# le o catalogo de builds e nao enxerga o episodio. A recuperacao, a reserva e
+# a divida nao tocam o canal (iteram historias e builds).
+#
+# SEM EPISODIO APROVADO O HORARIO FICA VAZIO E CALADO: a ficha leva
+# `fora_da_grade` (a rodada a tira do Telegram e do codigo de saida). So o que
+# TENTOU e falhou aparece.
+def _quieta_da_serie(motivo: str) -> dict:
+    return {"canal": "bluelock", "feito": False, "fora_da_grade": True,
+            "motivo": motivo}
+
+
+def _horarios_da_serie(plataforma: str) -> str:
+    return ", ".join(grade.horario(h)
+                     for h in grade.horas_da_serie(plataforma)) or "nenhum"
+
+
+def postar_bluelock(*, so_ver: bool = False, agora: bool = False) -> dict:
+    """O episodio da serie neste horario, nos dois destinos. Nunca levanta
+    para quem chama (`_rodar_canal` embrulha)."""
+    from datetime import datetime
+    from builds.publicar import desfecho
+    from builds.publicar import serie_bluelock as serie
+
+    hora = grade.slot(datetime.now())
+    if agora:
+        destinos = list(serie.DESTINOS)
+    else:
+        destinos = [d for d in serie.DESTINOS if grade.publica_a_serie(d, hora)]
+        if not destinos:
+            return _quieta_da_serie(
+                f"o horario das {grade.horario(hora)} nao e da serie "
+                f"(youtube {_horarios_da_serie('youtube')}; "
+                f"tiktok {_horarios_da_serie('tiktok')})")
+    aprovados, fora = serie.episodios()
+    for motivo in fora:
+        _linha(f"[postar] bluelock: fora da fila - {motivo}"[:200])
+    if not aprovados:
+        return _quieta_da_serie("a serie nao tem episodio aprovado na fila")
+    try:
+        linhas = _publicados_do_canal("bluelock")
+    except LedgerIlegivel as exc:
+        return {"canal": "bluelock", "feito": False, "ledger_ilegivel": True,
+                "motivo": str(exc)[:200]}
+
+    escolhas, motivos, nao_li, ja_saiu = {}, [], [], set()
+    for destino in destinos:
+        try:
+            marcados = set(desfecho.a_conferir("bluelock", destino))
+        except Exception as exc:                               # noqa: BLE001
+            nao_li.append(f"{destino}: nao consegui ler a lista 'a conferir' "
+                          f"({type(exc).__name__}); nao publico")
+            continue
+        if not agora and not so_ver:
+            ja = publicou_neste_horario("bluelock", destino)
+            if ja:
+                if ja.get("ledger_ilegivel"):
+                    return _ficha_do_ledger_ilegivel("bluelock", ja)
+                motivos.append(f"{destino}: ja saiu neste horario "
+                               f"({ja.get('video_id')})")
+                ja_saiu.add(destino)
+                continue
+        ep, motivo = serie.escolher(destino, aprovados, linhas, marcados)
+        if ep is None:
+            motivos.append(f"{destino}: {motivo}")
+            continue
+        escolhas[destino] = ep
+    if nao_li:
+        return {"canal": "bluelock", "feito": False,
+                "motivo": "; ".join(nao_li)[:300]}
+    if not escolhas:
+        return _quieta_da_serie("; ".join(motivos) or "nada a publicar")
+    if so_ver:
+        return {"canal": "bluelock", "feito": False, "motivo": "so vendo",
+                "veria": ", ".join(f"{d}: {e.id}" for d, e in escolhas.items()),
+                "titulo": next(iter(escolhas.values())).titulo}
+
+    ficha = {"canal": "bluelock", "feito": False}
+    if "youtube" in escolhas:
+        ep = escolhas["youtube"]
+        video = ep.como_video()
+        ficha.update({"alvo": ep.id, "titulo": ep.titulo})
+        laudo: dict = {}
+        try:
+            estado = _youtube_da_serie(video, laudo)
+        except Exception as exc:                               # noqa: BLE001
+            falha = f"{type(exc).__name__}: {exc}"[:200]
+            cota = _e_limite_diario(exc)
+            _linha(f"[postar] bluelock: YouTube falhou ({falha}). Sigo para "
+                   "o TikTok.")
+            if cota:
+                avisar_limite_diario(f"canal bluelock: {exc}")
+                ficha["cota_youtube"] = True
+            ficha.update({"youtube_falhou": True,
+                          "motivo": (f"YouTube na cota: {falha}" if cota
+                                     else f"YouTube falhou: {falha}")})
+            if laudo.get("clicou"):
+                ficha["youtube_clicou"] = True
+                _garantir_marca(
+                    "bluelock", ep.id, "youtube",
+                    f"cliquei em publicar no YouTube e algo falhou depois "
+                    f"({falha[:120]}): o video pode estar no ar como publico "
+                    "ou RASCUNHO - confira no Studio.",
+                    etapa="publicar.youtube.clique")
+        else:
+            publico = str(laudo.get("visibilidade") or "") == "public"
+            if _youtube_confirmado(estado) and publico:
+                serie.registrar(
+                    video, estado, "youtube",
+                    {"por": "postar.py", "visibilidade": "public",
+                     "publicado": True, "estado": "publicado",
+                     "episodio": ep.numero, "prova": [laudo],
+                     "prova_ok": _prova_ok(laudo),
+                     **({"youtube_id": laudo["youtube_id"]}
+                        if laudo.get("youtube_id") else {})})
+                ficha.update({"feito": True, "url": estado,
+                              "visibilidade": "public"})
+            else:
+                # O CLIQUE SAIU E O YOUTUBE NAO DISSE "PUBLICO": pode ser
+                # rascunho ou privado. Nao e "publicado" para o ledger, e o
+                # episodio sai da fila (a conferir) em vez de subir de novo.
+                ficha.update({"youtube_falhou": True, "youtube_clicou": True,
+                              "motivo": "YouTube sem confirmacao de PUBLICO: "
+                                        f"{str(estado)[:120]}"})
+                _garantir_marca(
+                    "bluelock", ep.id, "youtube",
+                    "cliquei em publicar no YouTube e nao veio a confirmacao "
+                    f"de PUBLICO ({str(estado)[:100]}): pode estar privado ou "
+                    "como rascunho - confira no Studio.",
+                    etapa="publicar.youtube.clique")
+    if "tiktok" in escolhas:
+        ep = escolhas["tiktok"]
+        video = ep.como_video()
+        ficha.setdefault("alvo", ep.id)
+        ficha.setdefault("titulo", ep.titulo)
+        if ep.id != ficha.get("alvo"):
+            ficha.update({"tiktok_alvo": ep.id, "tiktok_titulo": ep.titulo})
+        falha_tk: dict = {}
+        ficha["tiktok"] = _tiktok_da_serie(video, falha_tk)
+        _anotar_falha_do_tiktok(ficha, falha_tk)
+        if _tiktok_confirmado(ficha["tiktok"]):
+            ficha["feito"] = True
+    elif "tiktok" in ja_saiu:
+        # O TIKTOK DESTE HORARIO JA SAIU (reposicao do YouTube que a rede
+        # derrubou): `_juntar_reposicao` junta pela marca `so_youtube`.
+        ficha["tiktok"] = ""
+        ficha["so_youtube"] = True
+    elif "tiktok" in destinos:
+        ficha["tiktok"] = ""
+        ficha["tiktok_sem_parte"] = True
+    else:
+        ficha["tiktok"] = ""
+        ficha["tiktok_fora_da_grade"] = True
+    if "youtube" not in escolhas and not ficha.get("youtube_falhou"):
+        ficha["so_tiktok"] = True
+    return ficha
+
+
+def _youtube_confirmado(estado) -> bool:
+    """O YouTube CONFIRMOU a publicacao? Frase de "cliquei e nao confirmou"
+    nao conta (a mesma regra de `_tiktok_confirmado`). Sem o modulo: "nao"."""
+    try:
+        from builds.publicar import youtube_web
+        return bool(youtube_web.confirmado(estado))
+    except Exception:                                          # noqa: BLE001
+        return False
+
+
+@_voando("bluelock", "youtube")
+def _youtube_da_serie(alvo, laudo: dict | None = None):
+    """O YouTube da serie, `PUBLICO` (decisao do Adrian, 26/10/2026).
+
+    `publicar_como_configurado` NAO registra aqui: o registro dele e do canal
+    `builds` (`metricas.registrar_publicado` descarta os outros) — quem chama
+    grava no ledger proprio da serie so depois de ver `public` e a confirmacao.
+    """
+    from builds.publicar import youtube
+    extra = {"prova": laudo} if laudo is not None else {}
+    return youtube.publicar_como_configurado(alvo, canal="bluelock",
+                                             visibilidade="public", log=_linha,
+                                             **extra)
+
+
+@_voando("bluelock", "tiktok")
+def _tiktok_da_serie(alvo, falha: dict | None = None) -> str:
+    """O TikTok da serie. Registra no ledger PROPRIO depois da confirmacao
+    (o `tiktok.publicar` so registra o canal `builds`)."""
+    from builds.publicar import serie_bluelock as serie
+    from builds.publicar import tiktok as _tk
+    laudo: dict = {}
+    try:
+        estado = _tk.publicar(alvo, postar=True, canal="bluelock",
+                              progresso=lambda t: _linha(f"   {t}"),
+                              prova=laudo)
+    except Exception as exc:                                   # noqa: BLE001
+        if falha is not None:
+            falha["tipo"] = type(exc).__name__
+            falha["mensagem"] = str(exc)[:300]
+            if laudo.get("clicou"):
+                falha["clicou"] = True
+        _linha(f"   tiktok: NAO subiu ({type(exc).__name__}: {exc})"[:200])
+        if laudo.get("clicou"):
+            _garantir_marca("bluelock", alvo.id, "tiktok",
+                            f"cliquei em publicar no TikTok e algo falhou "
+                            f"depois ({type(exc).__name__}): o post pode "
+                            f"estar no ar - confira no perfil.",
+                            etapa="publicar.tiktok.clique")
+        return ""
+    if _tk.confirmado(estado):
+        serie.registrar(alvo, estado, "tiktok",
+                        {"por": "postar.py", "visibilidade": "public",
+                         "publicado": True, "estado": "publicado",
+                         "episodio": int(alvo.id.rsplit("ep", 1)[-1]),
+                         "prova": [laudo] if laudo else [],
+                         "prova_ok": _prova_ok(laudo)})
+    return estado
+
+
 # ------------------------------------------------------------------ tarefa
 def escrever_lancador() -> Path:
     destino = RAIZ / "postar.cmd"
@@ -5467,7 +5703,8 @@ def consumo_por_formato(cota: dict, por_dia: int | None = None) -> dict:
 
 
 CANAIS = {"historias": {"emoji": "📖", "rotulo": "histórias"},
-          "builds": {"emoji": "⚔️", "rotulo": "builds"}}
+          "builds": {"emoji": "⚔️", "rotulo": "builds"},
+          "bluelock": {"emoji": "⚽", "rotulo": "Blue Lock (série)"}}
 
 
 def _conta_do_destino(servico: str, canal: str) -> str:
@@ -6220,7 +6457,7 @@ def _ficha_valida(dados) -> tuple:
         return None, f"horario invalido ({dados.get('horario')!r})"
     voo = dados.get("em_voo")
     if voo is not None and not (
-            isinstance(voo, dict) and voo.get("canal") in ("historias", "builds")
+            isinstance(voo, dict) and voo.get("canal") in CANAIS_DA_FICHA
             and isinstance(voo.get("alvo"), str) and voo.get("alvo")
             and voo.get("destino") in ("youtube", "tiktok")
             and isinstance(voo.get("etapa"), str)
@@ -6324,7 +6561,7 @@ def _voo_da_ficha_invalida(caminho=None) -> tuple:
     if voo is None:
         return None, True
     inteiro = (isinstance(voo, dict)
-               and voo.get("canal") in ("historias", "builds")
+               and voo.get("canal") in CANAIS_DA_FICHA
                and isinstance(voo.get("alvo"), str) and voo.get("alvo")
                and voo.get("destino") in ("youtube", "tiktok")
                and isinstance(voo.get("etapa"), str)
@@ -6598,7 +6835,7 @@ def _pousar_sem_marca(anterior: dict | None) -> bool:
     from builds.publicar import desfecho
     for item in pendentes:
         if not (isinstance(item, dict)
-                and item.get("canal") in ("historias", "builds")
+                and item.get("canal") in CANAIS_DA_FICHA
                 and item.get("destino") in ("youtube", "tiktok")
                 and isinstance(item.get("alvo"), str) and item.get("alvo")):
             _linha(f"[postar] marca pendente torta na ficha anterior, "
@@ -6738,8 +6975,13 @@ def main(argv=None) -> int:
                         help="instala UM horario so, em vez da grade inteira")
     parser.add_argument("--lancador", action="store_true",
                         help="so regrava o postar.cmd (nao mexe no Agendador)")
-    parser.add_argument("--so", choices=("historias", "builds"),
+    parser.add_argument("--so", choices=("historias", "builds", "bluelock"),
                         help="posta so de um canal")
+    parser.add_argument("--agora", action="store_true",
+                        help="so com `--so bluelock`: leva o proximo episodio "
+                             "da serie FORA do horario das 20:37 (todas as "
+                             "outras guardas valem: ordem, titulo, um por "
+                             "dia, a conferir)")
     parser.add_argument("--tudo", action="store_true",
                         help="escoa a fila INTEIRA de historias, uma atras da "
                              "outra (ignora a guarda de um-por-horario)")
@@ -6753,6 +6995,8 @@ def main(argv=None) -> int:
                              "saiu no TikTok, com as guardas de duplicata e "
                              "a vistoria (com --ver, so confere)")
     args = parser.parse_args(argv)
+    if args.agora and args.so != "bluelock":
+        parser.error("--agora so vale com --so bluelock")
 
     if args.ver or args.instalar or args.lancador:
         return _main(args)          # nao publica: nao espera ninguem
@@ -6849,8 +7093,14 @@ def _main(args) -> int:
     if pausa and args.so in (None, "historias"):
         _linha(f"[postar] historias: {pausa}; nada sai no YouTube nem no "
                "TikTok (inclusive a recuperacao).")
-    funcoes = {"historias": postar_historia, "builds": postar_build}
-    for canal in _ordem_dos_canais():
+    import functools
+    funcoes = {"historias": postar_historia, "builds": postar_build,
+               "bluelock": functools.partial(postar_bluelock,
+                                             agora=args.agora)}
+    # A SERIE DO BLUE LOCK RODA POR ULTIMO e nunca muda a ordem dos outros dois
+    # (`_ordem_dos_canais` segue igual); fora das 20:37 devolve uma ficha
+    # calada (`fora_da_grade`) sem ler ledger nem catalogo.
+    for canal in (*_ordem_dos_canais(), "bluelock"):
         funcao = funcoes[canal]
         if args.so not in (None, canal):
             continue

@@ -390,6 +390,35 @@ def proximo_em(agora: datetime | None = None) -> datetime:
     raise ValueError("grade vazia")                      # pragma: no cover
 
 
+# A SERIE DO BLUE LOCK (canal `bluelock`, 26/10/2026, pedido do Adrian): UM
+# EPISODIO POR DIA, as 20:37, nos dois destinos. Por que este horario: dos dez
+# da grade (o Agendador so tem tarefa nesses dez; horario novo pede
+# `postar.py --instalar`, que nao se roda sem o Adrian) o 20:37 e o unico da
+# noite que o canal de duelos NAO usa (duelos: 06:37 09:37 12:07 15:37 17:57
+# 21:37 22:37 23:37 desde 27/10; 21:37 ate 26/10), e o publico da serie e
+# brasileiro, em portugues: 20:37 e a noite deles. O minuto :37 e o proprio
+# da grade — nao coincide com nenhum duelo. O TikTok tem 20:37 na grade dele
+# (`HORAS_DO_TIKTOK`), entao os dois destinos saem juntos. E uma CONSTANTE A
+# PARTE, e nao uma linha de `HORAS_POR_CANAL`: aquela tabela e a dos canais
+# que dividem a rodada (historias, builds) e 18 modulos a leem; a serie so
+# precisa responder "este horario e meu?" (`publica_a_serie`).
+HORAS_DA_SERIE = {"youtube": (20,), "tiktok": (20,)}
+
+
+def horas_da_serie(plataforma: str = "youtube") -> tuple:
+    """Os horarios do canal `bluelock` NESSA plataforma: sempre um SUBCONJUNTO
+    da grade dela (um horario que o TikTok nao tem nao vira TikTok so porque
+    a serie o pede)."""
+    plataforma = str(plataforma).lower()
+    return tuple(h for h in horas_da_plataforma(plataforma)
+                 if h in set(HORAS_DA_SERIE.get(plataforma, ())))
+
+
+def publica_a_serie(plataforma: str, hora: int) -> bool:
+    """A serie do Blue Lock posta nessa plataforma no horario `hora`?"""
+    return int(hora) in horas_da_serie(plataforma)
+
+
 # A conta cheia do dia: cada canal, cada plataforma, com a grade de cada um
 # (hoje: historias 10 + 6, builds 3 + 1; 8 + 1 desde 27/10/2026).
 META_DIARIA_TOTAL = _meta_total()
@@ -405,6 +434,7 @@ __all__ = ["GRADE", "HORAS", "MINUTOS", "MINUTO", "META_DIARIA_POR_CANAL",
            "teste", "teste_do_tiktok", "minuto",
            "horario", "horarios", "horas_da_plataforma", "publica_em",
            "horas_do_canal", "publica_no_canal", "meta_diaria",
+           "HORAS_DA_SERIE", "horas_da_serie", "publica_a_serie",
            "grade_do_dia", "texto_da_grade_do_dia",
            "vencidos", "proximo", "proximo_em", "slot"]
 

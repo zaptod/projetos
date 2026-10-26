@@ -103,8 +103,11 @@ class CanalBlueLockTests(unittest.TestCase):
                       for c in ("builds", "historias")}
             self.assertTrue(destino and destino not in outros, servico)
 
-    def test_bluelock_ainda_nao_publica(self):
-        self.assertNotIn("bluelock", contas.CANAIS_PUBLICANDO)
+    def test_bluelock_publica_desde_26_10(self):
+        """26/10/2026: a serie de videos do Blue Lock (1 por dia, 20:37) pede
+        autorizacao do Adrian para publicar nas contas herdadas do zombie, e
+        `conformidade()` passa a cobrar conta propria dele como dos outros."""
+        self.assertIn("bluelock", contas.CANAIS_PUBLICANDO)
 
     def test_canal_que_nunca_existiu_continua_recusado(self):
         with self.assertRaises(KeyError):

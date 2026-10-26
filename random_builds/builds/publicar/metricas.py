@@ -55,10 +55,19 @@ API_UPLOADS = "https://www.googleapis.com/youtube/v3/playlistItems"
 API_CANAIS = "https://www.googleapis.com/youtube/v3/channels"
 
 
+# A SERIE DO BLUE LOCK (canal `bluelock`, 26/10/2026) tem ledger PROPRIO, ao
+# lado do de builds e fora do de historias: `outputs/_serie_bluelock/`. Fica
+# FORA de `CANAIS` de proposito — a coleta de metricas (`atualizar_tudo`)
+# itera `CANAIS` e ainda nao sabe medir a serie.
+PASTA_DA_SERIE = "_serie_bluelock"
+
+
 def registro_do_canal(canal: str = "builds") -> Path:
     """O `publicados.jsonl` daquele canal."""
     if canal == "builds":
         return Path(REGISTRO)
+    if canal == "bluelock":
+        return OUTPUTS / PASTA_DA_SERIE / "publicados.jsonl"
     return OUTRAS_RAIZES[canal] / "outputs" / "_publicar" / "publicados.jsonl"
 
 
@@ -66,6 +75,8 @@ def pasta_do_canal(canal: str = "builds") -> Path:
     """Onde ficam os `<youtube_id>.json` daquele canal."""
     if canal == "builds":
         return Path(PASTA)
+    if canal == "bluelock":
+        return OUTPUTS / PASTA_DA_SERIE / "_metricas"
     return OUTRAS_RAIZES[canal] / "outputs" / "_metricas"
 
 # O comando que a mensagem de erro manda rodar tem que EXISTIR. Ate
