@@ -27,7 +27,9 @@
   "midias": [],
   "opcoes": [
     {
-      "desbloqueia": [],
+      "desbloqueia": [
+        "serie-postar-autorizado"
+      ],
       "descricao": "Ordem da série garantida, título único, sem repetir, sem aprovado o horário fica vazio e calado",
       "id": "um-por-dia",
       "pede_comentario": false,
