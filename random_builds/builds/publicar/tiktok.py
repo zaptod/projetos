@@ -189,43 +189,101 @@ def _publicou(page, url_antes: str) -> bool:
     return any(sinal in texto for sinal in SINAIS_DE_SUCESSO)
 
 
-# O AVISO DO PRIMEIRO UPLOAD DE UMA CONTA (26/10/2026, tela
-# `20261026_102335_tiktok_legenda.png`): o TikTok abre o dialogo "Ativar
-# verificacoes automaticas de conteudo?" por cima do formulario e o campo da
-# legenda fica coberto — a conta `zombie_surviv0rs` fez o 1o upload e a legenda
-# estourou TimeoutError 3x. Fecha-se com CANCELAR (nao liga nada na conta) ou,
-# se o botao mudar, pelo X. Nunca levanta; devolve o que fez ("" = nada).
-AVISOS_DO_TIKTOK = ("verificacoes automaticas de conteudo",)
-BOTOES_DO_AVISO = (
-    'div[role="dialog"] button:has-text("Cancelar")',
-    'div[role="dialog"] button:has-text("Cancel")',
-    '[role="dialog"] button[aria-label="Close"]',
-    '[role="dialog"] button[aria-label="Fechar"]',
-)
+# OS AVISOS DE CONTA NOVA (26/10/2026). O 1o upload de uma conta abre, um atras
+# do outro, dialogos e cartoes por cima do formulario ("Ativar verificacoes
+# automaticas de conteudo?", depois um cartao do editor de video no canto):
+# a legenda fica coberta e estoura TimeoutError 3x (telas `20261026_102335` e
+# `20261026_105433`). A regra e GENERICA: enquanto houver sobreposicao (role=
+# dialog, aria-modal ou mascara de fundo) fecha-se pelo botao de DISPENSA, rolando
+# ate ele, ou com Escape — ate `RODADAS_DE_AVISO` vezes, com uma captura de cada
+# um para o registro. NUNCA se clica em botao que ATIVE algo na conta
+# (`BOTOES_PROIBIDOS`: ativar, ligar, aceitar, permitir, publicar...).
+RODADAS_DE_AVISO = 5
+BOTOES_DE_DISPENSA = ("cancelar", "cancel", "entendi", "got it", "ok",
+                      "agora nao", "not now", "fechar", "close", "dispensar",
+                      "dismiss", "pular", "skip", "nao, obrigado", "no thanks",
+                      "mais tarde", "later", "x", "×")
+BOTOES_PROIBIDOS = ("ativar", "ligar", "turn on", "enable", "aceitar",
+                    "accept", "permitir", "allow", "publicar", "post",
+                    "postar", "continuar", "continue", "confirmar", "salvar",
+                    "save", "experimentar", "try", "criar", "create")
+_JS_AVISO = r"""([dispensa, proibidos]) => {
+  const norm = t => (t || '').normalize('NFKD').replace(/[̀-ͯ]/g, '')
+      .trim().toLowerCase();
+  const visivel = e => { const r = e.getBoundingClientRect();
+      const c = getComputedStyle(e);
+      return r.width > 0 && r.height > 0 && c.visibility !== 'hidden'
+          && c.display !== 'none'; };
+  const caixas = [...document.querySelectorAll(
+      '[role=dialog],[aria-modal=true],[class*=modal i],[class*=Modal],' +
+      '[class*=mask i],[class*=overlay i],[class*=popup i],[class*=guide i]')]
+      .filter(visivel);
+  const fixos = caixas.filter(e => {
+      const c = getComputedStyle(e); const r = e.getBoundingClientRect();
+      return c.position === 'fixed' || e.getAttribute('role') === 'dialog'
+          || e.getAttribute('aria-modal') === 'true'
+          || (r.width * r.height > innerWidth * innerHeight * 0.5); });
+  if (!fixos.length) return {sobreposicao: false};
+  const alvos = [];
+  for (const caixa of fixos) {
+    for (const b of caixa.querySelectorAll(
+        'button,[role=button],a,div[class*=close i],span[class*=close i],' +
+        'svg')) {
+      const el = b.closest('button,[role=button],a') || b;
+      const t = norm(el.innerText || el.getAttribute('aria-label') || '');
+      alvos.push([el, t]);
+    }
+  }
+  const vistos = alvos.map(a => a[1]).filter(t => t).slice(0, 12);
+  for (const [el, t] of alvos) {
+    const rotulo = t || norm(el.getAttribute('aria-label') || '');
+    if (!rotulo && !/close|fechar/i.test(el.className || '')) continue;
+    if (proibidos.some(p => rotulo === p || rotulo.split(/\s+/).includes(p)))
+      continue;
+    if (dispensa.includes(rotulo) || /close|fechar/i.test(
+        (el.className && el.className.baseVal === undefined
+         ? el.className : '') + ' ' + (el.getAttribute('aria-label') || ''))) {
+      el.scrollIntoView({block: 'center'});
+      el.click();
+      return {sobreposicao: true, clicou: rotulo || 'x', vistos};
+    }
+  }
+  for (const caixa of fixos) { caixa.scrollTop = caixa.scrollHeight; }
+  return {sobreposicao: true, clicou: '', vistos};
+}"""
 
 
-def _fechar_aviso(page, passo) -> str:
-    try:
-        texto = _sem_acento(page.evaluate(
-            "() => document.body ? document.body.innerText : ''"))
-    except Exception:                                          # noqa: BLE001
-        return ""
-    aviso = next((a for a in AVISOS_DO_TIKTOK if a in texto), "")
-    if not aviso:
-        return ""
-    botao = _primeiro(page, BOTOES_DO_AVISO, timeout=3.0)
-    if botao is None:
-        passo(f"aviso '{aviso}' na tela e nenhum botao para fechar.")
-        return ""
-    try:
-        botao.click(timeout=5000)
-    except Exception:                                          # noqa: BLE001
-        passo(f"aviso '{aviso}' na tela e o clique para fechar falhou.")
-        return ""
-    passo(f"aviso '{aviso}' fechado.")
-    import time as _t
-    _t.sleep(1.0)
-    return aviso
+def _fechar_aviso(page, passo, laudo: dict | None = None) -> str:
+    """Fecha o que cobre o formulario. Devolve o que fez ("" = nada). Nunca
+    levanta."""
+    feitos = []
+    for rodada in range(1, RODADAS_DE_AVISO + 1):
+        try:
+            r = page.evaluate(_JS_AVISO, [list(BOTOES_DE_DISPENSA),
+                                          list(BOTOES_PROIBIDOS)])
+        except Exception:                                      # noqa: BLE001
+            break
+        if not isinstance(r, dict) or not r.get("sobreposicao"):
+            break
+        foto = escrita.fotografar(page, f"tiktok_aviso_{rodada}")
+        if r.get("clicou"):
+            feitos.append(r["clicou"])
+            passo(f"aviso {rodada} fechado pelo botao '{r['clicou']}' "
+                  f"(captura: {foto or '-'}).")
+        else:
+            passo(f"aviso {rodada} sem botao de dispensa (botoes vistos: "
+                  f"{r.get('vistos')}); tentando Escape (captura: "
+                  f"{foto or '-'}).")
+            try:
+                page.keyboard.press("Escape")
+            except Exception:                                  # noqa: BLE001
+                pass
+            feitos.append("Escape")
+        import time as _t
+        _t.sleep(1.2)
+    if feitos and laudo is not None:
+        laudo["avisos_fechados"] = feitos
+    return ", ".join(feitos)
 
 
 def _escrever_legenda(page, texto: str, passo, laudo: dict) -> bool:
@@ -717,7 +775,7 @@ def publicar(video, *, postar: bool | None = None, config: dict | None = None,
               "o botão de publicar não habilitou no tempo, mas o vídeo está "
               "na tela — tentando publicar mesmo assim.")
 
-        _fechar_aviso(page, passo)
+        _fechar_aviso(page, passo, laudo)
         texto_legenda = video.descricao_completa[:2000]
         laudo["envio_concluido"] = _esperar_envio(page, passo)
         _escrever_legenda(page, texto_legenda, passo, laudo)
